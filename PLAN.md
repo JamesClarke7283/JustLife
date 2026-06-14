@@ -48,7 +48,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
 
 ## Phase 2: Core ECS Architecture
 
-- [ ] **2.1** Define core Bevy plugins
+- [x] **2.1** Define core Bevy plugins
   - Create `CorePlugin` — registers all resources, events, and core systems
   - Create `SimPlugin` — registers sim-related components and systems
   - Create `WorldPlugin` — registers world/lot components and systems

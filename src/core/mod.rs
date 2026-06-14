@@ -15,6 +15,7 @@ impl Plugin for CorePlugin {
             .init_resource::<resources::GameSpeed>()
             .init_resource::<resources::MoneyResource>()
             .init_resource::<resources::SelectionResource>()
+            .init_state::<state::GameState>()
             .add_event::<events::NeedChangeEvent>()
             .add_event::<events::InteractionEvent>()
             .add_event::<events::TimeTickEvent>()
