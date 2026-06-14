@@ -10,13 +10,13 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
 
 ## Phase 1: Project Setup & Build Pipeline
 
-- [ ] **1.1** Initialize Rust project with Bevy
+- [x] **1.1** Initialize Rust project with Bevy
   - Run `cargo init --name just-life`
   - Add `bevy` dependency to `Cargo.toml` (latest stable version, with dynamic_linking for dev)
   - Add `bevy` features for 3D rendering, WASM support
   - Create `.cargo/config.toml` with dev optimizations for faster iteration
 
-- [ ] **1.2** Configure WASM build target
+- [x] **1.2** Configure WASM build target
   - Add `wasm32-unknown-unknown` target via `rustup`
   - Create `Cargo.toml` profile for WASM release (opt-level = "s", lto = true)
   - Add `wasm-bindgen` dependency for WASM interop
@@ -24,24 +24,24 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Create `index.html` with canvas and WASM loader for browser testing
   - Add `web-sys` and `wasm-bindgen-futures` dependencies
 
-- [ ] **1.3** Set up project directory structure
+- [x] **1.3** Set up project directory structure
   - Create `src/` with `main.rs`, `lib.rs`
   - Create module structure: `src/core/`, `src/sim/`, `src/world/`, `src/ui/`, `src/interaction/`, `src/career/`, `src/social/`, `src/audio/`, `src/assets/`, `src/wasm/`
   - Create `assets/` directory with subdirs: `textures/`, `models/`, `fonts/`, `sounds/`, `music/`
   - Create `assets/textures/` placeholder for generated textures
 
-- [ ] **1.4** Configure linting and formatting
+- [x] **1.4** Configure linting and formatting
   - Add `rustfmt.toml` with project formatting rules
   - Add `clippy.toml` with lint configuration
   - Ensure `cargo clippy` and `cargo fmt` pass on initial scaffold
 
-- [ ] **1.5** Create minimal Bevy app skeleton
+- [x] **1.5** Create minimal Bevy app skeleton
   - `main.rs`: spawn 3D camera, default lighting, and a ground plane
   - Verify it runs natively with `cargo run`
   - Verify it builds for WASM with `build-wasm.sh`
   - Take browser screenshot to confirm WASM pipeline works
 
-- [ ] **1.6** Set up hot-reload and dev workflow
+- [x] **1.6** Set up hot-reload and dev workflow
   - Configure Bevy asset hot-reload for dev iterations
   - Document dev workflow in AGENTS.md (build command, test command, WASM deploy)
   - Test that asset changes are reflected without restart
