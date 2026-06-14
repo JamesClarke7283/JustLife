@@ -1,0 +1,4 @@
+# Clippy configuration for Just Life
+# Minimal sensible defaults; expand as the project grows.
+
+avoid-breaking-exported-api = true

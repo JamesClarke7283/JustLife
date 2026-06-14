@@ -1,0 +1,9 @@
+.loop*
+
+# Added by cargo
+/target
+
+# Generated WASM build artifacts
+/web/just-life.js
+/web/just-life_bg.wasm
+/web/screenshot.png
