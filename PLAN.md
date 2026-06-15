@@ -144,7 +144,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
 
 ## Phase 4: Sim Entity System
 
-- [ ] **4.1** Define Sim component bundle
+- [x] **4.1** Define Sim component bundle
   - `SimBundle` — aggregates all sim components into a spawnable bundle
   - `SimId` — unique identifier for each sim
   - `SimName` — first name, last name
@@ -154,7 +154,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - `SimAppearance` — visual properties (skin tone, hair style, clothing)
   - `SimVoice` — pitch and tone parameters for simlish sounds
 
-- [ ] **4.2** Implement Needs system
+- [x] **4.2** Implement Needs system
   - Define `Needs` component with 6 core needs:
     - `hunger: f32` (0-100)
     - `energy: f32` (0-100)
@@ -167,7 +167,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Need decay pauses during certain interactions (e.g., sleeping pauses all decay)
   - Needs below threshold trigger moodlets and autonomy pushes
 
-- [ ] **4.3** Implement Moodlet system
+- [x] **4.3** Implement Moodlet system
   - Define `Moodlet` struct: name, description, mood impact, duration, source
   - Define `Mood` enum: Happy, Fine, Tense, Sad, Angry, Embarrassed, Energized, Flirty, Focused, Uncomfortable
   - `ActiveMoodlets` component: list of current moodlets on a sim
@@ -175,7 +175,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Mood affects behavior weights (angry sims more likely to fight, sad sims seek comfort)
   - Visual indicator above sim head showing current mood icon
 
-- [ ] **4.4** Implement Traits system
+- [x] **4.4** Implement Traits system
   - Define `Trait` enum with personality traits:
     - Active, Lazy, Cheerful, Gloomy, Creative, Genius, Neat, Slob, Outgoing, Introvert
     - Romantic, Unflirty, Ambitious, Good, Evil, Self-Assured, Self-Deprecating
@@ -184,7 +184,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Trait conflicts (e.g., Neat + Slob) are prevented during sim creation
   - Trait descriptions and effects stored in `TraitDatabase` resource
 
-- [ ] **4.5** Implement Sim appearance and rendering
+- [x] **4.5** Implement Sim appearance and rendering
   - Create `SimBody` as a combination of scaled primitives (capsule body, sphere head, cylinder limbs)
   - Generate sim skin textures via MCP image gen (different skin tones)
   - Generate clothing textures (tops, bottoms, shoes)
@@ -192,14 +192,14 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Spawn sim entity with visual representation in 3D world
   - Implement sim height variation by age stage
 
-- [ ] **4.6** Implement Sim animation system
+- [x] **4.6** Implement Sim animation system
   - Create `AnimationState` component: Idle, Walking, Running, Sitting, Sleeping, Talking, Eating, Cooking, Working, Playing, UsingObject, Socializing
   - Create `AnimationTimer` resource for frame timing
   - Implement simple procedural animation: bob walk cycle, idle sway, head look
   - Implement transition between animation states based on sim actions
   - Create animation blending system for smooth transitions
 
-- [ ] **4.7** Implement Sim movement and pathfinding
+- [x] **4.7** Implement Sim movement and pathfinding
   - Create `MoveTo` component with target position and movement speed
   - Implement `MovementSystem`: lerp sim position toward `MoveTo` target
   - Implement basic A* pathfinding on grid
