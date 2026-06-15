@@ -87,6 +87,14 @@ pub struct CameraInputState {
 fn spawn_camera(mut commands: Commands) {
     commands.spawn((
         Camera3dBundle {
+            projection: Projection::Orthographic(OrthographicProjection {
+                scale: 1.0,
+                near: 0.1,
+                far: 1000.0,
+                viewport_origin: Vec2::new(0.5, 0.5),
+                scaling_mode: bevy::render::camera::ScalingMode::WindowSize(1.0),
+                area: Rect::new(-1.0, -1.0, 1.0, 1.0),
+            }),
             transform: Transform::from_xyz(10.0, 10.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
             ..default()
         },
@@ -109,9 +117,12 @@ fn camera_input(
         return;
     };
 
-    // Toggle follow mode.
+    // Toggle follow mode. Escape cancels it.
     if keyboard.just_pressed(KeyCode::KeyF) {
         rig.follow_mode = !rig.follow_mode;
+    }
+    if keyboard.just_pressed(KeyCode::Escape) && rig.follow_mode {
+        rig.follow_mode = false;
     }
 
     // Rotation with Q/E (counter-clockwise / clockwise).
@@ -188,10 +199,10 @@ fn camera_input(
 
 /// Smoothly update the camera transform from the rig.
 fn update_camera_transform(
-    mut camera_query: Query<(&mut Transform, &CameraRig), With<IsometricCamera>>,
+    mut camera_query: Query<(&mut Transform, &CameraRig, &mut Projection), With<IsometricCamera>>,
     time: Res<Time>,
 ) {
-    let Ok((mut transform, rig)) = camera_query.get_single_mut() else {
+    let Ok((mut transform, rig, mut projection)) = camera_query.get_single_mut() else {
         return;
     };
 
@@ -202,6 +213,11 @@ fn update_camera_transform(
     let lerp_factor = 10.0 * time.delta_seconds();
     transform.translation = transform.translation.lerp(target_position, lerp_factor);
     transform.rotation = transform.rotation.slerp(target_rotation, lerp_factor);
+
+    // Update orthographic projection size when zooming for a true isometric feel.
+    if let Projection::Orthographic(ref mut ortho) = *projection {
+        ortho.scale = rig.distance / 18.0;
+    }
 }
 
 /// Camera follow mode: track the selected entity with a smooth lerp.
@@ -228,4 +244,11 @@ fn camera_follow(
 
     let goal = target_transform.translation;
     rig.target = rig.target.lerp(goal, 5.0 * time.delta_seconds());
+
+    // Reset the yaw to the default isometric angle when following to keep
+    // the selected sim framed nicely.
+    let default_yaw = FRAC_PI_4;
+    if (rig.yaw - default_yaw).abs() > 0.01 {
+        rig.yaw = rig.yaw.lerp(default_yaw, 2.0 * time.delta_seconds());
+    }
 }

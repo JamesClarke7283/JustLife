@@ -109,12 +109,37 @@ pub struct TexturedPrimitive {
 }
 
 impl TexturedPrimitive {
-    /// Scale a 1x1 primitive to the requested world size and rotation.
-    pub fn transform(&self, position: Vec3, scale: Vec3, rotation: Quat) -> Transform {
-        Transform {
-            translation: position,
-            rotation,
-            scale,
+    /// Build a PbrBundle from this primitive with the requested placement.
+    pub fn pbr_bundle(&self, position: Vec3, scale: Vec3, rotation: Quat) -> PbrBundle {
+        PbrBundle {
+            mesh: self.mesh.clone(),
+            material: self.material.clone(),
+            transform: Transform {
+                translation: position,
+                rotation,
+                scale,
+            },
+            ..default()
         }
+    }
+}
+
+/// Build a reusable `TexturedPrimitive` from a cached shape and a loaded texture.
+pub fn build_textured_primitive(
+    shape_key: ShapeKey,
+    texture_path: &'static str,
+    library: &ShapeLibrary,
+    materials: &mut Assets<StandardMaterial>,
+    asset_server: &AssetServer,
+) -> TexturedPrimitive {
+    let texture: Handle<Image> = asset_server.load(texture_path);
+    let material = materials.add(StandardMaterial {
+        base_color_texture: Some(texture),
+        perceptual_roughness: 0.8,
+        ..default()
+    });
+    TexturedPrimitive {
+        mesh: library.meshes.get(&shape_key).cloned().unwrap_or_default(),
+        material,
     }
 }

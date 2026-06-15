@@ -13,7 +13,7 @@ RUSTFLAGS="-C opt-level=s" cargo build --profile wasm-release --target "${CARGO_
 mkdir -p "${WASM_DIR}"
 
 echo "Running wasm-bindgen..."
-wasm-bindgen \
+"${HOME}/.cargo/bin/wasm-bindgen" \
     --out-dir "${WASM_DIR}" \
     --target web \
     --no-typescript \

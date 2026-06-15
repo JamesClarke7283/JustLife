@@ -58,6 +58,29 @@ fn spawn_sun_and_ambient(mut commands: Commands, ambient: Res<AmbientLighting>) 
     });
 }
 
+/// Marker for indoor point lights (lamps, ceiling fixtures).
+#[derive(Component, Default, Debug, Clone, Copy, PartialEq, Eq, Reflect)]
+#[reflect(Component)]
+pub struct IndoorLight;
+
+/// Add a simple indoor point light at the given position.
+pub fn spawn_indoor_light(commands: &mut Commands, position: Vec3, color: Color, intensity: f32) {
+    commands.spawn((
+        PointLightBundle {
+            point_light: PointLight {
+                color,
+                intensity,
+                range: 10.0,
+                shadows_enabled: false,
+                ..default()
+            },
+            transform: Transform::from_translation(position),
+            ..default()
+        },
+        IndoorLight,
+    ));
+}
+
 fn update_sun(
     mut commands: Commands,
     mut sun_query: Query<(&mut Transform, &mut DirectionalLight, &mut SunLight)>,

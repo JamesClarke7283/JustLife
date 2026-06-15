@@ -42,14 +42,16 @@ fn spawn_ground_plane(
     asset_server: Res<AssetServer>,
 ) {
     let texture: Handle<Image> = asset_server.load("textures/terrain_grass.png");
+    let size = 40.0;
     commands.spawn((
         PbrBundle {
-            mesh: meshes.add(Plane3d::default().mesh().size(40.0, 40.0)),
+            mesh: meshes.add(Plane3d::default().mesh().size(size, size)),
             material: materials.add(StandardMaterial {
                 base_color_texture: Some(texture),
                 perceptual_roughness: 0.85,
                 ..default()
             }),
+            transform: Transform::from_translation(Vec3::new(size / 2.0, 0.0, size / 2.0)),
             ..default()
         },
         GroundPlane,

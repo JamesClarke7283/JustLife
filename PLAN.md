@@ -89,25 +89,25 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
 
 ## Phase 3: 3D Rendering & Camera
 
-- [ ] **3.1** Implement isometric-style camera system
+- [x] **3.1** Implement isometric-style camera system
   - Create `CameraRig` entity with `Camera3d` and orthographic/perspective projection
   - Set default camera angle (45-degree downward, rotated 45-degrees horizontally — classic isometric)
   - Allow smooth camera rotation around Y axis (quarter-turn snaps)
   - Allow camera zoom (scroll wheel) with min/max bounds
   - Allow camera pan (middle-mouse drag or WASD keys)
 
-- [ ] **3.2** Implement camera follow mode
+- [x] **3.2** Implement camera follow mode
   - Camera follows selected sim with smooth lerp
   - Toggle between free-camera and follow-camera with key press
   - Camera offset maintains isometric angle while tracking
 
-- [ ] **3.3** Create ground plane and grid system
+- [x] **3.3** Create ground plane and grid system
   - Generate a large ground plane mesh (green/terrain texture)
   - Implement grid overlay (toggle-able) showing buildable cells
   - Grid cells are 1x1 world unit, matching build mode tile system
   - Grid boundary markers for lot edges
 
-- [ ] **3.4** Generate procedural 3D primitives for objects
+- [x] **3.4** Generate procedural 3D primitives for objects
   - Create a `MeshGenerator` utility that produces common shapes: cubes, cylinders, spheres, cones, planes
   - Each shape can be scaled, rotated, and combined for furniture/objects
   - Create a `ShapeLibrary` resource caching commonly used meshes
@@ -123,20 +123,20 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Generate skybox/environment texture
   - Save all generated textures to `assets/textures/`
 
-- [ ] **3.6** Apply textures to procedural primitives
+- [x] **3.6** Apply textures to procedural primitives
   - Create `TexturedPrimitive` component bundle: mesh handle + material handle
   - Implement texture tiling and UV mapping for floor/wall planes
   - Create material library with PBR-like properties (metallic, roughness)
   - Test rendered primitives with textures in viewport
 
-- [ ] **3.7** Implement lighting system
+- [x] **3.7** Implement lighting system
   - Add directional light (sun) with time-of-day color changes
   - Add ambient light
   - Add point lights for indoor lighting (lamps, ceiling lights)
   - Implement shadow mapping for directional light
   - Create toggle for day/night lighting
 
-- [ ] **3.8** Implement wall rendering and cutaway
+- [x] **3.8** Implement wall rendering and cutaway
   - Walls render as thin boxes with interior/exterior materials
   - Implement wall height (standard 3m) and thickness
   - Implement wall cutaway: walls nearest to camera become transparent when camera is inside a room
