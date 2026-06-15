@@ -10,7 +10,10 @@ impl Plugin for CameraPlugin {
             .register_type::<CameraRig>()
             .init_resource::<CameraInputState>()
             .add_systems(Startup, spawn_camera)
-            .add_systems(Update, (camera_input, update_camera_transform, camera_follow));
+            .add_systems(
+                Update,
+                (camera_input, update_camera_transform, camera_follow),
+            );
     }
 }
 
@@ -84,8 +87,7 @@ pub struct CameraInputState {
 fn spawn_camera(mut commands: Commands) {
     commands.spawn((
         Camera3dBundle {
-            transform: Transform::from_xyz(10.0, 10.0, 10.0)
-                .looking_at(Vec3::ZERO, Vec3::Y),
+            transform: Transform::from_xyz(10.0, 10.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
             ..default()
         },
         IsometricCamera,
@@ -142,9 +144,8 @@ fn camera_input(
         rig.follow_mode = false;
         let flat_forward = Vec3::new(rig.yaw.sin(), 0.0, rig.yaw.cos()).normalize();
         let flat_right = Vec3::new(rig.yaw.cos(), 0.0, -rig.yaw.sin()).normalize();
-        let delta = (flat_forward * pan_input.y + flat_right * pan_input.x)
-            * 8.0
-            * time.delta_seconds();
+        let delta =
+            (flat_forward * pan_input.y + flat_right * pan_input.x) * 8.0 * time.delta_seconds();
         rig.target += delta;
     }
 
@@ -178,8 +179,7 @@ fn camera_input(
             let scale = rig.distance * 0.0015;
             let flat_forward = Vec3::new(rig.yaw.sin(), 0.0, rig.yaw.cos()).normalize();
             let flat_right = Vec3::new(rig.yaw.cos(), 0.0, -rig.yaw.sin()).normalize();
-            let world_delta = flat_forward * delta.y * scale
-                + flat_right * -delta.x * scale;
+            let world_delta = flat_forward * delta.y * scale + flat_right * -delta.x * scale;
             rig.target -= world_delta;
         }
         input_state.last_cursor = Some(current);
@@ -188,10 +188,7 @@ fn camera_input(
 
 /// Smoothly update the camera transform from the rig.
 fn update_camera_transform(
-    mut camera_query: Query<(&mut Transform,
-        &CameraRig),
-        With<IsometricCamera>
-    >,
+    mut camera_query: Query<(&mut Transform, &CameraRig), With<IsometricCamera>>,
     time: Res<Time>,
 ) {
     let Ok((mut transform, rig)) = camera_query.get_single_mut() else {
@@ -199,8 +196,8 @@ fn update_camera_transform(
     };
 
     let target_position = rig.eye_position();
-    let target_rotation = Quat::from_rotation_y(rig.yaw)
-        * Quat::from_rotation_x(-rig.pitch + FRAC_PI_2);
+    let target_rotation =
+        Quat::from_rotation_y(rig.yaw) * Quat::from_rotation_x(-rig.pitch + FRAC_PI_2);
 
     let lerp_factor = 10.0 * time.delta_seconds();
     transform.translation = transform.translation.lerp(target_position, lerp_factor);

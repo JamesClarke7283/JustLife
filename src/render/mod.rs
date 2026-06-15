@@ -9,6 +9,10 @@ pub struct RenderPlugin;
 
 impl Plugin for RenderPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((camera::CameraPlugin, grid::GridPlugin, lighting::LightingPlugin));
+        app.add_plugins((
+            camera::CameraPlugin,
+            grid::GridPlugin,
+            lighting::LightingPlugin,
+        ));
     }
 }

@@ -26,6 +26,7 @@ impl Plugin for CorePlugin {
             .init_resource::<resources::SelectionResource>()
             .init_state::<state::GameState>()
             .add_event::<events::NeedChangeEvent>()
+            .add_event::<crate::sim::needs::NeedThresholdEvent>()
             .add_event::<events::InteractionEvent>()
             .add_event::<events::TimeTickEvent>()
             .add_event::<events::SocialEvent>()
@@ -44,10 +45,13 @@ fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
 ) {
-    commands.spawn((Camera3dBundle {
-        transform: Transform::from_xyz(10.0, 10.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
-        ..default()
-    }, IsometricCamera));
+    commands.spawn((
+        Camera3dBundle {
+            transform: Transform::from_xyz(10.0, 10.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
+            ..default()
+        },
+        IsometricCamera,
+    ));
 
     commands.spawn((PbrBundle {
         mesh: meshes.add(Cuboid::new(1.0, 1.0, 1.0)),

@@ -57,25 +57,35 @@ impl MeshGenerator {
 
     /// Generate a cone.
     pub fn cone(radius: f32, height: f32, resolution: u32) -> Mesh {
-        Cone {
-            radius,
-            height,
-        }
-        .mesh()
-        .resolution(resolution.max(3))
-        .build()
+        Cone { radius, height }
+            .mesh()
+            .resolution(resolution.max(3))
+            .build()
+    }
+
+    /// Generate a capsule.
+    pub fn capsule(radius: f32, length: f32) -> Mesh {
+        Capsule3d::new(radius, length).mesh().build()
     }
 
     /// Populate the shape library with the most commonly used primitives.
-    pub fn populate_default_shapes(
-        library: &mut ShapeLibrary,
-        meshes: &mut Assets<Mesh>,
-    ) {
-        library.meshes.insert(ShapeKey::Cube, meshes.add(Self::cube(1.0)));
-        library.meshes.insert(ShapeKey::Plane, meshes.add(Self::plane(1.0, 1.0, 1.0)));
-        library.meshes.insert(ShapeKey::Cylinder(16), meshes.add(Self::cylinder(0.5, 1.0, 16)));
-        library.meshes.insert(ShapeKey::Sphere(1), meshes.add(Self::sphere(0.5, 1)));
-        library.meshes.insert(ShapeKey::Cone(16), meshes.add(Self::cone(0.5, 1.0, 16)));
+    pub fn populate_default_shapes(library: &mut ShapeLibrary, meshes: &mut Assets<Mesh>) {
+        library
+            .meshes
+            .insert(ShapeKey::Cube, meshes.add(Self::cube(1.0)));
+        library
+            .meshes
+            .insert(ShapeKey::Plane, meshes.add(Self::plane(1.0, 1.0, 1.0)));
+        library.meshes.insert(
+            ShapeKey::Cylinder(16),
+            meshes.add(Self::cylinder(0.5, 1.0, 16)),
+        );
+        library
+            .meshes
+            .insert(ShapeKey::Sphere(1), meshes.add(Self::sphere(0.5, 1)));
+        library
+            .meshes
+            .insert(ShapeKey::Cone(16), meshes.add(Self::cone(0.5, 1.0, 16)));
     }
 }
 

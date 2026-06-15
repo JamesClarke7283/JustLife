@@ -88,9 +88,7 @@ pub enum ObjectCondition {
     Broken,
 }
 
-fn spawn_demo_walls(
-    mut commands: Commands,
-) {
+fn spawn_demo_walls(mut commands: Commands) {
     let wall_specs = [
         (Vec2::new(-5.0, -5.0), Vec2::new(5.0, -5.0)),
         (Vec2::new(5.0, -5.0), Vec2::new(5.0, 5.0)),
@@ -159,7 +157,10 @@ fn update_wall_visuals(
                     },
                     ..default()
                 },
-                WallMeshChild { parent_wall: entity, face: WallFace::Interior },
+                WallMeshChild {
+                    parent_wall: entity,
+                    face: WallFace::Interior,
+                },
             ))
             .id();
 
@@ -176,7 +177,10 @@ fn update_wall_visuals(
                     },
                     ..default()
                 },
-                WallMeshChild { parent_wall: entity, face: WallFace::Exterior },
+                WallMeshChild {
+                    parent_wall: entity,
+                    face: WallFace::Exterior,
+                },
             ))
             .id();
 
@@ -203,10 +207,7 @@ enum WallFace {
 
 /// Simple wall cutaway: fade out walls between camera and focal point when camera is close.
 fn wall_cutaway(
-    mut wall_children: Query<(&mut Visibility,
-        &WallMeshChild,
-        &GlobalTransform,
-    )>,
+    mut wall_children: Query<(&mut Visibility, &WallMeshChild, &GlobalTransform)>,
     camera_query: Query<&Transform, With<crate::render::camera::IsometricCamera>>,
     walls: Query<&Wall>,
 ) {
