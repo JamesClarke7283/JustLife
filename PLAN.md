@@ -60,7 +60,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Create `BuildModePlugin` — registers build/buy mode systems
   - Create `TimePlugin` — registers time/speed control systems
 
-- [ ] **2.2** Define core resources
+- [x] **2.2** Define core resources
   - `GameTime` resource — tracks in-game time (days, hours, minutes), speed multiplier
   - `GameSpeed` enum — Pause, Normal (1x), Fast (2x), Ultra (4x)
   - `GameState` enum — MainMenu, LiveMode, BuildMode, BuyMode, CreateASim, Loading
@@ -68,7 +68,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - `GameConfig` — configurable constants (needs decay rates, salary amounts, etc.)
   - `SelectionResource` — currently selected sim/entity
 
-- [ ] **2.3** Define core events
+- [x] **2.3** Define core events
   - `NeedChangeEvent` — fired when a sim's need level changes significantly
   - `InteractionEvent` — fired when a sim starts/completes an interaction
   - `TimeTickEvent` — fired each game-time tick for periodic updates
@@ -78,7 +78,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - `SimSpawnEvent` — fired when a new sim is created
   - `SimDeathEvent` — fired when a sim dies
 
-- [ ] **2.4** Define core component traits and markers
+- [x] **2.4** Define core component traits and markers
   - `Interactable` marker component — marks entities that sims can interact with
   - `SimControlled` marker — marks the currently player-controlled sim
   - `Named` component — entity has a display name

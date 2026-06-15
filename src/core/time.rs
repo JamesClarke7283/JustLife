@@ -10,16 +10,10 @@ pub fn tick_game_time(
     mut writer: EventWriter<TimeTickEvent>,
     time: Res<Time>,
 ) {
-    if matches!(*game_speed, GameSpeed::Pause) {
+    let speed = game_speed.multiplier();
+    if speed == 0.0 {
         return;
     }
-
-    let speed = match *game_speed {
-        GameSpeed::Normal => 1.0,
-        GameSpeed::Fast => 2.0,
-        GameSpeed::Ultra => 4.0,
-        GameSpeed::Pause => 0.0,
-    };
 
     let total_minutes = game_time.day * 24 * 60 + game_time.hour * 60 + game_time.minute;
     let new_minutes = total_minutes + (time.delta_seconds() * speed) as u32;
@@ -28,5 +22,9 @@ pub fn tick_game_time(
     game_time.hour = (new_minutes % (24 * 60)) / 60;
     game_time.minute = new_minutes % 60;
 
-    writer.send(TimeTickEvent);
+    writer.send(TimeTickEvent {
+        day: game_time.day,
+        hour: game_time.hour,
+        minute: game_time.minute,
+    });
 }

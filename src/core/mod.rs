@@ -10,7 +10,14 @@ pub struct CorePlugin;
 
 impl Plugin for CorePlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<resources::GameConfig>()
+        app.register_type::<resources::GameTime>()
+            .register_type::<resources::GameSpeed>()
+            .register_type::<resources::MoneyResource>()
+            .register_type::<resources::GameConfig>()
+            .register_type::<resources::NeedDecayRates>()
+            .register_type::<resources::AutonomyLevel>()
+            .register_type::<resources::SelectionResource>()
+            .init_resource::<resources::GameConfig>()
             .init_resource::<resources::GameTime>()
             .init_resource::<resources::GameSpeed>()
             .init_resource::<resources::MoneyResource>()

@@ -1,26 +1,56 @@
 use bevy::prelude::*;
 
-#[derive(Component)]
+/// Marks entities that sims can interact with.
+#[derive(Component, Default, Debug, Clone, Copy, PartialEq, Eq, Reflect)]
+#[reflect(Component)]
 pub struct Interactable;
 
-#[derive(Component)]
+/// Marks the sim that is currently under player control.
+#[derive(Component, Default, Debug, Clone, Copy, PartialEq, Eq, Reflect)]
+#[reflect(Component)]
 pub struct SimControlled;
 
-#[derive(Component)]
-pub struct Named(pub String);
+/// Entity has a display name.
+#[derive(Component, Default, Debug, Clone, PartialEq, Reflect)]
+#[reflect(Component)]
+pub struct Named {
+    pub name: String,
+}
 
-#[derive(Component)]
-pub struct Describable(pub String);
+/// Entity has a description text.
+#[derive(Component, Default, Debug, Clone, PartialEq, Reflect)]
+#[reflect(Component)]
+pub struct Describable {
+    pub description: String,
+}
 
-#[derive(Component)]
+/// Entity has a monetary value (for buy/sell mode).
+#[derive(Component, Default, Debug, Clone, Copy, PartialEq, Reflect)]
+#[reflect(Component)]
 pub struct Sellable {
     pub value: u32,
 }
 
-#[derive(Component)]
+/// Pathfinding target position.
+#[derive(Component, Default, Debug, Clone, Copy, PartialEq, Reflect)]
+#[reflect(Component)]
 pub struct RouteTo {
     pub target: Vec3,
+    pub arrival_distance: f32,
 }
 
-#[derive(Component)]
-pub struct Occupied;
+impl RouteTo {
+    pub fn new(target: Vec3) -> Self {
+        Self {
+            target,
+            arrival_distance: 0.1,
+        }
+    }
+}
+
+/// Marker that an object is currently being used by a sim.
+#[derive(Component, Default, Debug, Clone, Copy, PartialEq, Eq, Reflect)]
+#[reflect(Component)]
+pub struct Occupied {
+    pub user: Option<Entity>,
+}
