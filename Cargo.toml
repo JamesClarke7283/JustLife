@@ -12,3 +12,8 @@ wasm-bindgen-futures = "0.4.75"
 web-sys = "0.3.102"
 getrandom = { version = "0.3.4", features = ["wasm_js"] }
 uuid = { version = "1.23.3", features = ["js"] }
+
+[profile.wasm-release]
+inherits = "release"
+opt-level = "s"
+lto = true

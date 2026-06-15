@@ -8,7 +8,8 @@
 - **Tests:** `cargo test`
 - **Lint:** `cargo clippy`
 - **Format:** `cargo fmt`
-- **WASM build:** `./build-wasm.sh` (requires `wasm-bindgen` CLI in `~/.cargo/bin`)
+- **WASM build:** `./build-wasm.sh` (requires `wasm-bindgen` CLI in `~/.cargo/bin`; ensure `~/.cargo/bin` is on `PATH`)
+- **WASM profile:** `Cargo.toml` defines `[profile.wasm-release]` with `opt-level = "s"` and `lto = true`
 - **WASM test:** serve `web/`, open in browser, verify with screenshot using chrome-devtools
 
 ## Bevy Version
