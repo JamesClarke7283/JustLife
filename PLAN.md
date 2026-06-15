@@ -112,7 +112,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Each shape can be scaled, rotated, and combined for furniture/objects
   - Create a `ShapeLibrary` resource caching commonly used meshes
 
-- [ ] **3.5** Generate textures using MCP image gen tool
+- [x] **3.5** Generate textures using MCP image gen tool
   - Generate wall texture (interior plaster, exterior brick)
   - Generate floor texture (hardwood, tile, carpet)
   - Generate roof texture (shingles)
