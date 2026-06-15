@@ -210,7 +210,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
 
 ## Phase 5: World & Lot System
 
-- [ ] **5.1** Define Lot component and structure
+- [x] **5.1** Define Lot component and structure
   - `Lot` component: position, dimensions (width, depth), name, owner, value
   - `LotBoundary` component: visual outline of lot edges
   - Multiple lots per neighborhood map
