@@ -244,7 +244,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Each catalog item maps to a procedural 3D primitive combination
   - Generate preview textures for catalog items via MCP image gen
 
-- [ ] **5.6** Implement placed objects
+- [x] **5.6** Implement placed objects
   - `PlacedObject` component: catalog item reference, position, rotation, condition
   - Objects occupy grid cells based on their size (1x1, 2x1, 2x2, etc.)
   - Objects can be interacted with (define interaction set per object type)
