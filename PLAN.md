@@ -251,7 +251,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Object state machine: clean/dirty, broken/fixed, on/off
   - Objects have a monetary value that depreciates over time
 
-- [ ] **5.7** Create initial object definitions
+- [x] **5.7** Create initial object definitions
   - **Bed** (single, double) — satisfies energy need
   - **Fridge** — supplies food, satisfies hunger
   - **Stove/Oven** — cook food, satisfies hunger
