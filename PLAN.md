@@ -340,7 +340,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
 
 ## Phase 7: AI & Autonomy System
 
-- [ ] **7.1** Implement Sim AI decision engine
+- [x] **7.1** Implement Sim AI decision engine
   - Create `AutonomySystem` that runs each game tick for idle sims
   - Evaluate current needs and find highest-priority unsatisfied need
   - Need priority = (100 - current_value) * weight_from_traits
