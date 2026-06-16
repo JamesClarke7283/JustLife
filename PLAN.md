@@ -291,7 +291,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Show build mode toolbar UI
   - Transition back to `LiveMode` on exit
 
-- [ ] **6.2** Implement wall building tool
+- [x] **6.2** Implement wall building tool
   - Click and drag to place wall segments on grid
   - Wall segments snap to grid lines
   - Preview wall placement (ghost/wireframe) before confirming
