@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::core::resources::GameSpeed;
+use crate::core::resources::{GameSpeed, MoneyResource};
 use crate::core::state::GameState;
 use crate::world::catalog::{CatalogCategory, CatalogDatabase};
 
@@ -22,6 +22,7 @@ impl Plugin for BuyModePlugin {
                     rebuild_item_list,
                     update_detail,
                     highlight_buttons,
+                    update_funds,
                 )
                     .run_if(in_state(GameState::BuyMode)),
             );
@@ -66,6 +67,9 @@ struct ItemListRoot;
 
 #[derive(Component)]
 struct DetailText;
+
+#[derive(Component)]
+struct FundsText;
 
 const PANEL_BG: Color = Color::srgba(0.08, 0.10, 0.16, 0.94);
 const TAB_BG: Color = Color::srgb(0.18, 0.22, 0.30);
@@ -138,6 +142,17 @@ fn enter_buy_mode(
                     color: Color::WHITE,
                     ..default()
                 },
+            ));
+            panel.spawn((
+                TextBundle::from_section(
+                    "Funds: $--",
+                    TextStyle {
+                        font_size: 16.0,
+                        color: Color::srgb(0.6, 0.95, 0.6),
+                        ..default()
+                    },
+                ),
+                FundsText,
             ));
 
             // Category tab row (wrapping).
@@ -360,5 +375,12 @@ fn highlight_buttons(
         } else {
             ITEM_BG.into()
         };
+    }
+}
+
+/// Keep the funds line in sync with the household money.
+fn update_funds(money: Res<MoneyResource>, mut labels: Query<&mut Text, With<FundsText>>) {
+    for mut text in &mut labels {
+        text.sections[0].value = format!("Funds: ${}", money.amount);
     }
 }

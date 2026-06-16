@@ -38,6 +38,7 @@ impl Plugin for CorePlugin {
     }
 }
 
-fn setup() {
+fn setup(mut money: ResMut<resources::MoneyResource>, config: Res<resources::GameConfig>) {
     // Camera is spawned by render::camera::spawn_camera to avoid duplicate cameras.
+    money.amount = config.starting_funds;
 }
