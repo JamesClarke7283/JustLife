@@ -5,6 +5,7 @@ use crate::core::state::GameState;
 use crate::render::grid::GridOverlay;
 
 pub mod buy_mode;
+pub mod materials;
 pub mod placement;
 pub mod room_tool;
 
@@ -14,6 +15,8 @@ pub enum BuildTool {
     #[default]
     Wall,
     Room,
+    FloorPaint,
+    WallPaint,
 }
 
 impl BuildTool {
@@ -21,6 +24,8 @@ impl BuildTool {
         match self {
             BuildTool::Wall => "Wall",
             BuildTool::Room => "Room",
+            BuildTool::FloorPaint => "Floor Paint",
+            BuildTool::WallPaint => "Wall Paint",
         }
     }
 }
@@ -36,6 +41,7 @@ impl Plugin for BuildModePlugin {
             room_tool::RoomToolPlugin,
             buy_mode::BuyModePlugin,
             placement::PlacementPlugin,
+            materials::MaterialPickerPlugin,
         ))
         .init_resource::<PreBuildSpeed>()
         .init_resource::<BuildTool>()
@@ -69,6 +75,12 @@ fn select_build_tool(keyboard: Res<ButtonInput<KeyCode>>, mut tool: ResMut<Build
     if keyboard.just_pressed(KeyCode::Digit2) {
         *tool = BuildTool::Room;
     }
+    if keyboard.just_pressed(KeyCode::Digit3) {
+        *tool = BuildTool::FloorPaint;
+    }
+    if keyboard.just_pressed(KeyCode::Digit4) {
+        *tool = BuildTool::WallPaint;
+    }
 }
 
 /// Keep the toolbar's tool label in sync with the active tool.
@@ -77,7 +89,8 @@ fn update_tool_label(tool: Res<BuildTool>, mut labels: Query<&mut Text, With<Bui
         return;
     }
     for mut text in &mut labels {
-        text.sections[0].value = format!("Tool: {}   [1] Wall   [2] Room", tool.label());
+        text.sections[0].value =
+            format!("Tool: {}   1:Wall 2:Room 3:Floor 4:WallPaint", tool.label());
     }
 }
 
@@ -153,7 +166,7 @@ fn enter_build_mode(
             ));
             parent.spawn((
                 TextBundle::from_section(
-                    "Tool: Wall   [1] Wall   [2] Room",
+                    "Tool: Wall   1:Wall 2:Room 3:Floor 4:WallPaint",
                     TextStyle {
                         font_size: 16.0,
                         color: Color::srgb(1.0, 0.95, 0.7),
