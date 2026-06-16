@@ -284,7 +284,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
 
 ## Phase 6: Build/Buy Mode
 
-- [ ] **6.1** Implement build mode state machine
+- [x] **6.1** Implement build mode state machine
   - Transition from `LiveMode` to `BuildMode` on button press or key
   - Freeze sim simulation while in build mode
   - Show grid overlay in build mode
