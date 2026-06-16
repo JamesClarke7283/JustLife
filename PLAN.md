@@ -237,7 +237,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Room properties: name, area, indoor flag
   - Multiple floor levels (ground, second story) — future phase
 
-- [ ] **5.5** Implement Furniture/Object catalog
+- [x] **5.5** Implement Furniture/Object catalog
   - Define `CatalogItem` struct: name, category, subcategory, price, description, mesh, dimensions
   - Categories: Comfort, Surfaces, Plumbing, Electronics, Appliances, Lighting, Decorative, Outdoor, Kids, Dining, Bedroom, Bathroom, Kitchen, Office, Fitness, Party
   - Create `CatalogDatabase` resource loaded from RON data file
