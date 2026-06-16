@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use std::f32::consts::FRAC_PI_2;
 
 use crate::build::buy_mode::BuyCatalogState;
+use crate::core::components::Sellable;
 use crate::core::resources::MoneyResource;
 use crate::core::state::GameState;
 use crate::render::camera::IsometricCamera;
@@ -20,8 +21,10 @@ pub struct PlacementPlugin;
 
 impl Plugin for PlacementPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<PlacementState>()
-            .add_systems(Update, placement_tool.run_if(in_state(GameState::BuyMode)));
+        app.init_resource::<PlacementState>().add_systems(
+            Update,
+            (placement_tool, object_sell_tool).run_if(in_state(GameState::BuyMode)),
+        );
     }
 }
 
@@ -179,5 +182,41 @@ fn placement_tool(
             rotation,
         );
         money.amount -= item.price as i64;
+    }
+}
+
+/// Right-click a placed object in buy mode to sell it for its (depreciated)
+/// value, refunding the household funds and freeing its grid cells.
+fn object_sell_tool(
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    cameras: Query<(&Camera, &GlobalTransform), With<IsometricCamera>>,
+    grid: Res<ObjectGrid>,
+    sellables: Query<&Sellable>,
+    mut money: ResMut<MoneyResource>,
+    mut commands: Commands,
+) {
+    if !mouse.just_pressed(MouseButton::Right) {
+        return;
+    }
+    let Ok(window) = windows.get_single() else {
+        return;
+    };
+    let Some(cursor) = window.cursor_position() else {
+        return;
+    };
+    // Ignore clicks over the catalog panel.
+    if cursor.x > window.width() - PANEL_WIDTH {
+        return;
+    }
+    let Some(ground) = cursor_ground_xz(&windows, &cameras) else {
+        return;
+    };
+    let snapped = snap_to_grid(ground);
+    let cell = (snapped.x as i32, snapped.y as i32);
+    if let Some(&entity) = grid.occupied.get(&cell) {
+        let refund = sellables.get(entity).map(|s| s.value).unwrap_or(0);
+        money.amount += refund as i64;
+        commands.entity(entity).despawn_recursive();
     }
 }

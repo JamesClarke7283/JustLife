@@ -154,6 +154,14 @@ fn enter_buy_mode(
                 ),
                 FundsText,
             ));
+            panel.spawn(TextBundle::from_section(
+                "L-click: place    R-click: sell    R: rotate",
+                TextStyle {
+                    font_size: 12.0,
+                    color: Color::srgb(0.65, 0.72, 0.82),
+                    ..default()
+                },
+            ));
 
             // Category tab row (wrapping).
             panel
