@@ -5,6 +5,7 @@ use crate::core::state::GameState;
 use crate::render::grid::GridOverlay;
 
 pub mod buy_mode;
+pub mod history;
 pub mod materials;
 pub mod placement;
 pub mod room_tool;
@@ -42,6 +43,7 @@ impl Plugin for BuildModePlugin {
             buy_mode::BuyModePlugin,
             placement::PlacementPlugin,
             materials::MaterialPickerPlugin,
+            history::BuildHistoryPlugin,
         ))
         .init_resource::<PreBuildSpeed>()
         .init_resource::<BuildTool>()

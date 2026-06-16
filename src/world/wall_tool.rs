@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 
+use crate::build::history::{BuildHistory, Recon};
 use crate::core::state::GameState;
 use crate::render::camera::IsometricCamera;
 use crate::render::primitives::MeshGenerator;
@@ -147,6 +148,7 @@ fn wall_building_tool(
     walls: Query<(Entity, &Wall)>,
     ghosts: Query<Entity, With<WallGhost>>,
     mut drag: ResMut<WallDragState>,
+    mut history: ResMut<BuildHistory>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -198,7 +200,8 @@ fn wall_building_tool(
         if start.distance(end) >= 1.0 {
             let new_wall = Wall::snapped(start, end);
             if !walls.iter().any(|(_, w)| new_wall.overlaps(w)) {
-                spawn_wall_segment(&mut commands, start, end);
+                let entity = spawn_wall_segment(&mut commands, start, end);
+                history.record_place(Recon::Wall { start, end }, entity, 0);
             }
         }
     }

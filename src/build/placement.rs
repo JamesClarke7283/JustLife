@@ -2,11 +2,13 @@ use bevy::prelude::*;
 use std::f32::consts::FRAC_PI_2;
 
 use crate::build::buy_mode::BuyCatalogState;
+use crate::build::history::{BuildHistory, Recon};
 use crate::core::components::Sellable;
 use crate::core::resources::MoneyResource;
 use crate::core::state::GameState;
 use crate::render::camera::IsometricCamera;
 use crate::render::primitives::MeshGenerator;
+use crate::world::PlacedObject;
 use crate::world::catalog::{CatalogDatabase, CatalogItem, PrimitiveShape, spawn_catalog_item};
 use crate::world::placed::{ObjectGrid, footprint_cells};
 use crate::world::wall::{Wall, snap_to_grid};
@@ -118,6 +120,7 @@ fn placement_tool(
     ghosts: Query<Entity, With<PlacementGhost>>,
     mut money: ResMut<MoneyResource>,
     mut state: ResMut<PlacementState>,
+    mut history: ResMut<BuildHistory>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -173,7 +176,7 @@ fn placement_tool(
     );
 
     if mouse.just_pressed(MouseButton::Left) && valid {
-        spawn_catalog_item(
+        let entity = spawn_catalog_item(
             &mut commands,
             &mut meshes,
             &mut materials,
@@ -182,18 +185,30 @@ fn placement_tool(
             rotation,
         );
         money.amount -= item.price as i64;
+        history.record_place(
+            Recon::Object {
+                item_id: item.id.clone(),
+                pos,
+                rotation,
+            },
+            entity,
+            item.price as i64,
+        );
     }
 }
 
 /// Right-click a placed object in buy mode to sell it for its (depreciated)
 /// value, refunding the household funds and freeing its grid cells.
+#[allow(clippy::too_many_arguments)]
 fn object_sell_tool(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     cameras: Query<(&Camera, &GlobalTransform), With<IsometricCamera>>,
     grid: Res<ObjectGrid>,
     sellables: Query<&Sellable>,
+    placed: Query<&PlacedObject>,
     mut money: ResMut<MoneyResource>,
+    mut history: ResMut<BuildHistory>,
     mut commands: Commands,
 ) {
     if !mouse.just_pressed(MouseButton::Right) {
@@ -216,6 +231,16 @@ fn object_sell_tool(
     let cell = (snapped.x as i32, snapped.y as i32);
     if let Some(&entity) = grid.occupied.get(&cell) {
         let refund = sellables.get(entity).map(|s| s.value).unwrap_or(0);
+        if let Ok(obj) = placed.get(entity) {
+            history.record_sell(
+                Recon::Object {
+                    item_id: obj.catalog_id.clone(),
+                    pos: obj.position,
+                    rotation: obj.rotation,
+                },
+                refund as i64,
+            );
+        }
         money.amount += refund as i64;
         commands.entity(entity).despawn_recursive();
     }
