@@ -29,6 +29,28 @@ This project currently uses **Bevy 0.14.2**. Bevy 0.18.x introduced API changes 
   ```
 - If `build-wasm.sh` reports that `wasm-bindgen` is not found, ensure `~/.cargo/bin` is on `PATH`.
 
+## Rendering & Visibility Gotchas (learned the hard way)
+
+These caused a fully blank (clear-color-only) browser screen — debug with the
+chrome-devtools MCP (serve `web/` then reload/screenshot/console):
+
+- **Bind Bevy to the page canvas.** `DefaultPlugins.set(WindowPlugin { primary_window:
+  Some(Window { canvas: Some("#game-canvas".into()), fit_canvas_to_parent: true, .. }) })`.
+  Without it, Bevy appends its *own* second canvas and the two break page layout.
+  Do NOT also set `canvas.width/height` from JS — it fights `fit_canvas_to_parent`
+  and yields an unstable tiny render buffer. Let Bevy own the size.
+- **Orthographic camera: use `ScalingMode::WindowSize(px_per_unit)`** (≈40) with
+  `scale` tied to zoom. `ScalingMode::FixedVertical` was tried and rendered nothing
+  in this project — avoid it.
+- **B0004 / parent-child mesh rendering.** Any entity that receives `PbrBundle`
+  *children* (walls, doors, windows, the sim, the lot) MUST itself carry the
+  spatial+visibility components — spawn it with `SpatialBundle`
+  (`SpatialBundle::from_transform(..)` / `::default()`), never a bare `Transform`
+  or data-only tuple. A `warning[B0004]` in the console means a child has
+  `InheritedVisibility` but its parent doesn't → the child won't render.
+- The `Uncaught (in promise)` from `winit ... throw` on web is normal (event-loop
+  unwind), as are `.meta`/favicon 404s and SSAO/DoF "not supported" logs.
+
 ## Project Structure
 
 - `src/core/` — shared ECS resources, events, components, state, time

@@ -210,8 +210,12 @@ fn update_camera_transform(
     };
 
     let target_position = rig.eye_position();
-    let target_rotation =
-        Quat::from_rotation_y(rig.yaw) * Quat::from_rotation_x(-rig.pitch + FRAC_PI_2);
+    // Look straight at the focal point from the (elevated) eye position. The old
+    // hand-built quaternion pointed the camera *upward*, leaving the scene as a
+    // foreshortened sliver at the bottom of the view.
+    let target_rotation = Transform::from_translation(target_position)
+        .looking_at(rig.target, Vec3::Y)
+        .rotation;
 
     let lerp_factor = 10.0 * time.delta_seconds();
     transform.translation = transform.translation.lerp(target_position, lerp_factor);
