@@ -11,6 +11,15 @@
 - **WASM build:** `./build-wasm.sh` (requires `wasm-bindgen` CLI in `~/.cargo/bin`; ensure `~/.cargo/bin` is on `PATH`). The initial `cargo build` can be very slow on this machine; if it times out, run it in the background or call `cargo build --profile wasm-release --target wasm32-unknown-unknown` and then run `wasm-bindgen` separately.
 - **WASM profile:** `Cargo.toml` defines `[profile.wasm-release]` with `opt-level = "s"` and `lto = true`
 - **WASM test:** serve `web/`, open in browser, verify with screenshot using chrome-devtools
+- **Object catalog:** buy-mode objects are data-driven in `assets/data/catalog.ron`
+  (a list of `CatalogItem`, see `src/world/catalog.rs`). It's embedded via
+  `include_str!` and parsed at startup, so **adding/editing items requires a
+  rebuild** (not just an asset reload). Each item assembles its mesh from coloured
+  primitive `parts` (cuboid/cylinder/sphere/cone, local space, y up, origin at the
+  footprint centre on the floor). `spawn_catalog_item` builds the entity tree and
+  tags it `PlacedObject` + `Interactable` + `Sellable`. Preview thumbnails live in
+  `assets/textures/catalog/<id>.png`. Occupancy/depreciation live in
+  `src/world/placed.rs` (`ObjectGrid`, `footprint_cells`, `DepreciationTimer`).
 
 ## Bevy Version
 
