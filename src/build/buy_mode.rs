@@ -136,7 +136,7 @@ fn enter_buy_mode(
         ))
         .with_children(|panel| {
             panel.spawn(TextBundle::from_section(
-                "BUY MODE  —  press V to exit",
+                "BUY MODE  -  press V to exit",
                 TextStyle {
                     font_size: 20.0,
                     color: Color::WHITE,
