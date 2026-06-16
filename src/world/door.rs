@@ -222,11 +222,13 @@ pub fn build_door_visuals(
 
     commands
         .entity(door_entity)
-        .insert(Transform {
+        // SpatialBundle (not bare Transform) so the parent has GlobalTransform +
+        // visibility components; otherwise its mesh children never render (B0004).
+        .insert(SpatialBundle::from_transform(Transform {
             translation: position_3d + Vec3::new(0.0, 0.0, 0.0),
             rotation: yaw,
             scale: Vec3::ONE,
-        })
+        }))
         .push_children(&[top, bottom, left, right, panel]);
 }
 

@@ -572,7 +572,8 @@ fn spawn_demo_sim(
                 animation: AnimationState::Idle,
             },
             appearance::SimBody,
-            Transform::from_xyz(0.0, 0.0, 2.0),
+            // SpatialBundle so the sim's body-part mesh children render (B0004).
+            SpatialBundle::from_transform(Transform::from_xyz(0.0, 0.0, 2.0)),
         ))
         .with_children(|parent| {
             appearance::build_sim_body(

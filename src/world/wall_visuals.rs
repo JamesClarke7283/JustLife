@@ -13,7 +13,7 @@ pub fn update_wall_visuals(
     mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
     walls: Query<(Entity, &Wall, &WallVisualDirty)>,
-    existing: Query<Entity, With<WallMeshChild>>,
+    existing: Query<(Entity, &WallMeshChild)>,
     doors: Query<(Entity, &Door)>,
     windows: Query<(Entity, &Window)>,
 ) {
@@ -33,8 +33,10 @@ pub fn update_wall_visuals(
 
     for (entity, wall, _) in walls.iter() {
         // Remove only the children belonging to this wall, not all wall meshes in the world.
-        for child in existing.iter() {
-            commands.entity(child).despawn_recursive();
+        for (child, meta) in existing.iter() {
+            if meta.parent_wall == entity {
+                commands.entity(child).despawn_recursive();
+            }
         }
 
         let mid = wall.midpoint().extend(0.0);

@@ -573,8 +573,9 @@ pub fn spawn_lot(
     let lot_entity = commands
         .spawn((
             lot,
-            Transform::from_translation(position),
-            GlobalTransform::default(),
+            // SpatialBundle (Transform + GlobalTransform + visibility) so the
+            // boundary mesh child renders (avoids B0004).
+            SpatialBundle::from_transform(Transform::from_translation(position)),
         ))
         .push_children(&[boundary_entity])
         .id();
@@ -599,6 +600,9 @@ fn spawn_demo_walls(mut commands: Commands) {
             wall::Wall::new(start, end),
             wall::WallVisualDirty,
             Name::new("Wall"),
+            // Parent needs GlobalTransform + visibility so its mesh children
+            // (spawned by update_wall_visuals) render (avoids B0004).
+            SpatialBundle::default(),
         ));
     }
 }

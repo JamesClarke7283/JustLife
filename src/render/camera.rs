@@ -88,13 +88,14 @@ fn spawn_camera(mut commands: Commands) {
     commands.spawn((
         Camera3dBundle {
             projection: Projection::Orthographic(OrthographicProjection {
-                // `scale` is the number of world units visible vertically. It is
-                // driven by the rig distance in `update_camera_transform`.
-                scale: 18.0,
+                // Pixels-per-world-unit. At the default rig distance (18) this
+                // shows ~32 world units across a 1280px-wide canvas, framing the
+                // 10x10 lot. `scale` (driven by rig distance below) zooms it.
+                scale: 1.0,
                 near: 0.1,
                 far: 1000.0,
                 viewport_origin: Vec2::new(0.5, 0.5),
-                scaling_mode: bevy::render::camera::ScalingMode::FixedVertical(1.0),
+                scaling_mode: bevy::render::camera::ScalingMode::WindowSize(40.0),
                 area: Rect::new(-1.0, -1.0, 1.0, 1.0),
             }),
             transform: Transform::from_xyz(10.0, 10.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
@@ -217,10 +218,10 @@ fn update_camera_transform(
     transform.rotation = transform.rotation.slerp(target_rotation, lerp_factor);
 
     // Update orthographic projection size when zooming for a true isometric feel.
-    // With `FixedVertical(1.0)`, `scale` is the number of world units visible
-    // vertically, so we map it directly to the rig distance.
+    // `scale` multiplies the WindowSize-derived area; tie it to the rig distance
+    // so the default distance (18) maps to scale 1.0.
     if let Projection::Orthographic(ref mut ortho) = *projection {
-        ortho.scale = rig.distance;
+        ortho.scale = rig.distance / 18.0;
     }
 }
 
