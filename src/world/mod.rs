@@ -377,6 +377,7 @@ impl Plugin for WorldPlugin {
             .register_type::<catalog::CatalogCategory>()
             .register_type::<catalog::PrimitiveShape>()
             .register_type::<catalog::PrimitivePart>()
+            .register_type::<catalog::ObjectAction>()
             .register_type::<catalog::CatalogItem>()
             .add_systems(
                 Startup,

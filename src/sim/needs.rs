@@ -93,7 +93,9 @@ impl Needs {
 }
 
 /// Core need type used to identify which need changed or is affected.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect, serde::Serialize, serde::Deserialize,
+)]
 #[reflect]
 pub enum NeedType {
     Hunger,

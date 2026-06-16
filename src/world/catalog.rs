@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::core::components::{Interactable, Sellable};
 use crate::render::primitives::MeshGenerator;
+use crate::sim::needs::NeedType;
 use crate::world::{ObjectCondition, PlacedObject};
 
 /// Buy-mode catalog categories (mirrors The Sims buy-mode sorting).
@@ -92,6 +93,17 @@ pub struct PrimitivePart {
     pub color: (f32, f32, f32),
 }
 
+/// An interaction an object offers and the need it restores while used.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct ObjectAction {
+    /// Pie-menu label, e.g. "Sleep", "Get Snack".
+    pub name: String,
+    /// Which need this action restores.
+    pub need: NeedType,
+    /// Need points restored per in-game minute while performing the action.
+    pub rate: f32,
+}
+
 /// A purchasable object definition loaded from the catalog data file.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 pub struct CatalogItem {
@@ -105,6 +117,10 @@ pub struct CatalogItem {
     pub footprint: (u32, u32),
     /// Primitive parts assembled into the object's 3D mesh.
     pub parts: Vec<PrimitivePart>,
+    /// Interactions this object offers (which need each satisfies). Optional in
+    /// the data file; defaults to none for purely decorative objects.
+    #[serde(default)]
+    pub actions: Vec<ObjectAction>,
 }
 
 /// Resource holding every catalog item, loaded from `assets/data/catalog.ron`.
@@ -235,5 +251,26 @@ mod tests {
         // At least one comfort item exists in the starter catalog.
         let comfort = db.by_category(CatalogCategory::Comfort).count();
         assert!(comfort >= 1);
+    }
+
+    #[test]
+    fn need_objects_declare_actions() {
+        let db = CatalogDatabase::from_world(&mut World::new());
+        // The core need-satisfying objects all exist and restore the right need.
+        let cases = [
+            ("bed_double", NeedType::Energy),
+            ("toilet", NeedType::Bladder),
+            ("shower", NeedType::Hygiene),
+            ("fridge", NeedType::Hunger),
+            ("tv_flatscreen", NeedType::Fun),
+            ("phone", NeedType::Social),
+        ];
+        for (id, need) in cases {
+            let item = db.get(id).unwrap_or_else(|| panic!("missing {id}"));
+            assert!(
+                item.actions.iter().any(|a| a.need == need && a.rate > 0.0),
+                "{id} should restore {need:?}"
+            );
+        }
     }
 }
