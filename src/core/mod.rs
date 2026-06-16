@@ -22,7 +22,8 @@ impl Plugin for CorePlugin {
             .init_resource::<resources::GameSpeed>()
             .init_resource::<resources::MoneyResource>()
             .init_resource::<resources::SelectionResource>()
-            .init_state::<state::GameState>()
+            // Start directly in Live mode for now (the main menu is a later phase).
+            .insert_state(state::GameState::LiveMode)
             .add_event::<events::NeedChangeEvent>()
             .add_event::<crate::sim::needs::NeedThresholdEvent>()
             .add_event::<events::InteractionEvent>()

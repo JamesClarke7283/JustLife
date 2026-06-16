@@ -1,5 +1,6 @@
 pub mod assets;
 pub mod audio;
+pub mod build;
 pub mod career;
 pub mod core;
 pub mod interaction;
@@ -31,6 +32,7 @@ fn main() {
             core::CorePlugin,
             sim::SimPlugin,
             world::WorldPlugin,
+            build::BuildModePlugin,
             ui::UIPlugin,
             interaction::InteractionPlugin,
             career::CareerPlugin,
