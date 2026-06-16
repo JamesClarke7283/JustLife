@@ -4,6 +4,7 @@ use crate::core::resources::GameSpeed;
 use crate::core::state::GameState;
 use crate::render::grid::GridOverlay;
 
+pub mod buy_mode;
 pub mod room_tool;
 
 /// The active build-mode tool (selected with number keys / toolbar).
@@ -32,6 +33,7 @@ impl Plugin for BuildModePlugin {
         app.add_plugins((
             crate::world::wall_tool::WallToolPlugin,
             room_tool::RoomToolPlugin,
+            buy_mode::BuyModePlugin,
         ))
         .init_resource::<PreBuildSpeed>()
         .init_resource::<BuildTool>()
