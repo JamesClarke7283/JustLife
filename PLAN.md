@@ -269,7 +269,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - **Trash Can** — cleaning interaction target
   - **Sink** — hygiene, cleaning dishes
 
-- [ ] **5.8** Implement terrain and outdoor
+- [x] **5.8** Implement terrain and outdoor
   - Ground texture variations (grass, dirt, concrete, pool tile)
   - Terrain painting tool for build mode (paint ground cells)
   - Trees and bushes as placed outdoor objects
