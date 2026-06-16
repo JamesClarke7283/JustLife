@@ -5,6 +5,7 @@ use crate::render::primitives::MeshGenerator;
 
 pub mod catalog;
 pub mod door;
+pub mod placed;
 pub mod room;
 pub mod wall;
 pub mod wall_tool;
@@ -354,7 +355,8 @@ fn spawn_demo_catalog_props(
 
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<LotManager>()
+        app.add_plugins(placed::PlacedObjectPlugin)
+            .init_resource::<LotManager>()
             .init_resource::<Neighborhood>()
             .init_resource::<wall_tool::WallToolState>()
             .init_resource::<catalog::CatalogDatabase>()
@@ -564,6 +566,10 @@ pub struct PlacedObject {
     pub position: Vec3,
     pub rotation: Quat,
     pub condition: ObjectCondition,
+    /// Grid footprint in cells (width, depth) from the catalog item.
+    pub footprint: (u32, u32),
+    /// Power state for electronics/appliances (ignored by passive objects).
+    pub powered: bool,
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Reflect)]

@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::core::components::{Interactable, Sellable};
 use crate::render::primitives::MeshGenerator;
 use crate::world::{ObjectCondition, PlacedObject};
 
@@ -170,7 +171,11 @@ pub fn spawn_catalog_item(
                 position,
                 rotation,
                 condition: ObjectCondition::Clean,
+                footprint: item.footprint,
+                powered: false,
             },
+            Interactable,
+            Sellable { value: item.price },
             Name::new(item.name.clone()),
         ))
         .id();
