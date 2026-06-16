@@ -75,16 +75,31 @@ impl Plugin for WorldPlugin {
             .register_type::<Neighborhood>()
             .register_type::<wall::Wall>()
             .register_type::<door::Door>()
+            .register_type::<door::DoorVisualDirty>()
+            .register_type::<door::DoorMeshChild>()
             .register_type::<window::Window>()
+            .register_type::<window::WindowVisualDirty>()
+            .register_type::<window::WindowMeshChild>()
             .register_type::<Room>()
             .register_type::<PlacedObject>()
             .add_systems(
                 Startup,
-                (spawn_demo_lots, spawn_demo_walls, spawn_demo_objects),
+                (
+                    spawn_demo_lots,
+                    spawn_demo_walls,
+                    spawn_demo_openings,
+                    spawn_demo_objects,
+                ),
             )
             .add_systems(
                 Update,
-                (wall_visuals::update_wall_visuals, wall_cutaway, select_lot),
+                (
+                    wall_visuals::update_wall_visuals,
+                    door::update_door_visuals,
+                    window::update_window_visuals,
+                    wall_cutaway,
+                    select_lot,
+                ),
             );
     }
 }
@@ -358,6 +373,23 @@ fn spawn_demo_walls(mut commands: Commands) {
             wall::WallVisualDirty,
             Name::new("Wall"),
         ));
+    }
+}
+
+fn spawn_demo_openings(mut commands: Commands, walls: Query<(Entity, &wall::Wall)>) {
+    // Place a door in the front wall (-5,-5) -> (5,-5) and a window in the right wall.
+    for (wall_entity, wall) in walls.iter() {
+        if wall.start == Vec2::new(-5.0, -5.0) && wall.end == Vec2::new(5.0, -5.0) {
+            let mut door = door::Door::new(Vec2::new(0.0, -5.0), 0.0);
+            door.wall_segment = Some(wall_entity);
+            commands.spawn((door, door::DoorVisualDirty, Name::new("Door")));
+            commands.entity(wall_entity).insert(wall::WallVisualDirty);
+        } else if wall.start == Vec2::new(5.0, -5.0) && wall.end == Vec2::new(5.0, 5.0) {
+            let mut window = window::Window::new(Vec2::new(5.0, 0.0), std::f32::consts::FRAC_PI_2);
+            window.wall_segment = Some(wall_entity);
+            commands.spawn((window, window::WindowVisualDirty, Name::new("Window")));
+            commands.entity(wall_entity).insert(wall::WallVisualDirty);
+        }
     }
 }
 

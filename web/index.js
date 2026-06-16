@@ -10,6 +10,4 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-init({
-    canvas,
-});
+init();

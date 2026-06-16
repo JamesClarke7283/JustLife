@@ -1,7 +1,5 @@
 use bevy::prelude::*;
 
-use crate::render::camera::IsometricCamera;
-
 pub mod components;
 pub mod events;
 pub mod resources;
@@ -39,28 +37,6 @@ impl Plugin for CorePlugin {
     }
 }
 
-fn setup(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    asset_server: Res<AssetServer>,
-) {
-    commands.spawn((
-        Camera3dBundle {
-            transform: Transform::from_xyz(10.0, 10.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
-            ..default()
-        },
-        IsometricCamera,
-    ));
-
-    commands.spawn((PbrBundle {
-        mesh: meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
-        material: materials.add(StandardMaterial {
-            base_color_texture: Some(asset_server.load("textures/furniture_wood_oak.png")),
-            perceptual_roughness: 0.6,
-            ..default()
-        }),
-        transform: Transform::from_xyz(0.0, 0.5, 0.0),
-        ..default()
-    },));
+fn setup() {
+    // Camera is spawned by render::camera::spawn_camera to avoid duplicate cameras.
 }
