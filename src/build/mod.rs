@@ -4,17 +4,44 @@ use crate::core::resources::GameSpeed;
 use crate::core::state::GameState;
 use crate::render::grid::GridOverlay;
 
+pub mod room_tool;
+
+/// The active build-mode tool (selected with number keys / toolbar).
+#[derive(Resource, Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuildTool {
+    #[default]
+    Wall,
+    Room,
+}
+
+impl BuildTool {
+    fn label(&self) -> &'static str {
+        match self {
+            BuildTool::Wall => "Wall",
+            BuildTool::Room => "Room",
+        }
+    }
+}
+
 /// Build/Buy mode: enter with `B`, which pauses the simulation, shows the
 /// buildable grid, and displays the build-mode toolbar.
 pub struct BuildModePlugin;
 
 impl Plugin for BuildModePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(crate::world::wall_tool::WallToolPlugin)
-            .init_resource::<PreBuildSpeed>()
-            .add_systems(Update, toggle_build_mode)
-            .add_systems(OnEnter(GameState::BuildMode), enter_build_mode)
-            .add_systems(OnExit(GameState::BuildMode), exit_build_mode);
+        app.add_plugins((
+            crate::world::wall_tool::WallToolPlugin,
+            room_tool::RoomToolPlugin,
+        ))
+        .init_resource::<PreBuildSpeed>()
+        .init_resource::<BuildTool>()
+        .add_systems(Update, toggle_build_mode)
+        .add_systems(
+            Update,
+            (select_build_tool, update_tool_label).run_if(in_state(GameState::BuildMode)),
+        )
+        .add_systems(OnEnter(GameState::BuildMode), enter_build_mode)
+        .add_systems(OnExit(GameState::BuildMode), exit_build_mode);
     }
 }
 
@@ -25,6 +52,30 @@ struct PreBuildSpeed(GameSpeed);
 /// Marker for the build-mode toolbar UI root.
 #[derive(Component)]
 struct BuildModeUi;
+
+/// Marker for the toolbar text that shows the active tool.
+#[derive(Component)]
+struct BuildToolLabel;
+
+/// Select the active build tool with the number keys.
+fn select_build_tool(keyboard: Res<ButtonInput<KeyCode>>, mut tool: ResMut<BuildTool>) {
+    if keyboard.just_pressed(KeyCode::Digit1) {
+        *tool = BuildTool::Wall;
+    }
+    if keyboard.just_pressed(KeyCode::Digit2) {
+        *tool = BuildTool::Room;
+    }
+}
+
+/// Keep the toolbar's tool label in sync with the active tool.
+fn update_tool_label(tool: Res<BuildTool>, mut labels: Query<&mut Text, With<BuildToolLabel>>) {
+    if !tool.is_changed() {
+        return;
+    }
+    for mut text in &mut labels {
+        text.sections[0].value = format!("Tool: {}   [1] Wall   [2] Room", tool.label());
+    }
+}
 
 /// Press `B` to toggle between Live and Build mode.
 fn toggle_build_mode(
@@ -48,10 +99,12 @@ fn enter_build_mode(
     mut commands: Commands,
     mut speed: ResMut<GameSpeed>,
     mut pre: ResMut<PreBuildSpeed>,
+    mut tool: ResMut<BuildTool>,
     mut grids: Query<(&mut GridOverlay, &mut Visibility)>,
 ) {
     pre.0 = *speed;
     *speed = GameSpeed::Pause;
+    *tool = BuildTool::Wall;
 
     for (mut grid, mut visibility) in &mut grids {
         grid.visible = true;
@@ -93,6 +146,17 @@ fn enter_build_mode(
                     color: Color::srgb(0.85, 0.92, 1.0),
                     ..default()
                 },
+            ));
+            parent.spawn((
+                TextBundle::from_section(
+                    "Tool: Wall   [1] Wall   [2] Room",
+                    TextStyle {
+                        font_size: 16.0,
+                        color: Color::srgb(1.0, 0.95, 0.7),
+                        ..default()
+                    },
+                ),
+                BuildToolLabel,
             ));
         });
 }

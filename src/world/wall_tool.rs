@@ -63,7 +63,7 @@ pub fn validate_wall_placement(new_wall: &Wall, existing_walls: &Query<'_, '_, &
 }
 
 /// Raycast the cursor onto the ground plane (y=0), returning the XZ point.
-fn cursor_ground_xz(
+pub(crate) fn cursor_ground_xz(
     windows: &Query<&Window>,
     cameras: &Query<(&Camera, &GlobalTransform), With<IsometricCamera>>,
 ) -> Option<Vec2> {
@@ -141,6 +141,7 @@ fn spawn_ghost(
 #[allow(clippy::too_many_arguments)]
 fn wall_building_tool(
     mouse: Res<ButtonInput<MouseButton>>,
+    build_tool: Res<crate::build::BuildTool>,
     windows: Query<&Window>,
     cameras: Query<(&Camera, &GlobalTransform), With<IsometricCamera>>,
     walls: Query<(Entity, &Wall)>,
@@ -150,6 +151,13 @@ fn wall_building_tool(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
+    // Only the Wall tool drives the left mouse button.
+    if *build_tool != crate::build::BuildTool::Wall {
+        for ghost in &ghosts {
+            commands.entity(ghost).despawn();
+        }
+        return;
+    }
     let Some(ground) = cursor_ground_xz(&windows, &cameras) else {
         return;
     };
