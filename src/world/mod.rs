@@ -7,6 +7,7 @@ pub mod catalog;
 pub mod door;
 pub mod placed;
 pub mod room;
+pub mod terrain;
 pub mod wall;
 pub mod wall_tool;
 pub mod wall_visuals;
@@ -338,6 +339,14 @@ fn spawn_demo_catalog_props(
         ("plant_potted", Vec3::new(3.9, 0.0, 3.6)),
         ("plant_potted", Vec3::new(-4.0, 0.0, 1.6)),
         ("floor_lamp", Vec3::new(-4.2, 0.0, -1.2)),
+        // Outdoor landscaping around the lot.
+        ("tree_oak", Vec3::new(8.0, 0.0, 7.0)),
+        ("tree_oak", Vec3::new(-8.0, 0.0, 6.0)),
+        ("bush_round", Vec3::new(-3.0, 0.0, 7.0)),
+        ("bush_round", Vec3::new(3.0, 0.0, 7.0)),
+        ("bush_round", Vec3::new(7.0, 0.0, -4.0)),
+        ("bush_round", Vec3::new(8.0, 0.0, -4.0)),
+        ("pool_small", Vec3::new(-8.5, 0.0, -0.5)),
     ];
     for (id, pos) in placements {
         if let Some(item) = catalog.get(id) {
@@ -355,7 +364,7 @@ fn spawn_demo_catalog_props(
 
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(placed::PlacedObjectPlugin)
+        app.add_plugins((placed::PlacedObjectPlugin, terrain::TerrainPlugin))
             .init_resource::<LotManager>()
             .init_resource::<Neighborhood>()
             .init_resource::<wall_tool::WallToolState>()
