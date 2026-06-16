@@ -107,7 +107,7 @@ pub fn build_window_visuals(
     let frame_width = window.width + frame_thickness * 2.0;
     let frame_height = window.height + frame_thickness * 2.0;
 
-    let position_3d = window.position.extend(0.0);
+    let position_3d = Vec3::new(window.position.x, 0.0, window.position.y);
     let yaw = Quat::from_rotation_y(-window.rotation);
 
     let top = commands

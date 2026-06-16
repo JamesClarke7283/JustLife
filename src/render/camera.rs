@@ -1,4 +1,4 @@
-use bevy::input::mouse::MouseWheel;
+use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_4, PI};
 
@@ -163,10 +163,14 @@ fn camera_input(
         rig.target += delta;
     }
 
-    // Zoom via mouse wheel.
+    // Zoom via mouse wheel. Browsers report large per-notch pixel deltas, so
+    // scale them down; desktop line-deltas are ~1 per notch.
     for event in scroll_events.read() {
-        rig.distance -= event.y * 1.5;
-        rig.distance = rig.distance.clamp(rig.min_distance, rig.max_distance);
+        let step = match event.unit {
+            MouseScrollUnit::Line => event.y * 1.5,
+            MouseScrollUnit::Pixel => event.y * 0.02,
+        };
+        rig.distance = (rig.distance - step).clamp(rig.min_distance, rig.max_distance);
     }
 
     // Middle-mouse drag panning.

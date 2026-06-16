@@ -39,7 +39,9 @@ pub fn update_wall_visuals(
             }
         }
 
-        let mid = wall.midpoint().extend(0.0);
+        let mp = wall.midpoint();
+        // XZ-plane midpoint mapped into 3D world space (y is up).
+        let mid = Vec3::new(mp.x, 0.0, mp.y);
         let delta = wall.end - wall.start;
         let length = delta.length();
         let angle = delta.y.atan2(delta.x);
@@ -204,7 +206,8 @@ fn spawn_wall_piece(
     let direction = wall.direction();
     let start_world = wall.start + direction * start_dist;
     let end_world = wall.start + direction * end_dist;
-    let piece_mid = ((start_world + end_world) * 0.5).extend(0.0);
+    let pm = (start_world + end_world) * 0.5;
+    let piece_mid = Vec3::new(pm.x, 0.0, pm.y);
 
     let interior_mesh = meshes.add(MeshGenerator::wall(length, wall.height, wall.thickness));
     let interior = commands

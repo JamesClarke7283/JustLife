@@ -103,7 +103,8 @@ pub fn build_wall_visuals(
         ..default()
     });
 
-    let mid = wall.midpoint().extend(0.0);
+    let mp = wall.midpoint();
+    let mid = Vec3::new(mp.x, 0.0, mp.y);
     let delta = wall.end - wall.start;
     let length = delta.length();
     let angle = delta.y.atan2(delta.x);

@@ -349,10 +349,13 @@ impl Plugin for WorldPlugin {
                     spawn_demo_lots,
                     spawn_demo_walls,
                     spawn_demo_openings,
-                    spawn_demo_rooms,
                     spawn_demo_objects,
                 ),
             )
+            // Room detection must run after the Startup commands that spawn the
+            // lots and walls have been applied, otherwise its queries see nothing
+            // and no floor is created.
+            .add_systems(PostStartup, spawn_demo_rooms)
             .add_systems(
                 Update,
                 (
@@ -604,7 +607,7 @@ pub fn spawn_lot(
         ))
         .id();
 
-    let position = lot.position.extend(0.0);
+    let position = Vec3::new(lot.position.x, 0.0, lot.position.y);
     let lot_entity = commands
         .spawn((
             lot,
@@ -732,8 +735,7 @@ fn select_lot(
             // Move the camera focus to the selected lot so the player "enters" it.
             if let Ok(mut rig) = camera_rigs.get_single_mut() {
                 rig.follow_mode = false;
-                let target = lot.position.extend(0.0);
-                rig.target = target;
+                rig.target = Vec3::new(lot.position.x, 0.0, lot.position.y);
             }
             break;
         }
@@ -769,7 +771,8 @@ fn wall_cutaway(
             continue;
         };
 
-        let mid = (wall.start + wall.end).extend(0.0) / 2.0;
+        let mp = (wall.start + wall.end) * 0.5;
+        let mid = Vec3::new(mp.x, 0.0, mp.y);
         let wall_to_camera = camera_pos.xz() - mid.xz();
         let distance = wall_to_camera.length();
 

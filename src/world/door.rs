@@ -117,7 +117,7 @@ pub fn build_door_visuals(
     let frame_width = door.width + frame_thickness * 2.0;
     let frame_height = door.height + frame_thickness * 2.0;
 
-    let position_3d = door.position.extend(0.0);
+    let position_3d = Vec3::new(door.position.x, 0.0, door.position.y);
     let yaw = Quat::from_rotation_y(-door.rotation);
 
     // Door frame (top, bottom, left, right) built from thin boxes.
