@@ -332,7 +332,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Material cost deducted from household funds
   - Generate material textures via MCP image gen
 
-- [ ] **6.8** Implement undo/redo for build mode
+- [x] **6.8** Implement undo/redo for build mode
   - Maintain undo stack of build/buy actions
   - Ctrl+Z to undo last action (restore walls/objects, refund money)
   - Ctrl+Y to redo undone action
