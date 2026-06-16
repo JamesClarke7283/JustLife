@@ -319,7 +319,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Validation: can't overlap walls or other objects
   - Deduct money from household funds on placement
 
-- [ ] **6.6** Implement object deletion/selling
+- [x] **6.6** Implement object deletion/selling
   - Click object in buy mode to select for deletion
   - Confirm deletion with click
   - Refund percentage of original price (depreciation)
