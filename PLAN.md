@@ -304,7 +304,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Room validation: minimum size, no overlap
   - Delete room removes walls and floor
 
-- [ ] **6.4** Implement buy mode catalog UI
+- [x] **6.4** Implement buy mode catalog UI
   - Categorized catalog browser (by room type or function)
   - Search/filter catalog items
   - Sort by price, name, need satisfaction
