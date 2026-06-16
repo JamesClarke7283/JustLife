@@ -230,7 +230,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Windows let light through (affect lighting)
   - Place door/window in wall segments during build mode
 
-- [ ] **5.4** Implement Room/Floor system
+- [x] **5.4** Implement Room/Floor system
   - `Room` component: enclosed space defined by walls, floor material
   - Auto-detect rooms from wall layout (flood fill algorithm)
   - Each room has a floor with selectable material/texture

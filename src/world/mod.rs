@@ -4,6 +4,7 @@ use crate::render::camera::{CameraRig, IsometricCamera};
 use crate::render::primitives::MeshGenerator;
 
 pub mod door;
+pub mod room;
 pub mod wall;
 pub mod wall_tool;
 pub mod wall_visuals;
@@ -82,12 +83,14 @@ impl Plugin for WorldPlugin {
             .register_type::<window::WindowMeshChild>()
             .register_type::<Room>()
             .register_type::<PlacedObject>()
+            .register_type::<room::RoomFloor>()
             .add_systems(
                 Startup,
                 (
                     spawn_demo_lots,
                     spawn_demo_walls,
                     spawn_demo_openings,
+                    spawn_demo_rooms,
                     spawn_demo_objects,
                 ),
             )
@@ -391,6 +394,34 @@ fn spawn_demo_openings(mut commands: Commands, walls: Query<(Entity, &wall::Wall
             commands.entity(wall_entity).insert(wall::WallVisualDirty);
         }
     }
+}
+
+/// After walls are spawned, auto-detect rooms on the active lot and create floor meshes.
+fn spawn_demo_rooms(
+    mut commands: Commands,
+    walls: Query<&wall::Wall>,
+    lots: Query<&Lot>,
+    lot_manager: Res<LotManager>,
+) {
+    let Some(active_lot) = lot_manager.active else {
+        return;
+    };
+    let Ok(lot) = lots.get(active_lot) else {
+        return;
+    };
+    let (min, max) = lot.bounds();
+
+    let wall_data: Vec<wall::Wall> = walls.iter().cloned().collect();
+    commands.add(move |w: &mut World| {
+        let walkable = room::compute_walkable_cells_from_iter(wall_data.iter(), min, max);
+        let indoor = room::compute_indoor_cells(&walkable);
+        let regions = room::flood_fill_regions(&indoor);
+
+        for region in regions {
+            let mut cmds = w.commands();
+            cmds.add(room::spawn_room_floor_command(region));
+        }
+    });
 }
 
 /// Select a lot when the player clicks inside its boundary or on its outline.
