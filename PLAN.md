@@ -276,7 +276,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Driveway and sidewalk placement
   - Pool (future phase — placeholder in catalog)
 
-- [ ] **5.9** Implement neighborhood/world map
+- [x] **5.9** Implement neighborhood/world map
   - `Neighborhood` resource: list of lots, roads, community spaces
   - Overhead neighborhood view showing all lots
   - Click lot to enter it (load lot entities)
