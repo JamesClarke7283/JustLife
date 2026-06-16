@@ -325,7 +325,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Refund percentage of original price (depreciation)
   - Remove entity from world on deletion
 
-- [ ] **6.7** Implement floor/wall material picker
+- [x] **6.7** Implement floor/wall material picker
   - Material categories for floors: wood, tile, carpet, stone, concrete
   - Material categories for walls: paint, wallpaper, brick, stone, paneling
   - Click existing floor/wall to repaint with selected material
