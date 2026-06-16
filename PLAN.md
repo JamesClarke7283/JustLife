@@ -298,7 +298,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Delete walls by clicking existing wall segments
   - Wall validation: can't place walls that overlap objects
 
-- [ ] **6.3** Implement room tool
+- [x] **6.3** Implement room tool
   - Click-drag rectangle to create a room (auto-generates walls + floor)
   - Room tool auto-places floor material
   - Room validation: minimum size, no overlap
