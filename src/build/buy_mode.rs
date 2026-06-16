@@ -294,7 +294,7 @@ fn rebuild_item_list(
                 ));
                 b.spawn(TextBundle::from_section(
                     format!(
-                        "\u{a7}{}   {}x{}",
+                        "${}   {}x{}",
                         item.price, item.footprint.0, item.footprint.1
                     ),
                     TextStyle {
@@ -332,7 +332,7 @@ fn update_detail(
                     .join(", ")
             };
             format!(
-                "{}\n\u{a7}{} | size {}x{} | needs: {}\n{}",
+                "{}\n${} | size {}x{} | needs: {}\n{}",
                 item.name, item.price, item.footprint.0, item.footprint.1, needs, item.description
             )
         }
