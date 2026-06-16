@@ -37,31 +37,255 @@ impl Neighborhood {
     }
 }
 
-/// Spawn a simple textured demo object so textures-on-primitives can be verified.
+/// Spawn a single coloured box at `pos` (Y is the box centre height) sized `size`.
+fn spawn_box(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    size: Vec3,
+    pos: Vec3,
+    color: Color,
+    name: &'static str,
+) {
+    commands.spawn((
+        PbrBundle {
+            mesh: meshes.add(Cuboid::new(size.x, size.y, size.z)),
+            material: materials.add(StandardMaterial {
+                base_color: color,
+                perceptual_roughness: 0.8,
+                ..default()
+            }),
+            transform: Transform::from_translation(pos),
+            ..default()
+        },
+        Name::new(name),
+    ));
+}
+
+/// Furnish the starter room with simple primitive furniture so the lot reads as
+/// a lived-in home. The room interior spans roughly -4.5..4.5 on X and Z.
 fn spawn_demo_objects(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    asset_server: Res<AssetServer>,
 ) {
-    let texture: Handle<Image> = asset_server.load("textures/furniture_wood_oak.png");
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(MeshGenerator::cube(0.5)),
-        material: materials.add(StandardMaterial {
-            base_color_texture: Some(texture),
-            perceptual_roughness: 0.85,
-            ..default()
-        }),
-        transform: Transform::from_xyz(2.0, 0.25, 2.0),
-        ..default()
-    });
+    let m = &mut *meshes;
+    let mat = &mut *materials;
 
-    // Add a demo indoor point light so the point-light path can be verified.
+    let wood = Color::srgb(0.45, 0.30, 0.18);
+    let wood_light = Color::srgb(0.55, 0.38, 0.22);
+    let metal = Color::srgb(0.82, 0.84, 0.87);
+
+    // Area rug centred in the room.
+    spawn_box(
+        &mut commands,
+        m,
+        mat,
+        Vec3::new(4.0, 0.02, 3.0),
+        Vec3::new(0.0, 0.05, 0.0),
+        Color::srgb(0.70, 0.30, 0.30),
+        "Rug",
+    );
+
+    // --- Bedroom corner (-X, -Z) ---
+    spawn_box(
+        &mut commands,
+        m,
+        mat,
+        Vec3::new(2.0, 0.4, 3.0),
+        Vec3::new(-3.2, 0.2, -3.0),
+        wood,
+        "Bed Frame",
+    );
+    spawn_box(
+        &mut commands,
+        m,
+        mat,
+        Vec3::new(1.8, 0.25, 2.8),
+        Vec3::new(-3.2, 0.5, -3.0),
+        Color::srgb(0.90, 0.92, 0.96),
+        "Mattress",
+    );
+    spawn_box(
+        &mut commands,
+        m,
+        mat,
+        Vec3::new(1.6, 0.18, 0.6),
+        Vec3::new(-3.2, 0.7, -4.0),
+        Color::srgb(0.95, 0.85, 0.55),
+        "Pillow",
+    );
+    spawn_box(
+        &mut commands,
+        m,
+        mat,
+        Vec3::new(0.7, 0.7, 0.7),
+        Vec3::new(-1.8, 0.35, -4.2),
+        wood_light,
+        "Nightstand",
+    );
+
+    // --- Kitchen run (-X wall, +Z) ---
+    spawn_box(
+        &mut commands,
+        m,
+        mat,
+        Vec3::new(1.0, 1.8, 0.9),
+        Vec3::new(-4.0, 0.9, 4.0),
+        metal,
+        "Fridge",
+    );
+    spawn_box(
+        &mut commands,
+        m,
+        mat,
+        Vec3::new(2.4, 0.9, 0.9),
+        Vec3::new(-2.4, 0.45, 4.1),
+        Color::srgb(0.88, 0.88, 0.90),
+        "Counter",
+    );
+    spawn_box(
+        &mut commands,
+        m,
+        mat,
+        Vec3::new(0.6, 0.6, 0.6),
+        Vec3::new(-2.0, 1.2, 4.1),
+        Color::srgb(0.15, 0.15, 0.18),
+        "Microwave",
+    );
+
+    // --- Dining set (+X, +Z) ---
+    spawn_box(
+        &mut commands,
+        m,
+        mat,
+        Vec3::new(1.8, 0.12, 1.0),
+        Vec3::new(3.0, 0.75, 3.0),
+        wood_light,
+        "Table Top",
+    );
+    spawn_box(
+        &mut commands,
+        m,
+        mat,
+        Vec3::new(0.4, 0.75, 0.4),
+        Vec3::new(3.0, 0.375, 3.0),
+        wood,
+        "Table Pedestal",
+    );
+    spawn_box(
+        &mut commands,
+        m,
+        mat,
+        Vec3::new(0.5, 0.9, 0.5),
+        Vec3::new(3.0, 0.45, 2.0),
+        wood_light,
+        "Chair A",
+    );
+    spawn_box(
+        &mut commands,
+        m,
+        mat,
+        Vec3::new(0.5, 0.9, 0.5),
+        Vec3::new(3.0, 0.45, 4.0),
+        wood_light,
+        "Chair B",
+    );
+
+    // --- Living area (+X, -Z) ---
+    spawn_box(
+        &mut commands,
+        m,
+        mat,
+        Vec3::new(2.8, 0.5, 1.0),
+        Vec3::new(2.6, 0.3, -2.2),
+        Color::srgb(0.28, 0.45, 0.62),
+        "Sofa Seat",
+    );
+    spawn_box(
+        &mut commands,
+        m,
+        mat,
+        Vec3::new(2.8, 0.7, 0.25),
+        Vec3::new(2.6, 0.6, -1.6),
+        Color::srgb(0.24, 0.40, 0.56),
+        "Sofa Back",
+    );
+    spawn_box(
+        &mut commands,
+        m,
+        mat,
+        Vec3::new(2.0, 0.5, 0.5),
+        Vec3::new(2.6, 0.25, -4.0),
+        Color::srgb(0.30, 0.22, 0.18),
+        "TV Stand",
+    );
+    spawn_box(
+        &mut commands,
+        m,
+        mat,
+        Vec3::new(1.8, 1.0, 0.12),
+        Vec3::new(2.6, 1.0, -4.1),
+        Color::srgb(0.04, 0.04, 0.07),
+        "TV Screen",
+    );
+    spawn_box(
+        &mut commands,
+        m,
+        mat,
+        Vec3::new(1.2, 0.1, 0.7),
+        Vec3::new(2.6, 0.45, -3.0),
+        wood_light,
+        "Coffee Table",
+    );
+
+    // --- Bookshelf along +X area ---
+    spawn_box(
+        &mut commands,
+        m,
+        mat,
+        Vec3::new(0.4, 2.0, 1.4),
+        Vec3::new(4.2, 1.0, 0.0),
+        Color::srgb(0.40, 0.26, 0.15),
+        "Bookshelf",
+    );
+
+    // Floor lamp: pole + glowing shade.
+    spawn_box(
+        &mut commands,
+        m,
+        mat,
+        Vec3::new(0.1, 1.6, 0.1),
+        Vec3::new(4.0, 0.8, -3.8),
+        Color::srgb(0.2, 0.2, 0.2),
+        "Lamp Pole",
+    );
+    commands.spawn((
+        PbrBundle {
+            mesh: m.add(MeshGenerator::cone(0.35, 0.4, 16)),
+            material: mat.add(StandardMaterial {
+                base_color: Color::srgb(1.0, 0.95, 0.7),
+                emissive: LinearRgba::rgb(0.8, 0.7, 0.4),
+                ..default()
+            }),
+            transform: Transform::from_xyz(4.0, 1.7, -3.8),
+            ..default()
+        },
+        Name::new("Lamp Shade"),
+    ));
+
+    // Indoor point lights so the room is well lit at night.
     crate::render::lighting::spawn_indoor_light(
         &mut commands,
-        Vec3::new(0.0, 2.5, 0.0),
+        Vec3::new(0.0, 2.8, 0.0),
         Color::srgb(1.0, 0.95, 0.8),
-        1_000.0,
+        1_500.0,
+    );
+    crate::render::lighting::spawn_indoor_light(
+        &mut commands,
+        Vec3::new(4.0, 1.8, -3.8),
+        Color::srgb(1.0, 0.92, 0.7),
+        600.0,
     );
 }
 

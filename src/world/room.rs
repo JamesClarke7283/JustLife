@@ -192,7 +192,8 @@ pub fn spawn_room_floor(
     let depth = (max.z - min.z + 1) as f32;
     let center = Vec3::new(
         (min.x as f32 + max.x as f32) / 2.0,
-        0.0,
+        // Lift the floor a hair above the terrain plane (y=0) to avoid z-fighting.
+        0.02,
         (min.z as f32 + max.z as f32) / 2.0,
     );
 

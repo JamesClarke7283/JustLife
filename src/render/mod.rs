@@ -9,10 +9,12 @@ pub struct RenderPlugin;
 
 impl Plugin for RenderPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((
-            camera::CameraPlugin,
-            grid::GridPlugin,
-            lighting::LightingPlugin,
-        ));
+        // Daytime sky-blue background instead of the default dark gray.
+        app.insert_resource(ClearColor(Color::srgb(0.53, 0.81, 0.92)))
+            .add_plugins((
+                camera::CameraPlugin,
+                grid::GridPlugin,
+                lighting::LightingPlugin,
+            ));
     }
 }
