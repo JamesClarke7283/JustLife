@@ -8,7 +8,7 @@
 - **Tests:** `cargo test`
 - **Lint:** `cargo clippy`
 - **Format:** `cargo fmt`
-- **WASM build:** `./build-wasm.sh` (requires `wasm-bindgen` CLI in `~/.cargo/bin`; ensure `~/.cargo/bin` is on `PATH`)
+- **WASM build:** `./build-wasm.sh` (requires `wasm-bindgen` CLI in `~/.cargo/bin`; ensure `~/.cargo/bin` is on `PATH`). The initial `cargo build` can be very slow on this machine; if it times out, run it in the background or call `cargo build --profile wasm-release --target wasm32-unknown-unknown` and then run `wasm-bindgen` separately.
 - **WASM profile:** `Cargo.toml` defines `[profile.wasm-release]` with `opt-level = "s"` and `lto = true`
 - **WASM test:** serve `web/`, open in browser, verify with screenshot using chrome-devtools
 

@@ -223,7 +223,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Wall rendering with door/window cutout support
   - Wall deletion in build mode
 
-- [ ] **5.3** Implement Door and Window system
+- [x] **5.3** Implement Door and Window system
   - `Door` component: position, rotation, locked state, connected rooms
   - `Window` component: position, rotation, wall segment reference
   - Doors enable pathfinding between rooms

@@ -53,4 +53,6 @@ The browser shell is in `web/`:
 - `wasm-bindgen not found`: add `~/.cargo/bin` to `PATH`.
 - `getrandom` compile error about `wasm_js`: verify `.cargo/config.toml` rustflags and the `getrandom` wasm dependency feature.
 - `uuid` compile error about randomness: add `uuid = { version = "1.23.3", features = ["js"] }` under the wasm target dependencies.
+- The initial `cargo build --profile wasm-release --target wasm32-unknown-unknown` can take several minutes; if it times out, run it in the background and wait for completion.
+- If the browser shows only a small triangle/canvas issue or `Uncaught (in promise)` from `winit`/`web_sys::throw`, check `web/index.js` calls `init()` without passing a canvas object; Bevy 0.14.2 on web creates its own canvas when the module is initialized this way.
 - Bevy 0.18.x changed the 3D bundle API (`Mesh3d`/`MeshMaterial3d` instead of `PbrBundle`). This project stays on Bevy 0.14.2 to avoid that churn while the project skeleton is stabilizing.
