@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use crate::render::camera::{CameraRig, IsometricCamera};
 use crate::render::primitives::MeshGenerator;
 
+pub mod catalog;
 pub mod door;
 pub mod room;
 pub mod wall;
@@ -324,11 +325,39 @@ fn spawn_demo_objects(
     );
 }
 
+/// Place a few objects straight from the data-driven catalog, exercising the
+/// catalog -> primitive builder end to end.
+fn spawn_demo_catalog_props(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    catalog: Res<catalog::CatalogDatabase>,
+) {
+    let placements = [
+        ("plant_potted", Vec3::new(3.9, 0.0, 3.6)),
+        ("plant_potted", Vec3::new(-4.0, 0.0, 1.6)),
+        ("floor_lamp", Vec3::new(-4.2, 0.0, -1.2)),
+    ];
+    for (id, pos) in placements {
+        if let Some(item) = catalog.get(id) {
+            catalog::spawn_catalog_item(
+                &mut commands,
+                &mut meshes,
+                &mut materials,
+                item,
+                pos,
+                Quat::IDENTITY,
+            );
+        }
+    }
+}
+
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<LotManager>()
             .init_resource::<Neighborhood>()
             .init_resource::<wall_tool::WallToolState>()
+            .init_resource::<catalog::CatalogDatabase>()
             .register_type::<Lot>()
             .register_type::<LotId>()
             .register_type::<LotBoundary>()
@@ -343,6 +372,10 @@ impl Plugin for WorldPlugin {
             .register_type::<Room>()
             .register_type::<PlacedObject>()
             .register_type::<room::RoomFloor>()
+            .register_type::<catalog::CatalogCategory>()
+            .register_type::<catalog::PrimitiveShape>()
+            .register_type::<catalog::PrimitivePart>()
+            .register_type::<catalog::CatalogItem>()
             .add_systems(
                 Startup,
                 (
@@ -355,7 +388,7 @@ impl Plugin for WorldPlugin {
             // Room detection must run after the Startup commands that spawn the
             // lots and walls have been applied, otherwise its queries see nothing
             // and no floor is created.
-            .add_systems(PostStartup, spawn_demo_rooms)
+            .add_systems(PostStartup, (spawn_demo_rooms, spawn_demo_catalog_props))
             .add_systems(
                 Update,
                 (
