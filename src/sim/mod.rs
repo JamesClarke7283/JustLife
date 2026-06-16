@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 pub mod appearance;
+pub mod autonomy;
 pub mod movement;
 pub mod needs;
 
@@ -8,7 +9,8 @@ pub struct SimPlugin;
 
 impl Plugin for SimPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<SimManager>()
+        app.add_plugins(autonomy::AutonomyPlugin)
+            .init_resource::<SimManager>()
             .init_resource::<needs::NeedModifiers>()
             .insert_resource(TraitDatabase::default_populated())
             .register_type::<SimId>()
@@ -566,7 +568,14 @@ fn spawn_demo_sim(
                 traits,
                 appearance: appearance.clone(),
                 voice: appearance::SimVoice::default(),
-                needs: needs::Needs::new(),
+                needs: needs::Needs {
+                    hunger: 55.0,
+                    energy: 35.0,
+                    social: 70.0,
+                    fun: 50.0,
+                    hygiene: 65.0,
+                    bladder: 60.0,
+                },
                 need_state: needs::NeedState::default(),
                 moodlets: moodlet::ActiveMoodlets::default(),
                 animation: AnimationState::Idle,
@@ -574,6 +583,7 @@ fn spawn_demo_sim(
             appearance::SimBody,
             // SpatialBundle so the sim's body-part mesh children render (B0004).
             SpatialBundle::from_transform(Transform::from_xyz(0.0, 0.0, 2.0)),
+            autonomy::InteractionQueue::default(),
         ))
         .with_children(|parent| {
             appearance::build_sim_body(
