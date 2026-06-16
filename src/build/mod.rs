@@ -10,7 +10,8 @@ pub struct BuildModePlugin;
 
 impl Plugin for BuildModePlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<PreBuildSpeed>()
+        app.add_plugins(crate::world::wall_tool::WallToolPlugin)
+            .init_resource::<PreBuildSpeed>()
             .add_systems(Update, toggle_build_mode)
             .add_systems(OnEnter(GameState::BuildMode), enter_build_mode)
             .add_systems(OnExit(GameState::BuildMode), exit_build_mode);

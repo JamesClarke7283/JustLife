@@ -408,7 +408,9 @@ impl Plugin for WorldPlugin {
                     door::update_door_visuals,
                     window::update_window_visuals,
                     wall_cutaway,
-                    select_lot,
+                    // Lot click-to-enter is a live-mode interaction; in build
+                    // mode the left mouse button drives the wall tool instead.
+                    select_lot.run_if(in_state(crate::core::state::GameState::LiveMode)),
                     toggle_map_view,
                 ),
             );
