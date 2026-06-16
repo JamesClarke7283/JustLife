@@ -409,6 +409,7 @@ impl Plugin for WorldPlugin {
                     window::update_window_visuals,
                     wall_cutaway,
                     select_lot,
+                    toggle_map_view,
                 ),
             );
     }
@@ -498,6 +499,13 @@ impl Lot {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn neighborhood_center_averages_lots() {
+        assert_eq!(neighborhood_center(&[]), Vec2::ZERO);
+        let c = neighborhood_center(&[Vec2::new(0.0, 0.0), Vec2::new(10.0, 0.0)]);
+        assert!((c - Vec2::new(5.0, 0.0)).length() < 1e-6);
+    }
 
     #[test]
     fn lot_bounds_centered_on_position() {
@@ -785,10 +793,44 @@ fn select_lot(
             if let Ok(mut rig) = camera_rigs.get_single_mut() {
                 rig.follow_mode = false;
                 rig.target = Vec3::new(lot.position.x, 0.0, lot.position.y);
+                // Zoom in from the overhead map view to a lot-level view.
+                rig.distance = 18.0;
             }
             break;
         }
     }
+}
+
+/// Average position of all lots, used to centre the overhead neighborhood view.
+fn neighborhood_center(positions: &[Vec2]) -> Vec2 {
+    if positions.is_empty() {
+        return Vec2::ZERO;
+    }
+    let sum = positions.iter().fold(Vec2::ZERO, |acc, p| acc + *p);
+    sum / positions.len() as f32
+}
+
+/// Toggle the overhead "neighborhood map" view (press M): pull the camera back
+/// to frame every lot at once. Clicking a lot (`select_lot`) zooms back in.
+fn toggle_map_view(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    lots: Query<&Lot>,
+    mut camera_rigs: Query<&mut CameraRig, With<IsometricCamera>>,
+) {
+    if !keyboard.just_pressed(KeyCode::KeyM) {
+        return;
+    }
+    let Ok(mut rig) = camera_rigs.get_single_mut() else {
+        return;
+    };
+    let positions: Vec<Vec2> = lots.iter().map(|lot| lot.position).collect();
+    if positions.is_empty() {
+        return;
+    }
+    rig.follow_mode = false;
+    let center = neighborhood_center(&positions);
+    rig.target = Vec3::new(center.x, 0.0, center.y);
+    rig.distance = rig.max_distance;
 }
 
 /// Wall cutaway: walls between the camera and the focal target become transparent

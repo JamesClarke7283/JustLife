@@ -142,6 +142,8 @@ fn paint_demo_terrain(mut grid: ResMut<TerrainGrid>) {
     grid.paint_rect((-10, -3), (-7, 2), TerrainType::PoolTile);
     // A dirt garden patch out back.
     grid.paint_rect((6, 5), (9, 8), TerrainType::Dirt);
+    // Neighborhood road running past the lots (visible in the overhead map view).
+    grid.paint_rect((-12, -11), (22, -10), TerrainType::Concrete);
 }
 
 /// Wires up terrain painting and rendering.
