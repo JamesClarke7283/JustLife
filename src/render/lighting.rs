@@ -32,8 +32,10 @@ impl Default for AmbientLighting {
     fn default() -> Self {
         Self {
             enabled: true,
-            color: Color::srgb(0.3, 0.35, 0.4),
-            brightness: 0.6,
+            // Bevy ambient brightness is in lux; the old 0.6 was effectively no
+            // fill, leaving everything not directly hit by the sun pitch black.
+            color: Color::srgb(0.9, 0.93, 1.0),
+            brightness: 400.0,
         }
     }
 }

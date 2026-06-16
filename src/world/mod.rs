@@ -62,28 +62,59 @@ fn spawn_box(
     ));
 }
 
+/// Spawn a single textured box at `pos` (Y is the box centre height) sized `size`.
+#[allow(clippy::too_many_arguments)]
+fn spawn_textured_box(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    asset_server: &AssetServer,
+    size: Vec3,
+    pos: Vec3,
+    texture_path: &'static str,
+    name: &'static str,
+) {
+    let texture: Handle<Image> = asset_server.load(texture_path);
+    commands.spawn((
+        PbrBundle {
+            mesh: meshes.add(Cuboid::new(size.x, size.y, size.z)),
+            material: materials.add(StandardMaterial {
+                base_color_texture: Some(texture),
+                perceptual_roughness: 0.8,
+                ..default()
+            }),
+            transform: Transform::from_translation(pos),
+            ..default()
+        },
+        Name::new(name),
+    ));
+}
+
 /// Furnish the starter room with simple primitive furniture so the lot reads as
 /// a lived-in home. The room interior spans roughly -4.5..4.5 on X and Z.
 fn spawn_demo_objects(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Res<AssetServer>,
 ) {
     let m = &mut *meshes;
     let mat = &mut *materials;
+    let assets = &*asset_server;
 
     let wood = Color::srgb(0.45, 0.30, 0.18);
     let wood_light = Color::srgb(0.55, 0.38, 0.22);
     let metal = Color::srgb(0.82, 0.84, 0.87);
 
     // Area rug centred in the room.
-    spawn_box(
+    spawn_textured_box(
         &mut commands,
         m,
         mat,
+        assets,
         Vec3::new(4.0, 0.02, 3.0),
         Vec3::new(0.0, 0.05, 0.0),
-        Color::srgb(0.70, 0.30, 0.30),
+        "textures/rug_pattern.png",
         "Rug",
     );
 
@@ -135,13 +166,14 @@ fn spawn_demo_objects(
         metal,
         "Fridge",
     );
-    spawn_box(
+    spawn_textured_box(
         &mut commands,
         m,
         mat,
+        assets,
         Vec3::new(2.4, 0.9, 0.9),
         Vec3::new(-2.4, 0.45, 4.1),
-        Color::srgb(0.88, 0.88, 0.90),
+        "textures/counter_granite.png",
         "Counter",
     );
     spawn_box(
@@ -193,22 +225,24 @@ fn spawn_demo_objects(
     );
 
     // --- Living area (+X, -Z) ---
-    spawn_box(
+    spawn_textured_box(
         &mut commands,
         m,
         mat,
+        assets,
         Vec3::new(2.8, 0.5, 1.0),
         Vec3::new(2.6, 0.3, -2.2),
-        Color::srgb(0.28, 0.45, 0.62),
+        "textures/fabric_sofa_blue.png",
         "Sofa Seat",
     );
-    spawn_box(
+    spawn_textured_box(
         &mut commands,
         m,
         mat,
+        assets,
         Vec3::new(2.8, 0.7, 0.25),
         Vec3::new(2.6, 0.6, -1.6),
-        Color::srgb(0.24, 0.40, 0.56),
+        "textures/fabric_sofa_blue.png",
         "Sofa Back",
     );
     spawn_box(
@@ -240,13 +274,14 @@ fn spawn_demo_objects(
     );
 
     // --- Bookshelf along +X area ---
-    spawn_box(
+    spawn_textured_box(
         &mut commands,
         m,
         mat,
+        assets,
         Vec3::new(0.4, 2.0, 1.4),
         Vec3::new(4.2, 1.0, 0.0),
-        Color::srgb(0.40, 0.26, 0.15),
+        "textures/bookshelf_books.png",
         "Bookshelf",
     );
 

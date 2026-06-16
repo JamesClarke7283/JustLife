@@ -1,12 +1,24 @@
 use bevy::prelude::*;
 
 /// In-game calendar time: day, hour, minute.
-#[derive(Resource, Default, Debug, Clone, Copy, PartialEq, Eq, Reflect)]
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq, Reflect)]
 #[reflect(Resource)]
 pub struct GameTime {
     pub day: u32,
     pub hour: u32,
     pub minute: u32,
+}
+
+impl Default for GameTime {
+    /// Start the simulation mid-morning so the scene is lit in daylight (the
+    /// derived all-zero default put the clock at midnight, dimming the sun).
+    fn default() -> Self {
+        Self {
+            day: 1,
+            hour: 9,
+            minute: 0,
+        }
+    }
 }
 
 /// Current simulation speed. Paused is the default until the player starts.
