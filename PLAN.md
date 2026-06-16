@@ -311,7 +311,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Item preview (3D rendered thumbnail or procedural)
   - Show item stats: price, needs satisfied, size
 
-- [ ] **6.5** Implement object placement tool
+- [x] **6.5** Implement object placement tool
   - Select item from catalog, place on grid
   - Ghost preview at cursor position (green = valid, red = invalid)
   - Rotation with R key (90-degree increments)
