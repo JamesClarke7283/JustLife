@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 
+pub mod catalog;
+
 pub struct SocialPlugin;
 
 impl Plugin for SocialPlugin {
