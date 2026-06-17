@@ -8,5 +8,7 @@ pub enum GameState {
     BuildMode,
     BuyMode,
     CreateASim,
+    /// Choosing and buying a lot (after Create-A-Sim, before Live mode).
+    LotSelect,
     Loading,
 }

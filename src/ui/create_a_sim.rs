@@ -105,8 +105,8 @@ fn cas_input(
         }
     }
     if keyboard.just_pressed(KeyCode::Enter) {
-        // Lot selection lands next; for now head straight to Live mode.
-        next_state.set(GameState::LiveMode);
+        // On to choosing and buying a lot.
+        next_state.set(GameState::LotSelect);
     }
 }
 
