@@ -8,7 +8,9 @@
 - **Tests:** `cargo test`
 - **Lint:** `cargo clippy`
 - **Format:** `cargo fmt`
-- **WASM build:** `./build-wasm.sh` (requires `wasm-bindgen` CLI in `~/.cargo/bin`; ensure `~/.cargo/bin` is on `PATH`). The LTO release build takes ~4–9 min. **Run it in the FOREGROUND** with a 600000 ms timeout — background builds get killed when the session suspends between cron/loop ticks, leaving a stale wasm. Incremental compilation makes re-runs after a kill resume quickly.
+- **WASM build:** `./build-wasm.sh [profile]`. Default profile `wasm-release` (LTO, `opt-level="s"`) is optimized but SLOW and memory-hungry — under load it has taken **15+ min and been OOM-killed**. For VERIFICATION builds use the fast profile: **`./build-wasm.sh wasm-dev`** (no LTO, `opt-level=1`, 16 codegen-units) — first run compiles all deps (~10 min) but is then incremental and ~2-3 min; the wasm is bigger/less-optimized (~50 MB vs 25 MB) but runs fine for screenshots. Use `wasm-release` only for final/shippable builds.
+- Requires `wasm-bindgen` CLI in `~/.cargo/bin` (ensure it's on `PATH`). **Don't rely on background builds across loop ticks** — they get killed when the session suspends, leaving a stale wasm. Either build in the foreground, or `nohup` it and actively wait with an `until grep -qa "<new-string>" web/just-life_bg.wasm; do sleep 8; done` poll so the turn stays alive until the wasm updates. Confirm a build actually landed by grepping the wasm for a string unique to your change before screenshotting.
+- The local HTTP server (`python3 -m http.server 8000` in `web/`) also dies on suspend — restart it (and `curl` localhost:8000 to confirm) before navigating.
 - **WASM profile:** `Cargo.toml` defines `[profile.wasm-release]` with `opt-level = "s"` and `lto = true`
 - **WASM test:** serve `web/`, open in browser, verify with screenshot using chrome-devtools
 - **Object catalog:** buy-mode objects are data-driven in `assets/data/catalog.ron`

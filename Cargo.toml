@@ -19,3 +19,12 @@ uuid = { version = "1.23.3", features = ["js"] }
 inherits = "release"
 opt-level = "s"
 lto = true
+
+# Fast verification build: no LTO, light opt, many codegen units. Much quicker
+# and lower-memory than wasm-release (which OOMs/takes ~15 min under load).
+# Use via `./build-wasm.sh wasm-dev`.
+[profile.wasm-dev]
+inherits = "release"
+opt-level = 1
+lto = false
+codegen-units = 16
