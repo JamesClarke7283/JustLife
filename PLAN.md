@@ -378,7 +378,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - If path is blocked, sim waves hand and cancels interaction (classic Sims behavior)
   - Route cancellation visual: frustrated animation + thought bubble
 
-- [ ] **7.6** Implement need-based autonomy modifiers
+- [x] **7.6** Implement need-based autonomy modifiers
   - Desperation behaviors: very low needs override all other actions
   - Energy collapse: sim passes out on the floor
   - Hunger collapse: sim begs for food, eventually faints
