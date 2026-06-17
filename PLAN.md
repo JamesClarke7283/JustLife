@@ -516,7 +516,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
 
 ## Phase 10: UI System
 
-- [ ] **10.1** Implement main menu
+- [x] **10.1** Implement main menu
   - Title screen with "Just Life" logo (generate logo via MCP image gen)
   - Buttons: New Game, Load Game, Options, Quit
   - Background: slow-pan 3D scene or animated neighborhood

@@ -76,6 +76,15 @@ chrome-devtools MCP (serve `web/` then reload/screenshot/console):
   color, ..default() }` uses the bundled default font (no asset handle needed).
   Immediate-mode menus (despawn-all + respawn each frame from a resource) work
   fine and keep render logic stateless — mirror `placement.rs`'s ghost pattern.
+- **Transient black screen / screenshot timeout on a state transition is usually
+  NOT a real bug.** On a heavy first frame (e.g. entering `LiveMode`: menu
+  despawns, HUD spawns, all sim/career systems start at once) the chrome-devtools
+  `take_screenshot` RPC can time out and a follow-up capture may grab one black
+  frame. Confirm it's transient before chasing it: install a capture
+  (`console.error` override + `window.onerror`/`unhandledrejection`) via
+  `evaluate_script`, trigger the action, then read the array back — if
+  `evaluate_script` returns and the array is empty, the main thread is alive and
+  there was no panic. Re-screenshot a moment later; it renders fine.
 
 ## Project Structure
 
