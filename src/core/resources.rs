@@ -51,6 +51,33 @@ pub struct MoneyResource {
     pub amount: i64,
 }
 
+impl MoneyResource {
+    /// Whether the household can currently afford `cost`.
+    pub fn can_afford(&self, cost: i64) -> bool {
+        self.amount >= cost
+    }
+
+    /// Spend `cost` if affordable, returning whether the purchase went through.
+    pub fn spend(&mut self, cost: i64) -> bool {
+        if self.can_afford(cost) {
+            self.amount -= cost;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Add income to the household funds.
+    pub fn deposit(&mut self, amount: i64) {
+        self.amount += amount;
+    }
+
+    /// Whether the household is in debt (funds below zero).
+    pub fn is_bankrupt(&self) -> bool {
+        self.amount < 0
+    }
+}
+
 /// Tunable constants that drive simulation balance.
 #[derive(Resource, Debug, Clone, PartialEq, Reflect)]
 #[reflect(Resource)]
