@@ -2,8 +2,11 @@ use std::collections::VecDeque;
 
 use bevy::prelude::*;
 
+use crate::core::components::RouteTo;
+use crate::core::resources::GameSpeed;
 use crate::core::state::GameState;
 use crate::sim::AnimationState;
+use crate::sim::moodlet::{ActiveMoodlets, Mood, Moodlet};
 use crate::sim::needs::{NeedType, Needs};
 use crate::world::catalog::ObjectAction;
 
@@ -122,7 +125,12 @@ impl Plugin for InteractionQueuePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            critical_need_override.run_if(in_state(GameState::LiveMode)),
+            (
+                critical_need_override,
+                start_interaction,
+                execute_interaction,
+            )
+                .run_if(in_state(GameState::LiveMode)),
         );
     }
 }
@@ -165,20 +173,115 @@ pub fn animation_for_need(need: NeedType) -> AnimationState {
     }
 }
 
-/// Build an object interaction from a catalog [`ObjectAction`]. The duration is
-/// chosen so the interaction restores roughly 40 need points at the given rate.
-pub fn object_interaction(action: &ObjectAction) -> Interaction {
-    let duration = (40.0 / action.rate.max(0.1)).clamp(10.0, 120.0);
+/// Build a single-need object interaction from raw parts. The duration is chosen
+/// so it restores roughly 40 need points at the given rate.
+pub fn interaction_from_parts(name: String, need: NeedType, rate: f32) -> Interaction {
+    let duration = (40.0 / rate.max(0.1)).clamp(10.0, 120.0);
     Interaction {
-        name: action.name.clone(),
+        name,
         kind: InteractionKind::Object,
         duration,
         effects: vec![NeedEffect {
-            need: action.need,
-            per_minute: action.rate,
+            need,
+            per_minute: rate,
         }],
-        animation: animation_for_need(action.need),
+        animation: animation_for_need(need),
         moodlet: None,
+    }
+}
+
+/// Build an object interaction from a catalog [`ObjectAction`].
+pub fn object_interaction(action: &ObjectAction) -> Interaction {
+    interaction_from_parts(action.name.clone(), action.need, action.rate)
+}
+
+/// A currently-executing interaction on a sim.
+#[derive(Component, Debug, Clone)]
+pub struct ActiveInteraction {
+    pub interaction: Interaction,
+    /// In-game minutes elapsed so far.
+    pub elapsed: f32,
+}
+
+/// Advance an active interaction by `dt` in-game minutes, applying its need
+/// effects. Returns true once the interaction has completed.
+pub fn tick_interaction(active: &mut ActiveInteraction, needs: &mut Needs, dt: f32) -> bool {
+    active.elapsed += dt;
+    for effect in &active.interaction.effects {
+        needs.modify(effect.need, effect.per_minute * dt);
+    }
+    active.elapsed >= active.interaction.duration
+}
+
+/// Map a completion-moodlet name to a mood and impact.
+fn mood_for(name: &str) -> (Mood, i32) {
+    match name {
+        "Angry" => (Mood::Angry, -8),
+        "Flirty" => (Mood::Flirty, 6),
+        _ => (Mood::Happy, 8),
+    }
+}
+
+/// Begin the queued interaction for sims that have arrived (no `RouteTo`) and
+/// aren't already mid-interaction.
+#[allow(clippy::type_complexity)]
+fn start_interaction(
+    mut commands: Commands,
+    mut sims: Query<
+        (Entity, &InteractionQueue, &mut AnimationState),
+        (Without<ActiveInteraction>, Without<RouteTo>),
+    >,
+) {
+    for (entity, queue, mut anim) in &mut sims {
+        if let Some(qi) = queue.current() {
+            let interaction = interaction_from_parts(qi.action.clone(), qi.need, qi.rate);
+            *anim = interaction.animation;
+            commands.entity(entity).insert(ActiveInteraction {
+                interaction,
+                elapsed: 0.0,
+            });
+        }
+    }
+}
+
+/// Progress active interactions; apply effects and, on completion, award the
+/// moodlet, advance the queue, and return the sim to idle.
+#[allow(clippy::type_complexity)]
+fn execute_interaction(
+    time: Res<Time>,
+    game_speed: Res<GameSpeed>,
+    mut commands: Commands,
+    mut sims: Query<(
+        Entity,
+        &mut Needs,
+        &mut AnimationState,
+        &mut ActiveInteraction,
+        &mut ActiveMoodlets,
+        &mut InteractionQueue,
+    )>,
+) {
+    let speed = game_speed.multiplier();
+    if speed == 0.0 {
+        return;
+    }
+    let dt = time.delta_seconds() * speed; // in-game minutes
+    for (entity, mut needs, mut anim, mut active, mut moodlets, mut queue) in &mut sims {
+        if tick_interaction(&mut active, &mut needs, dt) {
+            if let Some(moodlet_name) = active.interaction.moodlet {
+                let (mood, impact) = mood_for(moodlet_name);
+                moodlets.add(Moodlet::new(
+                    moodlet_name,
+                    moodlet_name,
+                    mood,
+                    impact,
+                    300.0,
+                    &active.interaction.name,
+                ));
+            }
+            queue.advance();
+            commands.entity(entity).remove::<ActiveInteraction>();
+            *anim = AnimationState::Idle;
+        }
     }
 }
 
@@ -294,5 +397,29 @@ mod tests {
         let socials = social_interactions();
         assert!(socials.iter().any(|s| s.name == "Hug"));
         assert!(socials.iter().all(|s| s.kind == InteractionKind::Social));
+    }
+
+    #[test]
+    fn interaction_applies_effects_and_completes() {
+        let interaction = interaction_from_parts("Sleep".into(), NeedType::Energy, 12.0);
+        let duration = interaction.duration;
+        let mut active = ActiveInteraction {
+            interaction,
+            elapsed: 0.0,
+        };
+        let mut needs = Needs {
+            energy: 30.0,
+            ..Needs::new()
+        };
+        // Halfway: not finished, but energy has risen.
+        assert!(!tick_interaction(&mut active, &mut needs, duration / 2.0));
+        assert!(needs.energy > 30.0);
+        // Finishing tick completes it; needs stay clamped to 100.
+        assert!(tick_interaction(
+            &mut active,
+            &mut needs,
+            duration / 2.0 + 0.1
+        ));
+        assert!(needs.energy <= 100.0);
     }
 }
