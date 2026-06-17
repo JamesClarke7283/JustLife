@@ -7,7 +7,9 @@ use crate::core::resources::GameSpeed;
 use crate::core::state::GameState;
 use crate::sim::AnimationState;
 use crate::sim::moodlet::{ActiveMoodlets, Mood, Moodlet};
+use crate::sim::movement::MoveTo;
 use crate::sim::needs::{NeedType, Needs};
+use crate::world::PlacedObject;
 use crate::world::catalog::ObjectAction;
 
 /// Where a queued interaction came from. Player commands take precedence over
@@ -127,6 +129,8 @@ impl Plugin for InteractionQueuePlugin {
             Update,
             (
                 critical_need_override,
+                routing_system,
+                arrival_system,
                 start_interaction,
                 execute_interaction,
             )
@@ -222,25 +226,73 @@ fn mood_for(name: &str) -> (Mood, i32) {
     }
 }
 
-/// Begin the queued interaction for sims that have arrived (no `RouteTo`) and
-/// aren't already mid-interaction.
+/// Route a sim toward its queued interaction's target object.
 #[allow(clippy::type_complexity)]
-fn start_interaction(
+fn routing_system(
     mut commands: Commands,
+    objects: Query<&Transform, With<PlacedObject>>,
     mut sims: Query<
-        (Entity, &InteractionQueue, &mut AnimationState),
+        (Entity, &Transform, &InteractionQueue, &mut AnimationState),
         (Without<ActiveInteraction>, Without<RouteTo>),
     >,
 ) {
-    for (entity, queue, mut anim) in &mut sims {
-        if let Some(qi) = queue.current() {
-            let interaction = interaction_from_parts(qi.action.clone(), qi.need, qi.rate);
-            *anim = interaction.animation;
-            commands.entity(entity).insert(ActiveInteraction {
-                interaction,
-                elapsed: 0.0,
-            });
+    for (entity, sim_tf, queue, mut anim) in &mut sims {
+        let Some(qi) = queue.current() else { continue };
+        let Ok(obj_tf) = objects.get(qi.target) else {
+            continue;
+        };
+        let target = obj_tf.translation;
+        if sim_tf.translation.distance(target) > 1.5 {
+            let mut move_to = MoveTo::new(target);
+            move_to.arrival_distance = 1.2;
+            commands.entity(entity).insert((
+                RouteTo {
+                    target,
+                    arrival_distance: 1.2,
+                },
+                move_to,
+            ));
+            *anim = AnimationState::Walking;
         }
+    }
+}
+
+/// Once a routing sim has arrived (its `MoveTo` was consumed), drop `RouteTo` so
+/// it can begin its interaction.
+fn arrival_system(
+    mut commands: Commands,
+    arrived: Query<Entity, (With<RouteTo>, Without<MoveTo>)>,
+) {
+    for entity in &arrived {
+        commands.entity(entity).remove::<RouteTo>();
+    }
+}
+
+/// Begin the queued interaction once the sim has reached its target.
+#[allow(clippy::type_complexity)]
+fn start_interaction(
+    mut commands: Commands,
+    objects: Query<&Transform, With<PlacedObject>>,
+    mut sims: Query<
+        (Entity, &Transform, &InteractionQueue, &mut AnimationState),
+        (Without<ActiveInteraction>, Without<RouteTo>),
+    >,
+) {
+    for (entity, sim_tf, queue, mut anim) in &mut sims {
+        let Some(qi) = queue.current() else { continue };
+        // Only start once within reach of the target (or the target is gone).
+        let in_reach = objects
+            .get(qi.target)
+            .map_or(true, |t| sim_tf.translation.distance(t.translation) <= 1.6);
+        if !in_reach {
+            continue;
+        }
+        let interaction = interaction_from_parts(qi.action.clone(), qi.need, qi.rate);
+        *anim = interaction.animation;
+        commands.entity(entity).insert(ActiveInteraction {
+            interaction,
+            elapsed: 0.0,
+        });
     }
 }
 

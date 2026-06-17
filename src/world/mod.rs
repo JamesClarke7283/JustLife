@@ -347,6 +347,12 @@ fn spawn_demo_catalog_props(
         ("bush_round", Vec3::new(7.0, 0.0, -4.0)),
         ("bush_round", Vec3::new(8.0, 0.0, -4.0)),
         ("pool_small", Vec3::new(-8.5, 0.0, -0.5)),
+        // Functional objects in open corners so autonomous sims have reachable
+        // targets to route to (sleep, snack, watch TV, freshen up).
+        ("bed_double", Vec3::new(-3.6, 0.0, 3.4)),
+        ("fridge", Vec3::new(4.2, 0.0, -3.8)),
+        ("shower", Vec3::new(-4.2, 0.0, -3.8)),
+        ("tv_flatscreen", Vec3::new(0.0, 0.0, 4.4)),
     ];
     for (id, pos) in placements {
         if let Some(item) = catalog.get(id) {

@@ -38,7 +38,14 @@ impl Plugin for CorePlugin {
     }
 }
 
-fn setup(mut money: ResMut<resources::MoneyResource>, config: Res<resources::GameConfig>) {
+fn setup(
+    mut money: ResMut<resources::MoneyResource>,
+    mut speed: ResMut<resources::GameSpeed>,
+    config: Res<resources::GameConfig>,
+) {
     // Camera is spawned by render::camera::spawn_camera to avoid duplicate cameras.
     money.amount = config.starting_funds;
+    // Run the simulation by default (no time-control UI yet); build/buy modes
+    // pause it via their own enter/exit handlers.
+    *speed = resources::GameSpeed::Normal;
 }
