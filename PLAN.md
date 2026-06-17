@@ -386,7 +386,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Social isolation: sim talks to self, seeks any social interaction
   - Fun deprivation: sim becomes tense, seeks any fun activity
 
-- [ ] **7.7** Implement sim death system
+- [x] **7.7** Implement sim death system
   - If hunger reaches 0, sim dies of starvation (after grace period)
   - If energy reaches 0, sim collapses but doesn't die immediately
   - Death by emotional extremes (e.g., anger heart attack for elders) — future
