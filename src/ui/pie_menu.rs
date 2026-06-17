@@ -13,6 +13,13 @@ use bevy::prelude::*;
 
 use crate::core::state::GameState;
 use crate::interaction::InteractionCategory;
+use crate::render::camera::IsometricCamera;
+use crate::sim::SimName;
+use crate::world::PlacedObject;
+use crate::world::catalog::CatalogDatabase;
+use crate::world::placed::ObjectGrid;
+use crate::world::wall::snap_to_grid;
+use crate::world::wall_tool::cursor_ground_xz;
 
 /// Radius (px) of the category/interaction ring from the menu centre.
 const RING_RADIUS: f32 = 120.0;
@@ -42,6 +49,11 @@ pub struct PieMenuState {
     pub level: u8,
     /// The sim/object the menu was opened on (the interaction's eventual target).
     pub target: Option<Entity>,
+    /// Text shown in the centre hub (the target's name, or a heading).
+    pub title: String,
+    /// Whether the level-1 ring can back out to a level-0 category ring (sim
+    /// menus) or selecting/Escape just closes (object menus, which are flat).
+    pub allow_back: bool,
 }
 
 /// Marks the menu's UI root so it can be cleared and re-spawned each frame.
@@ -123,14 +135,51 @@ fn category_color(category: InteractionCategory) -> Color {
     }
 }
 
-/// Open the menu at `center` for `target`, populated with category wedges.
-fn open_menu(state: &mut PieMenuState, center: Vec2, target: Option<Entity>) {
+/// Open a social (category) menu at `center` for `target` with the given title.
+fn open_menu(state: &mut PieMenuState, center: Vec2, target: Option<Entity>, title: String) {
     state.open = true;
     state.center = center;
     state.segments = category_segments();
     state.hovered = None;
     state.level = 0;
     state.target = target;
+    state.title = title;
+    state.allow_back = true;
+}
+
+/// Open a flat object menu at `center` showing the object's actions directly.
+fn open_object_menu(
+    state: &mut PieMenuState,
+    center: Vec2,
+    target: Entity,
+    title: String,
+    segments: Vec<PieSegment>,
+) {
+    state.open = true;
+    state.center = center;
+    state.segments = segments;
+    state.hovered = None;
+    state.level = 1; // flat: selecting an action is final
+    state.target = Some(target);
+    state.title = title;
+    state.allow_back = false;
+}
+
+/// Object-action wedges from a catalog item's actions.
+pub fn object_action_segments(actions: &[crate::world::catalog::ObjectAction]) -> Vec<PieSegment> {
+    if actions.is_empty() {
+        return vec![PieSegment {
+            label: "Examine".to_string(),
+            category: InteractionCategory::Object,
+        }];
+    }
+    actions
+        .iter()
+        .map(|a| PieSegment {
+            label: a.name.clone(),
+            category: InteractionCategory::Object,
+        })
+        .collect()
 }
 
 /// Map number keys 1..=9 to a wedge index within range.
@@ -161,13 +210,14 @@ fn pie_menu_input(
     };
     let cursor = window.cursor_position();
 
-    // Q toggles the menu; it opens at the cursor (or screen centre).
+    // Q toggles a generic social menu at the cursor (right-click opens a
+    // context menu on a specific target - see pie_menu_open_on_target).
     if keyboard.just_pressed(KeyCode::KeyQ) {
         if state.open {
             state.open = false;
         } else {
             let center = cursor.unwrap_or(Vec2::new(window.width(), window.height()) * 0.5);
-            open_menu(&mut state, center, None);
+            open_menu(&mut state, center, None, "Actions".to_string());
         }
         return;
     }
@@ -176,15 +226,24 @@ fn pie_menu_input(
         return;
     }
 
-    // Escape backs out of a sub-ring, or closes the category ring.
-    if keyboard.just_pressed(KeyCode::Escape) || mouse.just_pressed(MouseButton::Right) {
-        if state.level == 1 {
+    // Escape backs out of a sub-ring (sim menus) or closes.
+    if keyboard.just_pressed(KeyCode::Escape) {
+        if state.level == 1 && state.allow_back {
             state.segments = category_segments();
             state.hovered = None;
             state.level = 0;
         } else {
             state.open = false;
         }
+        return;
+    }
+
+    // A click well outside the ring dismisses the menu.
+    if mouse.just_pressed(MouseButton::Left)
+        && let Some(c) = cursor
+        && c.distance(state.center) > RING_RADIUS + WEDGE_SIZE
+    {
+        state.open = false;
         return;
     }
 
@@ -213,6 +272,63 @@ fn pie_menu_input(
             // (Enqueueing onto the target sim is wired up in Phase 8.4.)
             state.open = false;
         }
+    }
+}
+
+/// Right-click a sim or object to open a context menu with its name and the
+/// interactions available on it.
+#[allow(clippy::too_many_arguments)]
+fn pie_menu_open_on_target(
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    cameras: Query<(&Camera, &GlobalTransform), With<IsometricCamera>>,
+    grid: Res<ObjectGrid>,
+    catalog: Res<CatalogDatabase>,
+    placed: Query<&PlacedObject>,
+    sims: Query<(Entity, &Transform, &SimName)>,
+    mut state: ResMut<PieMenuState>,
+) {
+    if state.open || !mouse.just_pressed(MouseButton::Right) {
+        return;
+    }
+    let Ok(window) = windows.get_single() else {
+        return;
+    };
+    let Some(cursor) = window.cursor_position() else {
+        return;
+    };
+    let Some(ground) = cursor_ground_xz(&windows, &cameras) else {
+        return;
+    };
+    let point = Vec3::new(ground.x, 0.0, ground.y);
+
+    // Prefer a sim near the cursor -> social context menu.
+    let mut nearest: Option<(f32, Entity, String)> = None;
+    for (entity, transform, name) in &sims {
+        let d = transform.translation.distance(point);
+        if d < 1.4 && nearest.as_ref().is_none_or(|(bd, _, _)| d < *bd) {
+            nearest = Some((d, entity, name.first.clone()));
+        }
+    }
+    if let Some((_, entity, name)) = nearest {
+        open_menu(&mut state, cursor, Some(entity), name);
+        return;
+    }
+
+    // Otherwise an object under the cursor -> its actions.
+    let cell = snap_to_grid(ground);
+    let key = (cell.x as i32, cell.y as i32);
+    if let Some(&entity) = grid.occupied.get(&key)
+        && let Ok(obj) = placed.get(entity)
+        && let Some(item) = catalog.get(&obj.catalog_id)
+    {
+        open_object_menu(
+            &mut state,
+            cursor,
+            entity,
+            item.name.clone(),
+            object_action_segments(&item.actions),
+        );
     }
 }
 
@@ -296,8 +412,12 @@ fn render_pie_menu(
         });
     }
 
-    // Centre hub: shows the current level's context and a cancel hint.
-    let label = if state.level == 1 { "< back" } else { "Cancel" };
+    // Centre hub: shows the target's name (or a back hint inside a sub-ring).
+    let label = if state.level == 1 && state.allow_back {
+        "< back"
+    } else {
+        state.title.as_str()
+    };
     commands.entity(root).with_children(|parent| {
         parent
             .spawn(NodeBundle {
@@ -335,7 +455,7 @@ impl Plugin for PieMenuPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<PieMenuState>().add_systems(
             Update,
-            (pie_menu_input, render_pie_menu)
+            (pie_menu_open_on_target, pie_menu_input, render_pie_menu)
                 .chain()
                 .run_if(in_state(GameState::LiveMode)),
         );
@@ -381,9 +501,34 @@ mod tests {
     #[test]
     fn opening_resets_to_category_level() {
         let mut state = PieMenuState::default();
-        open_menu(&mut state, C, None);
+        open_menu(&mut state, C, None, "Alex".to_string());
         assert!(state.open);
         assert_eq!(state.level, 0);
+        assert!(state.allow_back);
+        assert_eq!(state.title, "Alex");
         assert_eq!(state.segments, category_segments());
+    }
+
+    #[test]
+    fn object_menu_is_flat_and_lists_actions() {
+        use crate::sim::needs::NeedType;
+        use crate::world::catalog::ObjectAction;
+        let actions = vec![
+            ObjectAction {
+                name: "Sleep".to_string(),
+                need: NeedType::Energy,
+                rate: 10.0,
+            },
+            ObjectAction {
+                name: "Relax".to_string(),
+                need: NeedType::Fun,
+                rate: 3.0,
+            },
+        ];
+        let segments = object_action_segments(&actions);
+        assert_eq!(segments.len(), 2);
+        assert_eq!(segments[0].label, "Sleep");
+        // Objects with no actions still offer Examine.
+        assert_eq!(object_action_segments(&[])[0].label, "Examine");
     }
 }
