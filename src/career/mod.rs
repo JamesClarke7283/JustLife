@@ -1,12 +1,13 @@
 use bevy::prelude::*;
 
 pub mod economy;
+pub mod performance;
 
 pub struct CareerPlugin;
 
 impl Plugin for CareerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(economy::EconomyPlugin)
+        app.add_plugins((economy::EconomyPlugin, performance::PerformancePlugin))
             .init_resource::<CareerDatabase>()
             .register_type::<Career>()
             .register_type::<JobPerformance>()
