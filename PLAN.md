@@ -500,7 +500,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Skills improve interaction effectiveness (better meals, faster repairs)
   - Visual skill bar in sim info panel
 
-- [ ] **9.6** Implement bills and expenses
+- [x] **9.6** Implement bills and expenses
   - Weekly bills calculated from: lot value, electricity usage, water usage
   - Bills delivered as notification
   - Pay bills through mailbox or phone interaction
