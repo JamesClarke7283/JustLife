@@ -348,7 +348,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Score each interaction: effectiveness * proximity * trait_modifier
   - Select highest-scoring interaction and push to sim's action queue
 
-- [ ] **7.2** Implement interaction queue system
+- [x] **7.2** Implement interaction queue system
   - `InteractionQueue` component: ordered list of pending interactions
   - Player can queue multiple interactions (click multiple objects/interactions)
   - Autonomy can queue interactions for uncontrolled sims
