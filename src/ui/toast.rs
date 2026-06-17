@@ -37,7 +37,13 @@ fn spawn_toasts(
     mut commands: Commands,
     mut events: EventReader<ToastEvent>,
     existing: Query<&Toast>,
+    windows: Query<&Window>,
 ) {
+    // Left-anchor (top-level right-anchored UI nodes don't position here).
+    let left = windows
+        .get_single()
+        .map(|w| (w.width() - 292.0).max(12.0))
+        .unwrap_or(900.0);
     let base = existing.iter().count();
     for (slot, event) in (base..).zip(events.read()) {
         info!("toast: {}", event.message);
@@ -46,7 +52,7 @@ fn spawn_toasts(
                 NodeBundle {
                     style: Style {
                         position_type: PositionType::Absolute,
-                        right: Val::Px(12.0),
+                        left: Val::Px(left),
                         top: Val::Px(TOAST_TOP + slot as f32 * TOAST_SPACING),
                         width: Val::Px(280.0),
                         padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
