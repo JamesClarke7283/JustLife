@@ -394,7 +394,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Other sims react with grief moodlet
   - Dead sims are removed from active simulation
 
-- [ ] **7.8** Implement sim schedule/routine AI
+- [x] **7.8** Implement sim schedule/routine AI
   - Sims follow approximate daily routines based on traits and career
   - Employed sims wake up before work, eat breakfast, go to work
   - Sims with Neat trait autonomously clean
