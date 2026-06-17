@@ -48,13 +48,15 @@ fn spawn_toasts(
                         position_type: PositionType::Absolute,
                         right: Val::Px(12.0),
                         top: Val::Px(TOAST_TOP + slot as f32 * TOAST_SPACING),
-                        max_width: Val::Px(290.0),
+                        width: Val::Px(280.0),
                         padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
+                        border: UiRect::all(Val::Px(2.0)),
+                        align_items: AlignItems::Center,
                         ..default()
                     },
                     background_color: kind_color(event.kind).into(),
+                    border_color: Color::srgba(1.0, 1.0, 1.0, 0.8).into(),
                     border_radius: BorderRadius::all(Val::Px(6.0)),
-                    z_index: ZIndex::Global(50),
                     ..default()
                 },
                 Toast {
