@@ -3,7 +3,9 @@ use std::collections::VecDeque;
 use bevy::prelude::*;
 
 use crate::core::state::GameState;
+use crate::sim::AnimationState;
 use crate::sim::needs::{NeedType, Needs};
+use crate::world::catalog::ObjectAction;
 
 /// Where a queued interaction came from. Player commands take precedence over
 /// autonomy and are never silently dropped.
@@ -125,6 +127,96 @@ impl Plugin for InteractionQueuePlugin {
     }
 }
 
+/// A need change an interaction applies over its duration (points per minute).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NeedEffect {
+    pub need: NeedType,
+    pub per_minute: f32,
+}
+
+/// Whether an interaction acts on an object or another sim.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InteractionKind {
+    Object,
+    Social,
+}
+
+/// A fully specified interaction (object use or social), ready to execute.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Interaction {
+    pub name: String,
+    pub kind: InteractionKind,
+    /// In-game minutes to perform.
+    pub duration: f32,
+    pub effects: Vec<NeedEffect>,
+    pub animation: AnimationState,
+    /// Moodlet awarded on completion, if any.
+    pub moodlet: Option<&'static str>,
+}
+
+/// Default animation for an object interaction serving a given need.
+pub fn animation_for_need(need: NeedType) -> AnimationState {
+    match need {
+        NeedType::Hunger => AnimationState::Eating,
+        NeedType::Energy => AnimationState::Sleeping,
+        NeedType::Fun => AnimationState::Playing,
+        NeedType::Social => AnimationState::Talking,
+        NeedType::Hygiene | NeedType::Bladder => AnimationState::UsingObject,
+    }
+}
+
+/// Build an object interaction from a catalog [`ObjectAction`]. The duration is
+/// chosen so the interaction restores roughly 40 need points at the given rate.
+pub fn object_interaction(action: &ObjectAction) -> Interaction {
+    let duration = (40.0 / action.rate.max(0.1)).clamp(10.0, 120.0);
+    Interaction {
+        name: action.name.clone(),
+        kind: InteractionKind::Object,
+        duration,
+        effects: vec![NeedEffect {
+            need: action.need,
+            per_minute: action.rate,
+        }],
+        animation: animation_for_need(action.need),
+        moodlet: None,
+    }
+}
+
+/// The multi-sim social interactions available between two nearby sims.
+pub fn social_interactions() -> Vec<Interaction> {
+    let social = |name: &str, dur: f32, effects: &[(NeedType, f32)], moodlet| Interaction {
+        name: name.to_string(),
+        kind: InteractionKind::Social,
+        duration: dur,
+        effects: effects
+            .iter()
+            .map(|(n, r)| NeedEffect {
+                need: *n,
+                per_minute: *r,
+            })
+            .collect(),
+        animation: AnimationState::Socializing,
+        moodlet,
+    };
+    vec![
+        social("Chat", 20.0, &[(NeedType::Social, 4.0)], None),
+        social(
+            "Joke",
+            15.0,
+            &[(NeedType::Social, 3.0), (NeedType::Fun, 3.0)],
+            Some("Amused"),
+        ),
+        social("Hug", 10.0, &[(NeedType::Social, 6.0)], Some("Warm Fuzzy")),
+        social(
+            "Flirt",
+            15.0,
+            &[(NeedType::Social, 4.0), (NeedType::Fun, 2.0)],
+            Some("Flirty"),
+        ),
+        social("Fight", 12.0, &[(NeedType::Fun, -2.0)], Some("Angry")),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,5 +272,27 @@ mod tests {
         needs.hunger = 5.0;
         // Hunger is lower, so it's the most critical.
         assert_eq!(critical_need(&needs), Some(NeedType::Hunger));
+    }
+
+    #[test]
+    fn object_interaction_from_action() {
+        let action = ObjectAction {
+            name: "Sleep".into(),
+            need: NeedType::Energy,
+            rate: 12.0,
+        };
+        let i = object_interaction(&action);
+        assert_eq!(i.kind, InteractionKind::Object);
+        assert_eq!(i.animation, AnimationState::Sleeping);
+        assert_eq!(i.effects.len(), 1);
+        assert_eq!(i.effects[0].need, NeedType::Energy);
+        assert!(i.duration > 0.0);
+    }
+
+    #[test]
+    fn social_table_populated_and_social_kind() {
+        let socials = social_interactions();
+        assert!(socials.iter().any(|s| s.name == "Hug"));
+        assert!(socials.iter().all(|s| s.kind == InteractionKind::Social));
     }
 }
