@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 
+pub mod hud;
 pub mod main_menu;
 pub mod pie_menu;
 
@@ -7,10 +8,14 @@ pub struct UIPlugin;
 
 impl Plugin for UIPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((pie_menu::PieMenuPlugin, main_menu::MainMenuPlugin))
-            .init_resource::<UIMode>()
-            .register_type::<UIMode>()
-            .register_type::<NeedsBarStyle>();
+        app.add_plugins((
+            pie_menu::PieMenuPlugin,
+            main_menu::MainMenuPlugin,
+            hud::HudPlugin,
+        ))
+        .init_resource::<UIMode>()
+        .register_type::<UIMode>()
+        .register_type::<NeedsBarStyle>();
     }
 }
 
