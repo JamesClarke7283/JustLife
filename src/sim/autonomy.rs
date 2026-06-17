@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 
+use crate::core::resources::GameTime;
 use crate::core::state::GameState;
 use crate::sim::interaction::{InteractionQueue, InteractionSource, QueuedInteraction};
 use crate::sim::needs::{NeedType, Needs};
@@ -40,6 +41,54 @@ pub fn need_weights(traits: &[Trait]) -> [f32; 6] {
     w
 }
 
+/// Time-of-day need multipliers (in `NEED_ORDER`) that bias an approximate
+/// daily routine: sleep at night, meals morning/midday/evening, hygiene after
+/// waking, and winding down with fun/social in the evening.
+pub fn schedule_multipliers(hour: u32) -> [f32; 6] {
+    // [hunger, energy, social, fun, hygiene, bladder]
+    let mut m = [1.0f32; 6];
+    match hour {
+        // Night: strongly prefer sleep; little interest in fun/social.
+        22..=23 | 0..=5 => {
+            m[1] = 2.0; // energy
+            m[2] = 0.6; // social
+            m[3] = 0.5; // fun
+        }
+        // Early morning: breakfast and freshening up.
+        6..=9 => {
+            m[0] = 1.4; // hunger
+            m[4] = 1.3; // hygiene
+        }
+        // Midday: lunch.
+        11..=13 => {
+            m[0] = 1.4; // hunger
+        }
+        // Evening: dinner, then unwind with fun and company.
+        17..=20 => {
+            m[0] = 1.3; // hunger
+            m[2] = 1.2; // social
+            m[3] = 1.3; // fun
+        }
+        _ => {}
+    }
+    m
+}
+
+/// Full autonomy weights for the current hour: trait weights modulated by the
+/// daily schedule, plus trait-driven routine bias (e.g. Active sims seek
+/// exercise/fun during the day).
+pub fn routine_weights(hour: u32, traits: &[Trait]) -> [f32; 6] {
+    let mut w = need_weights(traits);
+    let schedule = schedule_multipliers(hour);
+    for (weight, mult) in w.iter_mut().zip(schedule) {
+        *weight *= mult;
+    }
+    if traits.contains(&Trait::Active) && (8..20).contains(&hour) {
+        w[3] *= 1.3; // daytime exercise/fun
+    }
+    w
+}
+
 /// Pick the most urgent need, returning it with its priority value.
 pub fn pick_top_need(needs: &Needs, weights: &[f32; 6]) -> (NeedType, f32) {
     let mut best = (NeedType::Hunger, f32::MIN);
@@ -62,6 +111,7 @@ pub fn score_candidate(rate: f32, distance: f32, trait_mod: f32) -> f32 {
 /// finds the best object satisfying its most urgent need, and queues it.
 fn autonomy_system(
     catalog: Res<CatalogDatabase>,
+    time: Res<GameTime>,
     objects: Query<(Entity, &PlacedObject, &Transform)>,
     mut sims: Query<(
         &Needs,
@@ -75,7 +125,7 @@ fn autonomy_system(
         if *anim != AnimationState::Idle || !queue.is_empty() {
             continue;
         }
-        let weights = need_weights(&traits.traits);
+        let weights = routine_weights(time.hour, &traits.traits);
         let (top, priority) = pick_top_need(needs, &weights);
         // Don't act on nearly-satisfied needs.
         if priority < 15.0 {
@@ -172,5 +222,44 @@ mod tests {
         assert!(score_candidate(10.0, 1.0, 1.0) > score_candidate(10.0, 5.0, 1.0));
         // Same distance, higher rate wins.
         assert!(score_candidate(20.0, 2.0, 1.0) > score_candidate(10.0, 2.0, 1.0));
+    }
+
+    #[test]
+    fn schedule_prefers_sleep_at_night_and_meals_in_morning() {
+        let night = schedule_multipliers(2);
+        assert_eq!(night[1], 2.0); // energy boosted
+        assert!(night[3] < 1.0); // fun suppressed
+
+        let morning = schedule_multipliers(7);
+        assert_eq!(morning[0], 1.4); // hunger boosted
+        assert!(morning[4] > 1.0); // hygiene boosted
+
+        // Mid-afternoon is a neutral routine window.
+        assert_eq!(schedule_multipliers(15), [1.0; 6]);
+    }
+
+    #[test]
+    fn night_routine_flips_a_tie_toward_sleep() {
+        // Fun is slightly more depleted than energy. In the afternoon fun wins;
+        // at night the sleep boost flips the choice to energy.
+        let needs = Needs {
+            hunger: 100.0,
+            energy: 50.0,
+            social: 100.0,
+            fun: 45.0,
+            hygiene: 100.0,
+            bladder: 100.0,
+        };
+        let (day_need, _) = pick_top_need(&needs, &routine_weights(15, &[]));
+        assert_eq!(day_need, NeedType::Fun);
+        let (night_need, _) = pick_top_need(&needs, &routine_weights(2, &[]));
+        assert_eq!(night_need, NeedType::Energy);
+    }
+
+    #[test]
+    fn active_trait_boosts_daytime_fun() {
+        let with = routine_weights(12, &[Trait::Active]);
+        let without = routine_weights(12, &[]);
+        assert!(with[3] > without[3]);
     }
 }
