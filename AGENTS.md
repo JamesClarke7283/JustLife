@@ -60,6 +60,23 @@ chrome-devtools MCP (serve `web/` then reload/screenshot/console):
 - The `Uncaught (in promise)` from `winit ... throw` on web is normal (event-loop
   unwind), as are `.meta`/favicon 404s and SSAO/DoF "not supported" logs.
 
+## Input & UI Verification (headless WASM)
+
+- **Synthetic mouse events do NOT reach winit** in the chrome-devtools harness
+  (`click`/`drag`/`hover` dispatch DOM events the Bevy canvas ignores), but
+  **`press_key` DOES** once the canvas is focused. So: give any UI you need to
+  screenshot a **keyboard entry point**, then verify by
+  `evaluate_script` → `canvas.focus()` → `press_key`. Example: the pie menu
+  (`src/ui/pie_menu.rs`) opens with `Q` and selects wedges with number keys
+  `1-9` (in addition to the mouse path), which is what made it screenshot-able.
+- **Bevy 0.14 UI overlays**: position absolutely with `Style { position_type:
+  Absolute, left/top: Val::Px(..) }` over the 3D view; `NodeBundle` supports
+  `border_radius: BorderRadius::all(..)` for circular buttons, and `Color` has
+  `.lighter(f)` / `.with_alpha(f)` for hover states. `TextStyle { font_size,
+  color, ..default() }` uses the bundled default font (no asset handle needed).
+  Immediate-mode menus (despawn-all + respawn each frame from a resource) work
+  fine and keep render logic stateless — mirror `placement.rs`'s ghost pattern.
+
 ## Project Structure
 
 - `src/core/` — shared ECS resources, events, components, state, time

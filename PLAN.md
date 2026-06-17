@@ -403,7 +403,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
 
 ## Phase 8: Interaction & Social System
 
-- [ ] **8.1** Implement radial/pie menu system
+- [x] **8.1** Implement radial/pie menu system
   - Click on sim or object → show radial menu of available interactions
   - Pie menu segments: 4-8 options around cursor
   - Hover segment to highlight, click to select
