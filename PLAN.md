@@ -432,7 +432,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Conversation can turn from friendly to romantic or tense based on interactions
   - Visual: speech bubbles with icons, thought bubbles with mood indicators
 
-- [ ] **8.5** Implement moodlet-based social effects
+- [x] **8.5** Implement moodlet-based social effects
   - Happy sims have more successful social interactions
   - Angry sims may start arguments autonomously
   - Sad sims receive comfort interactions
