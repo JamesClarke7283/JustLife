@@ -477,7 +477,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
     - **Criminal**: Pickpocket → Thief → Con Artist → Mastermind
   - Career data loaded from RON config file
 
-- [ ] **9.3** Implement job performance system
+- [x] **9.3** Implement job performance system
   - `JobPerformance` component: daily performance score (0-100)
   - Performance affected by: mood at work, skills, relationships with coworkers
   - High performance → promotion; low performance → demotion
