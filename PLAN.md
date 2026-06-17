@@ -538,7 +538,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Hovering over a bar shows exact number and what affects it
   - Clicking a need bar highlights all objects that satisfy that need
 
-- [ ] **10.4** Implement sim info panel
+- [x] **10.4** Implement sim info panel
   - Open sim panel by clicking sim portrait or double-clicking sim
   - Shows: name, age, gender, traits, career, aspiration
   - Shows: all 6 needs with exact values
