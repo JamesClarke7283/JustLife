@@ -243,7 +243,7 @@ fn apply_menu_action(
 ) {
     for MenuAction(button) in events.read() {
         match button {
-            MenuButton::NewGame => next_state.set(GameState::LiveMode),
+            MenuButton::NewGame => next_state.set(GameState::CreateASim),
             MenuButton::LoadGame => info!("Load Game: no saves yet"),
             MenuButton::Options => {
                 *screen = MenuScreen::Options;

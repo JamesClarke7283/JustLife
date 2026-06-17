@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 
+use crate::core::state::GameState;
+
 pub mod appearance;
 pub mod autonomy;
 pub mod control;
@@ -44,7 +46,8 @@ impl Plugin for SimPlugin {
         .register_type::<movement::MoveTo>()
         .register_type::<movement::PathState>()
         .register_type::<AnimationState>()
-        .add_systems(Startup, spawn_demo_sim)
+        .init_resource::<SimConfig>()
+        .add_systems(OnEnter(GameState::LiveMode), spawn_player_sim)
         .add_systems(Update, needs::decay_needs)
         .add_systems(Update, needs::update_need_moodlets)
         .add_systems(Update, moodlet::update_moodlets)
@@ -548,71 +551,60 @@ pub mod moodlet {
     }
 }
 
-fn spawn_demo_sim(
+/// The player's chosen sim, configured in Create-A-Sim and spawned on the lot
+/// when entering Live mode.
+#[derive(Resource, Clone, Debug)]
+pub struct SimConfig {
+    pub first: String,
+    pub last: String,
+    pub gender: SimGender,
+    pub traits: Vec<Trait>,
+    /// Skin-tone index (cosmetic; a single skin texture is used for now).
+    pub skin: usize,
+}
+
+impl Default for SimConfig {
+    fn default() -> Self {
+        Self {
+            first: "Alex".to_string(),
+            last: "Sample".to_string(),
+            gender: SimGender::Custom,
+            traits: vec![Trait::Cheerful, Trait::Outgoing],
+            skin: 0,
+        }
+    }
+}
+
+/// Spawn the player's single configured sim on the lot (once) when Live mode
+/// begins. Guarded so re-entering Live mode (e.g. from Build mode) is a no-op.
+fn spawn_player_sim(
     mut commands: Commands,
+    config: Res<SimConfig>,
     mut sim_manager: ResMut<SimManager>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
 ) {
+    if !sim_manager.sims.is_empty() {
+        return;
+    }
     let skin_texture: Handle<Image> = asset_server.load("textures/sim_skin_tone.png");
-
-    // Two sims spawned close together so they can strike up a conversation.
-    spawn_one_sim(
-        &mut commands,
-        &mut sim_manager,
-        &mut meshes,
-        &mut materials,
-        skin_texture.clone(),
-        ("Alex", "Sample"),
-        &[Trait::Cheerful, Trait::Outgoing],
-        Vec3::new(-0.4, 0.0, 2.0),
-        needs::Needs {
-            hunger: 55.0,
-            energy: 35.0,
-            social: 70.0,
-            fun: 50.0,
-            // Just below the critical threshold (but above hard-critical 20) so
-            // the HUD's Hygiene bar visibly flashes without yanking autonomy.
-            hygiene: 22.0,
-            bladder: 60.0,
-        },
-    );
-    spawn_one_sim(
-        &mut commands,
-        &mut sim_manager,
-        &mut meshes,
-        &mut materials,
-        skin_texture.clone(),
-        ("Sam", "Rivera"),
-        &[Trait::Cheerful, Trait::Creative],
-        Vec3::new(1.3, 0.0, 2.2),
-        needs::Needs {
-            hunger: 60.0,
-            energy: 55.0,
-            social: 65.0,
-            fun: 55.0,
-            hygiene: 70.0,
-            bladder: 65.0,
-        },
-    );
-    // A third sim nearby so a group conversation forms (Phase 8.7).
     spawn_one_sim(
         &mut commands,
         &mut sim_manager,
         &mut meshes,
         &mut materials,
         skin_texture,
-        ("Robin", "Okafor"),
-        &[Trait::Outgoing, Trait::Genius],
-        Vec3::new(0.4, 0.0, 0.8),
+        (config.first.as_str(), config.last.as_str()),
+        &config.traits,
+        Vec3::new(0.0, 0.0, 2.0),
         needs::Needs {
-            hunger: 62.0,
-            energy: 60.0,
+            hunger: 70.0,
+            energy: 65.0,
             social: 60.0,
-            fun: 58.0,
-            hygiene: 72.0,
-            bladder: 68.0,
+            fun: 60.0,
+            hygiene: 70.0,
+            bladder: 70.0,
         },
     );
 }

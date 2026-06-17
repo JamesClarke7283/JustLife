@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 
+pub mod create_a_sim;
 pub mod hud;
 pub mod main_menu;
 pub mod pie_menu;
@@ -14,6 +15,7 @@ impl Plugin for UIPlugin {
             main_menu::MainMenuPlugin,
             hud::HudPlugin,
             sim_panel::SimPanelPlugin,
+            create_a_sim::CreateASimPlugin,
         ))
         .init_resource::<UIMode>()
         .register_type::<UIMode>()
