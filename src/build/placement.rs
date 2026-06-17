@@ -118,6 +118,7 @@ fn placement_tool(
     cameras: Query<(&Camera, &GlobalTransform), With<IsometricCamera>>,
     walls: Query<&Wall>,
     ghosts: Query<Entity, With<PlacementGhost>>,
+    gate: Res<crate::build::confirm::PurchaseGate>,
     mut money: ResMut<MoneyResource>,
     mut state: ResMut<PlacementState>,
     mut history: ResMut<BuildHistory>,
@@ -163,7 +164,9 @@ fn placement_tool(
 
     let cells = footprint_cells(pos, item.footprint, rotation);
     let affordable = money.amount >= item.price as i64;
-    let valid = affordable && footprint_ok(&cells, &grid, &walls);
+    // Expensive items must be confirmed first (the confirm dialog handles it).
+    let confirmed = !crate::build::confirm::needs_confirm(item.price, id, &gate);
+    let valid = affordable && confirmed && footprint_ok(&cells, &grid, &walls);
 
     spawn_ghost(
         &mut commands,

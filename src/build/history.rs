@@ -67,11 +67,19 @@ impl BuildHistory {
     }
 }
 
+/// A request to undo or redo, raised by the keyboard or a toolbar button.
+#[derive(Event, Clone, Copy, PartialEq, Eq)]
+pub enum HistoryRequest {
+    Undo,
+    Redo,
+}
+
 pub struct BuildHistoryPlugin;
 
 impl Plugin for BuildHistoryPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<BuildHistory>()
+            .add_event::<HistoryRequest>()
             .add_systems(Update, undo_redo_system.run_if(in_build_or_buy_mode))
             .add_systems(OnExit(GameState::BuildMode), clear_history)
             .add_systems(OnExit(GameState::BuyMode), clear_history);
@@ -110,6 +118,7 @@ fn respawn(
 #[allow(clippy::too_many_arguments)]
 fn undo_redo_system(
     keyboard: Res<ButtonInput<KeyCode>>,
+    mut requests: EventReader<HistoryRequest>,
     catalog: Res<CatalogDatabase>,
     mut history: ResMut<BuildHistory>,
     mut money: ResMut<MoneyResource>,
@@ -117,14 +126,18 @@ fn undo_redo_system(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
+    // Trigger from Ctrl+Z / Ctrl+Y or from toolbar Undo/Redo buttons.
     let ctrl = keyboard.pressed(KeyCode::ControlLeft) || keyboard.pressed(KeyCode::ControlRight);
-    if !ctrl {
-        return;
+    let mut want_undo = ctrl && keyboard.just_pressed(KeyCode::KeyZ);
+    let mut want_redo = ctrl && keyboard.just_pressed(KeyCode::KeyY);
+    for request in requests.read() {
+        match request {
+            HistoryRequest::Undo => want_undo = true,
+            HistoryRequest::Redo => want_redo = true,
+        }
     }
 
-    if keyboard.just_pressed(KeyCode::KeyZ)
-        && let Some(mut action) = history.undo.pop()
-    {
+    if want_undo && let Some(mut action) = history.undo.pop() {
         match action.op {
             // Undo a placement: remove it and refund what was spent.
             Op::Place => {
@@ -148,9 +161,7 @@ fn undo_redo_system(
         history.redo.push(action);
     }
 
-    if keyboard.just_pressed(KeyCode::KeyY)
-        && let Some(mut action) = history.redo.pop()
-    {
+    if want_redo && let Some(mut action) = history.redo.pop() {
         match action.op {
             // Redo a placement: re-create it and re-charge the cost.
             Op::Place => {
