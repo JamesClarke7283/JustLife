@@ -530,7 +530,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Top-left: household funds display
   - Mini-map in corner showing lot layout
 
-- [ ] **10.3** Implement needs bar UI
+- [x] **10.3** Implement needs bar UI
   - 6 colored bars matching need type:
     - Hunger (green), Energy (yellow), Social (purple), Fun (pink), Hygiene (teal), Bladder (blue)
   - Bar fills/shrinks with smooth animation
