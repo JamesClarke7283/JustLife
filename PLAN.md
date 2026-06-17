@@ -440,7 +440,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Embarrassed sims avoid social contact
   - Mood affects conversation outcome multipliers
 
-- [ ] **8.6** Implement sentiment system
+- [x] **8.6** Implement sentiment system
   - Sentiments are long-term relationship modifiers from significant events
   - Positive sentiments: "Grateful" (sim A helped sim B), "Close" (spent quality time)
   - Negative sentiments: "Betrayed" (caught cheating), "Furious" (had a fight)
