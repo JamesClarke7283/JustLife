@@ -424,7 +424,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Relationship levels: Stranger, Acquaintance, Friend, Good Friend, Best Friend, Romantic Interest, Partner, Spouse, Enemy, Nemesis
   - Relationship milestones unlock new interactions (e.g., "Propose" only at high romance)
 
-- [ ] **8.4** Implement conversation system
+- [x] **8.4** Implement conversation system
   - Two sims in proximity can initiate a conversation
   - Conversations have a context (friendly, romantic, tense, etc.)
   - Each interaction within conversation modifies relationship scores
