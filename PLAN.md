@@ -492,7 +492,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Days off: weekends or career-specific off days
   - Vacation days: accumulated PTO
 
-- [ ] **9.5** Implement skills system
+- [x] **9.5** Implement skills system
   - Skills: Cooking, Handiness, Charisma, Fitness, Logic, Creativity, Gardening, Fishing, Programming
   - `Skills` component: HashMap<SkillType, SkillLevel> where level is 0-10
   - Skill gains from interactions: cooking → Cooking skill, programming → Logic skill
