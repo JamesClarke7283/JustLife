@@ -2,6 +2,7 @@ use bevy::prelude::*;
 
 pub mod appearance;
 pub mod autonomy;
+pub mod interaction;
 pub mod movement;
 pub mod needs;
 
@@ -9,38 +10,41 @@ pub struct SimPlugin;
 
 impl Plugin for SimPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(autonomy::AutonomyPlugin)
-            .init_resource::<SimManager>()
-            .init_resource::<needs::NeedModifiers>()
-            .insert_resource(TraitDatabase::default_populated())
-            .register_type::<SimId>()
-            .register_type::<SimName>()
-            .register_type::<needs::Needs>()
-            .register_type::<needs::NeedState>()
-            .register_type::<moodlet::Moodlet>()
-            .register_type::<moodlet::ActiveMoodlets>()
-            .register_type::<moodlet::Mood>()
-            .register_type::<SimAge>()
-            .register_type::<SimGender>()
-            .register_type::<SimTraits>()
-            .register_type::<Trait>()
-            .register_type::<TraitDatabase>()
-            .register_type::<TraitInfo>()
-            .register_type::<appearance::SimAppearance>()
-            .register_type::<appearance::SimBody>()
-            .register_type::<appearance::SimBodyPart>()
-            .register_type::<appearance::BodyPart>()
-            .register_type::<appearance::SimVoice>()
-            .register_type::<movement::MoveTo>()
-            .register_type::<movement::PathState>()
-            .register_type::<AnimationState>()
-            .add_systems(Startup, spawn_demo_sim)
-            .add_systems(Update, needs::decay_needs)
-            .add_systems(Update, needs::update_need_moodlets)
-            .add_systems(Update, moodlet::update_moodlets)
-            .add_systems(Update, movement::move_to_system)
-            .add_systems(Update, movement::path_follow_system)
-            .add_systems(Update, animation_system);
+        app.add_plugins((
+            autonomy::AutonomyPlugin,
+            interaction::InteractionQueuePlugin,
+        ))
+        .init_resource::<SimManager>()
+        .init_resource::<needs::NeedModifiers>()
+        .insert_resource(TraitDatabase::default_populated())
+        .register_type::<SimId>()
+        .register_type::<SimName>()
+        .register_type::<needs::Needs>()
+        .register_type::<needs::NeedState>()
+        .register_type::<moodlet::Moodlet>()
+        .register_type::<moodlet::ActiveMoodlets>()
+        .register_type::<moodlet::Mood>()
+        .register_type::<SimAge>()
+        .register_type::<SimGender>()
+        .register_type::<SimTraits>()
+        .register_type::<Trait>()
+        .register_type::<TraitDatabase>()
+        .register_type::<TraitInfo>()
+        .register_type::<appearance::SimAppearance>()
+        .register_type::<appearance::SimBody>()
+        .register_type::<appearance::SimBodyPart>()
+        .register_type::<appearance::BodyPart>()
+        .register_type::<appearance::SimVoice>()
+        .register_type::<movement::MoveTo>()
+        .register_type::<movement::PathState>()
+        .register_type::<AnimationState>()
+        .add_systems(Startup, spawn_demo_sim)
+        .add_systems(Update, needs::decay_needs)
+        .add_systems(Update, needs::update_need_moodlets)
+        .add_systems(Update, moodlet::update_moodlets)
+        .add_systems(Update, movement::move_to_system)
+        .add_systems(Update, movement::path_follow_system)
+        .add_systems(Update, animation_system);
     }
 }
 
@@ -583,7 +587,7 @@ fn spawn_demo_sim(
             appearance::SimBody,
             // SpatialBundle so the sim's body-part mesh children render (B0004).
             SpatialBundle::from_transform(Transform::from_xyz(0.0, 0.0, 2.0)),
-            autonomy::InteractionQueue::default(),
+            interaction::InteractionQueue::default(),
         ))
         .with_children(|parent| {
             appearance::build_sim_body(

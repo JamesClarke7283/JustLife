@@ -1,25 +1,11 @@
 use bevy::prelude::*;
 
 use crate::core::state::GameState;
+use crate::sim::interaction::{InteractionQueue, InteractionSource, QueuedInteraction};
 use crate::sim::needs::{NeedType, Needs};
 use crate::sim::{AnimationState, SimTraits, Trait};
 use crate::world::PlacedObject;
 use crate::world::catalog::CatalogDatabase;
-
-/// An interaction a sim intends to perform on a target object.
-#[derive(Debug, Clone, PartialEq)]
-pub struct QueuedInteraction {
-    pub target: Entity,
-    pub action: String,
-    pub need: NeedType,
-    pub rate: f32,
-}
-
-/// Ordered list of interactions a sim plans to perform (autonomy or player).
-#[derive(Component, Default)]
-pub struct InteractionQueue {
-    pub items: Vec<QueuedInteraction>,
-}
 
 /// Needs in the canonical order used by the weight array.
 const NEED_ORDER: [NeedType; 6] = [
@@ -86,7 +72,7 @@ fn autonomy_system(
     )>,
 ) {
     for (needs, traits, anim, sim_tf, mut queue) in &mut sims {
-        if *anim != AnimationState::Idle || !queue.items.is_empty() {
+        if *anim != AnimationState::Idle || !queue.is_empty() {
             continue;
         }
         let weights = need_weights(&traits.traits);
@@ -114,11 +100,12 @@ fn autonomy_system(
         }
 
         if let Some((target, action, rate, _)) = best {
-            queue.items.push(QueuedInteraction {
+            queue.enqueue(QueuedInteraction {
                 target,
                 action,
                 need: top,
                 rate,
+                source: InteractionSource::Autonomy,
             });
         }
     }
