@@ -507,7 +507,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Unpaid bills → repossession of items after deadline
   - Optional: online shopping for groceries (auto-delivery)
 
-- [ ] **9.7** Implement freelance/odd jobs
+- [x] **9.7** Implement freelance/odd jobs
   - Sims can pick up gig work from phone/computer
   - Gig types: programming, painting, writing, repair, delivery
   - Gigs have a deadline and pay amount
