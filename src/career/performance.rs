@@ -11,7 +11,6 @@ use crate::career::skills::skill_for_career;
 use crate::career::{Career, CareerDatabase, JobPerformance, Skills};
 use crate::core::resources::GameTime;
 use crate::core::state::GameState;
-use crate::sim::SimId;
 use crate::sim::moodlet::{ActiveMoodlets, Mood};
 
 /// Score at or above which the sim is promoted.
@@ -73,26 +72,6 @@ pub fn apply_outcome(level: u8, outcome: CareerOutcome, max_level: u8) -> u8 {
     }
 }
 
-/// Give any careerless demo sim a starter Tech job so the system has subjects.
-fn assign_demo_careers(
-    mut commands: Commands,
-    sims: Query<Entity, (With<SimId>, Without<Career>)>,
-) {
-    for entity in &sims {
-        commands.entity(entity).insert((
-            Career {
-                name: "Tech".to_string(),
-                level: 1,
-                daily_performance: 50.0,
-            },
-            JobPerformance {
-                score: 50.0,
-                days_missed: 0,
-            },
-        ));
-    }
-}
-
 /// Once per in-game day, score each employed sim's day and apply promotions or
 /// demotions based on the result.
 #[allow(clippy::type_complexity)]
@@ -135,9 +114,10 @@ pub struct PerformancePlugin;
 
 impl Plugin for PerformancePlugin {
     fn build(&self, app: &mut App) {
+        // No auto-employment: the player takes a job via the job board (J).
         app.add_systems(
             Update,
-            (assign_demo_careers, daily_performance_system).run_if(in_state(GameState::LiveMode)),
+            daily_performance_system.run_if(in_state(GameState::LiveMode)),
         );
     }
 }

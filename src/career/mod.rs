@@ -2,6 +2,7 @@ use bevy::prelude::*;
 
 pub mod economy;
 pub mod gigs;
+pub mod job_board;
 pub mod performance;
 pub mod skills;
 pub mod work;
@@ -13,6 +14,7 @@ impl Plugin for CareerPlugin {
         app.add_plugins((
             economy::EconomyPlugin,
             gigs::GigPlugin,
+            job_board::JobBoardPlugin,
             performance::PerformancePlugin,
             skills::SkillsPlugin,
             work::WorkSchedulePlugin,
