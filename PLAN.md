@@ -522,7 +522,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Background: slow-pan 3D scene or animated neighborhood
   - Options menu: resolution, volume, controls, language
 
-- [ ] **10.2** Implement HUD overlay
+- [x] **10.2** Implement HUD overlay
   - Bottom panel: needs bars (6 horizontal bars for current needs)
   - Bottom-left: sim portrait with mood indicator
   - Bottom-center: interaction queue display (upcoming actions)
