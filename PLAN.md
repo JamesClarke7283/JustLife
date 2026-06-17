@@ -410,7 +410,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Categories expand into sub-menus (e.g., "Friendly" → "Chat", "Joke", "Hug")
   - Pie menu styled with The Sims aesthetic (clean, colorful icons)
 
-- [ ] **8.2** Define social interaction catalog
+- [x] **8.2** Define social interaction catalog
   - **Friendly**: Chat, Joke, Compliment, Hug, Ask About Day, Be Funny, Console
   - **Romantic**: Flirt, Compliment Appearance, Hold Hands, Kiss, Propose, Break Up
   - **Mean**: Insult, Argue, Fight, Slap, Steal, Spread Rumor
