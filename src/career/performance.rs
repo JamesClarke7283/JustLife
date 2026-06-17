@@ -7,7 +7,8 @@
 
 use bevy::prelude::*;
 
-use crate::career::{Career, CareerDatabase, JobPerformance};
+use crate::career::skills::skill_for_career;
+use crate::career::{Career, CareerDatabase, JobPerformance, Skills};
 use crate::core::resources::GameTime;
 use crate::core::state::GameState;
 use crate::sim::SimId;
@@ -94,21 +95,31 @@ fn assign_demo_careers(
 
 /// Once per in-game day, score each employed sim's day and apply promotions or
 /// demotions based on the result.
+#[allow(clippy::type_complexity)]
 fn daily_performance_system(
     game_time: Res<GameTime>,
     careers: Res<CareerDatabase>,
     mut last_day: Local<u32>,
-    mut sims: Query<(&mut Career, &mut JobPerformance, &ActiveMoodlets)>,
+    mut sims: Query<(
+        &mut Career,
+        &mut JobPerformance,
+        &ActiveMoodlets,
+        Option<&Skills>,
+    )>,
 ) {
     if game_time.day == *last_day {
         return;
     }
     *last_day = game_time.day;
 
-    for (mut career, mut perf, moods) in &mut sims {
+    for (mut career, mut perf, moods, skills) in &mut sims {
+        // The career's relevant skill raises performance (and so promotion odds).
+        let skill_level = skills
+            .map(|s| s.level(skill_for_career(&career.name)))
+            .unwrap_or(0);
         // Attendance modelling lands with the work schedule (9.4); assume the
         // sim showed up for now.
-        let score = performance_for_day(moods.dominant_mood(), 3);
+        let score = performance_for_day(moods.dominant_mood(), skill_level);
         perf.score = score;
         let max_level = careers
             .get(&career.name)

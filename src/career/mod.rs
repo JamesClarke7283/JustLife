@@ -2,6 +2,7 @@ use bevy::prelude::*;
 
 pub mod economy;
 pub mod performance;
+pub mod skills;
 pub mod work;
 
 pub struct CareerPlugin;
@@ -11,6 +12,7 @@ impl Plugin for CareerPlugin {
         app.add_plugins((
             economy::EconomyPlugin,
             performance::PerformancePlugin,
+            skills::SkillsPlugin,
             work::WorkSchedulePlugin,
         ))
         .init_resource::<CareerDatabase>()
@@ -107,10 +109,12 @@ pub struct JobPerformance {
     pub days_missed: u32,
 }
 
+/// A sim's skill experience. Levels (0-10) are derived from accumulated XP per
+/// skill (see [`skills::level_for_xp`]).
 #[derive(Component, Default, Debug, Clone, PartialEq, Reflect)]
 #[reflect(Component)]
 pub struct Skills {
-    pub levels: bevy::utils::HashMap<SkillType, u8>,
+    pub progress: bevy::utils::HashMap<SkillType, f32>,
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
