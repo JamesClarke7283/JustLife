@@ -2,6 +2,7 @@ use bevy::prelude::*;
 
 pub mod appearance;
 pub mod autonomy;
+pub mod desperation;
 pub mod interaction;
 pub mod movement;
 pub mod needs;
@@ -13,6 +14,7 @@ impl Plugin for SimPlugin {
         app.add_plugins((
             autonomy::AutonomyPlugin,
             interaction::InteractionQueuePlugin,
+            desperation::DesperationPlugin,
         ))
         .init_resource::<SimManager>()
         .init_resource::<needs::NeedModifiers>()
