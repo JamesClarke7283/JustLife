@@ -547,7 +547,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Shows: moodlets list
   - Tab interface: Needs, Skills, Relationships, Career, Inventory
 
-- [ ] **10.5** Implement pie menu interaction UI
+- [x] **10.5** Implement pie menu interaction UI
   - Radial menu appears on right-click or tap on sim/object
   - Center shows the object/sim name
   - Segments show available interactions with icons
