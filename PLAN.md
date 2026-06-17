@@ -556,7 +556,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Menu closes on outside click or Escape
   - Disabled interactions grayed out with tooltip explaining why
 
-- [ ] **10.6** Implement build mode UI toolbar
+- [x] **10.6** Implement build mode UI toolbar
   - Left sidebar: tool categories (Wall, Floor, Door, Window, Staircase)
   - Bottom panel: selected tool options (wall style, floor material)
   - Right sidebar: catalog browser when in buy mode
