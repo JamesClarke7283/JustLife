@@ -355,7 +355,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Interactions execute sequentially; sim walks to object, then performs action
   - Cancel queued interactions on new player command or critical need override
 
-- [ ] **7.3** Define interaction system
+- [x] **7.3** Define interaction system
   - `Interaction` struct: name, duration, needs_effects, required_object, animation_state
   - Interactions are defined per object type (bed → "Sleep", "Nap"; fridge → "Get Snack", "Cook Meal")
   - Some interactions require multiple objects (cook meal → fridge + stove + counter)
