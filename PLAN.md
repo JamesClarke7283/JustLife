@@ -417,7 +417,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - **Funny**: Tell Joke, Funny Story, Prank, Silly Face
   - **Special**: Teach, Advise, Mentor, Ask for Loan, Propose Activity
 
-- [ ] **8.3** Implement relationship tracker
+- [x] **8.3** Implement relationship tracker
   - `Relationships` component: HashMap of (target_sim_id → RelationshipData)
   - `RelationshipData` struct: friendship_score (0-100), romance_score (0-100), known_traits, sentiment
   - Relationships are directional (A→B and B→A tracked independently)
