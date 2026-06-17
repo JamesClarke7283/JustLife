@@ -22,7 +22,7 @@ use crate::sim::needs::Needs;
 use crate::sim::{AnimationState, SimId, SimTraits, Trait};
 use crate::social::catalog::{SocialAction, actions_in_category};
 use crate::social::{
-    Conversation, ConversationContext, RelationshipData, Relationships, Sentiments,
+    Conversation, ConversationContext, RelationshipData, Relationships, Sentiment, Sentiments,
 };
 
 /// Sims within this distance (world units) can start a conversation.
@@ -37,6 +37,8 @@ const MAX_EXCHANGES: u32 = 6;
 const SOCIAL_GATE: f32 = 80.0;
 /// Social need restored to each participant when a conversation ends well.
 const SOCIAL_REWARD: f32 = 40.0;
+/// Accumulated warmth above which a finished conversation leaves a Close bond.
+const CLOSE_WARMTH: f32 = 25.0;
 
 /// Marks a sim currently in a conversation, pointing at the conversation entity.
 #[derive(Component, Debug, Clone, Copy)]
@@ -291,6 +293,7 @@ fn run_conversations(
     mut needs: Query<&mut Needs>,
     mut queues: Query<&mut InteractionQueue>,
     moodlets: Query<&ActiveMoodlets>,
+    mut sentiments: Query<&mut Sentiments>,
 ) {
     let speed = game_speed.multiplier();
     if speed == 0.0 {
@@ -312,6 +315,14 @@ fn run_conversations(
         let finished = convo.exchanges >= MAX_EXCHANGES || apart;
 
         if finished {
+            // A warm, sustained chat leaves both sims feeling Close.
+            if convo.warmth >= CLOSE_WARMTH
+                && convo.exchanges >= 3
+                && let Ok([mut sa, mut sb]) = sentiments.get_many_mut([a, b])
+            {
+                sa.add(Sentiment::close(b));
+                sb.add(Sentiment::close(a));
+            }
             for sim in [a, b] {
                 if let Some(mut ent) = commands.get_entity(sim) {
                     ent.remove::<InConversation>();
@@ -367,8 +378,28 @@ fn run_conversations(
             rb.record(a, df, dr);
         }
 
+        // Significant moments leave a lasting sentiment.
+        match action.name {
+            "Fight" => {
+                if let Ok([mut sa, mut sb]) = sentiments.get_many_mut([a, b]) {
+                    sa.add(Sentiment::furious(b));
+                    sb.add(Sentiment::furious(a));
+                }
+            }
+            // The consoled sim (b) feels grateful to the consoler (a).
+            "Console" => {
+                if let Ok(mut sb) = sentiments.get_mut(b) {
+                    sb.add(Sentiment::grateful(a));
+                }
+            }
+            _ => {}
+        }
+
+        // Standing sentiments toward the partner colour the exchange's warmth.
+        let sentiment_bias = sentiments.get(a).map(|s| s.net_modifier(b)).unwrap_or(0.0);
+
         convo.exchanges += 1;
-        convo.warmth += df;
+        convo.warmth += df + sentiment_bias * 0.05;
         convo.romance += dr.max(0.0);
         convo.context = derive_context(convo.warmth, convo.romance);
     }

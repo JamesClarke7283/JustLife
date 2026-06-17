@@ -1,7 +1,13 @@
 use bevy::prelude::*;
 
+use crate::core::resources::{GameConfig, GameSpeed};
+use crate::core::state::GameState;
+
 pub mod catalog;
 pub mod conversation;
+
+/// In-game minutes' worth of sentiment magnitude shed per game minute.
+const SENTIMENT_DECAY_PER_MINUTE: f32 = 0.02;
 
 pub struct SocialPlugin;
 
@@ -11,7 +17,34 @@ impl Plugin for SocialPlugin {
             .register_type::<Relationships>()
             .register_type::<RelationshipData>()
             .register_type::<Sentiments>()
-            .register_type::<Conversation>();
+            .register_type::<Conversation>()
+            .add_systems(
+                Update,
+                decay_sentiments.run_if(in_state(GameState::LiveMode)),
+            );
+    }
+}
+
+/// Slowly fade sentiments toward zero so they stay long-term but not permanent.
+fn decay_sentiments(
+    game_config: Res<GameConfig>,
+    game_speed: Res<GameSpeed>,
+    time: Res<Time>,
+    mut sims: Query<&mut Sentiments>,
+) {
+    let speed = game_speed.multiplier();
+    if speed == 0.0 {
+        return;
+    }
+    let game_minutes = time.delta_seconds() * speed / game_config.real_seconds_per_game_minute;
+    let amount = SENTIMENT_DECAY_PER_MINUTE * game_minutes;
+    if amount <= 0.0 {
+        return;
+    }
+    for mut sentiments in &mut sims {
+        if !sentiments.sentiments.is_empty() {
+            sentiments.decay(amount);
+        }
     }
 }
 
@@ -119,18 +152,92 @@ pub enum RelationshipSentiment {
     Nemesis,
 }
 
+/// Long-term sentiments a sim holds, each directed at another sim (per
+/// relationship, never global).
 #[derive(Component, Default, Debug, Clone, PartialEq, Reflect)]
 #[reflect(Component)]
 pub struct Sentiments {
     pub sentiments: Vec<Sentiment>,
 }
 
+impl Sentiments {
+    /// Add a sentiment, reinforcing an existing one of the same name/target.
+    pub fn add(&mut self, sentiment: Sentiment) {
+        if let Some(existing) = self
+            .sentiments
+            .iter_mut()
+            .find(|s| s.name == sentiment.name && s.source == sentiment.source)
+        {
+            existing.strength = (existing.strength + sentiment.strength).clamp(-100.0, 100.0);
+        } else {
+            self.sentiments.push(sentiment);
+        }
+    }
+
+    /// All sentiments directed at `target`.
+    pub fn toward(&self, target: Entity) -> impl Iterator<Item = &Sentiment> {
+        self.sentiments
+            .iter()
+            .filter(move |s| s.source == Some(target))
+    }
+
+    /// Net signed pull toward `target` (positive sentiments minus negative).
+    pub fn net_modifier(&self, target: Entity) -> f32 {
+        self.toward(target).map(|s| s.strength).sum()
+    }
+
+    /// Decay every sentiment's magnitude toward zero, dropping spent ones.
+    pub fn decay(&mut self, amount: f32) {
+        for s in &mut self.sentiments {
+            if s.strength > 0.0 {
+                s.strength = (s.strength - amount).max(0.0);
+            } else {
+                s.strength = (s.strength + amount).min(0.0);
+            }
+        }
+        self.sentiments.retain(|s| s.strength.abs() > 0.01);
+    }
+}
+
+/// A directed long-term relationship modifier from a significant event. Positive
+/// `strength` is warm (Grateful, Close); negative is hostile (Betrayed, Furious).
 #[derive(Default, Debug, Clone, PartialEq, Reflect)]
 #[reflect]
 pub struct Sentiment {
     pub name: String,
     pub strength: f32,
+    /// The sim this sentiment is directed at.
     pub source: Option<Entity>,
+}
+
+impl Sentiment {
+    fn new(name: &str, strength: f32, target: Entity) -> Self {
+        Self {
+            name: name.to_string(),
+            strength,
+            source: Some(target),
+        }
+    }
+
+    /// Positive: `target` did this sim a good turn.
+    pub fn grateful(target: Entity) -> Self {
+        Self::new("Grateful", 30.0, target)
+    }
+
+    /// Positive: this sim spent quality time with `target`.
+    pub fn close(target: Entity) -> Self {
+        Self::new("Close", 25.0, target)
+    }
+
+    /// Negative: `target` betrayed this sim.
+    pub fn betrayed(target: Entity) -> Self {
+        Self::new("Betrayed", -45.0, target)
+    }
+
+    /// Negative: this sim had a fight with `target`.
+    pub fn furious(target: Entity) -> Self {
+        Self::new("Furious", -40.0, target)
+    }
 }
 
 /// A running conversation between two (or more) sims. Lives on its own entity;
@@ -220,5 +327,34 @@ mod tests {
         // A separate sim's view starts empty (directional, independent).
         let b_view = Relationships::default();
         assert!(b_view.get(b).is_none());
+    }
+
+    #[test]
+    fn sentiments_are_per_target_and_reinforce() {
+        let (b, c) = (entity(2), entity(3));
+        let mut s = Sentiments::default();
+        s.add(Sentiment::grateful(b));
+        s.add(Sentiment::grateful(b)); // reinforces toward b
+        s.add(Sentiment::furious(c));
+
+        // Reinforced gratitude toward b (30 + 30).
+        assert_eq!(s.net_modifier(b), 60.0);
+        // Furious toward c is negative and separate (per-target).
+        assert_eq!(s.net_modifier(c), -40.0);
+        assert_eq!(s.toward(b).count(), 1);
+    }
+
+    #[test]
+    fn sentiments_decay_toward_zero_and_drop() {
+        let b = entity(2);
+        let mut s = Sentiments::default();
+        s.add(Sentiment::grateful(b)); // +30
+        s.add(Sentiment::furious(b)); // -40
+        s.decay(10.0);
+        // Both magnitudes shrank by 10 toward zero: +20 and -30 -> net -10.
+        assert_eq!(s.net_modifier(b), -10.0);
+        // Decaying past their magnitude removes them entirely.
+        s.decay(100.0);
+        assert!(s.sentiments.is_empty());
     }
 }
