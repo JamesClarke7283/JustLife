@@ -447,7 +447,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Sentiments decay over time but affect behavior while active
   - Sentiments are tracked per-relationship (not global)
 
-- [ ] **8.7** Implement group social dynamics
+- [x] **8.7** Implement group social dynamics
   - Multiple sims can be in a conversation simultaneously
   - Group conversations: one sim speaks, others react
   - Exclusion mechanic: sims can be left out of group activities
