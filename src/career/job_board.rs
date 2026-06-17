@@ -28,6 +28,7 @@ fn job_board_input(
     careers: Res<CareerDatabase>,
     manager: Res<SimManager>,
     mut board: ResMut<JobBoard>,
+    mut toasts: EventWriter<crate::core::events::ToastEvent>,
     mut commands: Commands,
 ) {
     if keyboard.just_pressed(KeyCode::KeyJ) {
@@ -66,7 +67,10 @@ fn job_board_input(
                 days_missed: 0,
             },
         ));
-        info!("Took a job: {}", career.name);
+        toasts.send(crate::core::events::ToastEvent::success(format!(
+            "Hired! You're now in {}.",
+            career.name
+        )));
         board.open = false;
     }
 }

@@ -83,6 +83,7 @@ fn billing_system(
     game_time: Res<GameTime>,
     mut bills: ResMut<Bills>,
     mut state: ResMut<BillingState>,
+    mut toasts: EventWriter<crate::core::events::ToastEvent>,
     objects: Query<(&Sellable, &PlacedObject)>,
 ) {
     if game_time.day < state.last_billed_day + BILL_INTERVAL_DAYS {
@@ -94,11 +95,11 @@ fn billing_system(
     let bill = bill_total(lot_value, appliances);
     bills.amount_due += bill;
     bills.due_day = game_time.day + BILL_GRACE_DAYS;
-    info!(
-        "Utility bill of {} delivered; due on day {}",
+    toasts.send(crate::core::events::ToastEvent::warning(format!(
+        "Bills: {} due day {} (press P to pay)",
         format_money(bill),
         bills.due_day
-    );
+    )));
 }
 
 /// Pay the outstanding bills on demand (press P) if the household can afford it.

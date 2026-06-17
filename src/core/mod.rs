@@ -33,6 +33,7 @@ impl Plugin for CorePlugin {
             .add_event::<events::BuildModeEvent>()
             .add_event::<events::SimSpawnEvent>()
             .add_event::<events::SimDeathEvent>()
+            .add_event::<events::ToastEvent>()
             .add_systems(Startup, setup)
             .add_systems(Update, time::tick_game_time);
     }

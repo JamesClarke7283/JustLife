@@ -153,3 +153,42 @@ pub enum DeathCause {
     Electrocution,
     EmotionalExtreme,
 }
+
+/// A transient toast notification shown top-right (Phase 10.7). Any system can
+/// emit one; the UI renders and auto-dismisses them.
+#[derive(Event, Debug, Clone)]
+pub struct ToastEvent {
+    pub message: String,
+    pub kind: ToastKind,
+}
+
+impl ToastEvent {
+    pub fn info(message: impl Into<String>) -> Self {
+        Self::new(message, ToastKind::Info)
+    }
+    pub fn success(message: impl Into<String>) -> Self {
+        Self::new(message, ToastKind::Success)
+    }
+    pub fn warning(message: impl Into<String>) -> Self {
+        Self::new(message, ToastKind::Warning)
+    }
+    pub fn error(message: impl Into<String>) -> Self {
+        Self::new(message, ToastKind::Error)
+    }
+    fn new(message: impl Into<String>, kind: ToastKind) -> Self {
+        Self {
+            message: message.into(),
+            kind,
+        }
+    }
+}
+
+/// Severity/colour of a toast.
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToastKind {
+    #[default]
+    Info,
+    Success,
+    Warning,
+    Error,
+}
