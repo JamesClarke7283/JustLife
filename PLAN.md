@@ -484,7 +484,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Performance displayed in career panel UI
   - Performance decays each day if sim misses work
 
-- [ ] **9.4** Implement work schedule system
+- [x] **9.4** Implement work schedule system
   - Sims leave for work at scheduled time (teleport off-lot)
   - Work hours vary by career level
   - Sim returns home after shift
