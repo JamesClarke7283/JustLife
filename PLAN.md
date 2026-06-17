@@ -371,7 +371,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Skill gains for skill-building interactions
   - Interaction completion triggers cleanup and processes next in queue
 
-- [ ] **7.5** Implement routing/transition system
+- [x] **7.5** Implement routing/transition system
   - When sim selects an interaction, create `RouteTo` component pointing to target object
   - Pathfinding system moves sim toward target
   - On arrival, transition from `RouteTo` to `ActiveInteraction`
