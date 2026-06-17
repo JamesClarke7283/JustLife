@@ -362,7 +362,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Multi-sim interactions: "Chat", "Hug", "Fight", "Flirt"
   - Interactions can give moodlets on completion
 
-- [ ] **7.4** Implement interaction execution
+- [x] **7.4** Implement interaction execution
   - `ActiveInteraction` component: currently executing interaction, start time, duration
   - System tracks progress through interaction duration
   - Need effects applied over time (e.g., energy increases during sleep)
