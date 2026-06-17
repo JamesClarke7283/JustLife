@@ -16,6 +16,7 @@ use crate::core::state::GameState;
 use crate::interaction::InteractionCategory;
 use crate::sim::desperation::Collapsed;
 use crate::sim::interaction::InteractionQueue;
+use crate::sim::moodlet::{ActiveMoodlets, Mood};
 use crate::sim::movement::MoveTo;
 use crate::sim::needs::Needs;
 use crate::sim::{AnimationState, SimId, SimTraits, Trait};
@@ -136,6 +137,62 @@ pub fn exchange_delta(action: &SocialAction, compatibility: f32) -> (f32, f32) {
     )
 }
 
+/// How well social interactions land given a sim's dominant mood: happy sims
+/// connect better, angry/embarrassed sims worse.
+pub fn mood_multiplier(mood: Mood) -> f32 {
+    match mood {
+        Mood::Happy => 1.3,
+        Mood::Flirty => 1.15,
+        Mood::Energized => 1.1,
+        Mood::Focused | Mood::Fine => 1.0,
+        Mood::Sad => 0.85,
+        Mood::Tense | Mood::Uncomfortable => 0.8,
+        Mood::Angry => 0.7,
+        Mood::Embarrassed => 0.6,
+    }
+}
+
+/// A category a mood pushes a sim toward, overriding the conversation context:
+/// angry sims argue, flirty sims romance, sad sims reach out for comfort.
+pub fn mood_action_bias(mood: Mood) -> Option<InteractionCategory> {
+    match mood {
+        Mood::Angry => Some(InteractionCategory::Mean),
+        Mood::Flirty => Some(InteractionCategory::Romantic),
+        Mood::Sad => Some(InteractionCategory::Friendly),
+        _ => None,
+    }
+}
+
+/// Embarrassed sims withdraw from social contact entirely.
+pub fn avoids_social(mood: Mood) -> bool {
+    matches!(mood, Mood::Embarrassed)
+}
+
+/// Pick the exchange action, letting the actor's mood override the context's
+/// category bias (and steering a sad sim specifically toward being consoled).
+pub fn pick_exchange_action(
+    context: ConversationContext,
+    mood: Mood,
+    rel: &RelationshipData,
+    exchange: u32,
+) -> SocialAction {
+    if let Some(category) = mood_action_bias(mood) {
+        let options: Vec<SocialAction> = actions_in_category(category)
+            .into_iter()
+            .filter(|a| a.is_available(rel))
+            .collect();
+        if mood == Mood::Sad
+            && let Some(console) = options.iter().find(|a| a.name == "Console")
+        {
+            return *console;
+        }
+        if !options.is_empty() {
+            return options[exchange as usize % options.len()];
+        }
+    }
+    choose_action(context, rel, exchange)
+}
+
 /// Themed colour for a conversation context (used for the mood bubble).
 fn context_color(context: ConversationContext) -> Color {
     match context {
@@ -164,7 +221,7 @@ fn ensure_social_components(
 fn start_conversations(
     mut commands: Commands,
     sims: Query<
-        (Entity, &Transform, &Needs),
+        (Entity, &Transform, &Needs, &ActiveMoodlets),
         (
             With<SimId>,
             Without<Collapsed>,
@@ -175,8 +232,10 @@ fn start_conversations(
 ) {
     let candidates: Vec<(Entity, Vec3)> = sims
         .iter()
-        .filter(|(_, _, needs)| needs.social < SOCIAL_GATE)
-        .map(|(e, t, _)| (e, t.translation))
+        .filter(|(_, _, needs, moodlets)| {
+            needs.social < SOCIAL_GATE && !avoids_social(moodlets.dominant_mood())
+        })
+        .map(|(e, t, _, _)| (e, t.translation))
         .collect();
 
     let mut paired: HashSet<Entity> = HashSet::new();
@@ -231,6 +290,7 @@ fn run_conversations(
     mut anims: Query<&mut AnimationState>,
     mut needs: Query<&mut Needs>,
     mut queues: Query<&mut InteractionQueue>,
+    moodlets: Query<&ActiveMoodlets>,
 ) {
     let speed = game_speed.multiplier();
     if speed == 0.0 {
@@ -293,8 +353,13 @@ fn run_conversations(
             .ok()
             .and_then(|r| r.get(b).cloned())
             .unwrap_or_default();
-        let action = choose_action(convo.context, &rel_snapshot, convo.exchanges);
-        let (df, dr) = exchange_delta(&action, compatibility);
+        // The speaker's mood steers which action they pick and how well it lands.
+        let mood = moodlets
+            .get(a)
+            .map(|m| m.dominant_mood())
+            .unwrap_or(Mood::Fine);
+        let action = pick_exchange_action(convo.context, mood, &rel_snapshot, convo.exchanges);
+        let (df, dr) = exchange_delta(&action, compatibility * mood_multiplier(mood));
 
         // Both sims feel the interaction (applied to each direction).
         if let Ok([mut ra, mut rb]) = rels.get_many_mut([a, b]) {
@@ -447,5 +512,27 @@ mod tests {
         let rel = RelationshipData::default();
         let action = choose_action(ConversationContext::Romantic, &rel, 0);
         assert!(action.is_available(&rel));
+    }
+
+    #[test]
+    fn mood_scales_outcome_and_embarrassment_withdraws() {
+        assert!(mood_multiplier(Mood::Happy) > 1.0);
+        assert!(mood_multiplier(Mood::Angry) < 1.0);
+        assert!(avoids_social(Mood::Embarrassed));
+        assert!(!avoids_social(Mood::Happy));
+    }
+
+    #[test]
+    fn mood_overrides_action_category() {
+        let rel = RelationshipData::default();
+        // Angry sims argue regardless of a friendly context.
+        let angry = pick_exchange_action(ConversationContext::Friendly, Mood::Angry, &rel, 0);
+        assert_eq!(angry.category, InteractionCategory::Mean);
+        // Sad sims reach for comfort (Console).
+        let sad = pick_exchange_action(ConversationContext::Friendly, Mood::Sad, &rel, 0);
+        assert_eq!(sad.name, "Console");
+        // A neutral mood leaves the context's choice intact.
+        let fine = pick_exchange_action(ConversationContext::Friendly, Mood::Fine, &rel, 0);
+        assert_eq!(fine.category, InteractionCategory::Friendly);
     }
 }
