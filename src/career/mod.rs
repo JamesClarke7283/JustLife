@@ -2,16 +2,21 @@ use bevy::prelude::*;
 
 pub mod economy;
 pub mod performance;
+pub mod work;
 
 pub struct CareerPlugin;
 
 impl Plugin for CareerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((economy::EconomyPlugin, performance::PerformancePlugin))
-            .init_resource::<CareerDatabase>()
-            .register_type::<Career>()
-            .register_type::<JobPerformance>()
-            .register_type::<Skills>();
+        app.add_plugins((
+            economy::EconomyPlugin,
+            performance::PerformancePlugin,
+            work::WorkSchedulePlugin,
+        ))
+        .init_resource::<CareerDatabase>()
+        .register_type::<Career>()
+        .register_type::<JobPerformance>()
+        .register_type::<Skills>();
     }
 }
 

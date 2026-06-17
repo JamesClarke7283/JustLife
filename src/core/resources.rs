@@ -10,11 +10,12 @@ pub struct GameTime {
 }
 
 impl Default for GameTime {
-    /// Start the simulation mid-morning so the scene is lit in daylight (the
-    /// derived all-zero default put the clock at midnight, dimming the sun).
+    /// Start the simulation on a Saturday mid-morning: daylight for good
+    /// lighting (midnight dimmed the sun) and a weekend so employed sims are
+    /// home rather than away at work.
     fn default() -> Self {
         Self {
-            day: 1,
+            day: 6, // day % 7 == 6 -> Saturday
             hour: 9,
             minute: 0,
         }
