@@ -456,7 +456,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
 
 ## Phase 9: Career & Economy
 
-- [ ] **9.1** Implement household money system
+- [x] **9.1** Implement household money system
   - `HouseholdFunds` resource: current money amount
   - Money earned from careers (hourly salary)
   - Money spent on buying objects, bills, food
