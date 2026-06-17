@@ -559,8 +559,18 @@ pub struct SimConfig {
     pub last: String,
     pub gender: SimGender,
     pub traits: Vec<Trait>,
-    /// Skin-tone index (cosmetic; a single skin texture is used for now).
+    /// Create-A-Sim appearance preset indices (into the appearance palettes).
     pub skin: usize,
+    pub hair_color: usize,
+    pub hair_style: usize,
+    pub shirt: usize,
+}
+
+impl SimConfig {
+    /// Build the chosen sim's appearance from its preset indices.
+    pub fn appearance(&self) -> appearance::SimAppearance {
+        appearance::appearance_from_indices(self.skin, self.hair_color, self.hair_style, self.shirt)
+    }
 }
 
 impl Default for SimConfig {
@@ -570,7 +580,10 @@ impl Default for SimConfig {
             last: "Sample".to_string(),
             gender: SimGender::Custom,
             traits: vec![Trait::Cheerful, Trait::Outgoing],
-            skin: 0,
+            skin: 1,
+            hair_color: 1,
+            hair_style: 0,
+            shirt: 0,
         }
     }
 }
@@ -596,7 +609,9 @@ fn spawn_player_sim(
         &mut materials,
         skin_texture,
         (config.first.as_str(), config.last.as_str()),
+        config.gender,
         &config.traits,
+        config.appearance(),
         Vec3::new(0.0, 0.0, 2.0),
         needs::Needs {
             hunger: 70.0,
@@ -618,7 +633,9 @@ fn spawn_one_sim(
     materials: &mut Assets<StandardMaterial>,
     skin_texture: Handle<Image>,
     (first, last): (&str, &str),
+    gender: SimGender,
     sim_traits: &[Trait],
+    appearance: appearance::SimAppearance,
     position: Vec3,
     sim_needs: needs::Needs,
 ) {
@@ -633,15 +650,13 @@ fn spawn_one_sim(
         traits.try_add(t);
     }
 
-    let appearance = appearance::SimAppearance::default();
-
     let entity = commands
         .spawn((
             SimBundle {
                 sim_id,
                 name: name.clone(),
                 age: SimAge::YoungAdult,
-                gender: SimGender::Custom,
+                gender,
                 traits,
                 appearance: appearance.clone(),
                 voice: appearance::SimVoice::default(),
