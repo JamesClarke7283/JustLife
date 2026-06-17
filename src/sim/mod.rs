@@ -570,7 +570,9 @@ fn spawn_demo_sim(
             energy: 35.0,
             social: 70.0,
             fun: 50.0,
-            hygiene: 65.0,
+            // Just below the critical threshold (but above hard-critical 20) so
+            // the HUD's Hygiene bar visibly flashes without yanking autonomy.
+            hygiene: 22.0,
             bladder: 60.0,
         },
     );
