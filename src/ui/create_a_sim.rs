@@ -1,9 +1,10 @@
-//! Create-A-Sim screen (start of the New Game flow).
+//! Create-A-Sim: a graphical, point-and-click 3-step wizard.
 //!
-//! A carousel-style chooser: Up/Down move between rows, Left/Right cycle the
-//! highlighted row's value (gender, skin, hair, shirt), and on the Name row you
-//! type the name directly. 1-9 toggle traits, R randomises (off the Name row),
-//! Enter confirms. Keyboard-driven so it works in the headless harness.
+//! Step 1 Identity (name + gender) -> Step 2 Looks (skin/hair/colour/shirt
+//! carousels) -> Step 3 Personality (pick up to 3 traits) -> lot selection.
+//! Everything is clickable (◄ ► carousels, gender/trait/Next/Back buttons);
+//! keyboard also works (Enter = Next/Done, Esc = Back, type the name, 1-9
+//! toggle traits) so the flow is reachable in the headless harness.
 
 use bevy::input::ButtonState;
 use bevy::input::keyboard::{Key, KeyboardInput};
@@ -13,7 +14,6 @@ use crate::core::state::GameState;
 use crate::sim::appearance::{hair_colors, hair_styles, shirt_colors, skin_tones};
 use crate::sim::{SimConfig, SimGender, Trait};
 
-/// The traits offered for selection (numbered 1-9 in the UI; up to three).
 const TRAIT_CHOICES: [(Trait, &str); 9] = [
     (Trait::Cheerful, "Cheerful"),
     (Trait::Outgoing, "Outgoing"),
@@ -25,45 +25,42 @@ const TRAIT_CHOICES: [(Trait, &str); 9] = [
     (Trait::Romantic, "Romantic"),
     (Trait::Ambitious, "Ambitious"),
 ];
-
-/// Maximum traits a sim may have.
 const MAX_TRAITS: usize = 3;
-/// Maximum name length.
 const NAME_MAX: usize = 16;
+const STEPS: usize = 3;
 
-/// The editable rows of the CAS screen.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
-enum CasRow {
-    #[default]
-    Name,
-    Gender,
+/// Which appearance attribute a carousel cycles.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Field {
     Skin,
     HairStyle,
     HairColor,
     Shirt,
-    Traits,
 }
 
-const ROWS: [CasRow; 7] = [
-    CasRow::Name,
-    CasRow::Gender,
-    CasRow::Skin,
-    CasRow::HairStyle,
-    CasRow::HairColor,
-    CasRow::Shirt,
-    CasRow::Traits,
-];
+/// An action a CAS button performs when clicked.
+#[derive(Component, Clone, Copy)]
+enum CasAction {
+    Back,
+    Next,
+    Gender(SimGender),
+    Cycle(Field, i32),
+    ToggleTrait(usize),
+    Randomize,
+}
 
-/// The highlighted row.
+/// The current wizard step (0..STEPS).
 #[derive(Resource, Default)]
-struct CasCursor {
-    row: usize,
-}
+struct CasStep(usize);
 
 #[derive(Component)]
 struct CasRoot;
 
-/// Toggle a trait in the config (respecting the 3-trait cap).
+const PANEL: Color = Color::srgba(0.07, 0.10, 0.16, 0.98);
+const BTN: Color = Color::srgba(0.20, 0.30, 0.42, 0.98);
+const BTN_HOVER: Color = Color::srgba(0.30, 0.45, 0.62, 1.0);
+const ACCENT: Color = Color::srgb(0.95, 0.78, 0.30);
+
 fn toggle_trait(config: &mut SimConfig, t: Trait) {
     if let Some(pos) = config.traits.iter().position(|x| *x == t) {
         config.traits.remove(pos);
@@ -72,31 +69,19 @@ fn toggle_trait(config: &mut SimConfig, t: Trait) {
     }
 }
 
-/// Cycle to the next/previous gender.
-fn cycle_gender(g: SimGender, dir: i32) -> SimGender {
-    let order = [SimGender::Male, SimGender::Female, SimGender::Custom];
-    let i = order.iter().position(|x| *x == g).unwrap_or(0) as i32;
-    order[(i + dir).rem_euclid(order.len() as i32) as usize]
-}
-
-/// Wrap a preset index by `dir` within `len`.
 fn wrap(index: usize, dir: i32, len: usize) -> usize {
     (index as i32 + dir).rem_euclid(len as i32) as usize
 }
 
-/// Cycle the highlighted row's value by `dir` (-1 / +1).
-fn cycle_row(config: &mut SimConfig, row: CasRow, dir: i32) {
-    match row {
-        CasRow::Gender => config.gender = cycle_gender(config.gender, dir),
-        CasRow::Skin => config.skin = wrap(config.skin, dir, skin_tones().len()),
-        CasRow::HairStyle => config.hair_style = wrap(config.hair_style, dir, hair_styles().len()),
-        CasRow::HairColor => config.hair_color = wrap(config.hair_color, dir, hair_colors().len()),
-        CasRow::Shirt => config.shirt = wrap(config.shirt, dir, shirt_colors().len()),
-        CasRow::Name | CasRow::Traits => {}
+fn cycle_field(config: &mut SimConfig, field: Field, dir: i32) {
+    match field {
+        Field::Skin => config.skin = wrap(config.skin, dir, skin_tones().len()),
+        Field::HairStyle => config.hair_style = wrap(config.hair_style, dir, hair_styles().len()),
+        Field::HairColor => config.hair_color = wrap(config.hair_color, dir, hair_colors().len()),
+        Field::Shirt => config.shirt = wrap(config.shirt, dir, shirt_colors().len()),
     }
 }
 
-/// Deterministic "randomiser" advanced by a counter (no RNG in this build).
 fn randomize(config: &mut SimConfig, seed: usize) {
     const NAMES: [&str; 8] = [
         "Alex", "Sam", "Robin", "Jordan", "Casey", "Riley", "Quinn", "Avery",
@@ -116,58 +101,83 @@ fn randomize(config: &mut SimConfig, seed: usize) {
     }
 }
 
-/// Handle CAS keyboard input: navigation, value cycling, traits, randomise.
+/// Apply a wizard action; returns true if it requested leaving CAS.
+fn apply_action(
+    action: CasAction,
+    config: &mut SimConfig,
+    step: &mut CasStep,
+    seed: &mut usize,
+) -> bool {
+    match action {
+        CasAction::Back => {
+            if step.0 > 0 {
+                step.0 -= 1;
+            }
+        }
+        CasAction::Next => {
+            if step.0 + 1 < STEPS {
+                step.0 += 1;
+            } else {
+                return true; // Done -> leave CAS
+            }
+        }
+        CasAction::Gender(g) => config.gender = g,
+        CasAction::Cycle(field, dir) => cycle_field(config, field, dir),
+        CasAction::ToggleTrait(i) => toggle_trait(config, TRAIT_CHOICES[i].0),
+        CasAction::Randomize => {
+            *seed = seed.wrapping_add(1);
+            randomize(config, *seed);
+        }
+    }
+    false
+}
+
+#[allow(clippy::too_many_arguments)]
 fn cas_input(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut key_events: EventReader<KeyboardInput>,
+    buttons: Query<(&Interaction, &CasAction), Changed<Interaction>>,
     mut config: ResMut<SimConfig>,
-    mut cursor: ResMut<CasCursor>,
+    mut step: ResMut<CasStep>,
     mut seed: Local<usize>,
     mut next_state: ResMut<NextState<GameState>>,
 ) {
-    // Row navigation.
-    if keyboard.just_pressed(KeyCode::ArrowDown) {
-        cursor.row = (cursor.row + 1) % ROWS.len();
-    }
-    if keyboard.just_pressed(KeyCode::ArrowUp) {
-        cursor.row = (cursor.row + ROWS.len() - 1) % ROWS.len();
-    }
-    let row = ROWS[cursor.row];
+    let mut done = false;
 
-    // Value carousel.
-    if keyboard.just_pressed(KeyCode::ArrowRight) {
-        cycle_row(&mut config, row, 1);
-    }
-    if keyboard.just_pressed(KeyCode::ArrowLeft) {
-        cycle_row(&mut config, row, -1);
-    }
-
-    // Traits (always available via number keys).
-    const DIGITS: [KeyCode; 9] = [
-        KeyCode::Digit1,
-        KeyCode::Digit2,
-        KeyCode::Digit3,
-        KeyCode::Digit4,
-        KeyCode::Digit5,
-        KeyCode::Digit6,
-        KeyCode::Digit7,
-        KeyCode::Digit8,
-        KeyCode::Digit9,
-    ];
-    for (i, key) in DIGITS.iter().enumerate() {
-        if keyboard.just_pressed(*key) {
-            toggle_trait(&mut config, TRAIT_CHOICES[i].0);
+    // Point-and-click.
+    for (interaction, action) in &buttons {
+        if *interaction == Interaction::Pressed {
+            done |= apply_action(*action, &mut config, &mut step, &mut seed);
         }
     }
 
-    // Randomise (not while editing the name, so R can be typed into names).
-    if row != CasRow::Name && keyboard.just_pressed(KeyCode::KeyR) {
-        *seed = seed.wrapping_add(1);
-        randomize(&mut config, *seed);
+    // Keyboard fallbacks.
+    if keyboard.just_pressed(KeyCode::Enter) {
+        done |= apply_action(CasAction::Next, &mut config, &mut step, &mut seed);
     }
-
-    // Type the name when the Name row is active.
-    if row == CasRow::Name {
+    if keyboard.just_pressed(KeyCode::Escape) {
+        apply_action(CasAction::Back, &mut config, &mut step, &mut seed);
+    }
+    if step.0 == 2 {
+        const DIGITS: [KeyCode; 9] = [
+            KeyCode::Digit1,
+            KeyCode::Digit2,
+            KeyCode::Digit3,
+            KeyCode::Digit4,
+            KeyCode::Digit5,
+            KeyCode::Digit6,
+            KeyCode::Digit7,
+            KeyCode::Digit8,
+            KeyCode::Digit9,
+        ];
+        for (i, key) in DIGITS.iter().enumerate() {
+            if keyboard.just_pressed(*key) {
+                toggle_trait(&mut config, TRAIT_CHOICES[i].0);
+            }
+        }
+    }
+    // Name typing on step 1.
+    if step.0 == 0 {
         for ev in key_events.read() {
             if ev.state != ButtonState::Pressed {
                 continue;
@@ -189,166 +199,289 @@ fn cas_input(
         }
     }
 
-    if keyboard.just_pressed(KeyCode::Enter) {
+    if done {
         next_state.set(GameState::LotSelect);
     }
 }
 
-/// Rebuild the CAS panel whenever the config or cursor changes (or first shown).
+/// Hover feedback for CAS buttons.
+fn button_hover(mut buttons: Query<(&Interaction, &mut BackgroundColor), With<CasAction>>) {
+    for (interaction, mut color) in &mut buttons {
+        // Keep accent (selected) buttons; only react on idle/hover base buttons.
+        let base = color.0;
+        if base == BTN || base == BTN_HOVER {
+            *color = if *interaction == Interaction::Hovered {
+                BTN_HOVER.into()
+            } else {
+                BTN.into()
+            };
+        }
+    }
+}
+
+/// Rebuild the wizard when the step or config changes.
 fn render_cas(
     mut commands: Commands,
     config: Res<SimConfig>,
-    cursor: Res<CasCursor>,
+    step: Res<CasStep>,
     roots: Query<Entity, With<CasRoot>>,
 ) {
-    if !config.is_changed() && !cursor.is_changed() && !roots.is_empty() {
+    if !config.is_changed() && !step.is_changed() && !roots.is_empty() {
         return;
     }
     for entity in &roots {
         commands.entity(entity).despawn_recursive();
     }
 
-    let active = ROWS[cursor.row];
-    commands
+    let root = commands
         .spawn((
             NodeBundle {
                 style: Style {
                     position_type: PositionType::Absolute,
                     width: Val::Percent(100.0),
                     height: Val::Percent(100.0),
-                    flex_direction: FlexDirection::Column,
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::Center,
-                    row_gap: Val::Px(6.0),
                     ..default()
                 },
-                background_color: Color::srgba(0.05, 0.08, 0.12, 0.96).into(),
+                background_color: Color::srgba(0.02, 0.04, 0.07, 0.7).into(),
                 ..default()
             },
             CasRoot,
             Name::new("Create-A-Sim"),
         ))
-        .with_children(|root| {
-            text(root, "Create A Sim", 34.0, Color::WHITE);
+        .id();
 
-            // Name row (type to edit).
-            let caret = if active == CasRow::Name { "_" } else { "" };
-            row_line(root, active == CasRow::Name, false, &format!("Name: {}{caret}", config.first));
-            // Carousel rows.
-            row_line(
-                root,
-                active == CasRow::Gender,
-                true,
-                &format!("Gender: {:?}", config.gender),
+    commands.entity(root).with_children(|root| {
+        // The big card.
+        root.spawn(NodeBundle {
+            style: Style {
+                width: Val::Px(720.0),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                padding: UiRect::all(Val::Px(28.0)),
+                row_gap: Val::Px(16.0),
+                ..default()
+            },
+            background_color: PANEL.into(),
+            border_radius: BorderRadius::all(Val::Px(14.0)),
+            ..default()
+        })
+        .with_children(|card| {
+            label(card, "Create A Sim", 40.0, Color::WHITE);
+            label(
+                card,
+                &format!("Step {} of {}", step.0 + 1, STEPS),
+                18.0,
+                ACCENT,
             );
-            row_line(
-                root,
-                active == CasRow::Skin,
-                true,
-                &format!("Skin: {}", skin_tones()[config.skin % skin_tones().len()].0),
-            );
-            row_line(
-                root,
-                active == CasRow::HairStyle,
-                true,
-                &format!(
-                    "Hair: {}",
-                    hair_styles()[config.hair_style % hair_styles().len()].0
-                ),
-            );
-            row_line(
-                root,
-                active == CasRow::HairColor,
-                true,
-                &format!(
-                    "Hair Color: {}",
-                    hair_colors()[config.hair_color % hair_colors().len()].0
-                ),
-            );
-            row_line(
-                root,
-                active == CasRow::Shirt,
-                true,
-                &format!("Shirt: {}", shirt_colors()[config.shirt % shirt_colors().len()].0),
-            );
+            match step.0 {
+                0 => step_identity(card, &config),
+                1 => step_looks(card, &config),
+                _ => step_personality(card, &config),
+            }
+            nav_row(card, step.0);
+        });
+    });
+}
 
-            // Traits row + list.
-            let chosen = config
-                .traits
-                .iter()
-                .map(|t| format!("{t:?}"))
-                .collect::<Vec<_>>()
-                .join(", ");
-            row_line(
-                root,
-                active == CasRow::Traits,
-                false,
-                &format!(
-                    "Traits ({}/{}): {}",
-                    config.traits.len(),
-                    MAX_TRAITS,
-                    if chosen.is_empty() { "-" } else { &chosen }
-                ),
-            );
-            root.spawn(NodeBundle {
+/// Step 1: name field + gender choice.
+fn step_identity(card: &mut ChildBuilder, config: &SimConfig) {
+    label(card, "Who are you?", 24.0, Color::srgb(0.85, 0.9, 0.96));
+    // Name "field".
+    card.spawn(NodeBundle {
+        style: Style {
+            width: Val::Px(360.0),
+            height: Val::Px(48.0),
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            ..default()
+        },
+        background_color: Color::srgba(0.0, 0.0, 0.0, 0.5).into(),
+        border_radius: BorderRadius::all(Val::Px(8.0)),
+        ..default()
+    })
+    .with_children(|f| {
+        label(f, &format!("{}|", config.first), 26.0, Color::WHITE);
+    });
+    label(
+        card,
+        "(type to edit your name)",
+        13.0,
+        Color::srgba(0.8, 0.85, 0.95, 0.7),
+    );
+
+    // Gender buttons.
+    card.spawn(NodeBundle {
+        style: Style {
+            column_gap: Val::Px(12.0),
+            margin: UiRect::top(Val::Px(6.0)),
+            ..default()
+        },
+        ..default()
+    })
+    .with_children(|row| {
+        for (g, name) in [
+            (SimGender::Male, "Male"),
+            (SimGender::Female, "Female"),
+            (SimGender::Custom, "Custom"),
+        ] {
+            let selected = config.gender == g;
+            button(row, CasAction::Gender(g), name, 120.0, selected);
+        }
+    });
+}
+
+/// Step 2: appearance carousels.
+fn step_looks(card: &mut ChildBuilder, config: &SimConfig) {
+    label(card, "Pick your look", 24.0, Color::srgb(0.85, 0.9, 0.96));
+    carousel(card, Field::Skin, "Skin", skin_tones()[config.skin % 5].0);
+    carousel(
+        card,
+        Field::HairStyle,
+        "Hair",
+        hair_styles()[config.hair_style % 4].0,
+    );
+    carousel(
+        card,
+        Field::HairColor,
+        "Hair Colour",
+        hair_colors()[config.hair_color % 5].0,
+    );
+    carousel(
+        card,
+        Field::Shirt,
+        "Shirt",
+        shirt_colors()[config.shirt % 5].0,
+    );
+    card.spawn(NodeBundle {
+        style: Style {
+            margin: UiRect::top(Val::Px(6.0)),
+            ..default()
+        },
+        ..default()
+    })
+    .with_children(|row| {
+        button(row, CasAction::Randomize, "Randomize", 160.0, false);
+    });
+}
+
+/// Step 3: trait picker.
+fn step_personality(card: &mut ChildBuilder, config: &SimConfig) {
+    label(
+        card,
+        &format!(
+            "Pick up to {MAX_TRAITS} traits ({}/{})",
+            config.traits.len(),
+            MAX_TRAITS
+        ),
+        24.0,
+        Color::srgb(0.85, 0.9, 0.96),
+    );
+    card.spawn(NodeBundle {
+        style: Style {
+            width: Val::Px(560.0),
+            flex_wrap: FlexWrap::Wrap,
+            column_gap: Val::Px(10.0),
+            row_gap: Val::Px(10.0),
+            justify_content: JustifyContent::Center,
+            ..default()
+        },
+        ..default()
+    })
+    .with_children(|grid| {
+        for (i, (t, name)) in TRAIT_CHOICES.iter().enumerate() {
+            let on = config.traits.contains(t);
+            button(grid, CasAction::ToggleTrait(i), name, 168.0, on);
+        }
+    });
+}
+
+/// Back / Next (or Start) navigation row.
+fn nav_row(card: &mut ChildBuilder, step: usize) {
+    card.spawn(NodeBundle {
+        style: Style {
+            column_gap: Val::Px(16.0),
+            margin: UiRect::top(Val::Px(10.0)),
+            ..default()
+        },
+        ..default()
+    })
+    .with_children(|row| {
+        if step > 0 {
+            button(row, CasAction::Back, "< Back", 150.0, false);
+        }
+        let last = step + 1 == STEPS;
+        button(
+            row,
+            CasAction::Next,
+            if last { "Start Game >" } else { "Next >" },
+            190.0,
+            last,
+        );
+    });
+}
+
+/// A labelled carousel row: [<] label: value [>].
+fn carousel(card: &mut ChildBuilder, field: Field, name: &str, value: &str) {
+    card.spawn(NodeBundle {
+        style: Style {
+            width: Val::Px(440.0),
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::SpaceBetween,
+            ..default()
+        },
+        ..default()
+    })
+    .with_children(|row| {
+        button(row, CasAction::Cycle(field, -1), "<", 56.0, false);
+        row.spawn(NodeBundle {
+            style: Style {
+                width: Val::Px(300.0),
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+            ..default()
+        })
+        .with_children(|mid| {
+            label(mid, &format!("{name}: {value}"), 22.0, Color::WHITE);
+        });
+        button(row, CasAction::Cycle(field, 1), ">", 56.0, false);
+    });
+}
+
+/// Spawn a clickable button; `selected` paints it with the accent colour.
+fn button(parent: &mut ChildBuilder, action: CasAction, text: &str, width: f32, selected: bool) {
+    let bg = if selected { ACCENT } else { BTN };
+    parent
+        .spawn((
+            ButtonBundle {
                 style: Style {
-                    flex_direction: FlexDirection::Row,
-                    flex_wrap: FlexWrap::Wrap,
-                    column_gap: Val::Px(10.0),
-                    max_width: Val::Px(560.0),
+                    width: Val::Px(width),
+                    height: Val::Px(44.0),
+                    align_items: AlignItems::Center,
                     justify_content: JustifyContent::Center,
                     ..default()
                 },
+                background_color: bg.into(),
+                border_radius: BorderRadius::all(Val::Px(8.0)),
                 ..default()
-            })
-            .with_children(|list| {
-                for (i, (t, label)) in TRAIT_CHOICES.iter().enumerate() {
-                    let on = config.traits.contains(t);
-                    text(
-                        list,
-                        &format!("{}:{}{}", i + 1, label, if on { "*" } else { "" }),
-                        13.0,
-                        if on {
-                            Color::srgb(0.5, 0.95, 0.6)
-                        } else {
-                            Color::srgb(0.7, 0.75, 0.82)
-                        },
-                    );
-                }
-            });
-
-            text(
-                root,
-                "Up/Down row   Left/Right change   type=name   1-9 traits   R random   [Enter] Done",
-                14.0,
-                Color::srgba(0.8, 0.86, 0.95, 0.85),
-            );
+            },
+            action,
+        ))
+        .with_children(|b| {
+            b.spawn(TextBundle::from_section(
+                text,
+                TextStyle {
+                    font_size: 20.0,
+                    color: if selected { Color::BLACK } else { Color::WHITE },
+                    ..default()
+                },
+            ));
         });
 }
 
-/// A row, highlighted when active and showing carousel arrows when cyclable.
-fn row_line(parent: &mut ChildBuilder, active: bool, carousel: bool, value: &str) {
-    let body = if carousel && active {
-        format!("< {value} >")
-    } else {
-        value.to_string()
-    };
-    let marker = if active { "> " } else { "  " };
-    let color = if active {
-        Color::srgb(1.0, 0.92, 0.6)
-    } else {
-        Color::srgb(0.82, 0.88, 0.95)
-    };
-    text(parent, &format!("{marker}{body}"), 20.0, color);
-}
-
-fn exit_cas(mut commands: Commands, roots: Query<Entity, With<CasRoot>>) {
-    for entity in &roots {
-        commands.entity(entity).despawn_recursive();
-    }
-}
-
-fn text(parent: &mut ChildBuilder, value: &str, size: f32, color: Color) {
+fn label(parent: &mut ChildBuilder, value: &str, size: f32, color: Color) {
     parent.spawn(TextBundle::from_section(
         value,
         TextStyle {
@@ -359,16 +492,27 @@ fn text(parent: &mut ChildBuilder, value: &str, size: f32, color: Color) {
     ));
 }
 
-/// Registers the Create-A-Sim screen.
+fn exit_cas(
+    mut commands: Commands,
+    mut step: ResMut<CasStep>,
+    roots: Query<Entity, With<CasRoot>>,
+) {
+    step.0 = 0;
+    for entity in &roots {
+        commands.entity(entity).despawn_recursive();
+    }
+}
+
+/// Registers the Create-A-Sim wizard.
 pub struct CreateASimPlugin;
 
 impl Plugin for CreateASimPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<CasCursor>()
+        app.init_resource::<CasStep>()
             .add_systems(OnExit(GameState::CreateASim), exit_cas)
             .add_systems(
                 Update,
-                (cas_input, render_cas).run_if(in_state(GameState::CreateASim)),
+                (cas_input, button_hover, render_cas).run_if(in_state(GameState::CreateASim)),
             );
     }
 }
@@ -377,47 +521,36 @@ impl Plugin for CreateASimPlugin {
 mod tests {
     use super::*;
 
-    #[test]
-    fn traits_toggle_and_cap_at_three() {
-        let mut config = SimConfig {
-            traits: vec![],
-            ..Default::default()
-        };
-        toggle_trait(&mut config, Trait::Creative);
-        toggle_trait(&mut config, Trait::Genius);
-        toggle_trait(&mut config, Trait::Neat);
-        toggle_trait(&mut config, Trait::Active); // over the cap -> ignored
-        assert_eq!(config.traits.len(), 3);
-        assert!(!config.traits.contains(&Trait::Active));
-        toggle_trait(&mut config, Trait::Genius); // remove
-        assert_eq!(config.traits.len(), 2);
+    fn cfg() -> SimConfig {
+        SimConfig::default()
     }
 
     #[test]
-    fn carousel_cycles_and_wraps() {
-        let mut config = SimConfig {
-            skin: 0,
-            ..Default::default()
-        };
-        let n = skin_tones().len();
-        cycle_row(&mut config, CasRow::Skin, -1);
-        assert_eq!(config.skin, n - 1); // wrapped backwards
-        cycle_row(&mut config, CasRow::Skin, 1);
-        assert_eq!(config.skin, 0); // wrapped forwards
+    fn next_advances_then_finishes() {
+        let (mut c, mut s, mut seed) = (cfg(), CasStep(0), 0usize);
+        assert!(!apply_action(CasAction::Next, &mut c, &mut s, &mut seed));
+        assert_eq!(s.0, 1);
+        assert!(!apply_action(CasAction::Next, &mut c, &mut s, &mut seed));
+        assert_eq!(s.0, 2);
+        // Final Next finishes (leaves CAS).
+        assert!(apply_action(CasAction::Next, &mut c, &mut s, &mut seed));
     }
 
     #[test]
-    fn gender_cycles_both_directions() {
-        assert_eq!(cycle_gender(SimGender::Male, 1), SimGender::Female);
-        assert_eq!(cycle_gender(SimGender::Male, -1), SimGender::Custom);
+    fn back_stops_at_first_step() {
+        let (mut c, mut s, mut seed) = (cfg(), CasStep(0), 0usize);
+        assert!(!apply_action(CasAction::Back, &mut c, &mut s, &mut seed));
+        assert_eq!(s.0, 0);
     }
 
     #[test]
-    fn randomize_stays_within_palettes() {
-        let mut config = SimConfig::default();
-        randomize(&mut config, 7);
-        assert!(config.skin < skin_tones().len());
-        assert!(config.hair_color < hair_colors().len());
-        assert!(config.traits.len() <= MAX_TRAITS);
+    fn cycle_and_trait_actions_apply() {
+        let (mut c, mut s, mut seed) = (cfg(), CasStep(1), 0usize);
+        c.skin = 0;
+        apply_action(CasAction::Cycle(Field::Skin, -1), &mut c, &mut s, &mut seed);
+        assert_eq!(c.skin, skin_tones().len() - 1);
+        c.traits.clear();
+        apply_action(CasAction::ToggleTrait(0), &mut c, &mut s, &mut seed);
+        assert_eq!(c.traits, vec![TRAIT_CHOICES[0].0]);
     }
 }
