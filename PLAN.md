@@ -464,7 +464,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Money display in UI with K/M formatting for large amounts
   - Bankruptcy: if money goes negative, repo man takes objects
 
-- [ ] **9.2** Define career track system
+- [x] **9.2** Define career track system
   - Each career has levels (1-10) with title, salary, hours, and requirements
   - Career tracks:
     - **Tech**: QA Tester → Code Reviewer → Developer → Senior Dev → CTO
