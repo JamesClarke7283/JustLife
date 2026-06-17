@@ -1,10 +1,13 @@
 use bevy::prelude::*;
 
+pub mod pie_menu;
+
 pub struct UIPlugin;
 
 impl Plugin for UIPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<UIMode>()
+        app.add_plugins(pie_menu::PieMenuPlugin)
+            .init_resource::<UIMode>()
             .register_type::<UIMode>()
             .register_type::<NeedsBarStyle>();
     }
