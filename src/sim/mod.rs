@@ -579,7 +579,7 @@ fn spawn_demo_sim(
         &mut sim_manager,
         &mut meshes,
         &mut materials,
-        skin_texture,
+        skin_texture.clone(),
         ("Sam", "Rivera"),
         &[Trait::Cheerful, Trait::Creative],
         Vec3::new(1.3, 0.0, 2.2),
@@ -590,6 +590,25 @@ fn spawn_demo_sim(
             fun: 55.0,
             hygiene: 70.0,
             bladder: 65.0,
+        },
+    );
+    // A third sim nearby so a group conversation forms (Phase 8.7).
+    spawn_one_sim(
+        &mut commands,
+        &mut sim_manager,
+        &mut meshes,
+        &mut materials,
+        skin_texture,
+        ("Robin", "Okafor"),
+        &[Trait::Outgoing, Trait::Genius],
+        Vec3::new(0.4, 0.0, 0.8),
+        needs::Needs {
+            hunger: 62.0,
+            energy: 60.0,
+            social: 60.0,
+            fun: 58.0,
+            hygiene: 72.0,
+            bladder: 68.0,
         },
     );
 }

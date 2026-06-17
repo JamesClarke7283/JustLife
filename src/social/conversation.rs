@@ -39,6 +39,8 @@ const SOCIAL_GATE: f32 = 80.0;
 const SOCIAL_REWARD: f32 = 40.0;
 /// Accumulated warmth above which a finished conversation leaves a Close bond.
 const CLOSE_WARMTH: f32 = 25.0;
+/// Maximum sims in one conversation group.
+const MAX_GROUP: usize = 4;
 
 /// Marks a sim currently in a conversation, pointing at the conversation entity.
 #[derive(Component, Debug, Clone, Copy)]
@@ -170,6 +172,18 @@ pub fn avoids_social(mood: Mood) -> bool {
     matches!(mood, Mood::Embarrassed)
 }
 
+/// Whether a sim may join an existing group: not withdrawn, and room to spare.
+/// (Embarrassed/withdrawn sims are the exclusion mechanic - left out of groups.)
+pub fn can_join(mood: Mood, group_size: usize) -> bool {
+    !avoids_social(mood) && group_size < MAX_GROUP
+}
+
+/// The group activity cycled in for this exchange (3+ sims do these together).
+pub fn group_activity_for(exchange: u32) -> &'static str {
+    const ACTIVITIES: [&str; 3] = ["Tell Group Story", "Play Game", "Dance Together"];
+    ACTIVITIES[(exchange as usize / 3) % ACTIVITIES.len()]
+}
+
 /// Pick the exchange action, letting the actor's mood override the context's
 /// category bias (and steering a sad sim specifically toward being consoled).
 pub fn pick_exchange_action(
@@ -277,6 +291,53 @@ fn start_conversations(
     }
 }
 
+/// Let eligible sims near an existing conversation join it, turning a chat into
+/// a group. Withdrawn (embarrassed) sims and full groups are excluded.
+#[allow(clippy::type_complexity)]
+fn join_conversations(
+    mut commands: Commands,
+    mut convos: Query<(Entity, &mut Conversation)>,
+    transforms: Query<&Transform>,
+    joiners: Query<
+        (Entity, &Transform, &Needs, &ActiveMoodlets),
+        (
+            With<SimId>,
+            Without<Collapsed>,
+            Without<InConversation>,
+            With<Relationships>,
+        ),
+    >,
+) {
+    for (entity, transform, needs, moodlets) in &joiners {
+        if needs.social >= SOCIAL_GATE || avoids_social(moodlets.dominant_mood()) {
+            continue;
+        }
+        for (convo_entity, mut convo) in &mut convos {
+            if !can_join(moodlets.dominant_mood(), convo.participants.len()) {
+                continue;
+            }
+            let near = convo.participants.iter().any(|&p| {
+                transforms.get(p).is_ok_and(|t| {
+                    t.translation.distance(transform.translation) <= CONVERSATION_RANGE
+                })
+            });
+            if near {
+                let partner = convo.participants[0];
+                convo.participants.push(entity);
+                commands
+                    .entity(entity)
+                    .insert(InConversation {
+                        conversation: convo_entity,
+                        partner,
+                    })
+                    .remove::<RouteTo>()
+                    .remove::<MoveTo>();
+                break;
+            }
+        }
+    }
+}
+
 /// Advance running conversations: hold participants in place, run exchanges on a
 /// timer, update relationships and context, and wrap up after enough exchanges.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
@@ -302,28 +363,63 @@ fn run_conversations(
     let game_minutes = time.delta_seconds() * speed / game_config.real_seconds_per_game_minute;
 
     for (convo_entity, mut convo) in &mut convos {
-        let [a, b] = match convo.participants.as_slice() {
-            [a, b] => [*a, *b],
-            _ => continue,
+        // Drop anyone who vanished or strayed from the group's centroid.
+        let alive: Vec<Entity> = convo
+            .participants
+            .iter()
+            .copied()
+            .filter(|&p| transforms.get(p).is_ok())
+            .collect();
+        let centroid = {
+            let mut sum = Vec3::ZERO;
+            let mut count = 0.0;
+            for &p in &alive {
+                if let Ok(t) = transforms.get(p) {
+                    sum += t.translation;
+                    count += 1.0;
+                }
+            }
+            (count > 0.0).then(|| sum / count)
         };
+        let present: Vec<Entity> = alive
+            .iter()
+            .copied()
+            .filter(|&p| {
+                transforms.get(p).is_ok_and(|t| {
+                    centroid.is_none_or(|c| t.translation.distance(c) <= BREAK_RANGE)
+                })
+            })
+            .collect();
+        for &gone in &alive {
+            if !present.contains(&gone) {
+                if let Some(mut ent) = commands.get_entity(gone) {
+                    ent.remove::<InConversation>();
+                }
+                if let Ok(mut anim) = anims.get_mut(gone) {
+                    *anim = AnimationState::Idle;
+                }
+            }
+        }
+        convo.participants = present.clone();
 
-        // End if a participant vanished or they have drifted apart.
-        let apart = match (transforms.get(a), transforms.get(b)) {
-            (Ok(ta), Ok(tb)) => ta.translation.distance(tb.translation) > BREAK_RANGE,
-            _ => true,
-        };
-        let finished = convo.exchanges >= MAX_EXCHANGES || apart;
+        let n = present.len();
+        let finished = convo.exchanges >= MAX_EXCHANGES || n < 2;
 
         if finished {
-            // A warm, sustained chat leaves both sims feeling Close.
-            if convo.warmth >= CLOSE_WARMTH
-                && convo.exchanges >= 3
-                && let Ok([mut sa, mut sb]) = sentiments.get_many_mut([a, b])
-            {
-                sa.add(Sentiment::close(b));
-                sb.add(Sentiment::close(a));
+            // Every pair that stuck out a warm chat grows Close.
+            if convo.warmth >= CLOSE_WARMTH && convo.exchanges >= 3 {
+                for i in 0..n {
+                    for j in (i + 1)..n {
+                        if let Ok([mut si, mut sj]) =
+                            sentiments.get_many_mut([present[i], present[j]])
+                        {
+                            si.add(Sentiment::close(present[j]));
+                            sj.add(Sentiment::close(present[i]));
+                        }
+                    }
+                }
             }
-            for sim in [a, b] {
+            for &sim in &present {
                 if let Some(mut ent) = commands.get_entity(sim) {
                     ent.remove::<InConversation>();
                 }
@@ -338,8 +434,8 @@ fn run_conversations(
             continue;
         }
 
-        // Hold both sims in the conversation: talking, no solo plan.
-        for sim in [a, b] {
+        // Hold every participant in the conversation: talking, no solo plan.
+        for &sim in &present {
             if let Ok(mut anim) = anims.get_mut(sim) {
                 *anim = AnimationState::Talking;
             }
@@ -354,53 +450,76 @@ fn run_conversations(
         }
         convo.timer = 0.0;
 
-        // Resolve one exchange (a speaks to b), scaled by trait compatibility.
-        let compatibility = match (traits.get(a), traits.get(b)) {
-            (Ok(ta), Ok(tb)) => trait_compatibility(&ta.traits, &tb.traits),
-            _ => 1.0,
-        };
-        let rel_snapshot = rels
-            .get(a)
-            .ok()
-            .and_then(|r| r.get(b).cloned())
-            .unwrap_or_default();
-        // The speaker's mood steers which action they pick and how well it lands.
+        // With three or more, the group periodically does an activity together.
+        if n >= 3 && convo.exchanges % 3 == 2 {
+            let _activity = group_activity_for(convo.exchanges);
+            for &sim in &present {
+                if let Ok(mut need) = needs.get_mut(sim) {
+                    need.modify(crate::sim::needs::NeedType::Social, 6.0);
+                    need.modify(crate::sim::needs::NeedType::Fun, 8.0);
+                }
+            }
+            convo.exchanges += 1;
+            convo.warmth += 6.0;
+            convo.context = derive_context(convo.warmth, convo.romance);
+            continue;
+        }
+
+        // One sim speaks; everyone else reacts (directed exchange to each).
+        let speaker = present[convo.exchanges as usize % n];
         let mood = moodlets
-            .get(a)
+            .get(speaker)
             .map(|m| m.dominant_mood())
             .unwrap_or(Mood::Fine);
-        let action = pick_exchange_action(convo.context, mood, &rel_snapshot, convo.exchanges);
-        let (df, dr) = exchange_delta(&action, compatibility * mood_multiplier(mood));
-
-        // Both sims feel the interaction (applied to each direction).
-        if let Ok([mut ra, mut rb]) = rels.get_many_mut([a, b]) {
-            ra.record(b, df, dr);
-            rb.record(a, df, dr);
-        }
-
-        // Significant moments leave a lasting sentiment.
-        match action.name {
-            "Fight" => {
-                if let Ok([mut sa, mut sb]) = sentiments.get_many_mut([a, b]) {
-                    sa.add(Sentiment::furious(b));
-                    sb.add(Sentiment::furious(a));
-                }
+        let mut warmth_sum = 0.0;
+        let mut romance_sum = 0.0;
+        let mut listeners = 0.0;
+        for &listener in &present {
+            if listener == speaker {
+                continue;
             }
-            // The consoled sim (b) feels grateful to the consoler (a).
-            "Console" => {
-                if let Ok(mut sb) = sentiments.get_mut(b) {
-                    sb.add(Sentiment::grateful(a));
-                }
+            let compatibility = match (traits.get(speaker), traits.get(listener)) {
+                (Ok(ts), Ok(tl)) => trait_compatibility(&ts.traits, &tl.traits),
+                _ => 1.0,
+            };
+            let rel_snapshot = rels
+                .get(speaker)
+                .ok()
+                .and_then(|r| r.get(listener).cloned())
+                .unwrap_or_default();
+            let action = pick_exchange_action(convo.context, mood, &rel_snapshot, convo.exchanges);
+            let (df, dr) = exchange_delta(&action, compatibility * mood_multiplier(mood));
+            if let Ok([mut rs, mut rl]) = rels.get_many_mut([speaker, listener]) {
+                rs.record(listener, df, dr);
+                rl.record(speaker, df, dr);
             }
-            _ => {}
+            match action.name {
+                "Fight" => {
+                    if let Ok([mut ss, mut sl]) = sentiments.get_many_mut([speaker, listener]) {
+                        ss.add(Sentiment::furious(listener));
+                        sl.add(Sentiment::furious(speaker));
+                    }
+                }
+                "Console" => {
+                    if let Ok(mut sl) = sentiments.get_mut(listener) {
+                        sl.add(Sentiment::grateful(speaker));
+                    }
+                }
+                _ => {}
+            }
+            let bias = sentiments
+                .get(speaker)
+                .map(|s| s.net_modifier(listener))
+                .unwrap_or(0.0);
+            warmth_sum += df + bias * 0.05;
+            romance_sum += dr.max(0.0);
+            listeners += 1.0;
         }
-
-        // Standing sentiments toward the partner colour the exchange's warmth.
-        let sentiment_bias = sentiments.get(a).map(|s| s.net_modifier(b)).unwrap_or(0.0);
-
+        if listeners > 0.0 {
+            convo.warmth += warmth_sum / listeners;
+            convo.romance += romance_sum / listeners;
+        }
         convo.exchanges += 1;
-        convo.warmth += df + sentiment_bias * 0.05;
-        convo.romance += dr.max(0.0);
         convo.context = derive_context(convo.warmth, convo.romance);
     }
 }
@@ -485,6 +604,7 @@ impl Plugin for ConversationPlugin {
             (
                 ensure_social_components,
                 start_conversations,
+                join_conversations,
                 run_conversations,
                 render_conversation_bubbles,
             )
@@ -565,5 +685,24 @@ mod tests {
         // A neutral mood leaves the context's choice intact.
         let fine = pick_exchange_action(ConversationContext::Friendly, Mood::Fine, &rel, 0);
         assert_eq!(fine.category, InteractionCategory::Friendly);
+    }
+
+    #[test]
+    fn group_join_respects_withdrawal_and_capacity() {
+        // A happy sim can join a small group...
+        assert!(can_join(Mood::Happy, 2));
+        // ...but not a full one (exclusion by capacity).
+        assert!(!can_join(Mood::Happy, MAX_GROUP));
+        // Embarrassed sims are left out (exclusion by mood).
+        assert!(!can_join(Mood::Embarrassed, 2));
+    }
+
+    #[test]
+    fn group_activities_cycle() {
+        // Activities advance every 3 exchanges and wrap around.
+        let first = group_activity_for(2);
+        let second = group_activity_for(5);
+        assert_ne!(first, second);
+        assert_eq!(group_activity_for(2), group_activity_for(0));
     }
 }
