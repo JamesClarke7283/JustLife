@@ -1,12 +1,14 @@
 use bevy::prelude::*;
 
 pub mod catalog;
+pub mod conversation;
 
 pub struct SocialPlugin;
 
 impl Plugin for SocialPlugin {
     fn build(&self, app: &mut App) {
-        app.register_type::<Relationships>()
+        app.add_plugins(conversation::ConversationPlugin)
+            .register_type::<Relationships>()
             .register_type::<RelationshipData>()
             .register_type::<Sentiments>()
             .register_type::<Conversation>();
@@ -131,11 +133,21 @@ pub struct Sentiment {
     pub source: Option<Entity>,
 }
 
+/// A running conversation between two (or more) sims. Lives on its own entity;
+/// participants carry an `InConversation` marker pointing back to it.
 #[derive(Component, Default, Debug, Clone, PartialEq, Reflect)]
 #[reflect(Component)]
 pub struct Conversation {
     pub participants: Vec<Entity>,
     pub context: ConversationContext,
+    /// In-game minutes accumulated since the last exchange.
+    pub timer: f32,
+    /// Number of social exchanges performed so far.
+    pub exchanges: u32,
+    /// Running friendly/tense balance (positive = warm, negative = tense).
+    pub warmth: f32,
+    /// Running romantic charge accumulated from romantic exchanges.
+    pub romance: f32,
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Reflect)]

@@ -553,16 +553,70 @@ fn spawn_demo_sim(
     mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
 ) {
+    let skin_texture: Handle<Image> = asset_server.load("textures/sim_skin_tone.png");
+
+    // Two sims spawned close together so they can strike up a conversation.
+    spawn_one_sim(
+        &mut commands,
+        &mut sim_manager,
+        &mut meshes,
+        &mut materials,
+        skin_texture.clone(),
+        ("Alex", "Sample"),
+        &[Trait::Cheerful, Trait::Outgoing],
+        Vec3::new(-0.4, 0.0, 2.0),
+        needs::Needs {
+            hunger: 55.0,
+            energy: 35.0,
+            social: 70.0,
+            fun: 50.0,
+            hygiene: 65.0,
+            bladder: 60.0,
+        },
+    );
+    spawn_one_sim(
+        &mut commands,
+        &mut sim_manager,
+        &mut meshes,
+        &mut materials,
+        skin_texture,
+        ("Sam", "Rivera"),
+        &[Trait::Cheerful, Trait::Creative],
+        Vec3::new(1.3, 0.0, 2.2),
+        needs::Needs {
+            hunger: 60.0,
+            energy: 55.0,
+            social: 65.0,
+            fun: 55.0,
+            hygiene: 70.0,
+            bladder: 65.0,
+        },
+    );
+}
+
+/// Spawn a single demo sim with the given identity, traits, position and needs.
+#[allow(clippy::too_many_arguments)]
+fn spawn_one_sim(
+    commands: &mut Commands,
+    sim_manager: &mut SimManager,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    skin_texture: Handle<Image>,
+    (first, last): (&str, &str),
+    sim_traits: &[Trait],
+    position: Vec3,
+    sim_needs: needs::Needs,
+) {
     let sim_id = sim_manager.next_id();
     let name = SimName {
-        first: "Alex".to_string(),
-        last: "Sample".to_string(),
+        first: first.to_string(),
+        last: last.to_string(),
     };
 
-    let skin_texture: Handle<Image> = asset_server.load("textures/sim_skin_tone.png");
     let mut traits = SimTraits::default();
-    traits.try_add(Trait::Cheerful);
-    traits.try_add(Trait::Outgoing);
+    for &t in sim_traits {
+        traits.try_add(t);
+    }
 
     let appearance = appearance::SimAppearance::default();
 
@@ -576,31 +630,18 @@ fn spawn_demo_sim(
                 traits,
                 appearance: appearance.clone(),
                 voice: appearance::SimVoice::default(),
-                needs: needs::Needs {
-                    hunger: 55.0,
-                    energy: 35.0,
-                    social: 70.0,
-                    fun: 50.0,
-                    hygiene: 65.0,
-                    bladder: 60.0,
-                },
+                needs: sim_needs,
                 need_state: needs::NeedState::default(),
                 moodlets: moodlet::ActiveMoodlets::default(),
                 animation: AnimationState::Idle,
             },
             appearance::SimBody,
             // SpatialBundle so the sim's body-part mesh children render (B0004).
-            SpatialBundle::from_transform(Transform::from_xyz(0.0, 0.0, 2.0)),
+            SpatialBundle::from_transform(Transform::from_translation(position)),
             interaction::InteractionQueue::default(),
         ))
         .with_children(|parent| {
-            appearance::build_sim_body(
-                parent,
-                &mut meshes,
-                &mut materials,
-                &appearance,
-                skin_texture,
-            );
+            appearance::build_sim_body(parent, meshes, materials, &appearance, skin_texture);
         })
         .id();
 
