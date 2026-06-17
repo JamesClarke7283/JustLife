@@ -302,20 +302,23 @@ fn spawn_bottom(root: &mut ChildBuilder) {
         ..default()
     })
     .with_children(|bottom| {
-        // Portrait + mood swatch + name.
+        // Portrait + mood swatch + name (click to open the sim info panel).
         bottom
-            .spawn(NodeBundle {
-                style: Style {
-                    flex_direction: FlexDirection::Column,
-                    align_items: AlignItems::Center,
-                    padding: UiRect::all(Val::Px(8.0)),
-                    row_gap: Val::Px(4.0),
+            .spawn((
+                ButtonBundle {
+                    style: Style {
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Center,
+                        padding: UiRect::all(Val::Px(8.0)),
+                        row_gap: Val::Px(4.0),
+                        ..default()
+                    },
+                    background_color: panel_bg(),
+                    border_radius: BorderRadius::all(Val::Px(6.0)),
                     ..default()
                 },
-                background_color: panel_bg(),
-                border_radius: BorderRadius::all(Val::Px(6.0)),
-                ..default()
-            })
+                crate::ui::sim_panel::SimPortraitButton,
+            ))
             .with_children(|p| {
                 p.spawn((
                     NodeBundle {

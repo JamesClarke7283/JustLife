@@ -3,6 +3,7 @@ use bevy::prelude::*;
 pub mod hud;
 pub mod main_menu;
 pub mod pie_menu;
+pub mod sim_panel;
 
 pub struct UIPlugin;
 
@@ -12,6 +13,7 @@ impl Plugin for UIPlugin {
             pie_menu::PieMenuPlugin,
             main_menu::MainMenuPlugin,
             hud::HudPlugin,
+            sim_panel::SimPanelPlugin,
         ))
         .init_resource::<UIMode>()
         .register_type::<UIMode>()
