@@ -7,6 +7,7 @@ pub mod autonomy;
 pub mod control;
 pub mod death;
 pub mod desperation;
+pub mod emote;
 pub mod interaction;
 pub mod movement;
 pub mod needs;
@@ -21,6 +22,7 @@ impl Plugin for SimPlugin {
             desperation::DesperationPlugin,
             death::DeathPlugin,
             control::SimControlPlugin,
+            emote::MoodEmotePlugin,
         ))
         .init_resource::<SimManager>()
         .init_resource::<needs::NeedModifiers>()
