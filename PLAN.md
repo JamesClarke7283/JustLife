@@ -630,13 +630,14 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - [x] 3 save slots (0 = autosave); F5 save / F9 load slot 1
   - [x] Slot display data: `slot_summary()` (lot · sim names · day · play-time); [PARTIAL] screenshot thumbnail + in-game slot-browser UI
 
-- [ ] **11.5** Implement game settings
-  - Graphics: resolution, fullscreen/windowed, quality presets (low/medium/high)
-  - Audio: master volume, music volume, SFX volume, ambient volume
-  - Gameplay: autonomy level (full/high/low/off), sim aging speed, needs decay rate
-  - Controls: key bindings display and remapping
-  - Camera: invert Y, rotation speed, zoom speed
-  - Settings persisted to config file
+- [x] **11.5** Implement game settings (`GameSettings` resource + overlay)
+  - [PARTIAL] Graphics quality preset stored (Low/Medium/High); resolution/fullscreen N/A on web canvas; preset not yet wired to the render pipeline
+  - [x] Audio: master/music/sfx/ambient volume — drive `AudioState`
+  - [x] Gameplay: autonomy level (stored), aging speed (stored), needs-decay rate (applied to `decay_needs`)
+  - [PARTIAL] Controls: key-binding remapping not implemented (bindings are fixed)
+  - [x] Camera: zoom speed applied; invert-Y & rotation speed stored ([PARTIAL] — iso camera has no free-look axis)
+  - [x] Settings persisted to localStorage/file (loaded at startup, saved on change)
+  - [x] In-game settings overlay (O to toggle; Up/Down/Left/Right adjust) — verified rendering + persistence in WASM
 
 - [ ] **11.6** Implement localization framework
   - All UI strings loaded from locale files (English default)
