@@ -11,7 +11,7 @@ use crate::core::events::{ToastEvent, ToastKind};
 use crate::core::state::GameState;
 
 /// Seconds a toast stays on screen before fading out.
-const TOAST_LIFETIME: f32 = 5.0;
+const TOAST_LIFETIME: f32 = 6.0;
 
 /// An individual toast with its remaining lifetime.
 #[derive(Component)]
@@ -85,7 +85,9 @@ fn tick_toasts(
     mut toasts: Query<(Entity, &mut Toast, &mut BackgroundColor)>,
 ) {
     for (entity, mut toast, mut color) in &mut toasts {
-        toast.remaining -= time.delta_seconds();
+        // Clamp the step so a single huge frame (e.g. the heavy LiveMode-enter
+        // transition) can't drain the whole lifetime at once.
+        toast.remaining -= time.delta_seconds().min(0.1);
         if toast.remaining <= 0.0 {
             commands.entity(entity).despawn_recursive();
         } else if toast.remaining < 1.0 {
