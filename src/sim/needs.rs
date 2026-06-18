@@ -255,6 +255,7 @@ pub fn decay_needs(
     game_config: Res<GameConfig>,
     game_speed: Res<GameSpeed>,
     modifiers: Res<NeedModifiers>,
+    settings: Res<crate::settings::GameSettings>,
     time: Res<Time>,
     mut threshold_writer: EventWriter<NeedThresholdEvent>,
 ) {
@@ -264,8 +265,10 @@ pub fn decay_needs(
 
     let speed = game_speed.multiplier();
     let real_dt = time.delta_seconds();
-    // Convert real seconds to in-game minutes based on configured scale.
-    let game_minutes = real_dt * speed / game_config.real_seconds_per_game_minute;
+    // Convert real seconds to in-game minutes based on configured scale, scaled
+    // by the player's needs-decay setting.
+    let game_minutes =
+        real_dt * speed * settings.needs_decay / game_config.real_seconds_per_game_minute;
     let rates = game_config.need_decay_rates;
     let trait_multipliers = |traits: &[Trait]| trait_decay_multiplier(traits, &modifiers);
 

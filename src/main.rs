@@ -6,6 +6,7 @@ pub mod core;
 pub mod interaction;
 pub mod render;
 pub mod save;
+pub mod settings;
 pub mod sim;
 pub mod social;
 pub mod ui;
@@ -40,6 +41,7 @@ fn main() {
             social::SocialPlugin,
             audio::AudioPlugin,
             save::SavePlugin,
+            settings::SettingsPlugin,
             assets::AssetsPlugin,
             wasm::WasmPlugin,
             render::RenderPlugin,

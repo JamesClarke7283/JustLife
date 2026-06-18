@@ -107,6 +107,7 @@ fn spawn_camera(mut commands: Commands) {
 }
 
 /// Reads keyboard/mouse input and updates the camera rig.
+#[allow(clippy::too_many_arguments)]
 fn camera_input(
     mut rig_query: Query<&mut CameraRig, With<IsometricCamera>>,
     mut input_state: ResMut<CameraInputState>,
@@ -114,6 +115,7 @@ fn camera_input(
     mouse_button: Res<ButtonInput<MouseButton>>,
     mut scroll_events: EventReader<MouseWheel>,
     windows: Query<&Window>,
+    settings: Res<crate::settings::GameSettings>,
     time: Res<Time>,
 ) {
     let Ok(mut rig) = rig_query.get_single_mut() else {
@@ -169,7 +171,7 @@ fn camera_input(
         let step = match event.unit {
             MouseScrollUnit::Line => event.y * 1.5,
             MouseScrollUnit::Pixel => event.y * 0.02,
-        };
+        } * settings.zoom_speed;
         rig.distance = (rig.distance - step).clamp(rig.min_distance, rig.max_distance);
     }
 
