@@ -598,7 +598,9 @@ pub struct PlacedObject {
     pub powered: bool,
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Reflect)]
+#[derive(
+    Default, Debug, Clone, Copy, PartialEq, Eq, Reflect, serde::Serialize, serde::Deserialize,
+)]
 #[reflect]
 pub enum ObjectCondition {
     #[default]

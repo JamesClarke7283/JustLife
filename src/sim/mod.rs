@@ -177,7 +177,18 @@ pub struct SimBundle {
     pub animation: AnimationState,
 }
 
-#[derive(Component, Default, Debug, Clone, Copy, PartialEq, Eq, Reflect)]
+#[derive(
+    Component,
+    Default,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Reflect,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 #[reflect(Component)]
 pub enum SimGender {
     #[default]
@@ -186,7 +197,18 @@ pub enum SimGender {
     Custom,
 }
 
-#[derive(Component, Default, Debug, Clone, Copy, PartialEq, Eq, Reflect)]
+#[derive(
+    Component,
+    Default,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Reflect,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 #[reflect(Component)]
 pub enum SimAge {
     #[default]
@@ -273,7 +295,9 @@ pub enum AnimationState {
 }
 
 /// Personality traits that modify needs, autonomy, and social outcomes.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
+#[derive(
+    Default, Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect, serde::Serialize, serde::Deserialize,
+)]
 #[reflect]
 pub enum Trait {
     #[default]
@@ -635,7 +659,7 @@ fn spawn_player_sim(
 
 /// Spawn a single demo sim with the given identity, traits, position and needs.
 #[allow(clippy::too_many_arguments)]
-fn spawn_one_sim(
+pub fn spawn_one_sim(
     commands: &mut Commands,
     sim_manager: &mut SimManager,
     meshes: &mut Assets<Mesh>,

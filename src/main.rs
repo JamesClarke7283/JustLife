@@ -5,6 +5,7 @@ pub mod career;
 pub mod core;
 pub mod interaction;
 pub mod render;
+pub mod save;
 pub mod sim;
 pub mod social;
 pub mod ui;
@@ -38,6 +39,7 @@ fn main() {
             career::CareerPlugin,
             social::SocialPlugin,
             audio::AudioPlugin,
+            save::SavePlugin,
             assets::AssetsPlugin,
             wasm::WasmPlugin,
             render::RenderPlugin,
