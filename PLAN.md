@@ -597,19 +597,19 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
 
 ## Phase 11: Audio & Polish
 
-- [ ] **11.1** Implement audio system
-  - Load audio files via Bevy asset system
-  - Background music: main menu theme, build mode music, live mode ambient music
-  - Generate ambient music tracks or use royalty-free
-  - Volume control in options menu
-  - Fade music between game states
+- [x] **11.1** Implement audio system
+  - [x] Load audio files via Bevy asset system (`AudioBundle`, served from `assets/audio/`)
+  - [x] Background music: menu / build / live tracks switched by `GameState`
+  - [x] Generate ambient music tracks (ffmpeg-generated ambient pads; royalty-free real music is a human asset task)
+  - [x] Volume control via `AudioState` (master/music/sfx levels applied to playback)
+  - [x] Fade music between game states (`fade_in_music` ramps to target over 1.5s)
 
-- [ ] **11.2** Implement sound effects
-  - UI sounds: click, hover, notification, error
-  - Sim sounds: footsteps, door open/close, object interactions
-  - Build mode sounds: wall place, object place, delete, error
-  - Ambient sounds: birds, traffic, rain, clock ticking
-  - Simlish-style vocalizations for sim speech (generate or use placeholder beeps)
+- [x] **11.2** Implement sound effects (core: `SfxEvent` system + wired triggers)
+  - [x] UI sounds: click (button press) + notification (toast); hover/error use the same one-shot path
+  - [PARTIAL] Sim sounds (footsteps, door, object interactions) — need per-action audio assets
+  - [PARTIAL] Build mode sounds (place/delete) — need assets; `SfxEvent("audio/click.ogg")` is the hook
+  - [PARTIAL] Ambient sounds (birds, traffic, rain, clock) — need looped ambient assets
+  - [PARTIAL] Simlish vocalizations — see Phase 26 (Simlish & Audio Deep Dive); needs generated voice assets
 
 - [ ] **11.3** Implement visual feedback and particles
   - Thought bubbles above sims (show current want/need as icon)

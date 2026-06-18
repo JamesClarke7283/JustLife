@@ -22,7 +22,13 @@ impl Plugin for AudioPlugin {
             .add_event::<SfxEvent>()
             .add_systems(
                 Update,
-                (switch_music, fade_in_music, play_sfx, notification_sfx),
+                (
+                    switch_music,
+                    fade_in_music,
+                    play_sfx,
+                    notification_sfx,
+                    ui_click_sfx,
+                ),
             );
     }
 }
@@ -147,6 +153,18 @@ fn play_sfx(
 fn notification_sfx(mut toasts: EventReader<ToastEvent>, mut sfx: EventWriter<SfxEvent>) {
     for _ in toasts.read() {
         sfx.send(SfxEvent("audio/success.ogg"));
+    }
+}
+
+/// Click sound when any UI button is pressed.
+fn ui_click_sfx(
+    buttons: Query<&Interaction, (Changed<Interaction>, With<Button>)>,
+    mut sfx: EventWriter<SfxEvent>,
+) {
+    for interaction in &buttons {
+        if *interaction == Interaction::Pressed {
+            sfx.send(SfxEvent("audio/click.ogg"));
+        }
     }
 }
 
