@@ -1,5 +1,6 @@
 //! Direct player control of sims (Sims-style):
 //! - left-click a sim to select it (the controlled sim),
+//! - left-click an object to send the active sim to go use it,
 //! - right-click empty ground to send the selected sim walking there,
 //! - right-click a sim/object still opens its interaction menu (pie menu).
 //!
@@ -10,15 +11,17 @@
 use bevy::prelude::*;
 
 use crate::core::components::RouteTo;
+use crate::core::events::ToastEvent;
 use crate::core::resources::SelectionResource;
 use crate::core::state::GameState;
 use crate::render::camera::IsometricCamera;
-use crate::sim::interaction::{ActiveInteraction, InteractionQueue};
+use crate::sim::interaction::{ActiveInteraction, InteractionQueue, QueuedInteraction};
 use crate::sim::movement::MoveTo;
-use crate::sim::{AnimationState, SimName};
+use crate::sim::{AnimationState, SimManager, SimName};
 use crate::social::conversation::InConversation;
 use crate::ui::pie_menu::PieMenuState;
 use crate::world::PlacedObject;
+use crate::world::catalog::CatalogDatabase;
 use crate::world::placed::ObjectGrid;
 use crate::world::wall::snap_to_grid;
 use crate::world::wall_tool::cursor_ground_xz;
@@ -45,14 +48,23 @@ fn nearest_sim<'a>(
     best.map(|(_, e)| e)
 }
 
-/// Left-click selects the sim under the cursor (when no menu is open).
-fn select_sim(
+/// Left-click selects a sim, or - when an object is clicked - sends the
+/// active sim to go use it (queues the object's primary interaction).
+#[allow(clippy::too_many_arguments)]
+fn select_or_interact(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     cameras: Query<(&Camera, &GlobalTransform), With<IsometricCamera>>,
     pie: Res<PieMenuState>,
+    grid: Res<ObjectGrid>,
+    catalog: Res<CatalogDatabase>,
+    manager: Res<SimManager>,
     sims: Query<(Entity, &Transform), With<SimName>>,
+    objects: Query<&PlacedObject>,
+    mut queues: Query<&mut InteractionQueue>,
     mut selection: ResMut<SelectionResource>,
+    mut toasts: EventWriter<ToastEvent>,
+    mut commands: Commands,
 ) {
     if pie.open || !mouse.just_pressed(MouseButton::Left) {
         return;
@@ -61,8 +73,43 @@ fn select_sim(
         return;
     };
     let point = Vec3::new(ground.x, 0.0, ground.y);
+
+    // Clicking a sim selects it.
     if let Some(entity) = nearest_sim(point, sims.iter()) {
         selection.selected = Some(entity);
+        return;
+    }
+
+    // Clicking an object sends the active sim (selected, or the player's) to use it.
+    let cell = snap_to_grid(ground);
+    let Some(&object) = grid.occupied.get(&(cell.x as i32, cell.y as i32)) else {
+        return;
+    };
+    let Ok(obj) = objects.get(object) else {
+        return;
+    };
+    let Some(action) = catalog.get(&obj.catalog_id).and_then(|i| i.actions.first()) else {
+        return;
+    };
+    let Some(sim) = selection.selected.or_else(|| manager.sims.first().copied()) else {
+        return;
+    };
+    if let Ok(mut queue) = queues.get_mut(sim) {
+        queue.queue_player_command(QueuedInteraction {
+            target: object,
+            action: action.name.clone(),
+            need: action.need,
+            rate: action.rate,
+            source: crate::sim::interaction::InteractionSource::Player,
+        });
+        // Interrupt whatever the sim was doing so it re-routes to the click.
+        commands
+            .entity(sim)
+            .remove::<ActiveInteraction>()
+            .remove::<RouteTo>()
+            .remove::<MoveTo>()
+            .remove::<InConversation>();
+        toasts.send(ToastEvent::info(format!("Going to: {}", action.name)));
     }
 }
 
@@ -175,7 +222,8 @@ impl Plugin for SimControlPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            (select_sim, move_selected_sim, selection_ring).run_if(in_state(GameState::LiveMode)),
+            (select_or_interact, move_selected_sim, selection_ring)
+                .run_if(in_state(GameState::LiveMode)),
         );
     }
 }
