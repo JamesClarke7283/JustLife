@@ -589,7 +589,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Pause dims the screen slightly
   - Ultra speed auto-engages during sleep (skip to morning)
 
-- [ ] **10.10** Implement tooltip system
+- [x] **10.10** Implement tooltip system
   - Hovering over any UI element shows a tooltip after 500ms
   - Tooltips explain what the element does
   - Tooltips for objects show: name, needs satisfied, price, current state
