@@ -582,7 +582,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Randomize button for all fields
   - "Done" creates sim and places on lot
 
-- [ ] **10.9** Implement time control UI
+- [x] **10.9** Implement time control UI
   - Speed buttons: pause, play (1x), fast (2x), ultra (4x)
   - Keyboard shortcuts: 1/2/3 for speed, 0 for pause, Space for toggle
   - Visual indicator of current speed
