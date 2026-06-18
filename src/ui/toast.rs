@@ -12,9 +12,6 @@ use crate::core::state::GameState;
 
 /// Seconds a toast stays on screen before fading out.
 const TOAST_LIFETIME: f32 = 5.0;
-/// Top offset of the first toast (below the clock) and per-toast spacing.
-const TOAST_TOP: f32 = 86.0;
-const TOAST_SPACING: f32 = 44.0;
 
 /// An individual toast with its remaining lifetime.
 #[derive(Component)]
@@ -46,16 +43,16 @@ fn spawn_toasts(
                 NodeBundle {
                     style: Style {
                         position_type: PositionType::Absolute,
-                        // Centred at the top (mirrors the confirm dialog, which
-                        // renders; top-level right/left-px anchors did not).
+                        // Mirror the job board overlay exactly (it renders):
+                        // left 50% + negative margin, top as a percentage.
                         left: Val::Percent(50.0),
-                        top: Val::Px(TOAST_TOP + slot as f32 * TOAST_SPACING),
+                        top: Val::Percent(11.0 + slot as f32 * 6.5),
                         margin: UiRect::left(Val::Px(-160.0)),
                         width: Val::Px(320.0),
-                        padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
-                        border: UiRect::all(Val::Px(2.0)),
+                        flex_direction: FlexDirection::Column,
                         align_items: AlignItems::Center,
-                        justify_content: JustifyContent::Center,
+                        padding: UiRect::all(Val::Px(10.0)),
+                        border: UiRect::all(Val::Px(2.0)),
                         ..default()
                     },
                     background_color: kind_color(event.kind).into(),
