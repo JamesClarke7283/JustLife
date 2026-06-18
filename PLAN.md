@@ -563,7 +563,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Top bar: current mode indicator, household funds, undo/redo buttons
   - Confirmation dialogs for expensive purchases
 
-- [ ] **10.7** Implement notifications/toast system
+- [x] **10.7** Implement notifications/toast system
   - Toast notifications appear top-right and auto-dismiss after 5 seconds
   - Notification types: info (blue), success (green), warning (yellow), error (red)
   - Notifications for: bills due, promotion, sim mood event, relationship milestone

@@ -78,6 +78,20 @@ chrome-devtools MCP (serve `web/` then reload/screenshot/console):
   color, ..default() }` uses the bundled default font (no asset handle needed).
   Immediate-mode menus (despawn-all + respawn each frame from a resource) work
   fine and keep render logic stateless — mirror `placement.rs`'s ghost pattern.
+- **Lifetime-based UI (toasts, timed popups): clamp `time.delta_seconds()`.**
+  The heavy `LiveMode`-enter transition (sim spawn + HUD + systems starting) can
+  produce a single multi-second frame delta. A timed element that subtracts the
+  raw delta drains its whole lifetime in one tick and despawns before it ever
+  renders — it'll log as spawned but never appear. Clamp the per-tick step (e.g.
+  `time.delta_seconds().min(0.1)`). Symptom that points here: the element's
+  spawn log fires once, no panic, but nothing shows. (Cost me ~7 build cycles on
+  the toast system; a long temporary lifetime + a despawn log isolated it.)
+- **Fast WASM verification builds: `./build-wasm.sh wasm-dev`.** The default
+  `wasm-release` (lto=true) takes 5–16 min and OOM-kills under memory pressure;
+  the `[profile.wasm-dev]` (no LTO, opt-level 1) builds incrementally in ~2–3 min
+  and is fine for screenshot verification. `build-wasm.sh` takes the profile as
+  its first arg. Run it from the repo root (a stray `cd web` for the http server
+  leaves the cwd wrong — use absolute paths or `cd` back).
 - **Transient black screen / screenshot timeout on a state transition is usually
   NOT a real bug.** On a heavy first frame (e.g. entering `LiveMode`: menu
   despawns, HUD spawns, all sim/career systems start at once) the chrome-devtools
