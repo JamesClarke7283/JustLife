@@ -570,7 +570,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Notification history accessible from icon
   - Sound effect on notification
 
-- [ ] **10.8** Implement Create-A-Sim UI
+- [x] **10.8** Implement Create-A-Sim UI
   - CAS screen: full-body view of sim in 3D
   - Name input fields
   - Gender selector
