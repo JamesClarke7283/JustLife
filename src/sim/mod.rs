@@ -558,12 +558,15 @@ pub struct SimConfig {
     pub first: String,
     pub last: String,
     pub gender: SimGender,
+    pub age: SimAge,
     pub traits: Vec<Trait>,
     /// Create-A-Sim appearance preset indices (into the appearance palettes).
     pub skin: usize,
     pub hair_color: usize,
     pub hair_style: usize,
     pub shirt: usize,
+    /// Voice pitch preset index (see Create-A-Sim `voice_presets`).
+    pub voice: usize,
 }
 
 impl SimConfig {
@@ -579,11 +582,13 @@ impl Default for SimConfig {
             first: "Alex".to_string(),
             last: "Sample".to_string(),
             gender: SimGender::Custom,
+            age: SimAge::YoungAdult,
             traits: vec![Trait::Cheerful, Trait::Outgoing],
             skin: 1,
             hair_color: 1,
             hair_style: 0,
             shirt: 0,
+            voice: 1,
         }
     }
 }
@@ -610,6 +615,8 @@ fn spawn_player_sim(
         skin_texture,
         (config.first.as_str(), config.last.as_str()),
         config.gender,
+        config.age,
+        crate::ui::create_a_sim::voice_pitch(config.voice),
         &config.traits,
         config.appearance(),
         Vec3::new(0.0, 0.0, 2.0),
@@ -634,6 +641,8 @@ fn spawn_one_sim(
     skin_texture: Handle<Image>,
     (first, last): (&str, &str),
     gender: SimGender,
+    age: SimAge,
+    voice_pitch: f32,
     sim_traits: &[Trait],
     appearance: appearance::SimAppearance,
     position: Vec3,
@@ -655,11 +664,14 @@ fn spawn_one_sim(
             SimBundle {
                 sim_id,
                 name: name.clone(),
-                age: SimAge::YoungAdult,
+                age,
                 gender,
                 traits,
                 appearance: appearance.clone(),
-                voice: appearance::SimVoice::default(),
+                voice: appearance::SimVoice {
+                    pitch: voice_pitch,
+                    ..appearance::SimVoice::default()
+                },
                 needs: sim_needs,
                 need_state: needs::NeedState::default(),
                 moodlets: moodlet::ActiveMoodlets::default(),

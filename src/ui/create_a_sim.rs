@@ -12,7 +12,28 @@ use bevy::prelude::*;
 
 use crate::core::state::GameState;
 use crate::sim::appearance::{hair_colors, hair_styles, shirt_colors, skin_tones};
-use crate::sim::{SimConfig, SimGender, Trait};
+use crate::sim::{SimAge, SimConfig, SimGender, Trait};
+
+/// Playable starting age stages (young adult is the default).
+pub fn age_choices() -> [(SimAge, &'static str); 4] {
+    [
+        (SimAge::Teen, "Teen"),
+        (SimAge::YoungAdult, "Young Adult"),
+        (SimAge::Adult, "Adult"),
+        (SimAge::Elder, "Elder"),
+    ]
+}
+
+/// Voice pitch presets.
+pub fn voice_presets() -> [(&'static str, f32); 3] {
+    [("Low", 0.8), ("Normal", 1.0), ("High", 1.2)]
+}
+
+/// Voice pitch for a preset index.
+pub fn voice_pitch(index: usize) -> f32 {
+    let presets = voice_presets();
+    presets[index % presets.len()].1
+}
 
 const TRAIT_CHOICES: [(Trait, &str); 9] = [
     (Trait::Cheerful, "Cheerful"),
@@ -29,9 +50,11 @@ const MAX_TRAITS: usize = 3;
 const NAME_MAX: usize = 16;
 const STEPS: usize = 3;
 
-/// Which appearance attribute a carousel cycles.
+/// Which attribute a carousel cycles.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Field {
+    Age,
+    Voice,
     Skin,
     HairStyle,
     HairColor,
@@ -75,6 +98,12 @@ fn wrap(index: usize, dir: i32, len: usize) -> usize {
 
 fn cycle_field(config: &mut SimConfig, field: Field, dir: i32) {
     match field {
+        Field::Age => {
+            let ages = age_choices();
+            let cur = ages.iter().position(|(a, _)| *a == config.age).unwrap_or(1);
+            config.age = ages[wrap(cur, dir, ages.len())].0;
+        }
+        Field::Voice => config.voice = wrap(config.voice, dir, voice_presets().len()),
         Field::Skin => config.skin = wrap(config.skin, dir, skin_tones().len()),
         Field::HairStyle => config.hair_style = wrap(config.hair_style, dir, hair_styles().len()),
         Field::HairColor => config.hair_color = wrap(config.hair_color, dir, hair_colors().len()),
@@ -88,6 +117,8 @@ fn randomize(config: &mut SimConfig, seed: usize) {
     ];
     config.first = NAMES[seed % NAMES.len()].to_string();
     config.gender = [SimGender::Female, SimGender::Male, SimGender::Custom][seed % 3];
+    config.age = age_choices()[seed % age_choices().len()].0;
+    config.voice = seed % voice_presets().len();
     config.skin = seed % skin_tones().len();
     config.hair_color = (seed + 1) % hair_colors().len();
     config.hair_style = (seed + 2) % hair_styles().len();
@@ -330,6 +361,20 @@ fn step_identity(card: &mut ChildBuilder, config: &SimConfig) {
             button(row, CasAction::Gender(g), name, 120.0, selected);
         }
     });
+
+    // Age + voice carousels.
+    let age_label = age_choices()
+        .iter()
+        .find(|(a, _)| *a == config.age)
+        .map(|(_, l)| *l)
+        .unwrap_or("Young Adult");
+    carousel(card, Field::Age, "Age", age_label);
+    carousel(
+        card,
+        Field::Voice,
+        "Voice",
+        voice_presets()[config.voice % 3].0,
+    );
 }
 
 /// Step 2: appearance carousels.
