@@ -121,6 +121,26 @@ chrome-devtools MCP (serve `web/` then reload/screenshot/console):
   `AudioBundle` via `PlaybackSettings::{LOOP,DESPAWN}` + `Volume::new()`; fade is
   a manual `AudioSink::set_volume` ramp.
 
+## Save / load (Phase 11.4)
+
+- **Storage is split by target:** `localStorage` on `wasm32` (needs `web-sys`
+  features `["Window", "Storage"]` in Cargo.toml) and a `saves/<key>.ron` file
+  natively, behind `#[cfg(target_arch = "wasm32")]`. Slots are `justlife_save_<n>`
+  (slot 0 = autosave). Adding a web-sys feature forces a full dep recompile (~10 min).
+- **Verify save/load headlessly via JS, not just keypresses:** `evaluate_script`
+  can `localStorage.getItem('justlife_save_1')` to inspect the actual serialized
+  RON (proves the *save* captured state), and can **tamper** a field
+  (`raw.replace('money:16000','money:50000')` + `setItem`) before pressing F9 —
+  then the HUD visibly changes on load (proves the *load* applied + rebuilt the
+  world). Much stronger than a same-state round-trip. localStorage persists across
+  reloads too.
+- **RON omits struct names by default:** `SavedSim`/`SavedObject` serialize as bare
+  `(...)` tuples, so don't regex for the type name — match the fields.
+- **Restore rebuilds, doesn't patch:** load despawns all `SimName`/`PlacedObject`
+  entities, clears `SimManager.sims` + `ObjectGrid.occupied`, then re-spawns via
+  `spawn_one_sim` / `spawn_catalog_item`. `register_placed_objects` re-populates
+  the grid next frame. Appearance is restored from the CAS preset indices.
+
 ## Visual feedback (Phase 11.3)
 
 - **Floating indicators that track a sim** (mood orb, selection ring) are spawned

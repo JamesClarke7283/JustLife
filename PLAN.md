@@ -620,14 +620,15 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - [PARTIAL] Need-failure effects (puddle/zzz) — need particle/decal assets
   - [PARTIAL] Money +/- floating text on money change — UI float not yet wired
 
-- [ ] **11.4** Implement save/load system
-  - Serialize game state to RON (Rusty Object Notation) format
-  - Save: all sim states, world state, relationships, inventory, career, time
-  - Save file stored locally (browser: localStorage; native: filesystem)
-  - Load: deserialize and reconstruct all entities and resources
-  - Auto-save every 10 in-game minutes
-  - Multiple save slots (3 minimum)
-  - Save slot display: neighborhood name, sim names, play time, screenshot
+- [x] **11.4** Implement save/load system (core; relationships/inventory partial)
+  - [x] Serialize game state to RON format (`SaveGame`/`SavedSim`/`SavedObject`)
+  - [x] Save: sim identity/appearance/traits/needs/position/career, money, time, lot, placed objects
+  - [PARTIAL] relationships, skills, inventory not yet serialized (version field allows extending)
+  - [x] Stored locally — browser `localStorage` (web-sys) / native `saves/` file
+  - [x] Load: deserialize and rebuild sims + objects via the normal spawn paths
+  - [x] Auto-save every 10 in-game minutes (slot 0)
+  - [x] 3 save slots (0 = autosave); F5 save / F9 load slot 1
+  - [x] Slot display data: `slot_summary()` (lot · sim names · day · play-time); [PARTIAL] screenshot thumbnail + in-game slot-browser UI
 
 - [ ] **11.5** Implement game settings
   - Graphics: resolution, fullscreen/windowed, quality presets (low/medium/high)
