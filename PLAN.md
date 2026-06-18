@@ -611,13 +611,14 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - [PARTIAL] Ambient sounds (birds, traffic, rain, clock) — need looped ambient assets
   - [PARTIAL] Simlish vocalizations — see Phase 26 (Simlish & Audio Deep Dive); needs generated voice assets
 
-- [ ] **11.3** Implement visual feedback and particles
-  - Thought bubbles above sims (show current want/need as icon)
-  - Speech bubbles during conversation (show interaction icon)
-  - Need failure visual effects (puddle for bladder, zzz for energy, etc.)
-  - Sparkle/glow effect for positive moodlets
-  - Red tint/particles for negative moodlets
-  - Money +/- floating text when money changes
+- [x] **11.3** Implement visual feedback (mood orbs; bubbles/particles partial)
+  - [x] Floating mood orb above each sim, colour-coded by dominant mood, bobbing
+  - [x] Sparkle/glow effect for positive moodlets (warm/bright orb glow)
+  - [x] Red tint for negative moodlets (red orb glow)
+  - [PARTIAL] Thought bubbles with want/need icons — need icon assets + billboard
+  - [PARTIAL] Speech bubbles during conversation — need billboard text/icons
+  - [PARTIAL] Need-failure effects (puddle/zzz) — need particle/decal assets
+  - [PARTIAL] Money +/- floating text on money change — UI float not yet wired
 
 - [ ] **11.4** Implement save/load system
   - Serialize game state to RON (Rusty Object Notation) format

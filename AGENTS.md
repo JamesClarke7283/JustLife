@@ -102,6 +102,32 @@ chrome-devtools MCP (serve `web/` then reload/screenshot/console):
   `evaluate_script` returns and the array is empty, the main thread is alive and
   there was no panic. Re-screenshot a moment later; it renders fine.
 
+## Audio (Phase 11)
+
+- **Assets are served via a symlink:** `web/assets -> ../assets`, so anything
+  under `assets/` (incl. `assets/audio/*.ogg`) is reachable at
+  `http://localhost:8000/assets/...` with no copy step. Confirm with
+  `curl -o /dev/null -w '%{http_code}' .../assets/audio/menu.ogg`.
+- **No audio-generation MCP tool** (imagegen is images only). Placeholder music
+  is generated with **ffmpeg** (`sine` + `amix` + `afade` → short ambient `.ogg`
+  loops); real royalty-free music is a human asset task. SFX are tiny ffmpeg tones.
+- **Audio can't be heard in the headless harness.** Verify it indirectly: build,
+  load, walk to the state, then `list_console_messages` for the *absence* of
+  audio-load errors (a missing/undecodable `.ogg` logs an error). The
+  routing/volume logic lives in pure fns (`music_for_state`, `*_level`) and is
+  unit-tested instead.
+- **Browser autoplay policy:** music won't actually sound until the first user
+  gesture (a key/click); the asset still *loads* immediately. Bevy plays
+  `AudioBundle` via `PlaybackSettings::{LOOP,DESPAWN}` + `Volume::new()`; fade is
+  a manual `AudioSink::set_volume` ramp.
+
+## Visual feedback (Phase 11.3)
+
+- **Floating indicators that track a sim** (mood orb, selection ring) are spawned
+  as **standalone entities repositioned each frame**, NOT as mesh children of the
+  sim — child meshes hit the B0004 visibility-hierarchy trap. Hide them when the
+  sim is off-lot (`transform.translation.y < -1.0`, e.g. at work).
+
 ## Project Structure
 
 - `src/core/` — shared ECS resources, events, components, state, time
