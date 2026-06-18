@@ -252,11 +252,11 @@ fn spawn_clock(root: &mut ChildBuilder) {
                 ..default()
             })
             .with_children(|row| {
-                for (speed, label) in [
-                    (GameSpeed::Pause, "II"),
-                    (GameSpeed::Normal, "1x"),
-                    (GameSpeed::Fast, "2x"),
-                    (GameSpeed::Ultra, "4x"),
+                for (speed, label, tip) in [
+                    (GameSpeed::Pause, "II", "Pause (0 / Space)"),
+                    (GameSpeed::Normal, "1x", "Normal speed (1)"),
+                    (GameSpeed::Fast, "2x", "Fast speed (2)"),
+                    (GameSpeed::Ultra, "4x", "Ultra speed (3)"),
                 ] {
                     row.spawn((
                         ButtonBundle {
@@ -272,6 +272,7 @@ fn spawn_clock(root: &mut ChildBuilder) {
                             ..default()
                         },
                         SpeedButton(speed),
+                        crate::ui::tooltip::Tooltip(tip.to_string()),
                     ))
                     .with_children(|b| {
                         b.spawn(TextBundle::from_section(

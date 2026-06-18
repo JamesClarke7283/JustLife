@@ -8,6 +8,7 @@ pub mod pie_menu;
 pub mod sim_panel;
 pub mod time_control;
 pub mod toast;
+pub mod tooltip;
 
 pub struct UIPlugin;
 
@@ -22,6 +23,7 @@ impl Plugin for UIPlugin {
             lot_select::LotSelectPlugin,
             toast::ToastPlugin,
             time_control::TimeControlPlugin,
+            tooltip::TooltipPlugin,
         ))
         .init_resource::<UIMode>()
         .register_type::<UIMode>()
