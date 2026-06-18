@@ -37,13 +37,7 @@ fn spawn_toasts(
     mut commands: Commands,
     mut events: EventReader<ToastEvent>,
     existing: Query<&Toast>,
-    windows: Query<&Window>,
 ) {
-    // Left-anchor (top-level right-anchored UI nodes don't position here).
-    let left = windows
-        .get_single()
-        .map(|w| (w.width() - 292.0).max(12.0))
-        .unwrap_or(900.0);
     let base = existing.iter().count();
     for (slot, event) in (base..).zip(events.read()) {
         info!("toast: {}", event.message);
@@ -52,12 +46,16 @@ fn spawn_toasts(
                 NodeBundle {
                     style: Style {
                         position_type: PositionType::Absolute,
-                        left: Val::Px(left),
+                        // Centred at the top (mirrors the confirm dialog, which
+                        // renders; top-level right/left-px anchors did not).
+                        left: Val::Percent(50.0),
                         top: Val::Px(TOAST_TOP + slot as f32 * TOAST_SPACING),
-                        width: Val::Px(280.0),
+                        margin: UiRect::left(Val::Px(-160.0)),
+                        width: Val::Px(320.0),
                         padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
                         border: UiRect::all(Val::Px(2.0)),
                         align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
                         ..default()
                     },
                     background_color: kind_color(event.kind).into(),
