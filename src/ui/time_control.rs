@@ -20,6 +20,33 @@ struct PrePauseSpeed(Option<GameSpeed>);
 #[derive(Resource, Default)]
 struct AutoUltra(bool);
 
+/// Whether the game was auto-paused because the browser tab lost focus.
+#[derive(Resource, Default)]
+struct BlurPaused(bool);
+
+/// Pause the game when the window/tab loses focus and resume on return - but
+/// only auto-resume pauses we caused, so a manual pause is respected (Phase 12.2,
+/// browser tab focus/blur handling).
+fn pause_on_blur(
+    mut focus_events: EventReader<bevy::window::WindowFocused>,
+    mut speed: ResMut<GameSpeed>,
+    mut pre: ResMut<PrePauseSpeed>,
+    mut blur: ResMut<BlurPaused>,
+) {
+    for event in focus_events.read() {
+        if !event.focused {
+            if *speed != GameSpeed::Pause {
+                pre.0 = Some(*speed);
+                *speed = GameSpeed::Pause;
+                blur.0 = true;
+            }
+        } else if blur.0 {
+            *speed = pre.0.take().unwrap_or(GameSpeed::Normal);
+            blur.0 = false;
+        }
+    }
+}
+
 /// Full-screen dim shown while paused.
 #[derive(Component)]
 struct PauseDim;
@@ -129,10 +156,12 @@ impl Plugin for TimeControlPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<PrePauseSpeed>()
             .init_resource::<AutoUltra>()
+            .init_resource::<BlurPaused>()
             .add_systems(OnExit(GameState::LiveMode), clear_dim)
             .add_systems(
                 Update,
-                (time_keys, auto_ultra_sleep, pause_dim).run_if(in_state(GameState::LiveMode)),
+                (time_keys, auto_ultra_sleep, pause_dim, pause_on_blur)
+                    .run_if(in_state(GameState::LiveMode)),
             );
     }
 }

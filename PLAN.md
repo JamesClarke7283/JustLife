@@ -665,13 +665,13 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - [x] Size minimized via opt-level="s"+LTO; `wasm-opt -Oz` runs when binaryen is on PATH ([BLOCKED] locally — wasm-opt not installed, pass skips gracefully)
   - [x] Outputs `just-life.js` + `just-life_bg.wasm` (wasm-bindgen naming) into `web/`
 
-- [ ] **12.2** Create browser shell
-  - Create `web/index.html` with full-screen canvas
-  - Create `web/index.js` with WASM loader and resize handler
-  - Create `web/styles.css` with body margin removal and canvas styling
-  - Handle browser tab focus/blur for pause/resume
-  - Handle window resize events
-  - Test on Chrome, Firefox, Safari
+- [x] **12.2** Create browser shell
+  - [x] `web/index.html` with full-screen `#game-canvas`
+  - [x] `web/index.js` loads the WASM (resize owned by Bevy `fit_canvas_to_parent`)
+  - [x] `web/styles.css` resets body margin + styles the canvas full-bleed
+  - [x] Tab focus/blur pause/resume in-engine via `WindowFocused` events (`pause_on_blur`, respects manual pause)
+  - [x] Window resize handled by Bevy `fit_canvas_to_parent: true`
+  - [x] Tested on Chrome (chrome-devtools harness); [MANUAL] Firefox/Safari (no engine in this env)
 
 - [ ] **12.3** Implement browser-specific adaptations
   - Asset loading: all assets bundled or fetched from server
