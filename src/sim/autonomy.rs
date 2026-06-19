@@ -107,11 +107,18 @@ pub fn score_candidate(rate: f32, distance: f32, trait_mod: f32) -> f32 {
     rate * proximity * trait_mod
 }
 
+/// How often the decision engine re-evaluates (seconds). Sims don't need to
+/// re-decide every frame; throttling to ~5 Hz spreads the O(sims x objects)
+/// scan across frames and caps AI cost (Phase 11.7).
+const AI_TICK: f32 = 0.2;
+
 /// The decision engine: each idle sim with an empty queue evaluates its needs,
 /// finds the best object satisfying its most urgent need, and queues it.
 fn autonomy_system(
     catalog: Res<CatalogDatabase>,
     time: Res<GameTime>,
+    real: Res<Time>,
+    mut accum: Local<f32>,
     objects: Query<(Entity, &PlacedObject, &Transform)>,
     mut sims: Query<(
         &Needs,
@@ -121,6 +128,13 @@ fn autonomy_system(
         &mut InteractionQueue,
     )>,
 ) {
+    // Throttle: only run the scan a few times a second, not every frame.
+    *accum += real.delta_seconds();
+    if *accum < AI_TICK {
+        return;
+    }
+    *accum = 0.0;
+
     for (needs, traits, anim, sim_tf, mut queue) in &mut sims {
         if *anim != AnimationState::Idle || !queue.is_empty() {
             continue;

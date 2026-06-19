@@ -34,6 +34,23 @@ impl ObjectGrid {
     pub fn release(&mut self, entity: Entity) {
         self.occupied.retain(|_, e| *e != entity);
     }
+
+    /// Distinct entities occupying cells within `radius` cells of `center`
+    /// (Chebyshev distance). Grid-based spatial partitioning for range queries
+    /// (Phase 11.7) - O(radius^2) instead of scanning every placed object.
+    pub fn entities_within(&self, center: (i32, i32), radius: i32) -> Vec<Entity> {
+        let mut found = Vec::new();
+        for dx in -radius..=radius {
+            for dy in -radius..=radius {
+                if let Some(&entity) = self.occupied.get(&(center.0 + dx, center.1 + dy))
+                    && !found.contains(&entity)
+                {
+                    found.push(entity);
+                }
+            }
+        }
+        found
+    }
 }
 
 /// Grid cells covered by an object at `position` with the given `footprint`
@@ -155,6 +172,22 @@ mod tests {
     fn footprint_1x1_is_single_cell() {
         let cells = footprint_cells(Vec3::new(3.0, 0.0, -2.0), (1, 1), Quat::IDENTITY);
         assert_eq!(cells, vec![(3, -2)]);
+    }
+
+    #[test]
+    fn entities_within_finds_only_nearby_distinct_entities() {
+        let mut grid = ObjectGrid::default();
+        let a = Entity::from_raw(1);
+        let b = Entity::from_raw(2);
+        let far = Entity::from_raw(3);
+        grid.occupy(&[(0, 0), (0, 1)], a); // a spans two cells near center
+        grid.occupy(&[(1, 0)], b);
+        grid.occupy(&[(9, 9)], far);
+        let near = grid.entities_within((0, 0), 1);
+        assert!(near.contains(&a) && near.contains(&b));
+        assert!(!near.contains(&far));
+        // `a` occupies two in-range cells but appears once.
+        assert_eq!(near.iter().filter(|&&e| e == a).count(), 1);
     }
 
     #[test]

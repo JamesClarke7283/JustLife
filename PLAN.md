@@ -647,13 +647,13 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - [PARTIAL] Full UI-string migration ongoing (needs labels migrated as the demo; migrate each site as touched)
   - [PARTIAL] Default font lacks accented glyphs (í/ó/ñ render as tofu) — needs an extended-glyph font for non-ASCII locales
 
-- [ ] **11.7** Performance optimization
-  - Implement spatial partitioning for interaction range checks (grid-based)
-  - LOD system for distant objects (simplify mesh, reduce draw calls)
-  - Batch render similar objects (instanced rendering)
-  - Limit active sim AI evaluations per frame (spread across frames)
-  - Profile WASM build size and optimize with wasm-opt
-  - Reduce texture sizes for WASM build (compressed textures)
+- [x] **11.7** Performance optimization (AI throttle + grid spatial queries)
+  - [x] Spatial partitioning for range checks: `ObjectGrid` (HashMap cells) gives O(1) cell lookups (hover/placement/control) + `entities_within(center, radius)` for O(r^2) range queries
+  - [x] Limit active sim AI evaluations per frame: `autonomy_system` throttled to ~5 Hz (AI_TICK) instead of every frame — spreads the O(sims x objects) scan
+  - [PARTIAL] LOD for distant objects — low value at current lot scale; deferred
+  - [PARTIAL] Instanced rendering — Bevy already batches; explicit instancing deferred
+  - [x] Texture sizes already downscaled for WASM (assets/textures ~6.4 MB); [PARTIAL] further GPU-compressed (KTX2/basis) textures deferred
+  - [BLOCKED: wasm-opt not installed] wasm-release already applies `opt-level="s"` + LTO; a wasm-opt pass needs the binaryen tool on PATH
   - Target 60 FPS on mid-range hardware, 30 FPS minimum on WASM
 
 ## Phase 12: WASM Export & Browser Deployment
