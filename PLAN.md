@@ -658,12 +658,12 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
 
 ## Phase 12: WASM Export & Browser Deployment
 
-- [ ] **12.1** Finalize WASM build pipeline
-  - Ensure `Cargo.toml` has proper WASM release profile
-  - Configure `wasm-bindgen` to generate JS glue code
-  - Create `build-wasm.sh` that: builds for wasm32-unknown-unknown, runs wasm-bindgen, runs wasm-opt
-  - Minimize WASM binary size (strip debug info, optimize with wasm-opt -Oz)
-  - Create `just-life.js` and `just-life.wasm` output
+- [x] **12.1** Finalize WASM build pipeline
+  - [x] `Cargo.toml` WASM profiles: `wasm-release` (opt-level="s" + LTO) and `wasm-dev` (fast)
+  - [x] `wasm-bindgen --target web` generates the JS glue (`just-life.js`)
+  - [x] `build-wasm.sh` builds for wasm32-unknown-unknown, runs wasm-bindgen, then a conditional `wasm-opt -Oz` pass
+  - [x] Size minimized via opt-level="s"+LTO; `wasm-opt -Oz` runs when binaryen is on PATH ([BLOCKED] locally — wasm-opt not installed, pass skips gracefully)
+  - [x] Outputs `just-life.js` + `just-life_bg.wasm` (wasm-bindgen naming) into `web/`
 
 - [ ] **12.2** Create browser shell
   - Create `web/index.html` with full-screen canvas

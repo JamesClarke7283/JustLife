@@ -22,4 +22,23 @@ echo "Running wasm-bindgen..."
     --no-typescript \
     "${SCRIPT_DIR}/target/${CARGO_TARGET}/${PROFILE}/${PROJECT_NAME}.wasm"
 
+# Size optimization: run wasm-opt -Oz on release builds when binaryen is
+# available. Skipped for wasm-dev (favours build speed) and when wasm-opt is
+# absent (the build still succeeds, just larger).
+BG_WASM="${WASM_DIR}/${PROJECT_NAME}_bg.wasm"
+if [ "${PROFILE}" = "wasm-release" ]; then
+    if command -v wasm-opt >/dev/null 2>&1; then
+        BEFORE=$(stat -c%s "${BG_WASM}" 2>/dev/null || echo 0)
+        echo "Optimizing with wasm-opt -Oz..."
+        wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int \
+            -o "${BG_WASM}.opt" "${BG_WASM}"
+        mv "${BG_WASM}.opt" "${BG_WASM}"
+        AFTER=$(stat -c%s "${BG_WASM}" 2>/dev/null || echo 0)
+        echo "wasm-opt: ${BEFORE} -> ${AFTER} bytes."
+    else
+        echo "wasm-opt not found on PATH - skipping -Oz size pass."
+        echo "  Install binaryen (provides wasm-opt) for a smaller release binary."
+    fi
+fi
+
 echo "WASM build complete. Output in ${WASM_DIR}"
