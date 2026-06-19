@@ -639,12 +639,13 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - [x] Settings persisted to localStorage/file (loaded at startup, saved on change)
   - [x] In-game settings overlay (O to toggle; Up/Down/Left/Right adjust) — verified rendering + persistence in WASM
 
-- [ ] **11.6** Implement localization framework
-  - All UI strings loaded from locale files (English default)
-  - RON or JSON locale files in `assets/locales/`
-  - Locale key system: `ui.needs.hunger`, `interactions.bed.sleep`, etc.
-  - Language selector in options
-  - Framework ready for community translations
+- [x] **11.6** Implement localization framework (`Locale` resource + selector)
+  - [x] RON locale files in `assets/locales/` (en + es), embedded via include_str!
+  - [x] Locale key system: `Locale::get("ui.needs.Hunger")` (falls back to the key)
+  - [x] Language selector in the settings overlay; HUD relocalizes live (verified en->es)
+  - [x] Framework ready for community translations (es.ron is the template)
+  - [PARTIAL] Full UI-string migration ongoing (needs labels migrated as the demo; migrate each site as touched)
+  - [PARTIAL] Default font lacks accented glyphs (í/ó/ñ render as tofu) — needs an extended-glyph font for non-ASCII locales
 
 - [ ] **11.7** Performance optimization
   - Implement spatial partitioning for interaction range checks (grid-based)

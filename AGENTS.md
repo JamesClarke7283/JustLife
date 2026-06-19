@@ -121,6 +121,17 @@ chrome-devtools MCP (serve `web/` then reload/screenshot/console):
   `AudioBundle` via `PlaybackSettings::{LOOP,DESPAWN}` + `Volume::new()`; fade is
   a manual `AudioSink::set_volume` ramp.
 
+## Localization (Phase 11.6)
+
+- Locale files are `String -> String` RON maps in `assets/locales/<lang>.ron`,
+  embedded via `include_str!` (instant switching, offline). `Locale::get(key)`
+  falls back to the key. Active language follows `GameSettings.language`;
+  `sync_locale` reloads on change, and `relocalize_hud` rebuilds the HUD live
+  (verified en->es swaps the needs labels with no restart).
+- **The default Bevy font (FiraSans) renders accented glyphs (í/ó/ñ) as tofu
+  boxes.** Non-ASCII locales need an extended-glyph font loaded — the translation
+  strings are correct, only the rendering is limited.
+
 ## Save / load (Phase 11.4)
 
 - **Storage is split by target:** `localStorage` on `wasm32` (needs `web-sys`
