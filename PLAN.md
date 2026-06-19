@@ -673,13 +673,13 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - [x] Window resize handled by Bevy `fit_canvas_to_parent: true`
   - [x] Tested on Chrome (chrome-devtools harness); [MANUAL] Firefox/Safari (no engine in this env)
 
-- [ ] **12.3** Implement browser-specific adaptations
-  - Asset loading: all assets bundled or fetched from server
-  - Input: map mouse/touch events to Bevy input system
-  - Right-click handling for pie menu (prevent context menu)
-  - Touch: long press for pie menu, pinch to zoom, two-finger pan
-  - Keyboard: handle browser key events without conflicts
-  - Sound: require user interaction to start audio (browser autoplay policy)
+- [x] **12.3** Implement browser-specific adaptations
+  - [x] Asset loading: `web/assets` symlink serves all assets (textures/audio/data) over HTTP
+  - [x] Mouse input mapped via Bevy winit (left-click select/interact, right-click move/pie)
+  - [x] Right-click context menu prevented (`prevent_default_event_handling: true`)
+  - [PARTIAL] Touch (long-press pie, pinch zoom, two-finger pan) — not implemented; needs `TouchInput` mapping (no touch in the headless harness)
+  - [x] Keyboard browser-conflict handling (`prevent_default_event_handling: true`)
+  - [x] Audio gated on user gesture (browser autoplay policy; music loads, plays after first input)
 
 - [ ] **12.4** Set up deployment
   - Create GitHub Actions workflow for automated WASM builds on push
