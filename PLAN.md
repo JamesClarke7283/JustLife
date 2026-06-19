@@ -681,12 +681,12 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - [x] Keyboard browser-conflict handling (`prevent_default_event_handling: true`)
   - [x] Audio gated on user gesture (browser autoplay policy; music loads, plays after first input)
 
-- [ ] **12.4** Set up deployment
-  - Create GitHub Actions workflow for automated WASM builds on push
-  - Deploy WASM build to GitHub Pages or itch.io
-  - Configure proper MIME types for .wasm files
-  - Add service worker for offline caching of assets
-  - Test deployed build in browser
+- [x] **12.4** Set up deployment (CI + service worker; deploy is [MANUAL])
+  - [x] GitHub Actions workflow `.github/workflows/wasm-deploy.yml` (build wasm-release + binaryen wasm-opt + materialize assets + deploy-pages)
+  - [MANUAL] Actual deploy to GitHub Pages — needs a push + "Pages: GitHub Actions" enabled in repo settings (loop never pushes)
+  - [x] MIME types: GitHub Pages serves `.wasm` as `application/wasm` automatically (no config needed)
+  - [x] Service worker `web/sw.js` (cache-first offline caching) registered in index.js — verified: registers, active, 18 requests cached
+  - [MANUAL] Test the deployed build — verified locally (SW active, game renders); live URL needs the manual deploy
 
 - [ ] **12.5** Browser testing and screenshots
   - Load WASM build in browser
