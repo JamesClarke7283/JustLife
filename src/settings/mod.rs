@@ -57,6 +57,13 @@ pub struct GameSettings {
     /// Camera zoom speed multiplier (applied to the scroll step).
     pub zoom_speed: f32,
     pub quality: Quality,
+    /// UI language code (see `i18n::available_languages`).
+    #[serde(default = "default_language")]
+    pub language: String,
+}
+
+fn default_language() -> String {
+    "en".to_string()
 }
 
 impl Default for GameSettings {
@@ -73,6 +80,7 @@ impl Default for GameSettings {
             camera_speed: 1.0,
             zoom_speed: 1.0,
             quality: Quality::High,
+            language: default_language(),
         }
     }
 }
@@ -101,9 +109,10 @@ enum Row {
     CameraSpeed,
     InvertY,
     Quality,
+    Language,
 }
 
-const ROWS: [Row; 11] = [
+const ROWS: [Row; 12] = [
     Row::Master,
     Row::Music,
     Row::Sfx,
@@ -115,6 +124,7 @@ const ROWS: [Row; 11] = [
     Row::CameraSpeed,
     Row::InvertY,
     Row::Quality,
+    Row::Language,
 ];
 
 impl Row {
@@ -131,6 +141,7 @@ impl Row {
             Row::CameraSpeed => "Camera Speed",
             Row::InvertY => "Invert Camera Y",
             Row::Quality => "Graphics Quality",
+            Row::Language => "Language",
         }
     }
 
@@ -147,6 +158,7 @@ impl Row {
             Row::CameraSpeed => format!("{:.1}x", s.camera_speed),
             Row::InvertY => if s.invert_y { "On" } else { "Off" }.to_string(),
             Row::Quality => format!("{:?}", s.quality),
+            Row::Language => crate::i18n::language_name(&s.language).to_string(),
         }
     }
 
@@ -165,8 +177,16 @@ impl Row {
             Row::CameraSpeed => s.camera_speed = step_mult(s.camera_speed, d),
             Row::InvertY => s.invert_y = !s.invert_y,
             Row::Quality => s.quality = cycle_quality(s.quality, dir),
+            Row::Language => s.language = cycle_language(&s.language, dir),
         }
     }
+}
+
+fn cycle_language(current: &str, dir: i32) -> String {
+    let langs = crate::i18n::available_languages();
+    let i = langs.iter().position(|(c, _)| *c == current).unwrap_or(0) as i32;
+    let n = langs.len() as i32;
+    langs[(((i + dir) % n + n) % n) as usize].0.to_string()
 }
 
 fn pct(v: f32) -> String {

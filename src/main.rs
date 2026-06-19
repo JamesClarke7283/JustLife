@@ -3,6 +3,7 @@ pub mod audio;
 pub mod build;
 pub mod career;
 pub mod core;
+pub mod i18n;
 pub mod interaction;
 pub mod render;
 pub mod save;
@@ -42,6 +43,7 @@ fn main() {
             audio::AudioPlugin,
             save::SavePlugin,
             settings::SettingsPlugin,
+            i18n::LocalePlugin,
             assets::AssetsPlugin,
             wasm::WasmPlugin,
             render::RenderPlugin,

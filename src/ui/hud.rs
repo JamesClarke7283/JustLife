@@ -155,7 +155,26 @@ fn need_label(need: NeedType) -> &'static str {
 }
 
 /// Build the HUD when entering live mode.
-fn spawn_hud(mut commands: Commands) {
+fn spawn_hud(mut commands: Commands, locale: Res<crate::i18n::Locale>) {
+    build_hud(&mut commands, &locale);
+}
+
+/// Rebuild the HUD when the language changes so labels re-localize live.
+fn relocalize_hud(
+    mut commands: Commands,
+    locale: Res<crate::i18n::Locale>,
+    roots: Query<Entity, With<HudRoot>>,
+) {
+    if !locale.is_changed() || roots.is_empty() {
+        return;
+    }
+    for entity in &roots {
+        commands.entity(entity).despawn_recursive();
+    }
+    build_hud(&mut commands, &locale);
+}
+
+fn build_hud(commands: &mut Commands, locale: &crate::i18n::Locale) {
     let root = commands
         .spawn((
             NodeBundle {
@@ -174,7 +193,7 @@ fn spawn_hud(mut commands: Commands) {
 
     commands.entity(root).with_children(|root| {
         spawn_clock(root);
-        spawn_bottom(root);
+        spawn_bottom(root, locale);
         spawn_minimap(root);
         spawn_tooltip(root);
     });
@@ -290,7 +309,7 @@ fn spawn_clock(root: &mut ChildBuilder) {
 }
 
 /// Bottom strip: portrait (left), needs bars, and current interaction (centre).
-fn spawn_bottom(root: &mut ChildBuilder) {
+fn spawn_bottom(root: &mut ChildBuilder, locale: &crate::i18n::Locale) {
     root.spawn(NodeBundle {
         style: Style {
             position_type: PositionType::Absolute,
@@ -361,7 +380,8 @@ fn spawn_bottom(root: &mut ChildBuilder) {
                 ..default()
             })
             .with_children(|panel| {
-                for (need, label, color) in needs_layout() {
+                for (need, _label, color) in needs_layout() {
+                    let label = locale.get(&format!("ui.needs.{need:?}"));
                     panel
                         .spawn(NodeBundle {
                             style: Style {
@@ -739,6 +759,7 @@ impl Plugin for HudPlugin {
                     highlight_need_objects,
                     update_portrait,
                     update_minimap,
+                    relocalize_hud,
                 )
                     .run_if(in_state(GameState::LiveMode)),
             );
