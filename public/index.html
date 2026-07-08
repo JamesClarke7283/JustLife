@@ -68,9 +68,10 @@
       </div>
     </div>
 
-    <!-- ===================== BUILD/BUY BAR ===================== -->
+    <!-- ===================== BUILD / BUY TOOLBAR ===================== -->
     <div id="build-bar" class="build-bar hidden">
-      <div class="build-tools">
+      <!-- Build-only tools -->
+      <div id="build-tools-only" class="build-tools hidden">
         <button class="tool-btn" data-tool="wall">Wall</button>
         <button class="tool-btn" data-tool="room">Room</button>
         <button class="tool-btn" data-tool="floor">Floor</button>
@@ -78,14 +79,22 @@
         <span class="tool-sep"></span>
         <button class="tool-btn" data-action="undo">Undo</button>
         <button class="tool-btn" data-action="redo">Redo</button>
-        <button class="tool-btn" data-action="rotate">Rotate (R)</button>
         <span class="tool-sep"></span>
         <select id="floor-material" class="material-select" title="Floor material"></select>
         <select id="wall-material" class="material-select" title="Wall material"></select>
       </div>
+      <!-- Buy-only tools -->
+      <div id="buy-tools-only" class="build-tools hidden">
+        <button class="tool-btn" data-action="clear-buy">Clear Selection</button>
+        <button class="tool-btn" data-action="rotate">Rotate (R)</button>
+        <button class="tool-btn" data-action="undo">Undo</button>
+        <span class="tool-sep"></span>
+        <select id="floor-material-buy" class="material-select" title="Floor material"></select>
+        <select id="wall-material-buy" class="material-select" title="Wall material"></select>
+      </div>
     </div>
 
-    <!-- ===================== BUY CATALOG ===================== -->
+    <!-- ===================== CATALOG (used by both Build & Buy) ===================== -->
     <div id="buy-catalog" class="buy-catalog hidden">
       <div class="catalog-header">
         <input id="catalog-search" type="search" placeholder="Search objects..." />

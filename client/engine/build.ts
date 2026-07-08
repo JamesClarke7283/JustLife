@@ -1,16 +1,23 @@
 // Just Life — build/buy mode: walls, rooms, place/sell objects, undo/redo.
-import * as THREE from "three";
-import { World } from "./world.ts";
-import { buildObjectMesh, canPlace, footprintCells, ghostMesh, placeObject, removeObject } from "./objects.ts";
-import type { CatalogItem, PlacedObject } from "./types.ts";
+import * as THREE from 'three';
+import { World } from './world.ts';
+import {
+  buildObjectMesh,
+  canPlace,
+  footprintCells,
+  ghostMesh,
+  placeObject,
+  removeObject,
+} from './objects.ts';
+import type { CatalogItem, PlacedObject } from './types.ts';
 
 interface BuildAction {
-  type: "wall" | "room" | "place" | "sell" | "floor";
+  type: 'wall' | 'room' | 'place' | 'sell' | 'floor';
   // for undo
   undo: () => void;
 }
 
-export type BuildTool = "wall" | "room" | "floor" | "sell" | null;
+export type BuildTool = 'wall' | 'room' | 'floor' | 'sell' | null;
 export type FloorMaterial = string;
 
 export class BuildMode {
@@ -18,8 +25,8 @@ export class BuildMode {
   scene: THREE.Scene;
   active = false;
   tool: BuildTool = null;
-  floorMaterial: FloorMaterial = "hardwood_oak";
-  wallMaterial = "plaster_light";
+  floorMaterial: FloorMaterial = 'hardwood_oak';
+  wallMaterial = 'plaster_light';
   // buy mode placement
   pendingItem: CatalogItem | null = null;
   pendingRotation = 0;
@@ -59,9 +66,10 @@ export class BuildMode {
     this.clearGhost();
   }
 
-  selectBuyItem(item: CatalogItem): void {
+  selectBuyItem(item: CatalogItem | null): void {
     this.pendingItem = item;
     this.tool = null;
+    this.clearGhost();
   }
 
   rotate(): void {
@@ -235,19 +243,19 @@ export class BuildMode {
       this.placeItem(gx, gz);
       return;
     }
-    if (this.tool === "wall") {
+    if (this.tool === 'wall') {
       this.wallClick(gx, gz);
       return;
     }
-    if (this.tool === "room") {
+    if (this.tool === 'room') {
       this.roomClick(gx, gz);
       return;
     }
-    if (this.tool === "floor") {
+    if (this.tool === 'floor') {
       this.floorClick(gx, gz);
       return;
     }
-    if (this.tool === "sell") {
+    if (this.tool === 'sell') {
       this.sellAt(gx, gz);
       return;
     }
@@ -260,7 +268,7 @@ export class BuildMode {
       this.objects.push(obj);
       const item = this.pendingItem;
       this.pushUndo({
-        type: "place",
+        type: 'place',
         undo: () => {
           removeObject(this.world, this.scene, obj);
           const i = this.objects.indexOf(obj);
@@ -288,18 +296,18 @@ export class BuildMode {
       const line = gx;
       const start = Math.min(sz, gz);
       const end = Math.max(sz, gz);
-      const seg = { axis: "z" as const, line, start, end, material: this.wallMaterial };
+      const seg = { axis: 'z' as const, line, start, end, material: this.wallMaterial };
       this.world.addWall(seg);
       const idx = this.world.walls.length - 1;
-      this.pushUndo({ type: "wall", undo: () => this.world.removeWall(idx) });
+      this.pushUndo({ type: 'wall', undo: () => this.world.removeWall(idx) });
     } else if (gz === sz) {
       const line = gz;
       const start = Math.min(sx, gx);
       const end = Math.max(sx, gx);
-      const seg = { axis: "x" as const, line, start, end, material: this.wallMaterial };
+      const seg = { axis: 'x' as const, line, start, end, material: this.wallMaterial };
       this.world.addWall(seg);
       const idx = this.world.walls.length - 1;
-      this.pushUndo({ type: "wall", undo: () => this.world.removeWall(idx) });
+      this.pushUndo({ type: 'wall', undo: () => this.world.removeWall(idx) });
     }
     this.wallStart = null;
   }
@@ -315,17 +323,17 @@ export class BuildMode {
     const z0 = Math.min(sz, gz), z1 = Math.max(sz, gz);
     // four walls
     const segs = [
-      { axis: "x" as const, line: z0, start: x0, end: x1, material: this.wallMaterial },
-      { axis: "x" as const, line: z1, start: x0, end: x1, material: this.wallMaterial },
-      { axis: "z" as const, line: x0, start: z0, end: z1, material: this.wallMaterial },
-      { axis: "z" as const, line: x1, start: z0, end: z1, material: this.wallMaterial },
+      { axis: 'x' as const, line: z0, start: x0, end: x1, material: this.wallMaterial },
+      { axis: 'x' as const, line: z1, start: x0, end: x1, material: this.wallMaterial },
+      { axis: 'z' as const, line: x0, start: z0, end: z1, material: this.wallMaterial },
+      { axis: 'z' as const, line: x1, start: z0, end: z1, material: this.wallMaterial },
     ];
     const startLen = this.world.walls.length;
     for (const seg of segs) this.world.addWall(seg);
     this.world.paintRoom(x0, z0, x1, z1, this.floorMaterial);
     const floorStart = this.world.floors.size;
     this.pushUndo({
-      type: "room",
+      type: 'room',
       undo: () => {
         for (let i = this.world.walls.length - 1; i >= startLen; i--) this.world.removeWall(i);
         // remove floors added (simplified: clear tiles in rect)
@@ -348,7 +356,7 @@ export class BuildMode {
     this.world.paintFloor(gx, gz, this.floorMaterial);
     const k = this.world.key(gx, gz);
     this.pushUndo({
-      type: "floor",
+      type: 'floor',
       undo: () => {
         const t = this.world.floors.get(k);
         if (t) {
@@ -371,9 +379,16 @@ export class BuildMode {
     removeObject(this.world, this.scene, obj);
     this.objects.splice(idx, 1);
     this.pushUndo({
-      type: "sell",
+      type: 'sell',
       undo: () => {
-        const newObj = placeObject(this.world, this.scene, item, obj.gridX, obj.gridZ, obj.rotation);
+        const newObj = placeObject(
+          this.world,
+          this.scene,
+          item,
+          obj.gridX,
+          obj.gridZ,
+          obj.rotation,
+        );
         if (newObj) this.objects.push(newObj);
       },
     });

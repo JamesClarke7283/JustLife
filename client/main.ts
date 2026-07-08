@@ -329,7 +329,14 @@ function setMode(newMode: GameMode): void {
     'hidden',
     newMode !== 'build' && newMode !== 'buy',
   );
-  document.getElementById('buy-catalog')!.classList.toggle('hidden', newMode !== 'buy');
+  document.getElementById('buy-catalog')!.classList.toggle(
+    'hidden',
+    newMode !== 'build' && newMode !== 'buy',
+  );
+
+  // Show only the relevant bottom toolbar section
+  document.getElementById('build-tools-only')!.classList.toggle('hidden', newMode !== 'build');
+  document.getElementById('buy-tools-only')!.classList.toggle('hidden', newMode !== 'buy');
 
   // mode buttons
   document.querySelectorAll<HTMLButtonElement>('.mode-btn').forEach((b) => {
@@ -344,6 +351,7 @@ function setMode(newMode: GameMode): void {
     build.enter();
     build.setTool('wall');
     document.querySelector<HTMLElement>('.tool-btn[data-tool="wall"]')?.classList.add('active');
+    renderCatalog();
   } else if (newMode === 'buy') {
     build.enter();
     renderCatalog();
@@ -420,12 +428,13 @@ function renderCatalog(): void {
 document.getElementById('catalog-search')!.addEventListener('input', renderCatalog);
 
 // ---------------------------------------------------------------------------
-// Build bar UI
+// Build / Buy toolbar UI
 // ---------------------------------------------------------------------------
 document.querySelectorAll<HTMLButtonElement>('.tool-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     if (btn.dataset.tool) {
       build.setTool(btn.dataset.tool as BuildTool);
+      build.selectBuyItem(null as unknown as CatalogItem); // clear any buy selection
       document.querySelectorAll<HTMLButtonElement>('.tool-btn').forEach((b) => {
         if (b.dataset.tool) b.classList.remove('active');
       });
@@ -436,11 +445,15 @@ document.querySelectorAll<HTMLButtonElement>('.tool-btn').forEach((btn) => {
       build.redo();
     } else if (btn.dataset.action === 'rotate') {
       build.rotate();
+    } else if (btn.dataset.action === 'clear-buy') {
+      build.setTool(null);
+      build.selectBuyItem(null as unknown as CatalogItem);
+      renderCatalog();
     }
   });
 });
 
-// material selects
+// material selects (build mode)
 const floorSel = document.getElementById('floor-material') as HTMLSelectElement;
 const wallSel = document.getElementById('wall-material') as HTMLSelectElement;
 for (const name of Object.keys(FLOOR_MATERIALS)) {
@@ -460,6 +473,28 @@ floorSel.addEventListener('change', () => {
 });
 wallSel.addEventListener('change', () => {
   build.wallMaterial = wallSel.value;
+});
+
+// material selects (buy mode — allow painting floors/walls while placing items)
+const floorSelBuy = document.getElementById('floor-material-buy') as HTMLSelectElement;
+const wallSelBuy = document.getElementById('wall-material-buy') as HTMLSelectElement;
+for (const name of Object.keys(FLOOR_MATERIALS)) {
+  const opt = document.createElement('option');
+  opt.value = name;
+  opt.textContent = name.replace(/_/g, ' ');
+  floorSelBuy.appendChild(opt);
+}
+for (const name of Object.keys(WALL_MATERIALS)) {
+  const opt = document.createElement('option');
+  opt.value = name;
+  opt.textContent = name.replace(/_/g, ' ');
+  wallSelBuy.appendChild(opt);
+}
+floorSelBuy.addEventListener('change', () => {
+  build.floorMaterial = floorSelBuy.value;
+});
+wallSelBuy.addEventListener('change', () => {
+  build.wallMaterial = wallSelBuy.value;
 });
 
 // mode buttons
