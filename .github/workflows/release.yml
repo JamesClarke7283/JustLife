@@ -1,0 +1,118 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # Build matrix: one job per (OS, target, format)
+  # ─────────────────────────────────────────────────────────────
+  build:
+    name: ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux x86_64: AppImage + deb + rpm
+          - label: linux-x64-appimage
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            format: AppImage
+            artifact: JustLife-${{ github.ref_name }}-linux-x64.AppImage
+          - label: linux-x64-deb
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            format: deb
+            artifact: JustLife-${{ github.ref_name }}-linux-x64.deb
+          - label: linux-x64-rpm
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            format: rpm
+            artifact: JustLife-${{ github.ref_name }}-linux-x64.rpm
+          # Linux aarch64: AppImage + deb
+          - label: linux-arm64-appimage
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            format: AppImage
+            artifact: JustLife-${{ github.ref_name }}-linux-arm64.AppImage
+          - label: linux-arm64-deb
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            format: deb
+            artifact: JustLife-${{ github.ref_name }}-linux-arm64.deb
+          # macOS Apple Silicon
+          - label: macos-arm64
+            os: macos-14
+            target: aarch64-apple-darwin
+            format: dmg
+            artifact: JustLife-${{ github.ref_name }}-macos-arm64.dmg
+          # macOS Intel
+          - label: macos-x64
+            os: macos-15-intel
+            target: x86_64-apple-darwin
+            format: dmg
+            artifact: JustLife-${{ github.ref_name }}-macos-x64.dmg
+          # Windows
+          - label: windows-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            format: msi
+            artifact: JustLife-${{ github.ref_name }}-windows-x64.msi
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.x
+
+      # Bundle the client (public/main.js) before compiling
+      - name: Bundle client
+        run: deno task bundle
+
+      # Select the correct icon for the platform
+      - name: Set icon path
+        id: icon
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            echo "icon=icons/justlife.ico" >> "$GITHUB_OUTPUT"
+          else
+            echo "icon=icons/justlife.png" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Build the desktop application
+      - name: Build desktop app (${{ matrix.format }})
+        shell: bash
+        run: |
+          mkdir -p dist
+          deno desktop \
+            --target ${{ matrix.target }} \
+            --icon ${{ steps.icon.outputs.icon }} \
+            --include public \
+            --include assets \
+            --allow-read \
+            --output "dist/${{ matrix.artifact }}" \
+            main.ts
+
+      # Upload as a workflow artifact (for workflow_dispatch testing)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.label }}
+          path: dist/
+
+      # Attach to the GitHub release (only on tag / release triggers)
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/${{ matrix.artifact }}
+          fail_on_unmatched_files: true

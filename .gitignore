@@ -6,12 +6,19 @@
 # Deno / npm dependency cache
 /node_modules/
 
-# Deno desktop build output
+# Deno desktop build output + distribution artifacts
+/dist/
+build/
 /MyApp
 /MyApp.exe
 /MyApp.app
-build/
-dist/
+JustLife.so
+JustLife/
+*.AppImage
+*.deb
+*.rpm
+*.dmg
+*.msi
 
 # Local saves
 /saves/

@@ -1,4 +1,6 @@
 {
+  "name": "just-life",
+  "version": "0.1.0",
   "nodeModulesDir": "auto",
   "compilerOptions": {
     "lib": ["dom", "dom.asynciterable", "deno.ns"],
@@ -15,18 +17,40 @@
     "indentWidth": 2,
     "include": ["main.ts", "client/", "src/"]
   },
+  "desktop": {
+    "app": {
+      "name": "Just Life",
+      "identifier": "com.justlife.app",
+      "icons": {
+        "macos": "./icons/justlife.png",
+        "windows": "./icons/justlife.ico",
+        "linux": "./icons/justlife.png"
+      }
+    },
+    "output": {
+      "macos": "./dist/JustLife.app",
+      "windows": "./dist/JustLife",
+      "linux": "./dist/just-life"
+    }
+  },
   "tasks": {
     "dev": "deno desktop --hmr --allow-read main.ts",
     "start": "deno desktop --allow-read main.ts",
     "bundle": "deno bundle client/main.ts > public/main.js",
     "lint": "deno lint",
     "fmt": "deno fmt",
-    "test": "deno test"
+    "test": "deno test",
+
+    "pack:linux": "deno desktop --target x86_64-unknown-linux-gnu --icon icons/justlife.png --include public --include assets --allow-read main.ts --output dist/JustLife-x86_64.AppImage && deno desktop --target x86_64-unknown-linux-gnu --icon icons/justlife.png --include public --include assets --allow-read main.ts --output dist/JustLife-x86_64.deb && deno desktop --target x86_64-unknown-linux-gnu --icon icons/justlife.png --include public --include assets --allow-read main.ts --output dist/JustLife-x86_64.rpm",
+    "pack:linux-arm": "deno desktop --target aarch64-unknown-linux-gnu --icon icons/justlife.png --include public --include assets --allow-read main.ts --output dist/JustLife-aarch64.AppImage && deno desktop --target aarch64-unknown-linux-gnu --icon icons/justlife.png --include public --include assets --allow-read main.ts --output dist/JustLife-aarch64.deb",
+    "pack:macos": "deno desktop --icon icons/justlife.png --include public --include assets --allow-read main.ts --output dist/JustLife.dmg",
+    "pack:windows": "deno desktop --target x86_64-pc-windows-msvc --icon icons/justlife.ico --include public --include assets --allow-read main.ts --output dist/JustLife.msi",
+    "pack:all": "deno desktop --all-targets --include public --include assets --allow-read main.ts --output dist/JustLife"
   },
   "imports": {
     "three": "npm:three@^0.180.0",
     "three/": "npm:three@^0.180.0/",
     "@types/three": "npm:@types/three@^0.180.0"
   },
-  "exclude": ["node_modules/", "public/main.js"]
+  "exclude": ["node_modules/", "public/main.js", "dist/"]
 }
