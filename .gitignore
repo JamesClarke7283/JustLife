@@ -14,11 +14,13 @@ build/
 /MyApp.app
 JustLife.so
 JustLife/
+JustLife-test/
 *.AppImage
 *.deb
 *.rpm
 *.dmg
 *.msi
+*.app
 
 # Local saves
 /saves/

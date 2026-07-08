@@ -5,7 +5,7 @@ import * as THREE from "three";
 import { buildObjectMesh } from "./objects.ts";
 import type { CatalogItem } from "./types.ts";
 
-const SIZE = 128;
+const SIZE = 256;
 
 class ThumbGen {
   private renderer: THREE.WebGLRenderer;
@@ -38,7 +38,7 @@ class ThumbGen {
     fill.position.set(-4, 2, -2);
     this.scene.add(fill);
 
-    this.camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
+    this.camera = new THREE.PerspectiveCamera(25, 1, 0.1, 200);
   }
 
   generate(item: CatalogItem): string {
@@ -55,8 +55,14 @@ class ThumbGen {
     const radius = Math.max(sphere.radius, 0.5);
 
     // isometric-ish angle
-    const dir = new THREE.Vector3(1, 0.85, 1).normalize();
-    const dist = radius / Math.sin((this.camera.fov * Math.PI) / 360) * 1.1;
+    const dir = new THREE.Vector3(1, 0.8, 1).normalize();
+    // Give extra room: use 1.4x distance so tall objects (fridge, bookshelf,
+    // shower, tree) aren't clipped at the top. Also account for the vertical
+    // extent specifically, since the bounding sphere can underestimate the
+    // needed vertical framing for tall thin objects.
+    const verticalExtent = Math.max(box.max.y - box.min.y, radius * 1.5);
+    const frameRadius = Math.max(radius, verticalExtent / 1.8);
+    const dist = frameRadius / Math.sin((this.camera.fov * Math.PI) / 360) * 1.35;
     this.camera.position.copy(center).add(dir.multiplyScalar(dist));
     this.camera.lookAt(center);
 

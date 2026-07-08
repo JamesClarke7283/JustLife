@@ -26,45 +26,53 @@ jobs:
             target: x86_64-unknown-linux-gnu
             format: AppImage
             artifact: JustLife-${{ github.ref_name }}-linux-x64.AppImage
+            icon: icons/justlife.png
           - label: linux-x64-deb
             os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             format: deb
             artifact: JustLife-${{ github.ref_name }}-linux-x64.deb
+            icon: icons/justlife.png
           - label: linux-x64-rpm
             os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             format: rpm
             artifact: JustLife-${{ github.ref_name }}-linux-x64.rpm
+            icon: icons/justlife.png
           # Linux aarch64: AppImage + deb
           - label: linux-arm64-appimage
             os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             format: AppImage
             artifact: JustLife-${{ github.ref_name }}-linux-arm64.AppImage
+            icon: icons/justlife.png
           - label: linux-arm64-deb
             os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             format: deb
             artifact: JustLife-${{ github.ref_name }}-linux-arm64.deb
+            icon: icons/justlife.png
           # macOS Apple Silicon
           - label: macos-arm64
             os: macos-14
             target: aarch64-apple-darwin
             format: dmg
             artifact: JustLife-${{ github.ref_name }}-macos-arm64.dmg
+            icon: icons/justlife.png
           # macOS Intel
           - label: macos-x64
             os: macos-15-intel
             target: x86_64-apple-darwin
             format: dmg
             artifact: JustLife-${{ github.ref_name }}-macos-x64.dmg
+            icon: icons/justlife.png
           # Windows
           - label: windows-x64
             os: windows-latest
             target: x86_64-pc-windows-msvc
             format: msi
             artifact: JustLife-${{ github.ref_name }}-windows-x64.msi
+            icon: icons/justlife.ico
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -78,17 +86,6 @@ jobs:
       - name: Bundle client
         run: deno task bundle
 
-      # Select the correct icon for the platform
-      - name: Set icon path
-        id: icon
-        shell: bash
-        run: |
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            echo "icon=icons/justlife.ico" >> "$GITHUB_OUTPUT"
-          else
-            echo "icon=icons/justlife.png" >> "$GITHUB_OUTPUT"
-          fi
-
       # Build the desktop application
       - name: Build desktop app (${{ matrix.format }})
         shell: bash
@@ -96,12 +93,74 @@ jobs:
           mkdir -p dist
           deno desktop \
             --target ${{ matrix.target }} \
-            --icon ${{ steps.icon.outputs.icon }} \
+            --icon ${{ matrix.icon }} \
             --include public \
             --include assets \
             --allow-read \
             --output "dist/${{ matrix.artifact }}" \
             main.ts
+
+      # Post-process .deb: replace the /usr/bin symlink with a wrapper
+      # script that doesn't rely on readlink -f (breaks under debtap/pacman).
+      - name: Fix deb launcher
+        if: matrix.format == 'deb'
+        shell: bash
+        run: |
+          set -e
+          DEB="dist/${{ matrix.artifact }}"
+          WORK=$(mktemp -d)
+          cd "$WORK"
+          ar x "$DEB"
+          mkdir data
+          tar xzf data.tar.gz -C data
+
+          # Find the app lib dir (e.g. data/usr/lib/justlife/)
+          LIBDIR=$(ls -d data/usr/lib/*/)
+          LIBNAME=$(basename "$LIBDIR")
+
+          # Find the original launcher name inside the lib dir (e.g. JustLife)
+          LAUNCHER=$(find "$LIBDIR" -maxdepth 1 -type f -executable ! -name '*.so' ! -name 'laufey*' ! -name '*.desktop' ! -name '*.png' | head -1 | xargs basename)
+          echo "LIBDIR=$LIBDIR LIBNAME=$LIBNAME LAUNCHER=$LAUNCHER"
+
+          # Find the bin name (the symlink in usr/bin)
+          BINNAME=$(basename "$(ls data/usr/bin/)")
+          echo "BINNAME=$BINNAME"
+
+          # Replace the symlink with a robust wrapper script
+          rm -f "data/usr/bin/$BINNAME"
+          cat > "data/usr/bin/$BINNAME" << 'WRAPPER'
+          #!/bin/sh
+          # Robust launcher: finds the app directory even when symlinks are
+          # broken (e.g. by debtap/pacman conversion). Searches known lib
+          # locations instead of relying solely on readlink -f.
+          BASENAME="$(basename "$0")"
+          for dir in /usr/lib/"$BASENAME" /usr/lib/justlife /usr/lib/JustLife /opt/justlife /usr/lib/justlife-*; do
+            if [ -d "$dir" ] && [ -f "$dir/laufey_webview" ]; then
+              DIR="$dir"
+              break
+            fi
+          done
+          if [ -z "${DIR:-}" ]; then
+            echo "Error: cannot locate JustLife installation directory." >&2
+            echo "Searched: /usr/lib/$BASENAME, /usr/lib/justlife, /opt/justlife" >&2
+            exit 1
+          fi
+          SO=$(ls "$DIR"/*.so 2>/dev/null | head -1)
+          if [ -z "$SO" ]; then
+            echo "Error: no runtime .so found in $DIR" >&2
+            exit 1
+          fi
+          export LAUFEY_RUNTIME_PATH="$SO"
+          exec "$DIR/laufey_webview" --runtime "$SO" "$@"
+          WRAPPER
+          chmod +x "data/usr/bin/$BINNAME"
+
+          # Repack the deb
+          (cd data && tar czf ../data.tar.gz .)
+          ar rcs "$DEB" debian-binary control.tar.gz data.tar.gz
+          cd /
+          rm -rf "$WORK"
+          echo "Fixed deb launcher: $BINNAME -> wrapper script"
 
       # Upload as a workflow artifact (for workflow_dispatch testing)
       - uses: actions/upload-artifact@v4

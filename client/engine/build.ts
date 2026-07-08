@@ -27,7 +27,7 @@ export class BuildMode {
   objects: PlacedObject[];
   // wall drag
   private wallStart: [number, number] | null = null;
-  private dragPreview: THREE.Mesh | null = null;
+  private dragPreview: THREE.Object3D | null = null;
   private undoStack: BuildAction[] = [];
   private redoStack: BuildAction[] = [];
 
@@ -46,6 +46,7 @@ export class BuildMode {
     this.world.showGrid(false);
     this.tool = null;
     this.pendingItem = null;
+    this.wallStart = null;
     this.clearGhost();
     this.clearDragPreview();
     this.undoStack = [];
@@ -77,9 +78,15 @@ export class BuildMode {
   private clearDragPreview(): void {
     if (this.dragPreview) {
       this.scene.remove(this.dragPreview);
+      this.dragPreview.traverse((c) => {
+        if (c instanceof THREE.Mesh) {
+          c.geometry.dispose();
+          (c.material as THREE.Material).dispose();
+        }
+      });
       this.dragPreview = null;
     }
-    this.wallStart = null;
+    // don't reset wallStart here — it's reset by wallClick/roomClick on completion
   }
 
   // Called each frame with the current hovered grid cell (from raycast).
@@ -93,9 +100,132 @@ export class BuildMode {
       g.rotation.y = this.pendingRotation * (Math.PI / 2);
       this.scene.add(g);
       this.ghost = g;
+    } else if (this.tool === 'wall' && this.wallStart) {
+      // Live wall drag preview
+      this.clearDragPreview();
+      this.updateWallPreview(gx, gz);
+    } else if (this.tool === 'room' && this.wallStart) {
+      // Live room drag preview
+      this.clearDragPreview();
+      this.updateRoomPreview(gx, gz);
     } else {
       this.clearGhost();
+      this.clearDragPreview();
     }
+  }
+
+  // Wall drag preview: show a translucent wall segment from start to current
+  private updateWallPreview(gx: number, gz: number): void {
+    const [sx, sz] = this.wallStart!;
+    if (gx === sx && gz === sz) return;
+    let length: number, axis: 'x' | 'z', wx: number, wz: number;
+    if (gx === sx) {
+      axis = 'z';
+      length = Math.abs(gz - sz) + 1;
+      const start = Math.min(sz, gz);
+      const [cwx, cwz] = this.world.gridToWorld(sx, start);
+      wx = cwx;
+      wz = cwz + (length - 1) / 2;
+    } else if (gz === sz) {
+      axis = 'x';
+      length = Math.abs(gx - sx) + 1;
+      const start = Math.min(sx, gx);
+      const [cwx, cwz] = this.world.gridToWorld(start, sz);
+      wx = cwx + (length - 1) / 2;
+      wz = cwz;
+    } else {
+      // non-orthogonal: snap to dominant axis
+      if (Math.abs(gx - sx) > Math.abs(gz - sz)) {
+        axis = 'x';
+        length = Math.abs(gx - sx) + 1;
+        const start = Math.min(sx, gx);
+        const [cwx, cwz] = this.world.gridToWorld(start, sz);
+        wx = cwx + (length - 1) / 2;
+        wz = cwz;
+      } else {
+        axis = 'z';
+        length = Math.abs(gz - sz) + 1;
+        const start = Math.min(sz, gz);
+        const [cwx, cwz] = this.world.gridToWorld(sx, start);
+        wx = cwx;
+        wz = cwz + (length - 1) / 2;
+      }
+    }
+    const geo = axis === 'x'
+      ? new THREE.BoxGeometry(length, 3, 0.15)
+      : new THREE.BoxGeometry(0.15, 3, length);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0xffd27a,
+      transparent: true,
+      opacity: 0.45,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(wx, 1.5, wz);
+    this.scene.add(mesh);
+    this.dragPreview = mesh;
+  }
+
+  // Room drag preview: show translucent walls + floor rect from start to current
+  private updateRoomPreview(gx: number, gz: number): void {
+    const [sx, sz] = this.wallStart!;
+    const x0 = Math.min(sx, gx), x1 = Math.max(sx, gx);
+    const z0 = Math.min(sz, gz), z1 = Math.max(sz, gz);
+    const w = x1 - x0 + 1, h = z1 - z0 + 1;
+    if (w < 1 || h < 1) return;
+
+    const group = new THREE.Group();
+
+    // floor preview
+    const [fwx, fwz] = this.world.gridToWorld(x0, z0);
+    const [fwx2, fwz2] = this.world.gridToWorld(x1, z1);
+    const cx = (fwx + fwx2) / 2, cz = (fwz + fwz2) / 2;
+    const floorGeo = new THREE.PlaneGeometry(w, h);
+    const floorMat = new THREE.MeshBasicMaterial({
+      color: 0xffd27a,
+      transparent: true,
+      opacity: 0.2,
+      side: THREE.DoubleSide,
+    });
+    const floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set(cx, 0.03, cz);
+    group.add(floor);
+
+    // wall previews (4 sides)
+    const wallMat = new THREE.MeshBasicMaterial({
+      color: 0xffd27a,
+      transparent: true,
+      opacity: 0.4,
+    });
+    // north (z0)
+    const [nwx, nwz] = this.world.gridToWorld(x0, z0);
+    const [nwx2, _nz2] = this.world.gridToWorld(x1, z0);
+    const nLen = x1 - x0 + 1;
+    const north = new THREE.Mesh(new THREE.BoxGeometry(nLen, 3, 0.15), wallMat.clone());
+    north.position.set((nwx + nwx2) / 2, 1.5, nwz);
+    group.add(north);
+    // south (z1)
+    const [swx, swz] = this.world.gridToWorld(x0, z1);
+    const [swx2, _sz2] = this.world.gridToWorld(x1, z1);
+    const south = new THREE.Mesh(new THREE.BoxGeometry(nLen, 3, 0.15), wallMat.clone());
+    south.position.set((swx + swx2) / 2, 1.5, swz);
+    group.add(south);
+    // west (x0)
+    const [wwx, wwz] = this.world.gridToWorld(x0, z0);
+    const [_wwx2, wwz2] = this.world.gridToWorld(x0, z1);
+    const wLen = z1 - z0 + 1;
+    const west = new THREE.Mesh(new THREE.BoxGeometry(0.15, 3, wLen), wallMat.clone());
+    west.position.set(wwx, 1.5, (wwz + wwz2) / 2);
+    group.add(west);
+    // east (x1)
+    const [ewx, ewz] = this.world.gridToWorld(x1, z0);
+    const [_ewx2, ewz2] = this.world.gridToWorld(x1, z1);
+    const east = new THREE.Mesh(new THREE.BoxGeometry(0.15, 3, wLen), wallMat.clone());
+    east.position.set(ewx, 1.5, (ewz + ewz2) / 2);
+    group.add(east);
+
+    this.scene.add(group);
+    this.dragPreview = group;
   }
 
   // Click in build mode (left button). gx,gz = hovered cell.
