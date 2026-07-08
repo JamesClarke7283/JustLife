@@ -1,9 +1,9 @@
 // Just Life — objects: build three.js meshes from catalog JSON parts,
 // placement with rotation/occupancy, sell/refund.
-import * as THREE from "three";
-import type { CatalogItem, CatalogPart, PlacedObject } from "./types.ts";
+import * as THREE from 'three';
+import type { CatalogItem, CatalogPart, PlacedObject } from './types.ts';
 export type { PlacedObject };
-import { World, LOT_W, LOT_H } from "./world.ts";
+import { LOT_H, LOT_W, World } from './world.ts';
 
 let nextId = 1;
 
@@ -20,16 +20,16 @@ function makePartMesh(part: CatalogPart): THREE.Mesh {
   let geo: THREE.BufferGeometry;
   const [sx, sy, sz] = part.size;
   switch (part.shape) {
-    case "Cuboid":
+    case 'Cuboid':
       geo = new THREE.BoxGeometry(sx, sy, sz);
       break;
-    case "Cylinder":
+    case 'Cylinder':
       geo = new THREE.CylinderGeometry(sx / 2, sx / 2, sy, 12);
       break;
-    case "Sphere":
+    case 'Sphere':
       geo = new THREE.SphereGeometry(sx / 2, 14, 10);
       break;
-    case "Cone":
+    case 'Cone':
       geo = new THREE.ConeGeometry(sx / 2, sy, 12);
       break;
     default:
@@ -71,7 +71,13 @@ export function footprintCells(
   return cells;
 }
 
-export function canPlace(world: World, item: CatalogItem, gx: number, gz: number, rotation: number): boolean {
+export function canPlace(
+  world: World,
+  item: CatalogItem,
+  gx: number,
+  gz: number,
+  rotation: number,
+): boolean {
   const cells = footprintCells(item, gx, gz, rotation);
   for (const [cx, cz] of cells) {
     if (!world.inBounds(cx, cz)) return false;
@@ -98,7 +104,14 @@ export function placeObject(
   for (const [cx, cz] of footprintCells(item, gx, gz, rotation)) {
     world.setBlocked(cx, cz, true);
   }
-  const obj: PlacedObject = { id: nextId++, catalogId: item.id, gridX: gx, gridZ: gz, rotation, group };
+  const obj: PlacedObject = {
+    id: nextId++,
+    catalogId: item.id,
+    gridX: gx,
+    gridZ: gz,
+    rotation,
+    group,
+  };
   // Tag meshes so raycaster can find the parent object
   group.traverse((c) => {
     if (c instanceof THREE.Mesh) c.userData.placedId = obj.id;
@@ -132,4 +145,4 @@ export function ghostMesh(item: CatalogItem, valid: boolean): THREE.Group {
   return group;
 }
 
-export { LOT_W, LOT_H, nextId };
+export { LOT_H, LOT_W, nextId };

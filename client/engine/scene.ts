@@ -1,6 +1,6 @@
 // Just Life — scene setup: renderer, isometric camera rig, lighting, sky.
-import * as THREE from "three";
-import { THEME } from "../theme.ts";
+import * as THREE from 'three';
+import { THEME } from '../theme.ts';
 
 export interface SceneCtx {
   renderer: THREE.WebGLRenderer;
@@ -79,7 +79,7 @@ export function initScene(canvas: HTMLCanvasElement): SceneCtx {
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
   }
-  window.addEventListener("resize", resize);
+  window.addEventListener('resize', resize);
 
   return { renderer, scene, camera, sun, resize };
 }

@@ -10,9 +10,17 @@ import {
   removeObject,
 } from './objects.ts';
 import type { CatalogItem, PlacedObject } from './types.ts';
+import { FLOOR_MATERIAL_PRICES, WALL_MATERIAL_PRICES } from '../theme.ts';
+
+function floorPrice(material: string): number {
+  return FLOOR_MATERIAL_PRICES[material] ?? 10;
+}
+function wallPrice(material: string): number {
+  return WALL_MATERIAL_PRICES[material] ?? 15;
+}
 
 interface BuildAction {
-  type: 'wall' | 'room' | 'place' | 'sell' | 'floor';
+  type: 'wall' | 'room' | 'place' | 'sell' | 'floor' | 'sell-wall' | 'sell-floor';
   // for undo
   undo: () => void;
 }
@@ -292,23 +300,38 @@ export class BuildMode {
       this.wallStart = null;
       return;
     }
+    let seg: { axis: 'x' | 'z'; line: number; start: number; end: number; material: string };
     if (gx === sx) {
-      const line = gx;
-      const start = Math.min(sz, gz);
-      const end = Math.max(sz, gz);
-      const seg = { axis: 'z' as const, line, start, end, material: this.wallMaterial };
-      this.world.addWall(seg);
-      const idx = this.world.walls.length - 1;
-      this.pushUndo({ type: 'wall', undo: () => this.world.removeWall(idx) });
+      seg = {
+        axis: 'z',
+        line: gx,
+        start: Math.min(sz, gz),
+        end: Math.max(sz, gz),
+        material: this.wallMaterial,
+      };
     } else if (gz === sz) {
-      const line = gz;
-      const start = Math.min(sx, gx);
-      const end = Math.max(sx, gx);
-      const seg = { axis: 'x' as const, line, start, end, material: this.wallMaterial };
-      this.world.addWall(seg);
-      const idx = this.world.walls.length - 1;
-      this.pushUndo({ type: 'wall', undo: () => this.world.removeWall(idx) });
+      seg = {
+        axis: 'x',
+        line: gz,
+        start: Math.min(sx, gx),
+        end: Math.max(sx, gx),
+        material: this.wallMaterial,
+      };
+    } else {
+      this.wallStart = null;
+      return;
     }
+    const length = seg.end - seg.start + 1;
+    const cost = wallPrice(this.wallMaterial) * length;
+    if (this.onCharge && !this.onCharge(cost)) {
+      this.onBuildMsg?.(`Not enough money for wall (§${cost}).`, 'bad');
+      this.wallStart = null;
+      return;
+    }
+    this.world.addWall(seg);
+    const idx = this.world.walls.length - 1;
+    this.pushUndo({ type: 'wall', undo: () => this.world.removeWall(idx) });
+    this.onBuildMsg?.(`Built wall (-§${cost})`, 'good');
     this.wallStart = null;
   }
 
@@ -321,6 +344,17 @@ export class BuildMode {
     this.clearDragPreview();
     const x0 = Math.min(sx, gx), x1 = Math.max(sx, gx);
     const z0 = Math.min(sz, gz), z1 = Math.max(sz, gz);
+    // cost: 4 walls (perimeter cells) + floor area
+    const perim = 2 * ((x1 - x0 + 1) + (z1 - z0 + 1));
+    const area = (x1 - x0 + 1) * (z1 - z0 + 1);
+    const wallCost = wallPrice(this.wallMaterial) * perim;
+    const floorCost = floorPrice(this.floorMaterial) * area;
+    const cost = wallCost + floorCost;
+    if (this.onCharge && !this.onCharge(cost)) {
+      this.onBuildMsg?.(`Not enough money for room (§${cost}).`, 'bad');
+      this.wallStart = null;
+      return;
+    }
     // four walls
     const segs = [
       { axis: 'x' as const, line: z0, start: x0, end: x1, material: this.wallMaterial },
@@ -331,12 +365,10 @@ export class BuildMode {
     const startLen = this.world.walls.length;
     for (const seg of segs) this.world.addWall(seg);
     this.world.paintRoom(x0, z0, x1, z1, this.floorMaterial);
-    const floorStart = this.world.floors.size;
     this.pushUndo({
       type: 'room',
       undo: () => {
         for (let i = this.world.walls.length - 1; i >= startLen; i--) this.world.removeWall(i);
-        // remove floors added (simplified: clear tiles in rect)
         for (let fx = x0; fx <= x1; fx++) {
           for (let fz = z0; fz <= z1; fz++) {
             const k = this.world.key(fx, fz);
@@ -349,50 +381,96 @@ export class BuildMode {
         }
       },
     });
+    this.onBuildMsg?.(`Built room (-§${cost})`, 'good');
     this.wallStart = null;
   }
 
   private floorClick(gx: number, gz: number): void {
-    this.world.paintFloor(gx, gz, this.floorMaterial);
+    const cost = floorPrice(this.floorMaterial);
     const k = this.world.key(gx, gz);
+    const existing = this.world.floors.get(k);
+    // re-painting same material is free; different material charges the difference
+    if (existing && existing.material === this.floorMaterial) return;
+    if (this.onCharge && !this.onCharge(cost)) {
+      this.onBuildMsg?.(`Not enough money for floor (§${cost}).`, 'bad');
+      return;
+    }
+    const prevMaterial = existing?.material ?? null;
+    this.world.paintFloor(gx, gz, this.floorMaterial);
     this.pushUndo({
       type: 'floor',
       undo: () => {
-        const t = this.world.floors.get(k);
-        if (t) {
-          this.world.floorMeshes.remove(t.mesh);
-          this.world.floors.delete(k);
+        if (prevMaterial) {
+          this.world.paintFloor(gx, gz, prevMaterial);
+        } else {
+          const t = this.world.floors.get(k);
+          if (t) {
+            this.world.floorMeshes.remove(t.mesh);
+            this.world.floors.delete(k);
+          }
         }
       },
     });
+    this.onBuildMsg?.(`Floor (-§${cost})`, 'good');
   }
 
   private sellAt(gx: number, gz: number): void {
+    // first try selling an object on this cell
     const idx = this.objects.findIndex((o) => {
       const item = o.group.userData.item as CatalogItem;
       const cells = footprintCells(item, o.gridX, o.gridZ, o.rotation);
       return cells.some(([cx, cz]) => cx === gx && cz === gz);
     });
-    if (idx < 0) return;
-    const obj = this.objects[idx];
-    const item = obj.group.userData.item as CatalogItem;
-    removeObject(this.world, this.scene, obj);
-    this.objects.splice(idx, 1);
+    if (idx >= 0) {
+      const obj = this.objects[idx];
+      const item = obj.group.userData.item as CatalogItem;
+      removeObject(this.world, this.scene, obj);
+      this.objects.splice(idx, 1);
+      this.pushUndo({
+        type: 'sell',
+        undo: () => {
+          const newObj = placeObject(
+            this.world,
+            this.scene,
+            item,
+            obj.gridX,
+            obj.gridZ,
+            obj.rotation,
+          );
+          if (newObj) this.objects.push(newObj);
+        },
+      });
+      this.onSell?.(item, obj);
+      return;
+    }
+    // else: delete a wall segment touching this cell (free removal)
+    const widx = this.world.walls.findIndex((w) => {
+      const len = w.end - w.start + 1;
+      for (let i = 0; i < len; i++) {
+        const wx = w.axis === 'x' ? w.start + i : w.line;
+        const wz = w.axis === 'x' ? w.line : w.start + i;
+        if (wx === gx && wz === gz) return true;
+      }
+      return false;
+    });
+    if (widx >= 0) {
+      this.deleteWall(widx);
+      return;
+    }
+  }
+
+  private deleteWall(index: number): void {
+    const seg = this.world.walls[index];
+    this.world.removeWall(index);
     this.pushUndo({
-      type: 'sell',
+      type: 'sell-wall',
       undo: () => {
-        const newObj = placeObject(
-          this.world,
-          this.scene,
-          item,
-          obj.gridX,
-          obj.gridZ,
-          obj.rotation,
-        );
-        if (newObj) this.objects.push(newObj);
+        this.world.walls.splice(index, 0, seg);
+        this.world.rebuildWalls();
+        this.world.markWallBlocked(seg, true);
       },
     });
-    this.onSell?.(item, obj);
+    this.onBuildMsg?.('Wall deleted', 'good');
   }
 
   private pushUndo(a: BuildAction): void {
@@ -419,4 +497,7 @@ export class BuildMode {
   onPlace?: (item: CatalogItem, obj: PlacedObject) => void;
   onSell?: (item: CatalogItem, obj: PlacedObject) => void;
   onPlaceFail?: () => void;
+  onCharge?: (amount: number) => boolean; // returns false if not enough money (cancels)
+  onRefund?: (amount: number) => void;
+  onBuildMsg?: (msg: string, kind?: '' | 'good' | 'bad') => void;
 }

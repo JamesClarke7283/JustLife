@@ -1,9 +1,9 @@
 // Just Life — autonomy AI: pick the lowest need, find the nearest object
 // that restores it, route the sim there, and run the interaction.
-import type { CatalogItem, PlacedObject } from "./types.ts";
-import type { Sim } from "./sim.ts";
-import type { Needs } from "./needs.ts";
-import { NEEDS, type NeedKey } from "../theme.ts";
+import type { CatalogItem, PlacedObject } from './types.ts';
+import type { Sim } from './sim.ts';
+import type { Needs } from './needs.ts';
+import { type NeedKey, NEEDS } from '../theme.ts';
 
 export interface AutonomyState {
   enabled: boolean;
@@ -21,8 +21,20 @@ export function findObjectForNeed(
   objects: PlacedObject[],
   fromGx: number,
   fromGz: number,
-): { obj: PlacedObject; item: CatalogItem; actionName: string; rate: number; frontCell: [number, number] } | null {
-  let best: { obj: PlacedObject; item: CatalogItem; actionName: string; rate: number; frontCell: [number, number] } | null = null;
+): {
+  obj: PlacedObject;
+  item: CatalogItem;
+  actionName: string;
+  rate: number;
+  frontCell: [number, number];
+} | null {
+  let best: {
+    obj: PlacedObject;
+    item: CatalogItem;
+    actionName: string;
+    rate: number;
+    frontCell: [number, number];
+  } | null = null;
   let bestDist = Infinity;
   for (const obj of objects) {
     const item = obj.group.userData.item as CatalogItem;
@@ -55,7 +67,7 @@ export function autonomyTick(
   if (!auto.enabled) return null;
   auto.cooldown -= dt;
   if (auto.cooldown > 0) return null;
-  if (sim.state !== "idle") return null;
+  if (sim.state !== 'idle') return null;
 
   // only act if a need is critically low (<35)
   const worst = needs.lowestNeed();
@@ -70,7 +82,12 @@ export function autonomyTick(
     return null;
   }
   const duration = Math.min(15, (100 - needs.get(worst)) / target.rate * 60);
-  const ok = sim.walkToInteract(target.frontCell[0], target.frontCell[1], target.actionName, duration);
+  const ok = sim.walkToInteract(
+    target.frontCell[0],
+    target.frontCell[1],
+    target.actionName,
+    duration,
+  );
   if (ok) {
     sim.group.userData.activeNeed = worst;
     sim.group.userData.activeRate = target.rate;

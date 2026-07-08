@@ -30,7 +30,7 @@ export interface Palette {
   pants: number;
 }
 
-export const NEEDS = ["Hunger", "Energy", "Social", "Fun", "Hygiene", "Bladder"] as const;
+export const NEEDS = ['Hunger', 'Energy', 'Social', 'Fun', 'Hygiene', 'Bladder'] as const;
 export type NeedKey = (typeof NEEDS)[number];
 
 export const NEED_COLORS: Record<NeedKey, number> = {
@@ -43,12 +43,12 @@ export const NEED_COLORS: Record<NeedKey, number> = {
 };
 
 export const NEED_ICONS: Record<NeedKey, string> = {
-  Hunger: "&#127858;",
-  Energy: "&#9889;",
-  Social: "&#128172;",
-  Fun: "&#127922;",
-  Hygiene: "&#128703;",
-  Bladder: "&#128701;",
+  Hunger: '&#127858;',
+  Energy: '&#9889;',
+  Social: '&#128172;',
+  Fun: '&#127922;',
+  Hygiene: '&#128703;',
+  Bladder: '&#128701;',
 };
 
 export const NEED_DECAY: Record<NeedKey, number> = {
@@ -107,20 +107,43 @@ export const WALL_MATERIALS: Record<string, number> = {
   wood_panel: 0x8d6e63,
 };
 
+// Per-tile price for flooring (charged when painting a floor tile or room).
+export const FLOOR_MATERIAL_PRICES: Record<string, number> = {
+  hardwood_oak: 25,
+  hardwood_light: 22,
+  carpet_beige: 15,
+  carpet_gray: 14,
+  tile_cream: 30,
+  tile_white: 35,
+  stone: 40,
+  concrete: 12,
+  pool_tile: 50,
+};
+
+// Per-cell price for walls (charged per cell length of a wall segment).
+export const WALL_MATERIAL_PRICES: Record<string, number> = {
+  plaster_light: 20,
+  brick_red: 35,
+  wood_panel: 30,
+};
+
+// Refund fraction when selling/deleting build elements (matches object sell rate).
+export const REFUND_RATE = 0.6;
+
 // Convert a hex number to a CSS color string.
 export function hex(n: number): string {
-  return "#" + n.toString(16).padStart(6, "0");
+  return '#' + n.toString(16).padStart(6, '0');
 }
 
 // Inject all theme values as CSS custom properties on :root.
 export function injectCSSVars(): void {
   const root = document.documentElement;
   for (const [key, val] of Object.entries(THEME)) {
-    root.style.setProperty(`--c-${key.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase())}`, hex(val));
+    root.style.setProperty(`--c-${key.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase())}`, hex(val));
   }
   for (const need of NEEDS) {
     root.style.setProperty(`--need-${need.toLowerCase()}`, hex(NEED_COLORS[need]));
   }
-  root.style.setProperty("--accent", hex(THEME.primary));
-  root.style.setProperty("--accent-2", hex(THEME.accent2));
+  root.style.setProperty('--accent', hex(THEME.primary));
+  root.style.setProperty('--accent-2', hex(THEME.accent2));
 }

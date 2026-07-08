@@ -1,10 +1,10 @@
 // Just Life — input: raycaster for left-click select, right-click move,
 // right-click object → pie menu. Camera controls (scroll zoom, Q/E rotate,
 // WASD/middle-drag pan).
-import * as THREE from "three";
-import type { Sim } from "./sim.ts";
-import type { PlacedObject } from "./types.ts";
-import { World } from "./world.ts";
+import * as THREE from 'three';
+import type { Sim } from './sim.ts';
+import type { PlacedObject } from './types.ts';
+import { World } from './world.ts';
 
 export interface InputCallbacks {
   onSelectSim: (sim: Sim | null) => void;
@@ -105,9 +105,9 @@ export class Input {
   }
 
   private bind(): void {
-    this.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+    this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-    this.canvas.addEventListener("mousedown", (e) => {
+    this.canvas.addEventListener('mousedown', (e) => {
       if (e.button === 1) {
         this.panning = true;
         this.lastX = e.clientX;
@@ -116,23 +116,23 @@ export class Input {
       }
     });
 
-    window.addEventListener("mouseup", (e) => {
+    window.addEventListener('mouseup', (e) => {
       if (e.button === 1) this.panning = false;
     });
 
-    this.canvas.addEventListener("mousemove", (e) => {
+    this.canvas.addEventListener('mousemove', (e) => {
       if (this.panning) {
         const dx = e.clientX - this.lastX;
         const dy = e.clientY - this.lastY;
         this.lastX = e.clientX;
         this.lastY = e.clientY;
         // import panCam lazily to avoid circular deps at module-eval time
-        import("./scene.ts").then(({ panCam }) => panCam(-dx * 0.05, dy * 0.05));
+        import('./scene.ts').then(({ panCam }) => panCam(-dx * 0.05, dy * 0.05));
         return;
       }
     });
 
-    this.canvas.addEventListener("click", (e) => {
+    this.canvas.addEventListener('click', (e) => {
       if (this.buildMode) return; // build mode handles its own clicks
       this.ndc(e);
       // left click: select sim (or deselect)
@@ -145,9 +145,9 @@ export class Input {
       this.selectSim(null);
     });
 
-    this.canvas.addEventListener("contextmenu_prevent", () => {});
+    this.canvas.addEventListener('contextmenu_prevent', () => {});
 
-    this.canvas.addEventListener("mousedown", (e) => {
+    this.canvas.addEventListener('mousedown', (e) => {
       if (e.button !== 2) return;
       if (this.buildMode) return;
       this.ndc(e);
@@ -169,18 +169,18 @@ export class Input {
     });
 
     // wheel zoom
-    this.canvas.addEventListener("wheel", (e) => {
+    this.canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
-      import("./scene.ts").then(({ zoomCam }) => zoomCam(e.deltaY * 0.01));
+      import('./scene.ts').then(({ zoomCam }) => zoomCam(e.deltaY * 0.01));
     }, { passive: false });
 
     // keyboard
-    window.addEventListener("keydown", (e) => {
+    window.addEventListener('keydown', (e) => {
       this.keys.add(e.key.toLowerCase());
-      if (e.key.toLowerCase() === "q") import("./scene.ts").then(({ rotateCam }) => rotateCam(-1));
-      if (e.key.toLowerCase() === "e") import("./scene.ts").then(({ rotateCam }) => rotateCam(1));
+      if (e.key.toLowerCase() === 'q') import('./scene.ts').then(({ rotateCam }) => rotateCam(-1));
+      if (e.key.toLowerCase() === 'e') import('./scene.ts').then(({ rotateCam }) => rotateCam(1));
     });
-    window.addEventListener("keyup", (e) => {
+    window.addEventListener('keyup', (e) => {
       this.keys.delete(e.key.toLowerCase());
     });
   }
@@ -194,17 +194,17 @@ export class Input {
 
   // called each frame for WASD pan
   update(): void {
-    if (this.keys.has("w") || this.keys.has("arrowup")) {
-      import("./scene.ts").then(({ panCam }) => panCam(0, -0.25));
+    if (this.keys.has('w') || this.keys.has('arrowup')) {
+      import('./scene.ts').then(({ panCam }) => panCam(0, -0.25));
     }
-    if (this.keys.has("s") || this.keys.has("arrowdown")) {
-      import("./scene.ts").then(({ panCam }) => panCam(0, 0.25));
+    if (this.keys.has('s') || this.keys.has('arrowdown')) {
+      import('./scene.ts').then(({ panCam }) => panCam(0, 0.25));
     }
-    if (this.keys.has("a") || this.keys.has("arrowleft")) {
-      import("./scene.ts").then(({ panCam }) => panCam(-0.25, 0));
+    if (this.keys.has('a') || this.keys.has('arrowleft')) {
+      import('./scene.ts').then(({ panCam }) => panCam(-0.25, 0));
     }
-    if (this.keys.has("d") || this.keys.has("arrowright")) {
-      import("./scene.ts").then(({ panCam }) => panCam(0.25, 0));
+    if (this.keys.has('d') || this.keys.has('arrowright')) {
+      import('./scene.ts').then(({ panCam }) => panCam(0.25, 0));
     }
   }
 }

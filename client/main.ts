@@ -5,6 +5,7 @@
 
 import * as THREE from 'three';
 import {
+  FLOOR_MATERIAL_PRICES,
   FLOOR_MATERIALS,
   hex,
   injectCSSVars,
@@ -12,6 +13,8 @@ import {
   NEED_ICONS,
   type NeedKey,
   NEEDS,
+  REFUND_RATE,
+  WALL_MATERIAL_PRICES,
   WALL_MATERIALS,
 } from './theme.ts';
 import { initScene, updateCamera } from './engine/scene.ts';
@@ -191,12 +194,23 @@ build.onPlace = (item, _obj) => {
   updateHUD();
 };
 build.onSell = (item, _obj) => {
-  const refund = Math.floor(item.price * 0.6);
+  const refund = Math.floor(item.price * REFUND_RATE);
   household.money += refund;
   toast(`Sold ${item.name} (+§${refund})`, 'good');
   updateHUD();
 };
 build.onPlaceFail = () => toast("Can't place that here.", 'bad');
+build.onCharge = (amount) => {
+  if (household.money < amount) return false;
+  household.money -= amount;
+  updateHUD();
+  return true;
+};
+build.onRefund = (amount) => {
+  household.money += amount;
+  updateHUD();
+};
+build.onBuildMsg = (msg, kind) => toast(msg, kind);
 
 // ---------------------------------------------------------------------------
 // Pie menu (object interactions)
@@ -372,6 +386,7 @@ interface BuildCatalogEntry {
   icon: string;
   value?: string;
   color?: number;
+  price?: number;
 }
 
 const BUILD_TOOLS: BuildCatalogEntry[] = [
@@ -390,6 +405,7 @@ const FLOOR_SWATCHES: BuildCatalogEntry[] = Object.entries(FLOOR_MATERIALS).map(
   icon: '',
   value: id,
   color,
+  price: FLOOR_MATERIAL_PRICES[id] ?? 10,
 }));
 
 const WALL_SWATCHES: BuildCatalogEntry[] = Object.entries(WALL_MATERIALS).map(([id, color]) => ({
@@ -399,6 +415,7 @@ const WALL_SWATCHES: BuildCatalogEntry[] = Object.entries(WALL_MATERIALS).map(([
   icon: '',
   value: id,
   color,
+  price: WALL_MATERIAL_PRICES[id] ?? 15,
 }));
 
 function renderCatalog(): void {
@@ -540,7 +557,8 @@ function makeBuildCard(entry: BuildCatalogEntry): HTMLElement {
   const thumb = entry.type === 'tool'
     ? `<div class="cc-thumb"><span class="cc-thumb-ph">${entry.icon}</span></div>`
     : `<div class="cc-thumb"><div class="cc-swatch"${colorStyle}></div></div>`;
-  card.innerHTML = `${thumb}<div class="cc-name">${entry.name}</div>`;
+  const priceHTML = entry.price !== undefined ? `<div class="cc-price">§${entry.price}</div>` : '';
+  card.innerHTML = `${thumb}<div class="cc-name">${entry.name}</div>${priceHTML}`;
   return card;
 }
 

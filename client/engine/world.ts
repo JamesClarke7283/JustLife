@@ -1,6 +1,6 @@
 // Just Life — world: lot grid, ground, walls, floors, rooms, grid overlay.
-import * as THREE from "three";
-import { THEME, FLOOR_MATERIALS, WALL_MATERIALS } from "../theme.ts";
+import * as THREE from 'three';
+import { FLOOR_MATERIALS, THEME, WALL_MATERIALS } from '../theme.ts';
 
 export const LOT_W = 20; // grid cells wide
 export const LOT_H = 20; // grid cells deep
@@ -8,7 +8,7 @@ export const CELL = 1.0; // world units per cell
 
 export interface WallSegment {
   // axis: 'x' runs along x at fixed z; 'z' runs along z at fixed x
-  axis: "x" | "z";
+  axis: 'x' | 'z';
   // grid coordinate of the wall line (z for x-walls, x for z-walls)
   line: number;
   // start cell index along the axis (inclusive)
@@ -70,7 +70,7 @@ export class World {
       const z = -halfH + j * CELL;
       pts.push(-halfW, 0.02, z, halfW, 0.02, z);
     }
-    geo.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
     this.gridOverlay = new THREE.LineSegments(
       geo,
       new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25 }),
@@ -131,10 +131,10 @@ export class World {
     this.rebuildWalls();
   }
 
-  private markWallBlocked(seg: WallSegment, blocked: boolean): void {
+  markWallBlocked(seg: WallSegment, blocked: boolean): void {
     const len = seg.end - seg.start + 1;
     for (let i = 0; i < len; i++) {
-      if (seg.axis === "x") {
+      if (seg.axis === 'x') {
         this.setBlocked(seg.start + i, seg.line, blocked);
       } else {
         this.setBlocked(seg.line, seg.start + i, blocked);
@@ -149,7 +149,7 @@ export class World {
       const len = seg.end - seg.start + 1;
       const color = WALL_MATERIALS[seg.material] ?? wallColor;
       const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.85 });
-      if (seg.axis === "x") {
+      if (seg.axis === 'x') {
         const [wx, wz] = this.gridToWorld(seg.start, seg.line);
         const mesh = new THREE.Mesh(new THREE.BoxGeometry(len * CELL, 3, 0.15), mat);
         mesh.position.set(wx + (len - 1) * CELL / 2, 1.5, wz);

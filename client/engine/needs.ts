@@ -1,7 +1,7 @@
 // Just Life — needs system: 6 needs (0-100), decay over game time,
 // fulfillment via object actions, mood derived from averages.
-import { NEEDS, NEED_DECAY, NEED_COLORS, type NeedKey } from "../theme.ts";
-import type { Sim } from "./sim.ts";
+import { NEED_COLORS, NEED_DECAY, type NeedKey, NEEDS } from '../theme.ts';
+import type { Sim } from './sim.ts';
 
 export class Needs {
   values: Record<NeedKey, number> = {
@@ -26,7 +26,7 @@ export class Needs {
 
   // The lowest need — what autonomy targets.
   lowestNeed(): NeedKey {
-    let worst: NeedKey = "Hunger";
+    let worst: NeedKey = 'Hunger';
     let worstVal = 101;
     for (const need of NEEDS) {
       if (this.values[need] < worstVal) {

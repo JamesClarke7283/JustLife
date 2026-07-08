@@ -1,9 +1,9 @@
 // Just Life — sim entity: appearance, movement via pathfinder, animation.
-import * as THREE from "three";
-import { THEME } from "../theme.ts";
-import { World } from "./world.ts";
-import { findPath } from "./pathfinding.ts";
-import type { PathResult } from "./pathfinding.ts";
+import * as THREE from 'three';
+import { THEME } from '../theme.ts';
+import { World } from './world.ts';
+import { findPath } from './pathfinding.ts';
+import type { PathResult } from './pathfinding.ts';
 
 export interface SimConfig {
   name: string;
@@ -13,7 +13,7 @@ export interface SimConfig {
   hairColor?: number;
 }
 
-export type SimState = "idle" | "walking" | "interacting" | "atWork";
+export type SimState = 'idle' | 'walking' | 'interacting' | 'atWork';
 
 export class Sim {
   name: string;
@@ -26,10 +26,10 @@ export class Sim {
   path: [number, number][] = [];
   pathIdx = 0;
   speed = 2.5; // world units / sec
-  state: SimState = "idle";
+  state: SimState = 'idle';
   // interaction target
   interactUntil = 0; // game-time seconds
-  interactAction = "";
+  interactAction = '';
   // animation
   private t = 0;
   private body: THREE.Mesh;
@@ -60,7 +60,11 @@ export class Sim {
     this.group.add(this.body);
 
     // legs
-    const legMat = new THREE.MeshStandardMaterial({ color: pants, roughness: 0.85, flatShading: true });
+    const legMat = new THREE.MeshStandardMaterial({
+      color: pants,
+      roughness: 0.85,
+      flatShading: true,
+    });
     const legL = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.6, 8), legMat);
     legL.position.set(-0.14, 0.3, 0);
     legL.castShadow = true;
@@ -91,7 +95,12 @@ export class Sim {
     // selection ring
     this.ring = new THREE.Mesh(
       new THREE.RingGeometry(0.42, 0.55, 32),
-      new THREE.MeshBasicMaterial({ color: THEME.primary, side: THREE.DoubleSide, transparent: true, opacity: 0.85 }),
+      new THREE.MeshBasicMaterial({
+        color: THEME.primary,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.85,
+      }),
     );
     this.ring.rotation.x = -Math.PI / 2;
     this.ring.position.y = 0.02;
@@ -99,15 +108,15 @@ export class Sim {
     this.group.add(this.ring);
 
     // name label
-    const canvas = document.createElement("canvas");
+    const canvas = document.createElement('canvas');
     canvas.width = 256;
     canvas.height = 64;
-    const ctx = canvas.getContext("2d")!;
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
     ctx.fillRect(0, 22, 256, 28);
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 22px sans-serif";
-    ctx.textAlign = "center";
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 22px sans-serif';
+    ctx.textAlign = 'center';
     ctx.fillText(cfg.name, 128, 44);
     const tex = new THREE.CanvasTexture(canvas);
     this.label = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false }));
@@ -137,12 +146,12 @@ export class Sim {
     if (!result.found || result.waypoints.length < 2) {
       this.path = [];
       this.pathIdx = 0;
-      this.state = "idle";
+      this.state = 'idle';
       return false;
     }
     this.path = result.waypoints;
     this.pathIdx = 1; // skip current cell
-    this.state = "walking";
+    this.state = 'walking';
     return true;
   }
 
@@ -163,7 +172,7 @@ export class Sim {
     const legL = this.group.userData.legL as THREE.Mesh;
     const legR = this.group.userData.legR as THREE.Mesh;
 
-    if (this.state === "walking" && this.path.length > 0) {
+    if (this.state === 'walking' && this.path.length > 0) {
       const [tgx, tgz] = this.path[this.pathIdx];
       const [twx, twz] = this.world.gridToWorld(tgx, tgz);
       const dx = twx - pos.x;
@@ -175,11 +184,11 @@ export class Sim {
         this.pathIdx++;
         if (this.pathIdx >= this.path.length) {
           this.path = [];
-          this.state = "idle";
+          this.state = 'idle';
           // check pending interaction
           const pi = this.group.userData.pendingInteract;
           if (pi) {
-            this.state = "interacting";
+            this.state = 'interacting';
             this.interactUntil = this.t + pi.duration;
             this.group.userData.pendingInteract = null;
           }
@@ -198,10 +207,10 @@ export class Sim {
           legR.rotation.x = -Math.sin(this.t * 10) * 0.5;
         }
       }
-    } else if (this.state === "interacting") {
+    } else if (this.state === 'interacting') {
       if (this.t >= this.interactUntil) {
-        this.state = "idle";
-        this.interactAction = "";
+        this.state = 'idle';
+        this.interactAction = '';
       }
       // gentle idle
       pos.y = 0;

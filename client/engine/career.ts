@@ -1,7 +1,7 @@
 // Just Life — career & economy: household money, career tracks, work
 // schedule, salary, promotions.
-import type { CareerTrack, CareerLevel } from "./types.ts";
-import type { Sim } from "./sim.ts";
+import type { CareerLevel, CareerTrack } from './types.ts';
+import type { Sim } from './sim.ts';
 
 export class Household {
   money = 20000;
@@ -27,7 +27,7 @@ export class Career {
   }
 
   get title(): string {
-    return this.level?.title ?? "Unemployed";
+    return this.level?.title ?? 'Unemployed';
   }
 
   get salary(): number {

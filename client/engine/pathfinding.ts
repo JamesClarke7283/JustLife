@@ -1,5 +1,5 @@
 // Just Life — grid A* pathfinding around walls/objects.
-import { World, LOT_W, LOT_H } from "./world.ts";
+import { LOT_H, LOT_W, World } from './world.ts';
 
 export interface PathResult {
   waypoints: [number, number][]; // grid cells
@@ -7,8 +7,14 @@ export interface PathResult {
 }
 
 const dirs: [number, number][] = [
-  [0, 1], [1, 0], [0, -1], [-1, 0], // cardinal
-  [1, 1], [1, -1], [-1, 1], [-1, -1], // diagonal
+  [0, 1],
+  [1, 0],
+  [0, -1],
+  [-1, 0], // cardinal
+  [1, 1],
+  [1, -1],
+  [-1, 1],
+  [-1, -1], // diagonal
 ];
 
 interface Node {
@@ -101,4 +107,4 @@ function nearestFree(world: World, gx: number, gz: number): [number, number] | n
   return null;
 }
 
-export { LOT_W, LOT_H };
+export { LOT_H, LOT_W };
