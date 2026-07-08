@@ -1,0 +1,32 @@
+{
+  "nodeModulesDir": "auto",
+  "compilerOptions": {
+    "lib": ["dom", "dom.asynciterable", "deno.ns"],
+    "strict": true
+  },
+  "lint": {
+    "include": ["main.ts", "src/"],
+    "exclude": ["public/main.js", "client/"]
+  },
+  "fmt": {
+    "singleQuote": true,
+    "semiColons": true,
+    "lineWidth": 100,
+    "indentWidth": 2,
+    "include": ["main.ts", "client/", "src/"]
+  },
+  "tasks": {
+    "dev": "deno desktop --hmr --allow-read main.ts",
+    "start": "deno desktop --allow-read main.ts",
+    "bundle": "deno bundle client/main.ts > public/main.js",
+    "lint": "deno lint",
+    "fmt": "deno fmt",
+    "test": "deno test"
+  },
+  "imports": {
+    "three": "npm:three@^0.180.0",
+    "three/": "npm:three@^0.180.0/",
+    "@types/three": "npm:@types/three@^0.180.0"
+  },
+  "exclude": ["node_modules/", "public/main.js"]
+}

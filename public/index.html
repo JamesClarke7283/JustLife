@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Just Life</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <canvas id="game-canvas"></canvas>
+
+    <!-- ===================== MAIN MENU ===================== -->
+    <div id="menu-overlay" class="menu-overlay">
+      <div class="menu-panel">
+        <h1 class="title">Just Life</h1>
+        <p id="subtitle" class="subtitle">A life simulation</p>
+        <div class="menu-buttons">
+          <button class="menu-btn primary" data-action="new">
+            <span class="btn-icon">&#9733;</span><span class="btn-label">New Game</span>
+          </button>
+          <button class="menu-btn" data-action="load">
+            <span class="btn-icon">&#128190;</span><span class="btn-label">Load Game</span>
+          </button>
+          <button class="menu-btn" data-action="options">
+            <span class="btn-icon">&#9881;</span><span class="btn-label">Options</span>
+          </button>
+          <button class="menu-btn" data-action="credits">
+            <span class="btn-icon">&#9825;</span><span class="btn-label">Credits</span>
+          </button>
+          <button class="menu-btn ghost" data-action="quit">
+            <span class="btn-icon">&#10006;</span><span class="btn-label">Quit</span>
+          </button>
+        </div>
+        <footer class="menu-footer">v0.1 &middot; Deno + Three.js</footer>
+      </div>
+    </div>
+
+    <!-- ===================== LIVE HUD ===================== -->
+    <div id="live-hud" class="hud hidden">
+      <!-- top bar: money + clock + speed -->
+      <div class="hud-top">
+        <div class="hud-money"><span class="simoleons">&#167;</span><span id="money-val">20,000</span></div>
+        <div class="hud-clock"><span id="clock-day">Day 1</span> &middot; <span id="clock-time">08:00</span></div>
+        <div class="hud-speed">
+          <button class="speed-btn" data-speed="0" title="Pause">&#9208;</button>
+          <button class="speed-btn active" data-speed="1" title="Play">&#9654;</button>
+          <button class="speed-btn" data-speed="2" title="Fast">&#9654;&#9654;</button>
+          <button class="speed-btn" data-speed="3" title="Ultra">&#9654;&#9654;&#9654;</button>
+        </div>
+        <div class="hud-mode">
+          <button class="mode-btn active" data-mode="live">Live</button>
+          <button class="mode-btn" data-mode="build">Build</button>
+          <button class="mode-btn" data-mode="buy">Buy</button>
+        </div>
+      </div>
+
+      <!-- selected sim panel -->
+      <div id="sim-panel" class="sim-panel hidden">
+        <div class="sim-panel-header">
+          <span id="sim-name" class="sim-name">—</span>
+          <span id="sim-state" class="sim-state">Idle</span>
+        </div>
+        <div id="needs-bars" class="needs-bars"></div>
+        <div class="sim-career">
+          <span id="sim-job">Unemployed</span>
+          <button id="find-job-btn" class="mini-btn">Find a Job</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== BUILD/BUY BAR ===================== -->
+    <div id="build-bar" class="build-bar hidden">
+      <div class="build-tools">
+        <button class="tool-btn" data-tool="wall">Wall</button>
+        <button class="tool-btn" data-tool="room">Room</button>
+        <button class="tool-btn" data-tool="floor">Floor</button>
+        <button class="tool-btn" data-tool="sell">Sell</button>
+        <span class="tool-sep"></span>
+        <button class="tool-btn" data-action="undo">Undo</button>
+        <button class="tool-btn" data-action="redo">Redo</button>
+        <button class="tool-btn" data-action="rotate">Rotate (R)</button>
+        <span class="tool-sep"></span>
+        <select id="floor-material" class="material-select" title="Floor material"></select>
+        <select id="wall-material" class="material-select" title="Wall material"></select>
+      </div>
+    </div>
+
+    <!-- ===================== BUY CATALOG ===================== -->
+    <div id="buy-catalog" class="buy-catalog hidden">
+      <div class="catalog-header">
+        <input id="catalog-search" type="search" placeholder="Search objects..." />
+        <div id="catalog-cats" class="catalog-cats"></div>
+      </div>
+      <div id="catalog-grid" class="catalog-grid"></div>
+    </div>
+
+    <!-- ===================== PIE MENU ===================== -->
+    <div id="pie-menu" class="pie-menu hidden"></div>
+
+    <!-- ===================== TOASTS ===================== -->
+    <div id="toasts" class="toasts"></div>
+
+    <!-- ===================== CAREER DIALOG ===================== -->
+    <div id="career-dialog" class="dialog hidden">
+      <div class="dialog-panel">
+        <h2>Find a Job</h2>
+        <div id="career-list" class="career-list"></div>
+        <button class="tool-btn" id="career-close">Close</button>
+      </div>
+    </div>
+
+    <script src="/main.js"></script>
+  </body>
+</html>

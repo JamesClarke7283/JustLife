@@ -2,21 +2,21 @@
 
 ## Overview
 
-Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Rust). Players create and control simulated people ("Sims") who live in houses, pursue careers, form relationships, and try to satisfy their needs. The game uses low-poly 3D primitives with AI-generated textures, compiles to WASM for browser play, and features autonomy-driven AI, build/buy mode, needs systems, social interactions, careers, and more.
+Just Life is a 3D life simulation game inspired by The Sims, built with Deno and Three.js. Players create and control simulated people ("Sims") who live in houses, pursue careers, form relationships, and try to satisfy their needs. The game uses low-poly 3D primitives with procedurally-coloured meshes (and AI-generated textures where useful), runs as a desktop app via `deno desktop` (a native window hosting a local HTTP server + WebGL canvas), and features autonomy-driven AI, build/buy mode, needs systems, social interactions, careers, and more.
 
-**Tech Stack:** Bevy 0.15+ (Rust ECS game engine), wgpu renderer, WASM export, MCP image generation for textures
+**Tech Stack:** Deno 2.x runtime + `deno desktop` (native window over local HTTP), Three.js (WebGL 3D renderer), TypeScript, MCP image generation for textures
 
 ---
 
 ## Phase 1: Project Setup & Build Pipeline
 
-- [x] **1.1** Initialize Rust project with Bevy
+- [ ] **1.1** Initialize Rust project with Bevy
   - Run `cargo init --name just-life`
   - Add `bevy` dependency to `Cargo.toml` (latest stable version, with dynamic_linking for dev)
   - Add `bevy` features for 3D rendering, WASM support
   - Create `.cargo/config.toml` with dev optimizations for faster iteration
 
-- [x] **1.2** Configure WASM build target
+- [ ] **1.2** Configure WASM build target
   - Add `wasm32-unknown-unknown` target via `rustup`
   - Create `Cargo.toml` profile for WASM release (opt-level = "s", lto = true)
   - Add `wasm-bindgen` dependency for WASM interop
@@ -24,31 +24,31 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Create `index.html` with canvas and WASM loader for browser testing
   - Add `web-sys` and `wasm-bindgen-futures` dependencies
 
-- [x] **1.3** Set up project directory structure
+- [ ] **1.3** Set up project directory structure
   - Create `src/` with `main.rs`, `lib.rs`
   - Create module structure: `src/core/`, `src/sim/`, `src/world/`, `src/ui/`, `src/interaction/`, `src/career/`, `src/social/`, `src/audio/`, `src/assets/`, `src/wasm/`
   - Create `assets/` directory with subdirs: `textures/`, `models/`, `fonts/`, `sounds/`, `music/`
   - Create `assets/textures/` placeholder for generated textures
 
-- [x] **1.4** Configure linting and formatting
+- [ ] **1.4** Configure linting and formatting
   - Add `rustfmt.toml` with project formatting rules
   - Add `clippy.toml` with lint configuration
   - Ensure `cargo clippy` and `cargo fmt` pass on initial scaffold
 
-- [x] **1.5** Create minimal Bevy app skeleton
+- [ ] **1.5** Create minimal Bevy app skeleton
   - `main.rs`: spawn 3D camera, default lighting, and a ground plane
   - Verify it runs natively with `cargo run`
   - Verify it builds for WASM with `build-wasm.sh`
   - Take browser screenshot to confirm WASM pipeline works
 
-- [x] **1.6** Set up hot-reload and dev workflow
+- [ ] **1.6** Set up hot-reload and dev workflow
   - Configure Bevy asset hot-reload for dev iterations
   - Document dev workflow in AGENTS.md (build command, test command, WASM deploy)
   - Test that asset changes are reflected without restart
 
 ## Phase 2: Core ECS Architecture
 
-- [x] **2.1** Define core Bevy plugins
+- [ ] **2.1** Define core Bevy plugins
   - Create `CorePlugin` — registers all resources, events, and core systems
   - Create `SimPlugin` — registers sim-related components and systems
   - Create `WorldPlugin` — registers world/lot components and systems
@@ -60,7 +60,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Create `BuildModePlugin` — registers build/buy mode systems
   - Create `TimePlugin` — registers time/speed control systems
 
-- [x] **2.2** Define core resources
+- [ ] **2.2** Define core resources
   - `GameTime` resource — tracks in-game time (days, hours, minutes), speed multiplier
   - `GameSpeed` enum — Pause, Normal (1x), Fast (2x), Ultra (4x)
   - `GameState` enum — MainMenu, LiveMode, BuildMode, BuyMode, CreateASim, Loading
@@ -68,7 +68,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - `GameConfig` — configurable constants (needs decay rates, salary amounts, etc.)
   - `SelectionResource` — currently selected sim/entity
 
-- [x] **2.3** Define core events
+- [ ] **2.3** Define core events
   - `NeedChangeEvent` — fired when a sim's need level changes significantly
   - `InteractionEvent` — fired when a sim starts/completes an interaction
   - `TimeTickEvent` — fired each game-time tick for periodic updates
@@ -78,7 +78,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - `SimSpawnEvent` — fired when a new sim is created
   - `SimDeathEvent` — fired when a sim dies
 
-- [x] **2.4** Define core component traits and markers
+- [ ] **2.4** Define core component traits and markers
   - `Interactable` marker component — marks entities that sims can interact with
   - `SimControlled` marker — marks the currently player-controlled sim
   - `Named` component — entity has a display name
@@ -89,30 +89,30 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
 
 ## Phase 3: 3D Rendering & Camera
 
-- [x] **3.1** Implement isometric-style camera system
+- [ ] **3.1** Implement isometric-style camera system
   - Create `CameraRig` entity with `Camera3d` and orthographic/perspective projection
   - Set default camera angle (45-degree downward, rotated 45-degrees horizontally — classic isometric)
   - Allow smooth camera rotation around Y axis (quarter-turn snaps)
   - Allow camera zoom (scroll wheel) with min/max bounds
   - Allow camera pan (middle-mouse drag or WASD keys)
 
-- [x] **3.2** Implement camera follow mode
+- [ ] **3.2** Implement camera follow mode
   - Camera follows selected sim with smooth lerp
   - Toggle between free-camera and follow-camera with key press
   - Camera offset maintains isometric angle while tracking
 
-- [x] **3.3** Create ground plane and grid system
+- [ ] **3.3** Create ground plane and grid system
   - Generate a large ground plane mesh (green/terrain texture)
   - Implement grid overlay (toggle-able) showing buildable cells
   - Grid cells are 1x1 world unit, matching build mode tile system
   - Grid boundary markers for lot edges
 
-- [x] **3.4** Generate procedural 3D primitives for objects
+- [ ] **3.4** Generate procedural 3D primitives for objects
   - Create a `MeshGenerator` utility that produces common shapes: cubes, cylinders, spheres, cones, planes
   - Each shape can be scaled, rotated, and combined for furniture/objects
   - Create a `ShapeLibrary` resource caching commonly used meshes
 
-- [x] **3.5** Generate textures using MCP image gen tool
+- [ ] **3.5** Generate textures using MCP image gen tool
   - Generate wall texture (interior plaster, exterior brick)
   - Generate floor texture (hardwood, tile, carpet)
   - Generate roof texture (shingles)
@@ -123,20 +123,20 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Generate skybox/environment texture
   - Save all generated textures to `assets/textures/`
 
-- [x] **3.6** Apply textures to procedural primitives
+- [ ] **3.6** Apply textures to procedural primitives
   - Create `TexturedPrimitive` component bundle: mesh handle + material handle
   - Implement texture tiling and UV mapping for floor/wall planes
   - Create material library with PBR-like properties (metallic, roughness)
   - Test rendered primitives with textures in viewport
 
-- [x] **3.7** Implement lighting system
+- [ ] **3.7** Implement lighting system
   - Add directional light (sun) with time-of-day color changes
   - Add ambient light
   - Add point lights for indoor lighting (lamps, ceiling lights)
   - Implement shadow mapping for directional light
   - Create toggle for day/night lighting
 
-- [x] **3.8** Implement wall rendering and cutaway
+- [ ] **3.8** Implement wall rendering and cutaway
   - Walls render as thin boxes with interior/exterior materials
   - Implement wall height (standard 3m) and thickness
   - Implement wall cutaway: walls nearest to camera become transparent when camera is inside a room
@@ -144,7 +144,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
 
 ## Phase 4: Sim Entity System
 
-- [x] **4.1** Define Sim component bundle
+- [ ] **4.1** Define Sim component bundle
   - `SimBundle` — aggregates all sim components into a spawnable bundle
   - `SimId` — unique identifier for each sim
   - `SimName` — first name, last name
@@ -154,7 +154,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - `SimAppearance` — visual properties (skin tone, hair style, clothing)
   - `SimVoice` — pitch and tone parameters for simlish sounds
 
-- [x] **4.2** Implement Needs system
+- [ ] **4.2** Implement Needs system
   - Define `Needs` component with 6 core needs:
     - `hunger: f32` (0-100)
     - `energy: f32` (0-100)
@@ -167,7 +167,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Need decay pauses during certain interactions (e.g., sleeping pauses all decay)
   - Needs below threshold trigger moodlets and autonomy pushes
 
-- [x] **4.3** Implement Moodlet system
+- [ ] **4.3** Implement Moodlet system
   - Define `Moodlet` struct: name, description, mood impact, duration, source
   - Define `Mood` enum: Happy, Fine, Tense, Sad, Angry, Embarrassed, Energized, Flirty, Focused, Uncomfortable
   - `ActiveMoodlets` component: list of current moodlets on a sim
@@ -175,7 +175,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Mood affects behavior weights (angry sims more likely to fight, sad sims seek comfort)
   - Visual indicator above sim head showing current mood icon
 
-- [x] **4.4** Implement Traits system
+- [ ] **4.4** Implement Traits system
   - Define `Trait` enum with personality traits:
     - Active, Lazy, Cheerful, Gloomy, Creative, Genius, Neat, Slob, Outgoing, Introvert
     - Romantic, Unflirty, Ambitious, Good, Evil, Self-Assured, Self-Deprecating
@@ -184,7 +184,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Trait conflicts (e.g., Neat + Slob) are prevented during sim creation
   - Trait descriptions and effects stored in `TraitDatabase` resource
 
-- [x] **4.5** Implement Sim appearance and rendering
+- [ ] **4.5** Implement Sim appearance and rendering
   - Create `SimBody` as a combination of scaled primitives (capsule body, sphere head, cylinder limbs)
   - Generate sim skin textures via MCP image gen (different skin tones)
   - Generate clothing textures (tops, bottoms, shoes)
@@ -192,14 +192,14 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Spawn sim entity with visual representation in 3D world
   - Implement sim height variation by age stage
 
-- [x] **4.6** Implement Sim animation system
+- [ ] **4.6** Implement Sim animation system
   - Create `AnimationState` component: Idle, Walking, Running, Sitting, Sleeping, Talking, Eating, Cooking, Working, Playing, UsingObject, Socializing
   - Create `AnimationTimer` resource for frame timing
   - Implement simple procedural animation: bob walk cycle, idle sway, head look
   - Implement transition between animation states based on sim actions
   - Create animation blending system for smooth transitions
 
-- [x] **4.7** Implement Sim movement and pathfinding
+- [ ] **4.7** Implement Sim movement and pathfinding
   - Create `MoveTo` component with target position and movement speed
   - Implement `MovementSystem`: lerp sim position toward `MoveTo` target
   - Implement basic A* pathfinding on grid
@@ -210,48 +210,48 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
 
 ## Phase 5: World & Lot System
 
-- [x] **5.1** Define Lot component and structure
+- [ ] **5.1** Define Lot component and structure
   - `Lot` component: position, dimensions (width, depth), name, owner, value
   - `LotBoundary` component: visual outline of lot edges
   - Multiple lots per neighborhood map
   - Lot selection in world view (click to enter lot)
 
-- [x] **5.2** Implement Wall system
+- [ ] **5.2** Implement Wall system
   - `Wall` component: start position, end position, height, thickness, material
   - Walls snap to grid (1-unit increments)
   - Walls have two sides (interior, exterior) with different textures
   - Wall rendering with door/window cutout support
   - Wall deletion in build mode
 
-- [x] **5.3** Implement Door and Window system
+- [ ] **5.3** Implement Door and Window system
   - `Door` component: position, rotation, locked state, connected rooms
   - `Window` component: position, rotation, wall segment reference
   - Doors enable pathfinding between rooms
   - Windows let light through (affect lighting)
   - Place door/window in wall segments during build mode
 
-- [x] **5.4** Implement Room/Floor system
+- [ ] **5.4** Implement Room/Floor system
   - `Room` component: enclosed space defined by walls, floor material
   - Auto-detect rooms from wall layout (flood fill algorithm)
   - Each room has a floor with selectable material/texture
   - Room properties: name, area, indoor flag
   - Multiple floor levels (ground, second story) — future phase
 
-- [x] **5.5** Implement Furniture/Object catalog
+- [ ] **5.5** Implement Furniture/Object catalog
   - Define `CatalogItem` struct: name, category, subcategory, price, description, mesh, dimensions
   - Categories: Comfort, Surfaces, Plumbing, Electronics, Appliances, Lighting, Decorative, Outdoor, Kids, Dining, Bedroom, Bathroom, Kitchen, Office, Fitness, Party
   - Create `CatalogDatabase` resource loaded from RON data file
   - Each catalog item maps to a procedural 3D primitive combination
   - Generate preview textures for catalog items via MCP image gen
 
-- [x] **5.6** Implement placed objects
+- [ ] **5.6** Implement placed objects
   - `PlacedObject` component: catalog item reference, position, rotation, condition
   - Objects occupy grid cells based on their size (1x1, 2x1, 2x2, etc.)
   - Objects can be interacted with (define interaction set per object type)
   - Object state machine: clean/dirty, broken/fixed, on/off
   - Objects have a monetary value that depreciates over time
 
-- [x] **5.7** Create initial object definitions
+- [ ] **5.7** Create initial object definitions
   - **Bed** (single, double) — satisfies energy need
   - **Fridge** — supplies food, satisfies hunger
   - **Stove/Oven** — cook food, satisfies hunger
@@ -269,14 +269,14 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - **Trash Can** — cleaning interaction target
   - **Sink** — hygiene, cleaning dishes
 
-- [x] **5.8** Implement terrain and outdoor
+- [ ] **5.8** Implement terrain and outdoor
   - Ground texture variations (grass, dirt, concrete, pool tile)
   - Terrain painting tool for build mode (paint ground cells)
   - Trees and bushes as placed outdoor objects
   - Driveway and sidewalk placement
   - Pool (future phase — placeholder in catalog)
 
-- [x] **5.9** Implement neighborhood/world map
+- [ ] **5.9** Implement neighborhood/world map
   - `Neighborhood` resource: list of lots, roads, community spaces
   - Overhead neighborhood view showing all lots
   - Click lot to enter it (load lot entities)
@@ -284,34 +284,34 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
 
 ## Phase 6: Build/Buy Mode
 
-- [x] **6.1** Implement build mode state machine
+- [ ] **6.1** Implement build mode state machine
   - Transition from `LiveMode` to `BuildMode` on button press or key
   - Freeze sim simulation while in build mode
   - Show grid overlay in build mode
   - Show build mode toolbar UI
   - Transition back to `LiveMode` on exit
 
-- [x] **6.2** Implement wall building tool
+- [ ] **6.2** Implement wall building tool
   - Click and drag to place wall segments on grid
   - Wall segments snap to grid lines
   - Preview wall placement (ghost/wireframe) before confirming
   - Delete walls by clicking existing wall segments
   - Wall validation: can't place walls that overlap objects
 
-- [x] **6.3** Implement room tool
+- [ ] **6.3** Implement room tool
   - Click-drag rectangle to create a room (auto-generates walls + floor)
   - Room tool auto-places floor material
   - Room validation: minimum size, no overlap
   - Delete room removes walls and floor
 
-- [x] **6.4** Implement buy mode catalog UI
+- [ ] **6.4** Implement buy mode catalog UI
   - Categorized catalog browser (by room type or function)
   - Search/filter catalog items
   - Sort by price, name, need satisfaction
   - Item preview (3D rendered thumbnail or procedural)
   - Show item stats: price, needs satisfied, size
 
-- [x] **6.5** Implement object placement tool
+- [ ] **6.5** Implement object placement tool
   - Select item from catalog, place on grid
   - Ghost preview at cursor position (green = valid, red = invalid)
   - Rotation with R key (90-degree increments)
@@ -319,20 +319,20 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Validation: can't overlap walls or other objects
   - Deduct money from household funds on placement
 
-- [x] **6.6** Implement object deletion/selling
+- [ ] **6.6** Implement object deletion/selling
   - Click object in buy mode to select for deletion
   - Confirm deletion with click
   - Refund percentage of original price (depreciation)
   - Remove entity from world on deletion
 
-- [x] **6.7** Implement floor/wall material picker
+- [ ] **6.7** Implement floor/wall material picker
   - Material categories for floors: wood, tile, carpet, stone, concrete
   - Material categories for walls: paint, wallpaper, brick, stone, paneling
   - Click existing floor/wall to repaint with selected material
   - Material cost deducted from household funds
   - Generate material textures via MCP image gen
 
-- [x] **6.8** Implement undo/redo for build mode
+- [ ] **6.8** Implement undo/redo for build mode
   - Maintain undo stack of build/buy actions
   - Ctrl+Z to undo last action (restore walls/objects, refund money)
   - Ctrl+Y to redo undone action
@@ -340,7 +340,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
 
 ## Phase 7: AI & Autonomy System
 
-- [x] **7.1** Implement Sim AI decision engine
+- [ ] **7.1** Implement Sim AI decision engine
   - Create `AutonomySystem` that runs each game tick for idle sims
   - Evaluate current needs and find highest-priority unsatisfied need
   - Need priority = (100 - current_value) * weight_from_traits
@@ -348,21 +348,21 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Score each interaction: effectiveness * proximity * trait_modifier
   - Select highest-scoring interaction and push to sim's action queue
 
-- [x] **7.2** Implement interaction queue system
+- [ ] **7.2** Implement interaction queue system
   - `InteractionQueue` component: ordered list of pending interactions
   - Player can queue multiple interactions (click multiple objects/interactions)
   - Autonomy can queue interactions for uncontrolled sims
   - Interactions execute sequentially; sim walks to object, then performs action
   - Cancel queued interactions on new player command or critical need override
 
-- [x] **7.3** Define interaction system
+- [ ] **7.3** Define interaction system
   - `Interaction` struct: name, duration, needs_effects, required_object, animation_state
   - Interactions are defined per object type (bed → "Sleep", "Nap"; fridge → "Get Snack", "Cook Meal")
   - Some interactions require multiple objects (cook meal → fridge + stove + counter)
   - Multi-sim interactions: "Chat", "Hug", "Fight", "Flirt"
   - Interactions can give moodlets on completion
 
-- [x] **7.4** Implement interaction execution
+- [ ] **7.4** Implement interaction execution
   - `ActiveInteraction` component: currently executing interaction, start time, duration
   - System tracks progress through interaction duration
   - Need effects applied over time (e.g., energy increases during sleep)
@@ -371,14 +371,14 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Skill gains for skill-building interactions
   - Interaction completion triggers cleanup and processes next in queue
 
-- [x] **7.5** Implement routing/transition system
+- [ ] **7.5** Implement routing/transition system
   - When sim selects an interaction, create `RouteTo` component pointing to target object
   - Pathfinding system moves sim toward target
   - On arrival, transition from `RouteTo` to `ActiveInteraction`
   - If path is blocked, sim waves hand and cancels interaction (classic Sims behavior)
   - Route cancellation visual: frustrated animation + thought bubble
 
-- [x] **7.6** Implement need-based autonomy modifiers
+- [ ] **7.6** Implement need-based autonomy modifiers
   - Desperation behaviors: very low needs override all other actions
   - Energy collapse: sim passes out on the floor
   - Hunger collapse: sim begs for food, eventually faints
@@ -386,7 +386,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Social isolation: sim talks to self, seeks any social interaction
   - Fun deprivation: sim becomes tense, seeks any fun activity
 
-- [x] **7.7** Implement sim death system
+- [ ] **7.7** Implement sim death system
   - If hunger reaches 0, sim dies of starvation (after grace period)
   - If energy reaches 0, sim collapses but doesn't die immediately
   - Death by emotional extremes (e.g., anger heart attack for elders) — future
@@ -394,7 +394,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Other sims react with grief moodlet
   - Dead sims are removed from active simulation
 
-- [x] **7.8** Implement sim schedule/routine AI
+- [ ] **7.8** Implement sim schedule/routine AI
   - Sims follow approximate daily routines based on traits and career
   - Employed sims wake up before work, eat breakfast, go to work
   - Sims with Neat trait autonomously clean
@@ -403,28 +403,28 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
 
 ## Phase 8: Interaction & Social System
 
-- [x] **8.1** Implement radial/pie menu system
+- [ ] **8.1** Implement radial/pie menu system
   - Click on sim or object → show radial menu of available interactions
   - Pie menu segments: 4-8 options around cursor
   - Hover segment to highlight, click to select
   - Categories expand into sub-menus (e.g., "Friendly" → "Chat", "Joke", "Hug")
   - Pie menu styled with The Sims aesthetic (clean, colorful icons)
 
-- [x] **8.2** Define social interaction catalog
+- [ ] **8.2** Define social interaction catalog
   - **Friendly**: Chat, Joke, Compliment, Hug, Ask About Day, Be Funny, Console
   - **Romantic**: Flirt, Compliment Appearance, Hold Hands, Kiss, Propose, Break Up
   - **Mean**: Insult, Argue, Fight, Slap, Steal, Spread Rumor
   - **Funny**: Tell Joke, Funny Story, Prank, Silly Face
   - **Special**: Teach, Advise, Mentor, Ask for Loan, Propose Activity
 
-- [x] **8.3** Implement relationship tracker
+- [ ] **8.3** Implement relationship tracker
   - `Relationships` component: HashMap of (target_sim_id → RelationshipData)
   - `RelationshipData` struct: friendship_score (0-100), romance_score (0-100), known_traits, sentiment
   - Relationships are directional (A→B and B→A tracked independently)
   - Relationship levels: Stranger, Acquaintance, Friend, Good Friend, Best Friend, Romantic Interest, Partner, Spouse, Enemy, Nemesis
   - Relationship milestones unlock new interactions (e.g., "Propose" only at high romance)
 
-- [x] **8.4** Implement conversation system
+- [ ] **8.4** Implement conversation system
   - Two sims in proximity can initiate a conversation
   - Conversations have a context (friendly, romantic, tense, etc.)
   - Each interaction within conversation modifies relationship scores
@@ -432,7 +432,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Conversation can turn from friendly to romantic or tense based on interactions
   - Visual: speech bubbles with icons, thought bubbles with mood indicators
 
-- [x] **8.5** Implement moodlet-based social effects
+- [ ] **8.5** Implement moodlet-based social effects
   - Happy sims have more successful social interactions
   - Angry sims may start arguments autonomously
   - Sad sims receive comfort interactions
@@ -440,14 +440,14 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Embarrassed sims avoid social contact
   - Mood affects conversation outcome multipliers
 
-- [x] **8.6** Implement sentiment system
+- [ ] **8.6** Implement sentiment system
   - Sentiments are long-term relationship modifiers from significant events
   - Positive sentiments: "Grateful" (sim A helped sim B), "Close" (spent quality time)
   - Negative sentiments: "Betrayed" (caught cheating), "Furious" (had a fight)
   - Sentiments decay over time but affect behavior while active
   - Sentiments are tracked per-relationship (not global)
 
-- [x] **8.7** Implement group social dynamics
+- [ ] **8.7** Implement group social dynamics
   - Multiple sims can be in a conversation simultaneously
   - Group conversations: one sim speaks, others react
   - Exclusion mechanic: sims can be left out of group activities
@@ -456,7 +456,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
 
 ## Phase 9: Career & Economy
 
-- [x] **9.1** Implement household money system
+- [ ] **9.1** Implement household money system
   - `HouseholdFunds` resource: current money amount
   - Money earned from careers (hourly salary)
   - Money spent on buying objects, bills, food
@@ -464,7 +464,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Money display in UI with K/M formatting for large amounts
   - Bankruptcy: if money goes negative, repo man takes objects
 
-- [x] **9.2** Define career track system
+- [ ] **9.2** Define career track system
   - Each career has levels (1-10) with title, salary, hours, and requirements
   - Career tracks:
     - **Tech**: QA Tester → Code Reviewer → Developer → Senior Dev → CTO
@@ -477,14 +477,14 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
     - **Criminal**: Pickpocket → Thief → Con Artist → Mastermind
   - Career data loaded from RON config file
 
-- [x] **9.3** Implement job performance system
+- [ ] **9.3** Implement job performance system
   - `JobPerformance` component: daily performance score (0-100)
   - Performance affected by: mood at work, skills, relationships with coworkers
   - High performance → promotion; low performance → demotion
   - Performance displayed in career panel UI
   - Performance decays each day if sim misses work
 
-- [x] **9.4** Implement work schedule system
+- [ ] **9.4** Implement work schedule system
   - Sims leave for work at scheduled time (teleport off-lot)
   - Work hours vary by career level
   - Sim returns home after shift
@@ -492,7 +492,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Days off: weekends or career-specific off days
   - Vacation days: accumulated PTO
 
-- [x] **9.5** Implement skills system
+- [ ] **9.5** Implement skills system
   - Skills: Cooking, Handiness, Charisma, Fitness, Logic, Creativity, Gardening, Fishing, Programming
   - `Skills` component: HashMap<SkillType, SkillLevel> where level is 0-10
   - Skill gains from interactions: cooking → Cooking skill, programming → Logic skill
@@ -500,14 +500,14 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Skills improve interaction effectiveness (better meals, faster repairs)
   - Visual skill bar in sim info panel
 
-- [x] **9.6** Implement bills and expenses
+- [ ] **9.6** Implement bills and expenses
   - Weekly bills calculated from: lot value, electricity usage, water usage
   - Bills delivered as notification
   - Pay bills through mailbox or phone interaction
   - Unpaid bills → repossession of items after deadline
   - Optional: online shopping for groceries (auto-delivery)
 
-- [x] **9.7** Implement freelance/odd jobs
+- [ ] **9.7** Implement freelance/odd jobs
   - Sims can pick up gig work from phone/computer
   - Gig types: programming, painting, writing, repair, delivery
   - Gigs have a deadline and pay amount
@@ -516,13 +516,13 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
 
 ## Phase 10: UI System
 
-- [x] **10.1** Implement main menu
+- [ ] **10.1** Implement main menu
   - Title screen with "Just Life" logo (generate logo via MCP image gen)
   - Buttons: New Game, Load Game, Options, Quit
   - Background: slow-pan 3D scene or animated neighborhood
   - Options menu: resolution, volume, controls, language
 
-- [x] **10.2** Implement HUD overlay
+- [ ] **10.2** Implement HUD overlay
   - Bottom panel: needs bars (6 horizontal bars for current needs)
   - Bottom-left: sim portrait with mood indicator
   - Bottom-center: interaction queue display (upcoming actions)
@@ -530,7 +530,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Top-left: household funds display
   - Mini-map in corner showing lot layout
 
-- [x] **10.3** Implement needs bar UI
+- [ ] **10.3** Implement needs bar UI
   - 6 colored bars matching need type:
     - Hunger (green), Energy (yellow), Social (purple), Fun (pink), Hygiene (teal), Bladder (blue)
   - Bar fills/shrinks with smooth animation
@@ -538,7 +538,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Hovering over a bar shows exact number and what affects it
   - Clicking a need bar highlights all objects that satisfy that need
 
-- [x] **10.4** Implement sim info panel
+- [ ] **10.4** Implement sim info panel
   - Open sim panel by clicking sim portrait or double-clicking sim
   - Shows: name, age, gender, traits, career, aspiration
   - Shows: all 6 needs with exact values
@@ -547,7 +547,7 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Shows: moodlets list
   - Tab interface: Needs, Skills, Relationships, Career, Inventory
 
-- [x] **10.5** Implement pie menu interaction UI
+- [ ] **10.5** Implement pie menu interaction UI
   - Radial menu appears on right-click or tap on sim/object
   - Center shows the object/sim name
   - Segments show available interactions with icons
@@ -556,21 +556,21 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Menu closes on outside click or Escape
   - Disabled interactions grayed out with tooltip explaining why
 
-- [x] **10.6** Implement build mode UI toolbar
+- [ ] **10.6** Implement build mode UI toolbar
   - Left sidebar: tool categories (Wall, Floor, Door, Window, Staircase)
   - Bottom panel: selected tool options (wall style, floor material)
   - Right sidebar: catalog browser when in buy mode
   - Top bar: current mode indicator, household funds, undo/redo buttons
   - Confirmation dialogs for expensive purchases
 
-- [x] **10.7** Implement notifications/toast system
+- [ ] **10.7** Implement notifications/toast system
   - Toast notifications appear top-right and auto-dismiss after 5 seconds
   - Notification types: info (blue), success (green), warning (yellow), error (red)
   - Notifications for: bills due, promotion, sim mood event, relationship milestone
   - Notification history accessible from icon
   - Sound effect on notification
 
-- [x] **10.8** Implement Create-A-Sim UI
+- [ ] **10.8** Implement Create-A-Sim UI
   - CAS screen: full-body view of sim in 3D
   - Name input fields
   - Gender selector
@@ -582,14 +582,14 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
   - Randomize button for all fields
   - "Done" creates sim and places on lot
 
-- [x] **10.9** Implement time control UI
+- [ ] **10.9** Implement time control UI
   - Speed buttons: pause, play (1x), fast (2x), ultra (4x)
   - Keyboard shortcuts: 1/2/3 for speed, 0 for pause, Space for toggle
   - Visual indicator of current speed
   - Pause dims the screen slightly
   - Ultra speed auto-engages during sleep (skip to morning)
 
-- [x] **10.10** Implement tooltip system
+- [ ] **10.10** Implement tooltip system
   - Hovering over any UI element shows a tooltip after 500ms
   - Tooltips explain what the element does
   - Tooltips for objects show: name, needs satisfied, price, current state
@@ -597,95 +597,95 @@ Just Life is a 3D life simulation game inspired by The Sims, built with Bevy (Ru
 
 ## Phase 11: Audio & Polish
 
-- [x] **11.1** Implement audio system
-  - [x] Load audio files via Bevy asset system (`AudioBundle`, served from `assets/audio/`)
-  - [x] Background music: menu / build / live tracks switched by `GameState`
-  - [x] Generate ambient music tracks (ffmpeg-generated ambient pads; royalty-free real music is a human asset task)
-  - [x] Volume control via `AudioState` (master/music/sfx levels applied to playback)
-  - [x] Fade music between game states (`fade_in_music` ramps to target over 1.5s)
+- [ ] **11.1** Implement audio system
+  - [ ] Load audio files via Bevy asset system (`AudioBundle`, served from `assets/audio/`)
+  - [ ] Background music: menu / build / live tracks switched by `GameState`
+  - [ ] Generate ambient music tracks (ffmpeg-generated ambient pads; royalty-free real music is a human asset task)
+  - [ ] Volume control via `AudioState` (master/music/sfx levels applied to playback)
+  - [ ] Fade music between game states (`fade_in_music` ramps to target over 1.5s)
 
-- [x] **11.2** Implement sound effects (core: `SfxEvent` system + wired triggers)
-  - [x] UI sounds: click (button press) + notification (toast); hover/error use the same one-shot path
+- [ ] **11.2** Implement sound effects (core: `SfxEvent` system + wired triggers)
+  - [ ] UI sounds: click (button press) + notification (toast); hover/error use the same one-shot path
   - [PARTIAL] Sim sounds (footsteps, door, object interactions) — need per-action audio assets
   - [PARTIAL] Build mode sounds (place/delete) — need assets; `SfxEvent("audio/click.ogg")` is the hook
   - [PARTIAL] Ambient sounds (birds, traffic, rain, clock) — need looped ambient assets
   - [PARTIAL] Simlish vocalizations — see Phase 26 (Simlish & Audio Deep Dive); needs generated voice assets
 
-- [x] **11.3** Implement visual feedback (mood orbs; bubbles/particles partial)
-  - [x] Floating mood orb above each sim, colour-coded by dominant mood, bobbing
-  - [x] Sparkle/glow effect for positive moodlets (warm/bright orb glow)
-  - [x] Red tint for negative moodlets (red orb glow)
+- [ ] **11.3** Implement visual feedback (mood orbs; bubbles/particles partial)
+  - [ ] Floating mood orb above each sim, colour-coded by dominant mood, bobbing
+  - [ ] Sparkle/glow effect for positive moodlets (warm/bright orb glow)
+  - [ ] Red tint for negative moodlets (red orb glow)
   - [PARTIAL] Thought bubbles with want/need icons — need icon assets + billboard
   - [PARTIAL] Speech bubbles during conversation — need billboard text/icons
   - [PARTIAL] Need-failure effects (puddle/zzz) — need particle/decal assets
   - [PARTIAL] Money +/- floating text on money change — UI float not yet wired
 
-- [x] **11.4** Implement save/load system (core; relationships/inventory partial)
-  - [x] Serialize game state to RON format (`SaveGame`/`SavedSim`/`SavedObject`)
-  - [x] Save: sim identity/appearance/traits/needs/position/career, money, time, lot, placed objects
+- [ ] **11.4** Implement save/load system (core; relationships/inventory partial)
+  - [ ] Serialize game state to RON format (`SaveGame`/`SavedSim`/`SavedObject`)
+  - [ ] Save: sim identity/appearance/traits/needs/position/career, money, time, lot, placed objects
   - [PARTIAL] relationships, skills, inventory not yet serialized (version field allows extending)
-  - [x] Stored locally — browser `localStorage` (web-sys) / native `saves/` file
-  - [x] Load: deserialize and rebuild sims + objects via the normal spawn paths
-  - [x] Auto-save every 10 in-game minutes (slot 0)
-  - [x] 3 save slots (0 = autosave); F5 save / F9 load slot 1
-  - [x] Slot display data: `slot_summary()` (lot · sim names · day · play-time); [PARTIAL] screenshot thumbnail + in-game slot-browser UI
+  - [ ] Stored locally — browser `localStorage` (web-sys) / native `saves/` file
+  - [ ] Load: deserialize and rebuild sims + objects via the normal spawn paths
+  - [ ] Auto-save every 10 in-game minutes (slot 0)
+  - [ ] 3 save slots (0 = autosave); F5 save / F9 load slot 1
+  - [ ] Slot display data: `slot_summary()` (lot · sim names · day · play-time); [PARTIAL] screenshot thumbnail + in-game slot-browser UI
 
-- [x] **11.5** Implement game settings (`GameSettings` resource + overlay)
+- [ ] **11.5** Implement game settings (`GameSettings` resource + overlay)
   - [PARTIAL] Graphics quality preset stored (Low/Medium/High); resolution/fullscreen N/A on web canvas; preset not yet wired to the render pipeline
-  - [x] Audio: master/music/sfx/ambient volume — drive `AudioState`
-  - [x] Gameplay: autonomy level (stored), aging speed (stored), needs-decay rate (applied to `decay_needs`)
+  - [ ] Audio: master/music/sfx/ambient volume — drive `AudioState`
+  - [ ] Gameplay: autonomy level (stored), aging speed (stored), needs-decay rate (applied to `decay_needs`)
   - [PARTIAL] Controls: key-binding remapping not implemented (bindings are fixed)
-  - [x] Camera: zoom speed applied; invert-Y & rotation speed stored ([PARTIAL] — iso camera has no free-look axis)
-  - [x] Settings persisted to localStorage/file (loaded at startup, saved on change)
-  - [x] In-game settings overlay (O to toggle; Up/Down/Left/Right adjust) — verified rendering + persistence in WASM
+  - [ ] Camera: zoom speed applied; invert-Y & rotation speed stored ([PARTIAL] — iso camera has no free-look axis)
+  - [ ] Settings persisted to localStorage/file (loaded at startup, saved on change)
+  - [ ] In-game settings overlay (O to toggle; Up/Down/Left/Right adjust) — verified rendering + persistence in WASM
 
-- [x] **11.6** Implement localization framework (`Locale` resource + selector)
-  - [x] RON locale files in `assets/locales/` (en + es), embedded via include_str!
-  - [x] Locale key system: `Locale::get("ui.needs.Hunger")` (falls back to the key)
-  - [x] Language selector in the settings overlay; HUD relocalizes live (verified en->es)
-  - [x] Framework ready for community translations (es.ron is the template)
+- [ ] **11.6** Implement localization framework (`Locale` resource + selector)
+  - [ ] RON locale files in `assets/locales/` (en + es), embedded via include_str!
+  - [ ] Locale key system: `Locale::get("ui.needs.Hunger")` (falls back to the key)
+  - [ ] Language selector in the settings overlay; HUD relocalizes live (verified en->es)
+  - [ ] Framework ready for community translations (es.ron is the template)
   - [PARTIAL] Full UI-string migration ongoing (needs labels migrated as the demo; migrate each site as touched)
   - [PARTIAL] Default font lacks accented glyphs (í/ó/ñ render as tofu) — needs an extended-glyph font for non-ASCII locales
 
-- [x] **11.7** Performance optimization (AI throttle + grid spatial queries)
-  - [x] Spatial partitioning for range checks: `ObjectGrid` (HashMap cells) gives O(1) cell lookups (hover/placement/control) + `entities_within(center, radius)` for O(r^2) range queries
-  - [x] Limit active sim AI evaluations per frame: `autonomy_system` throttled to ~5 Hz (AI_TICK) instead of every frame — spreads the O(sims x objects) scan
+- [ ] **11.7** Performance optimization (AI throttle + grid spatial queries)
+  - [ ] Spatial partitioning for range checks: `ObjectGrid` (HashMap cells) gives O(1) cell lookups (hover/placement/control) + `entities_within(center, radius)` for O(r^2) range queries
+  - [ ] Limit active sim AI evaluations per frame: `autonomy_system` throttled to ~5 Hz (AI_TICK) instead of every frame — spreads the O(sims x objects) scan
   - [PARTIAL] LOD for distant objects — low value at current lot scale; deferred
   - [PARTIAL] Instanced rendering — Bevy already batches; explicit instancing deferred
-  - [x] Texture sizes already downscaled for WASM (assets/textures ~6.4 MB); [PARTIAL] further GPU-compressed (KTX2/basis) textures deferred
+  - [ ] Texture sizes already downscaled for WASM (assets/textures ~6.4 MB); [PARTIAL] further GPU-compressed (KTX2/basis) textures deferred
   - [BLOCKED: wasm-opt not installed] wasm-release already applies `opt-level="s"` + LTO; a wasm-opt pass needs the binaryen tool on PATH
   - Target 60 FPS on mid-range hardware, 30 FPS minimum on WASM
 
 ## Phase 12: WASM Export & Browser Deployment
 
-- [x] **12.1** Finalize WASM build pipeline
-  - [x] `Cargo.toml` WASM profiles: `wasm-release` (opt-level="s" + LTO) and `wasm-dev` (fast)
-  - [x] `wasm-bindgen --target web` generates the JS glue (`just-life.js`)
-  - [x] `build-wasm.sh` builds for wasm32-unknown-unknown, runs wasm-bindgen, then a conditional `wasm-opt -Oz` pass
-  - [x] Size minimized via opt-level="s"+LTO; `wasm-opt -Oz` runs when binaryen is on PATH ([BLOCKED] locally — wasm-opt not installed, pass skips gracefully)
-  - [x] Outputs `just-life.js` + `just-life_bg.wasm` (wasm-bindgen naming) into `web/`
+- [ ] **12.1** Finalize WASM build pipeline
+  - [ ] `Cargo.toml` WASM profiles: `wasm-release` (opt-level="s" + LTO) and `wasm-dev` (fast)
+  - [ ] `wasm-bindgen --target web` generates the JS glue (`just-life.js`)
+  - [ ] `build-wasm.sh` builds for wasm32-unknown-unknown, runs wasm-bindgen, then a conditional `wasm-opt -Oz` pass
+  - [ ] Size minimized via opt-level="s"+LTO; `wasm-opt -Oz` runs when binaryen is on PATH ([BLOCKED] locally — wasm-opt not installed, pass skips gracefully)
+  - [ ] Outputs `just-life.js` + `just-life_bg.wasm` (wasm-bindgen naming) into `web/`
 
-- [x] **12.2** Create browser shell
-  - [x] `web/index.html` with full-screen `#game-canvas`
-  - [x] `web/index.js` loads the WASM (resize owned by Bevy `fit_canvas_to_parent`)
-  - [x] `web/styles.css` resets body margin + styles the canvas full-bleed
-  - [x] Tab focus/blur pause/resume in-engine via `WindowFocused` events (`pause_on_blur`, respects manual pause)
-  - [x] Window resize handled by Bevy `fit_canvas_to_parent: true`
-  - [x] Tested on Chrome (chrome-devtools harness); [MANUAL] Firefox/Safari (no engine in this env)
+- [ ] **12.2** Create browser shell
+  - [ ] `web/index.html` with full-screen `#game-canvas`
+  - [ ] `web/index.js` loads the WASM (resize owned by Bevy `fit_canvas_to_parent`)
+  - [ ] `web/styles.css` resets body margin + styles the canvas full-bleed
+  - [ ] Tab focus/blur pause/resume in-engine via `WindowFocused` events (`pause_on_blur`, respects manual pause)
+  - [ ] Window resize handled by Bevy `fit_canvas_to_parent: true`
+  - [ ] Tested on Chrome (chrome-devtools harness); [MANUAL] Firefox/Safari (no engine in this env)
 
-- [x] **12.3** Implement browser-specific adaptations
-  - [x] Asset loading: `web/assets` symlink serves all assets (textures/audio/data) over HTTP
-  - [x] Mouse input mapped via Bevy winit (left-click select/interact, right-click move/pie)
-  - [x] Right-click context menu prevented (`prevent_default_event_handling: true`)
+- [ ] **12.3** Implement browser-specific adaptations
+  - [ ] Asset loading: `web/assets` symlink serves all assets (textures/audio/data) over HTTP
+  - [ ] Mouse input mapped via Bevy winit (left-click select/interact, right-click move/pie)
+  - [ ] Right-click context menu prevented (`prevent_default_event_handling: true`)
   - [PARTIAL] Touch (long-press pie, pinch zoom, two-finger pan) — not implemented; needs `TouchInput` mapping (no touch in the headless harness)
-  - [x] Keyboard browser-conflict handling (`prevent_default_event_handling: true`)
-  - [x] Audio gated on user gesture (browser autoplay policy; music loads, plays after first input)
+  - [ ] Keyboard browser-conflict handling (`prevent_default_event_handling: true`)
+  - [ ] Audio gated on user gesture (browser autoplay policy; music loads, plays after first input)
 
-- [x] **12.4** Set up deployment (CI + service worker; deploy is [MANUAL])
-  - [x] GitHub Actions workflow `.github/workflows/wasm-deploy.yml` (build wasm-release + binaryen wasm-opt + materialize assets + deploy-pages)
+- [ ] **12.4** Set up deployment (CI + service worker; deploy is [MANUAL])
+  - [ ] GitHub Actions workflow `.github/workflows/wasm-deploy.yml` (build wasm-release + binaryen wasm-opt + materialize assets + deploy-pages)
   - [MANUAL] Actual deploy to GitHub Pages — needs a push + "Pages: GitHub Actions" enabled in repo settings (loop never pushes)
-  - [x] MIME types: GitHub Pages serves `.wasm` as `application/wasm` automatically (no config needed)
-  - [x] Service worker `web/sw.js` (cache-first offline caching) registered in index.js — verified: registers, active, 18 requests cached
+  - [ ] MIME types: GitHub Pages serves `.wasm` as `application/wasm` automatically (no config needed)
+  - [ ] Service worker `web/sw.js` (cache-first offline caching) registered in index.js — verified: registers, active, 18 requests cached
   - [MANUAL] Test the deployed build — verified locally (SW active, game renders); live URL needs the manual deploy
 
 - [ ] **12.5** Browser testing and screenshots

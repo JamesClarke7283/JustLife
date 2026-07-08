@@ -1,0 +1,78 @@
+[
+  {
+    "name": "Tech",
+    "levels": [
+      { "title": "QA Tester", "salary": 15, "workDays": [1, 2, 3, 4, 5], "startHour": 9, "endHour": 17 },
+      { "title": "Code Reviewer", "salary": 28, "workDays": [1, 2, 3, 4, 5], "startHour": 9, "endHour": 17 },
+      { "title": "Developer", "salary": 48, "workDays": [1, 2, 3, 4, 5], "startHour": 10, "endHour": 18 },
+      { "title": "Senior Dev", "salary": 78, "workDays": [1, 2, 3, 4, 5], "startHour": 10, "endHour": 18 },
+      { "title": "CTO", "salary": 130, "workDays": [1, 2, 3, 4], "startHour": 11, "endHour": 18 }
+    ]
+  },
+  {
+    "name": "Culinary",
+    "levels": [
+      { "title": "Dishwasher", "salary": 12, "workDays": [2, 3, 4, 5, 6], "startHour": 16, "endHour": 23 },
+      { "title": "Prep Cook", "salary": 22, "workDays": [2, 3, 4, 5, 6], "startHour": 15, "endHour": 22 },
+      { "title": "Chef", "salary": 40, "workDays": [2, 3, 4, 5, 6], "startHour": 14, "endHour": 22 },
+      { "title": "Sous Chef", "salary": 65, "workDays": [3, 4, 5, 6, 0], "startHour": 13, "endHour": 22 },
+      { "title": "Executive Chef", "salary": 105, "workDays": [3, 4, 5, 6], "startHour": 12, "endHour": 21 }
+    ]
+  },
+  {
+    "name": "Entertainment",
+    "levels": [
+      { "title": "Street Performer", "salary": 14, "workDays": [5, 6, 0], "startHour": 12, "endHour": 19 },
+      { "title": "Actor", "salary": 35, "workDays": [1, 2, 3, 4, 5], "startHour": 10, "endHour": 18 },
+      { "title": "Celebrity", "salary": 80, "workDays": [2, 3, 4, 5], "startHour": 11, "endHour": 19 },
+      { "title": "Superstar", "salary": 180, "workDays": [3, 4, 5], "startHour": 12, "endHour": 18 }
+    ]
+  },
+  {
+    "name": "Business",
+    "levels": [
+      { "title": "Intern", "salary": 16, "workDays": [1, 2, 3, 4, 5], "startHour": 9, "endHour": 17 },
+      { "title": "Analyst", "salary": 30, "workDays": [1, 2, 3, 4, 5], "startHour": 9, "endHour": 17 },
+      { "title": "Manager", "salary": 52, "workDays": [1, 2, 3, 4, 5], "startHour": 8, "endHour": 17 },
+      { "title": "Director", "salary": 85, "workDays": [1, 2, 3, 4, 5], "startHour": 8, "endHour": 18 },
+      { "title": "CEO", "salary": 150, "workDays": [1, 2, 3, 4], "startHour": 9, "endHour": 16 }
+    ]
+  },
+  {
+    "name": "Athletic",
+    "levels": [
+      { "title": "Water Person", "salary": 13, "workDays": [1, 2, 3, 4, 5], "startHour": 7, "endHour": 15 },
+      { "title": "Personal Trainer", "salary": 26, "workDays": [1, 2, 3, 4, 5], "startHour": 6, "endHour": 14 },
+      { "title": "Coach", "salary": 50, "workDays": [2, 3, 4, 5, 6], "startHour": 8, "endHour": 16 },
+      { "title": "Champion", "salary": 120, "workDays": [3, 4, 5, 6], "startHour": 9, "endHour": 15 }
+    ]
+  },
+  {
+    "name": "Creative",
+    "levels": [
+      { "title": "Freelancer", "salary": 18, "workDays": [1, 2, 3, 4, 5], "startHour": 10, "endHour": 16 },
+      { "title": "Designer", "salary": 34, "workDays": [1, 2, 3, 4, 5], "startHour": 10, "endHour": 18 },
+      { "title": "Art Director", "salary": 60, "workDays": [1, 2, 3, 4, 5], "startHour": 10, "endHour": 18 },
+      { "title": "Master Artist", "salary": 110, "workDays": [2, 3, 4, 5], "startHour": 11, "endHour": 17 }
+    ]
+  },
+  {
+    "name": "Medical",
+    "levels": [
+      { "title": "Intern", "salary": 20, "workDays": [1, 2, 3, 4, 5, 6], "startHour": 7, "endHour": 19 },
+      { "title": "Nurse", "salary": 38, "workDays": [1, 2, 3, 4, 5], "startHour": 7, "endHour": 17 },
+      { "title": "Doctor", "salary": 70, "workDays": [1, 2, 3, 4, 5], "startHour": 8, "endHour": 18 },
+      { "title": "Surgeon", "salary": 120, "workDays": [1, 2, 3, 4, 5], "startHour": 6, "endHour": 16 },
+      { "title": "Chief of Medicine", "salary": 200, "workDays": [1, 2, 3, 4], "startHour": 8, "endHour": 16 }
+    ]
+  },
+  {
+    "name": "Criminal",
+    "levels": [
+      { "title": "Pickpocket", "salary": 16, "workDays": [2, 3, 4, 5, 6], "startHour": 20, "endHour": 2 },
+      { "title": "Thief", "salary": 34, "workDays": [2, 3, 4, 5, 6], "startHour": 21, "endHour": 3 },
+      { "title": "Con Artist", "salary": 62, "workDays": [3, 4, 5, 6], "startHour": 19, "endHour": 1 },
+      { "title": "Mastermind", "salary": 140, "workDays": [4, 5, 6], "startHour": 22, "endHour": 4 }
+    ]
+  }
+]

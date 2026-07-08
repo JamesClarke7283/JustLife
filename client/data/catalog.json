@@ -1,0 +1,347 @@
+[
+  {
+    "id": "bed_double",
+    "name": "Double Bed",
+    "category": "Comfort",
+    "subcategory": "Beds",
+    "price": 800,
+    "description": "A comfy double bed. Restores energy while sleeping.",
+    "footprint": [2, 3],
+    "parts": [
+      { "shape": "Cuboid", "size": [2.0, 0.4, 3.0], "offset": [0.0, 0.2, 0.0], "color": [0.45, 0.30, 0.18] },
+      { "shape": "Cuboid", "size": [1.8, 0.25, 2.8], "offset": [0.0, 0.5, 0.0], "color": [0.90, 0.92, 0.96] },
+      { "shape": "Cuboid", "size": [1.6, 0.18, 0.6], "offset": [0.0, 0.7, -1.0], "color": [0.95, 0.85, 0.55] }
+    ],
+    "actions": [{ "name": "Sleep", "need": "Energy", "rate": 12.0 }]
+  },
+  {
+    "id": "sofa_loveseat",
+    "name": "Loveseat Sofa",
+    "category": "Comfort",
+    "subcategory": "Sofas",
+    "price": 450,
+    "description": "Seats two. Great for relaxing in front of the TV.",
+    "footprint": [3, 1],
+    "parts": [
+      { "shape": "Cuboid", "size": [2.6, 0.5, 1.0], "offset": [0.0, 0.3, 0.0], "color": [0.28, 0.45, 0.62] },
+      { "shape": "Cuboid", "size": [2.6, 0.7, 0.25], "offset": [0.0, 0.6, 0.4], "color": [0.24, 0.40, 0.56] },
+      { "shape": "Cuboid", "size": [0.25, 0.55, 1.0], "offset": [-1.3, 0.35, 0.0], "color": [0.24, 0.40, 0.56] },
+      { "shape": "Cuboid", "size": [0.25, 0.55, 1.0], "offset": [1.3, 0.35, 0.0], "color": [0.24, 0.40, 0.56] }
+    ],
+    "actions": [{ "name": "Relax", "need": "Fun", "rate": 3.0 }, { "name": "Nap", "need": "Energy", "rate": 5.0 }]
+  },
+  {
+    "id": "armchair",
+    "name": "Armchair",
+    "category": "Comfort",
+    "subcategory": "Chairs",
+    "price": 200,
+    "description": "A single comfortable chair.",
+    "footprint": [1, 1],
+    "parts": [
+      { "shape": "Cuboid", "size": [0.9, 0.45, 0.9], "offset": [0.0, 0.3, 0.0], "color": [0.30, 0.50, 0.40] },
+      { "shape": "Cuboid", "size": [0.9, 0.6, 0.2], "offset": [0.0, 0.6, 0.35], "color": [0.27, 0.45, 0.36] }
+    ],
+    "actions": [{ "name": "Sit", "need": "Fun", "rate": 2.0 }]
+  },
+  {
+    "id": "dining_table",
+    "name": "Dining Table",
+    "category": "Dining",
+    "subcategory": "Tables",
+    "price": 250,
+    "description": "Sims need a table to eat a proper meal.",
+    "footprint": [2, 1],
+    "parts": [
+      { "shape": "Cuboid", "size": [1.8, 0.12, 1.0], "offset": [0.0, 0.75, 0.0], "color": [0.55, 0.38, 0.22] },
+      { "shape": "Cuboid", "size": [0.4, 0.75, 0.4], "offset": [0.0, 0.375, 0.0], "color": [0.45, 0.30, 0.18] }
+    ],
+    "actions": [{ "name": "Eat Meal", "need": "Hunger", "rate": 10.0 }]
+  },
+  {
+    "id": "dining_chair",
+    "name": "Dining Chair",
+    "category": "Dining",
+    "subcategory": "Chairs",
+    "price": 80,
+    "description": "A simple wooden dining chair.",
+    "footprint": [1, 1],
+    "parts": [
+      { "shape": "Cuboid", "size": [0.5, 0.08, 0.5], "offset": [0.0, 0.45, 0.0], "color": [0.55, 0.38, 0.22] },
+      { "shape": "Cuboid", "size": [0.5, 0.5, 0.08], "offset": [0.0, 0.7, 0.2], "color": [0.50, 0.34, 0.20] },
+      { "shape": "Cuboid", "size": [0.12, 0.45, 0.12], "offset": [0.0, 0.22, 0.0], "color": [0.45, 0.30, 0.18] }
+    ],
+    "actions": []
+  },
+  {
+    "id": "coffee_table",
+    "name": "Coffee Table",
+    "category": "Surfaces",
+    "subcategory": "Tables",
+    "price": 120,
+    "description": "A low table for the living room.",
+    "footprint": [2, 1],
+    "parts": [
+      { "shape": "Cuboid", "size": [1.2, 0.1, 0.7], "offset": [0.0, 0.45, 0.0], "color": [0.55, 0.38, 0.22] },
+      { "shape": "Cuboid", "size": [1.0, 0.4, 0.5], "offset": [0.0, 0.2, 0.0], "color": [0.45, 0.30, 0.18] }
+    ],
+    "actions": []
+  },
+  {
+    "id": "counter_kitchen",
+    "name": "Kitchen Counter",
+    "category": "Kitchen",
+    "subcategory": "Counters",
+    "price": 200,
+    "description": "Counter space for preparing food.",
+    "footprint": [1, 1],
+    "parts": [
+      { "shape": "Cuboid", "size": [1.0, 0.9, 0.9], "offset": [0.0, 0.45, 0.0], "color": [0.88, 0.88, 0.90] },
+      { "shape": "Cuboid", "size": [1.02, 0.06, 0.92], "offset": [0.0, 0.93, 0.0], "color": [0.30, 0.30, 0.32] }
+    ],
+    "actions": []
+  },
+  {
+    "id": "fridge",
+    "name": "Refrigerator",
+    "category": "Appliances",
+    "subcategory": "Cold",
+    "price": 1000,
+    "description": "Stores food. Sims grab snacks and ingredients here.",
+    "footprint": [1, 1],
+    "parts": [
+      { "shape": "Cuboid", "size": [1.0, 1.8, 0.9], "offset": [0.0, 0.9, 0.0], "color": [0.82, 0.84, 0.87] },
+      { "shape": "Cuboid", "size": [0.06, 1.2, 0.06], "offset": [0.4, 0.9, 0.46], "color": [0.3, 0.3, 0.3] }
+    ],
+    "actions": [{ "name": "Get Snack", "need": "Hunger", "rate": 8.0 }]
+  },
+  {
+    "id": "stove",
+    "name": "Stove",
+    "category": "Appliances",
+    "subcategory": "Cooking",
+    "price": 600,
+    "description": "Cook meals here. Watch out for kitchen fires!",
+    "footprint": [1, 1],
+    "parts": [
+      { "shape": "Cuboid", "size": [1.0, 0.9, 0.9], "offset": [0.0, 0.45, 0.0], "color": [0.20, 0.20, 0.22] },
+      { "shape": "Cuboid", "size": [1.02, 0.06, 0.92], "offset": [0.0, 0.93, 0.0], "color": [0.10, 0.10, 0.10] }
+    ],
+    "actions": [{ "name": "Cook Meal", "need": "Hunger", "rate": 15.0 }]
+  },
+  {
+    "id": "toilet",
+    "name": "Toilet",
+    "category": "Plumbing",
+    "subcategory": "Toilets",
+    "price": 300,
+    "description": "Relieves the bladder need.",
+    "footprint": [1, 1],
+    "parts": [
+      { "shape": "Cylinder", "size": [0.5, 0.45, 0.5], "offset": [0.0, 0.225, 0.0], "color": [0.95, 0.95, 0.97] },
+      { "shape": "Cylinder", "size": [0.55, 0.06, 0.55], "offset": [0.0, 0.46, 0.0], "color": [0.90, 0.90, 0.92] },
+      { "shape": "Cuboid", "size": [0.5, 0.5, 0.2], "offset": [0.0, 0.55, 0.35], "color": [0.95, 0.95, 0.97] }
+    ],
+    "actions": [{ "name": "Use Toilet", "need": "Bladder", "rate": 40.0 }]
+  },
+  {
+    "id": "shower",
+    "name": "Shower",
+    "category": "Plumbing",
+    "subcategory": "Showers",
+    "price": 650,
+    "description": "Restores the hygiene need.",
+    "footprint": [1, 1],
+    "parts": [
+      { "shape": "Cuboid", "size": [1.0, 0.1, 1.0], "offset": [0.0, 0.05, 0.0], "color": [0.90, 0.92, 0.95] },
+      { "shape": "Cuboid", "size": [1.0, 2.0, 0.1], "offset": [0.0, 1.0, 0.45], "color": [0.75, 0.80, 0.85] },
+      { "shape": "Cuboid", "size": [0.1, 2.0, 1.0], "offset": [-0.45, 1.0, 0.0], "color": [0.75, 0.80, 0.85] }
+    ],
+    "actions": [{ "name": "Take Shower", "need": "Hygiene", "rate": 20.0 }]
+  },
+  {
+    "id": "bathtub",
+    "name": "Bathtub",
+    "category": "Plumbing",
+    "subcategory": "Tubs",
+    "price": 900,
+    "description": "A relaxing soak restores hygiene and a little fun.",
+    "footprint": [2, 1],
+    "parts": [
+      { "shape": "Cuboid", "size": [1.9, 0.6, 0.9], "offset": [0.0, 0.3, 0.0], "color": [0.95, 0.95, 0.97] },
+      { "shape": "Cuboid", "size": [1.7, 0.2, 0.7], "offset": [0.0, 0.45, 0.0], "color": [0.70, 0.85, 0.95] }
+    ],
+    "actions": [{ "name": "Take Bath", "need": "Hygiene", "rate": 15.0 }, { "name": "Soak", "need": "Fun", "rate": 3.0 }]
+  },
+  {
+    "id": "sink_pedestal",
+    "name": "Pedestal Sink",
+    "category": "Plumbing",
+    "subcategory": "Sinks",
+    "price": 150,
+    "description": "Wash hands and dishes here.",
+    "footprint": [1, 1],
+    "parts": [
+      { "shape": "Cuboid", "size": [0.6, 0.2, 0.5], "offset": [0.0, 0.85, 0.0], "color": [0.95, 0.95, 0.97] },
+      { "shape": "Cylinder", "size": [0.25, 0.75, 0.25], "offset": [0.0, 0.375, 0.0], "color": [0.92, 0.92, 0.94] }
+    ],
+    "actions": [{ "name": "Wash Up", "need": "Hygiene", "rate": 8.0 }]
+  },
+  {
+    "id": "mirror",
+    "name": "Wall Mirror",
+    "category": "Decorative",
+    "subcategory": "Mirrors",
+    "price": 120,
+    "description": "Practice talking yourself up for a confidence boost.",
+    "footprint": [1, 1],
+    "parts": [
+      { "shape": "Cuboid", "size": [0.7, 1.2, 0.06], "offset": [0.0, 1.4, 0.0], "color": [0.85, 0.90, 0.95] },
+      { "shape": "Cuboid", "size": [0.78, 1.28, 0.04], "offset": [0.0, 1.4, -0.02], "color": [0.45, 0.30, 0.18] }
+    ],
+    "actions": [{ "name": "Freshen Up", "need": "Hygiene", "rate": 3.0 }]
+  },
+  {
+    "id": "tv_flatscreen",
+    "name": "Flatscreen TV",
+    "category": "Electronics",
+    "subcategory": "TVs",
+    "price": 500,
+    "description": "Boosts fun. Watch shows on the couch.",
+    "footprint": [1, 1],
+    "parts": [
+      { "shape": "Cuboid", "size": [1.4, 0.85, 0.08], "offset": [0.0, 1.0, 0.0], "color": [0.05, 0.05, 0.07] },
+      { "shape": "Cuboid", "size": [0.4, 0.2, 0.2], "offset": [0.0, 0.55, 0.0], "color": [0.15, 0.15, 0.17] }
+    ],
+    "actions": [{ "name": "Watch TV", "need": "Fun", "rate": 6.0 }]
+  },
+  {
+    "id": "phone",
+    "name": "Telephone",
+    "category": "Electronics",
+    "subcategory": "Phones",
+    "price": 60,
+    "description": "Call friends to keep the social need topped up.",
+    "footprint": [1, 1],
+    "parts": [
+      { "shape": "Cuboid", "size": [0.25, 0.1, 0.25], "offset": [0.0, 0.05, 0.0], "color": [0.15, 0.15, 0.18] },
+      { "shape": "Cuboid", "size": [0.12, 0.3, 0.12], "offset": [0.06, 0.2, 0.0], "color": [0.20, 0.20, 0.24] }
+    ],
+    "actions": [{ "name": "Chat on Phone", "need": "Social", "rate": 12.0 }]
+  },
+  {
+    "id": "computer_desk",
+    "name": "Computer Desk",
+    "category": "Office",
+    "subcategory": "Desks",
+    "price": 220,
+    "description": "Work from home, browse, and build the Logic skill.",
+    "footprint": [2, 1],
+    "parts": [
+      { "shape": "Cuboid", "size": [1.6, 0.08, 0.8], "offset": [0.0, 0.75, 0.0], "color": [0.45, 0.30, 0.18] },
+      { "shape": "Cuboid", "size": [0.08, 0.75, 0.8], "offset": [-0.7, 0.375, 0.0], "color": [0.40, 0.26, 0.15] },
+      { "shape": "Cuboid", "size": [0.08, 0.75, 0.8], "offset": [0.7, 0.375, 0.0], "color": [0.40, 0.26, 0.15] },
+      { "shape": "Cuboid", "size": [0.5, 0.4, 0.05], "offset": [0.0, 1.05, 0.2], "color": [0.05, 0.05, 0.07] }
+    ],
+    "actions": [{ "name": "Play Computer", "need": "Fun", "rate": 7.0 }]
+  },
+  {
+    "id": "bookshelf",
+    "name": "Bookshelf",
+    "category": "Office",
+    "subcategory": "Shelves",
+    "price": 180,
+    "description": "Read to build skills and boost fun.",
+    "footprint": [1, 1],
+    "parts": [
+      { "shape": "Cuboid", "size": [0.4, 2.0, 1.4], "offset": [0.0, 1.0, 0.0], "color": [0.40, 0.26, 0.15] }
+    ],
+    "actions": [{ "name": "Read", "need": "Fun", "rate": 4.0 }]
+  },
+  {
+    "id": "floor_lamp",
+    "name": "Floor Lamp",
+    "category": "Lighting",
+    "subcategory": "Lamps",
+    "price": 90,
+    "description": "Lights up the room after dark.",
+    "footprint": [1, 1],
+    "parts": [
+      { "shape": "Cylinder", "size": [0.1, 1.6, 0.1], "offset": [0.0, 0.8, 0.0], "color": [0.20, 0.20, 0.20] },
+      { "shape": "Cone", "size": [0.7, 0.4, 0.7], "offset": [0.0, 1.7, 0.0], "color": [1.0, 0.95, 0.7] }
+    ],
+    "actions": []
+  },
+  {
+    "id": "plant_potted",
+    "name": "Potted Plant",
+    "category": "Decorative",
+    "subcategory": "Plants",
+    "price": 60,
+    "description": "A little greenery brightens any room.",
+    "footprint": [1, 1],
+    "parts": [
+      { "shape": "Cylinder", "size": [0.5, 0.4, 0.5], "offset": [0.0, 0.2, 0.0], "color": [0.60, 0.35, 0.20] },
+      { "shape": "Sphere", "size": [0.8, 0.8, 0.8], "offset": [0.0, 0.85, 0.0], "color": [0.20, 0.55, 0.25] }
+    ],
+    "actions": []
+  },
+  {
+    "id": "trash_can",
+    "name": "Trash Can",
+    "category": "Decorative",
+    "subcategory": "Cleaning",
+    "price": 30,
+    "description": "Keep the lot tidy. Empty it before it overflows.",
+    "footprint": [1, 1],
+    "parts": [
+      { "shape": "Cylinder", "size": [0.5, 0.7, 0.5], "offset": [0.0, 0.35, 0.0], "color": [0.35, 0.38, 0.40] },
+      { "shape": "Cylinder", "size": [0.54, 0.06, 0.54], "offset": [0.0, 0.72, 0.0], "color": [0.25, 0.27, 0.29] }
+    ],
+    "actions": []
+  },
+  {
+    "id": "tree_oak",
+    "name": "Oak Tree",
+    "category": "Outdoor",
+    "subcategory": "Trees",
+    "price": 250,
+    "description": "A leafy shade tree for the yard.",
+    "footprint": [2, 2],
+    "parts": [
+      { "shape": "Cylinder", "size": [0.5, 2.2, 0.5], "offset": [0.0, 1.1, 0.0], "color": [0.40, 0.27, 0.16] },
+      { "shape": "Sphere", "size": [2.4, 2.4, 2.4], "offset": [0.0, 2.8, 0.0], "color": [0.20, 0.50, 0.22] },
+      { "shape": "Sphere", "size": [1.8, 1.8, 1.8], "offset": [0.7, 2.4, 0.4], "color": [0.24, 0.55, 0.26] },
+      { "shape": "Sphere", "size": [1.6, 1.6, 1.6], "offset": [-0.6, 2.3, -0.4], "color": [0.18, 0.46, 0.20] }
+    ],
+    "actions": []
+  },
+  {
+    "id": "bush_round",
+    "name": "Shrub",
+    "category": "Outdoor",
+    "subcategory": "Shrubs",
+    "price": 75,
+    "description": "A tidy round hedge bush.",
+    "footprint": [1, 1],
+    "parts": [
+      { "shape": "Sphere", "size": [1.0, 1.0, 1.0], "offset": [0.0, 0.4, 0.0], "color": [0.22, 0.48, 0.24] },
+      { "shape": "Sphere", "size": [0.7, 0.7, 0.7], "offset": [0.3, 0.55, 0.2], "color": [0.26, 0.52, 0.28] }
+    ],
+    "actions": []
+  },
+  {
+    "id": "pool_small",
+    "name": "Small Pool",
+    "category": "Outdoor",
+    "subcategory": "Pools",
+    "price": 4000,
+    "description": "A refreshing pool for hot days.",
+    "footprint": [3, 3],
+    "parts": [
+      { "shape": "Cuboid", "size": [3.0, 0.2, 3.0], "offset": [0.0, 0.1, 0.0], "color": [0.80, 0.85, 0.90] },
+      { "shape": "Cuboid", "size": [2.6, 0.15, 2.6], "offset": [0.0, 0.18, 0.0], "color": [0.30, 0.65, 0.85] }
+    ],
+    "actions": [{ "name": "Swim", "need": "Fun", "rate": 8.0 }]
+  }
+]

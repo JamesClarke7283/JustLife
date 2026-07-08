@@ -1,9 +1,20 @@
 .loop*
 
-# Added by cargo
-/target
+# Bundled client output (regenerated from client/ via `deno task bundle`)
+/public/main.js
 
-# Generated WASM build artifacts
-/web/just-life.js
-/web/just-life_bg.wasm
-/web/screenshot.png
+# Deno / npm dependency cache
+/node_modules/
+
+# Deno desktop build output
+/MyApp
+/MyApp.exe
+/MyApp.app
+build/
+dist/
+
+# Local saves
+/saves/
+
+# Screenshots / temp
+/screenshot.png
