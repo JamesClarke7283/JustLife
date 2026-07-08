@@ -1,6 +1,6 @@
 {
   "name": "just-life",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "nodeModulesDir": "auto",
   "compilerOptions": {
     "lib": ["dom", "dom.asynciterable", "deno.ns"],
