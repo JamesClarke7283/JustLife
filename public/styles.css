@@ -402,13 +402,13 @@ body {
   background: var(--c-surface);
 }
 
-/* ============================ BUY CATALOG ============================ */
-.buy-catalog {
+/* ============================ CATALOG PANEL (Build + Buy) ============================ */
+.catalog-panel {
   position: absolute;
-  top: 64px;
+  top: 60px;
   right: 12px;
   width: 200px;
-  max-height: calc(100vh - 140px);
+  max-height: calc(100vh - 150px);
   pointer-events: auto;
   z-index: 12;
   display: flex;
@@ -425,6 +425,12 @@ body {
   padding: 10px 12px;
   border-bottom: 1px solid rgba(255,255,255,0.1);
   flex-shrink: 0;
+}
+.catalog-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--c-text);
+  margin-bottom: 8px;
 }
 #catalog-search {
   width: 100%;
@@ -490,10 +496,10 @@ body {
   overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: rgba(255,255,255,0.2) transparent;
-  padding: 8px;
+  padding: 4px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 .catalog-grid::-webkit-scrollbar {
   width: 6px;
@@ -509,7 +515,7 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 6px 4px 4px;
+  padding: 3px 4px 2px;
   background: rgba(255,255,255,0.06);
   border: 1px solid transparent;
   border-radius: 8px;
@@ -517,6 +523,7 @@ body {
   transition: all var(--transition);
   text-align: center;
   overflow: hidden;
+  flex-shrink: 0;
 }
 .catalog-card:hover {
   background: rgba(255,255,255,0.14);
@@ -530,14 +537,13 @@ body {
 }
 .cc-thumb {
   width: 100%;
-  aspect-ratio: 1.2;
-  min-height: 90px;
+  height: 38px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #f7f0e3;
   border-radius: 6px;
-  margin-bottom: 3px;
+  margin-bottom: 2px;
   pointer-events: none;
   overflow: hidden;
 }
@@ -548,13 +554,22 @@ body {
   display: block;
 }
 .cc-thumb-ph {
-  font-size: 32px;
+  font-size: 22px;
   opacity: 0.4;
 }
+.cc-swatch {
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
 .cc-name {
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1.1;
   margin-bottom: 1px;
   width: 100%;
   overflow: hidden;
@@ -562,19 +577,27 @@ body {
   white-space: nowrap;
 }
 .cc-price {
-  font-size: 13px;
+  font-size: 10px;
   font-weight: 800;
   color: var(--c-primary);
+  line-height: 1.1;
 }
 .cc-needs {
-  font-size: 9px;
+  font-size: 7px;
   color: var(--c-text-dim);
-  margin-top: 1px;
-  line-height: 1.2;
+  line-height: 1.1;
   width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.catalog-section {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--c-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  padding: 4px 2px 1px;
 }
 
 /* ============================ PIE MENU ============================ */

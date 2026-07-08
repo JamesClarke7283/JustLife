@@ -325,32 +325,22 @@ function setMode(newMode: GameMode): void {
   input.buildMode = newMode === 'build' || newMode === 'buy';
 
   document.getElementById('live-hud')!.classList.toggle('hidden', newMode === 'menu');
-  document.getElementById('build-bar')!.classList.toggle(
+  // buy helper toolbar only in buy mode; build tools live in the right-hand catalog
+  document.getElementById('buy-bar')!.classList.toggle('hidden', newMode !== 'buy');
+  // the single catalog panel shows either build or buy content, never both
+  document.getElementById('catalog-panel')!.classList.toggle(
     'hidden',
     newMode !== 'build' && newMode !== 'buy',
   );
-  document.getElementById('buy-catalog')!.classList.toggle(
-    'hidden',
-    newMode !== 'build' && newMode !== 'buy',
-  );
-
-  // Show only the relevant bottom toolbar section
-  document.getElementById('build-tools-only')!.classList.toggle('hidden', newMode !== 'build');
-  document.getElementById('buy-tools-only')!.classList.toggle('hidden', newMode !== 'buy');
 
   // mode buttons
   document.querySelectorAll<HTMLButtonElement>('.mode-btn').forEach((b) => {
     b.classList.toggle('active', b.dataset.mode === newMode);
   });
-  // build tool buttons reset
-  document.querySelectorAll<HTMLButtonElement>('.tool-btn').forEach((b) => {
-    if (b.dataset.tool) b.classList.remove('active');
-  });
 
   if (newMode === 'build') {
     build.enter();
     build.setTool('wall');
-    document.querySelector<HTMLElement>('.tool-btn[data-tool="wall"]')?.classList.add('active');
     renderCatalog();
   } else if (newMode === 'buy') {
     build.enter();
@@ -371,10 +361,65 @@ function toast(msg: string, kind: '' | 'good' | 'bad' = ''): void {
 }
 
 // ---------------------------------------------------------------------------
-// Catalog UI
+// Catalog UI (shared panel: Buy catalog or Build catalog, never both)
 // ---------------------------------------------------------------------------
 let catalogCategory = 'All';
+
+interface BuildCatalogEntry {
+  id: string;
+  name: string;
+  type: 'tool' | 'floor' | 'wall';
+  icon: string;
+  value?: string;
+  color?: number;
+}
+
+const BUILD_TOOLS: BuildCatalogEntry[] = [
+  { id: 'wall', name: 'Wall', type: 'tool', icon: '🧱' },
+  { id: 'room', name: 'Room', type: 'tool', icon: '🏠' },
+  { id: 'floor', name: 'Floor', type: 'tool', icon: '🟫' },
+  { id: 'sell', name: 'Sell', type: 'tool', icon: '💰' },
+  { id: 'undo', name: 'Undo', type: 'tool', icon: '↩️' },
+  { id: 'redo', name: 'Redo', type: 'tool', icon: '↪️' },
+];
+
+const FLOOR_SWATCHES: BuildCatalogEntry[] = Object.entries(FLOOR_MATERIALS).map(([id, color]) => ({
+  id: `floor-${id}`,
+  name: id.replace(/_/g, ' '),
+  type: 'floor',
+  icon: '',
+  value: id,
+  color,
+}));
+
+const WALL_SWATCHES: BuildCatalogEntry[] = Object.entries(WALL_MATERIALS).map(([id, color]) => ({
+  id: `wall-${id}`,
+  name: id.replace(/_/g, ' '),
+  type: 'wall',
+  icon: '',
+  value: id,
+  color,
+}));
+
 function renderCatalog(): void {
+  const titleEl = document.getElementById('catalog-title')!;
+  const searchEl = document.getElementById('catalog-search') as HTMLInputElement;
+  const catEl = document.getElementById('catalog-cats')!;
+
+  if (mode === 'build') {
+    titleEl.textContent = 'Build Catalog';
+    searchEl.classList.add('hidden');
+    catEl.classList.add('hidden');
+    renderBuildCatalog();
+  } else {
+    titleEl.textContent = 'Buy Catalog';
+    searchEl.classList.remove('hidden');
+    catEl.classList.remove('hidden');
+    renderBuyCatalog();
+  }
+}
+
+function renderBuyCatalog(): void {
   const cats = ['All', ...Array.from(new Set(CATALOG.map((c) => c.category)))];
   const catEl = document.getElementById('catalog-cats')!;
   catEl.innerHTML = '';
@@ -425,24 +470,89 @@ function renderCatalog(): void {
     grid.appendChild(card);
   }
 }
+
+function renderBuildCatalog(): void {
+  const grid = document.getElementById('catalog-grid')!;
+  grid.innerHTML = '';
+
+  const toolsSection = document.createElement('div');
+  toolsSection.className = 'catalog-section';
+  toolsSection.textContent = 'Tools';
+  grid.appendChild(toolsSection);
+
+  for (const entry of BUILD_TOOLS) {
+    const card = makeBuildCard(entry);
+    if (entry.type === 'tool' && build.tool === entry.id) card.classList.add('selected');
+    card.addEventListener('click', () => {
+      if (entry.id === 'undo') {
+        build.undo();
+        return;
+      }
+      if (entry.id === 'redo') {
+        build.redo();
+        return;
+      }
+      build.setTool(entry.id as BuildTool);
+      renderCatalog();
+      toast(`${entry.name} tool selected — click lot to use`);
+    });
+    grid.appendChild(card);
+  }
+
+  const floorSection = document.createElement('div');
+  floorSection.className = 'catalog-section';
+  floorSection.textContent = 'Floor Materials';
+  grid.appendChild(floorSection);
+
+  for (const entry of FLOOR_SWATCHES) {
+    const card = makeBuildCard(entry);
+    if (build.floorMaterial === entry.value) card.classList.add('selected');
+    card.addEventListener('click', () => {
+      build.floorMaterial = entry.value!;
+      build.setTool('floor');
+      renderCatalog();
+      toast(`Floor material: ${entry.name}`);
+    });
+    grid.appendChild(card);
+  }
+
+  const wallSection = document.createElement('div');
+  wallSection.className = 'catalog-section';
+  wallSection.textContent = 'Wall Materials';
+  grid.appendChild(wallSection);
+
+  for (const entry of WALL_SWATCHES) {
+    const card = makeBuildCard(entry);
+    if (build.wallMaterial === entry.value) card.classList.add('selected');
+    card.addEventListener('click', () => {
+      build.wallMaterial = entry.value!;
+      renderCatalog();
+      toast(`Wall material: ${entry.name}`);
+    });
+    grid.appendChild(card);
+  }
+}
+
+function makeBuildCard(entry: BuildCatalogEntry): HTMLElement {
+  const card = document.createElement('div');
+  card.className = 'catalog-card';
+  const colorStyle = entry.color !== undefined ? ` style="background:${hex(entry.color)}"` : '';
+  const thumb = entry.type === 'tool'
+    ? `<div class="cc-thumb"><span class="cc-thumb-ph">${entry.icon}</span></div>`
+    : `<div class="cc-thumb"><div class="cc-swatch"${colorStyle}></div></div>`;
+  card.innerHTML = `${thumb}<div class="cc-name">${entry.name}</div>`;
+  return card;
+}
+
 document.getElementById('catalog-search')!.addEventListener('input', renderCatalog);
 
 // ---------------------------------------------------------------------------
-// Build / Buy toolbar UI
+// Buy toolbar UI (build tools now live in the right-hand catalog panel)
 // ---------------------------------------------------------------------------
-document.querySelectorAll<HTMLButtonElement>('.tool-btn').forEach((btn) => {
+document.querySelectorAll<HTMLButtonElement>('#buy-tools .tool-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
-    if (btn.dataset.tool) {
-      build.setTool(btn.dataset.tool as BuildTool);
-      build.selectBuyItem(null as unknown as CatalogItem); // clear any buy selection
-      document.querySelectorAll<HTMLButtonElement>('.tool-btn').forEach((b) => {
-        if (b.dataset.tool) b.classList.remove('active');
-      });
-      btn.classList.add('active');
-    } else if (btn.dataset.action === 'undo') {
+    if (btn.dataset.action === 'undo') {
       build.undo();
-    } else if (btn.dataset.action === 'redo') {
-      build.redo();
     } else if (btn.dataset.action === 'rotate') {
       build.rotate();
     } else if (btn.dataset.action === 'clear-buy') {
@@ -451,28 +561,6 @@ document.querySelectorAll<HTMLButtonElement>('.tool-btn').forEach((btn) => {
       renderCatalog();
     }
   });
-});
-
-// material selects (build mode)
-const floorSel = document.getElementById('floor-material') as HTMLSelectElement;
-const wallSel = document.getElementById('wall-material') as HTMLSelectElement;
-for (const name of Object.keys(FLOOR_MATERIALS)) {
-  const opt = document.createElement('option');
-  opt.value = name;
-  opt.textContent = name.replace(/_/g, ' ');
-  floorSel.appendChild(opt);
-}
-for (const name of Object.keys(WALL_MATERIALS)) {
-  const opt = document.createElement('option');
-  opt.value = name;
-  opt.textContent = name.replace(/_/g, ' ');
-  wallSel.appendChild(opt);
-}
-floorSel.addEventListener('change', () => {
-  build.floorMaterial = floorSel.value;
-});
-wallSel.addEventListener('change', () => {
-  build.wallMaterial = wallSel.value;
 });
 
 // material selects (buy mode — allow painting floors/walls while placing items)

@@ -70,9 +70,12 @@ class ThumbGen {
 
     // isometric-ish angle
     const dir = new THREE.Vector3(1, 0.7, 1).normalize();
-    const verticalExtent = Math.max(box.max.y - box.min.y, radius * 1.5);
-    const frameRadius = Math.max(radius, verticalExtent / 1.8);
-    const dist = frameRadius / Math.sin((this.camera.fov * Math.PI) / 360) * 1.45;
+    // tighter framing: use the box diagonal to ensure tall/slim objects still fill the frame
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const diagonal = size.length();
+    const frameRadius = Math.max(diagonal / 1.9, 0.4);
+    const dist = (frameRadius / Math.sin((this.camera.fov * Math.PI) / 360)) * 1.12;
     this.camera.position.copy(center).add(dir.multiplyScalar(dist));
     this.camera.lookAt(center);
 
