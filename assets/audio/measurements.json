@@ -1,0 +1,65 @@
+[
+  {
+    "file": "voice_greeting.wav",
+    "seconds": 1.853,
+    "sample_rate": 24000,
+    "channels": 1,
+    "peak_dbfs": -5.35,
+    "rms_dbfs": -20.0,
+    "clipped_samples": 0
+  },
+  {
+    "file": "voice_happy.wav",
+    "seconds": 1.88,
+    "sample_rate": 24000,
+    "channels": 1,
+    "peak_dbfs": -5.57,
+    "rms_dbfs": -20.0,
+    "clipped_samples": 0
+  },
+  {
+    "file": "voice_thoughtful.wav",
+    "seconds": 1.85,
+    "sample_rate": 24000,
+    "channels": 1,
+    "peak_dbfs": -6.86,
+    "rms_dbfs": -20.0,
+    "clipped_samples": 0
+  },
+  {
+    "file": "voice_argument.wav",
+    "seconds": 2.015,
+    "sample_rate": 24000,
+    "channels": 1,
+    "peak_dbfs": -6.23,
+    "rms_dbfs": -20.0,
+    "clipped_samples": 0
+  },
+  {
+    "file": "voice_reaction.wav",
+    "seconds": 1.091,
+    "sample_rate": 24000,
+    "channels": 1,
+    "peak_dbfs": -5.5,
+    "rms_dbfs": -20.0,
+    "clipped_samples": 0
+  },
+  {
+    "file": "soft_click.wav",
+    "seconds": 0.11,
+    "sample_rate": 24000,
+    "channels": 1,
+    "peak_dbfs": -12.95,
+    "rms_dbfs": -28.0,
+    "clipped_samples": 0
+  },
+  {
+    "file": "ambience_garden.wav",
+    "seconds": 18.0,
+    "sample_rate": 24000,
+    "channels": 1,
+    "peak_dbfs": -22.56,
+    "rms_dbfs": -38.0,
+    "clipped_samples": 0
+  }
+]

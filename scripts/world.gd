@@ -1,0 +1,414 @@
+extends Node3D
+class_name LifeWorld
+
+signal object_clicked(info: Dictionary, screen_position: Vector2)
+signal ground_clicked(world_position: Vector3)
+signal placement_requested(kind: String, world_position: Vector3, angle: float)
+signal construction_requested(data: Dictionary)
+
+var camera: Camera3D
+var sun: DirectionalLight3D
+var environment: Environment
+var house: Node3D
+var furniture: Node3D
+var walls: Array[Node3D] = []
+var items: Array[Dictionary] = []
+var actors: Dictionary = {}
+var navigation = AStarGrid2D.new()
+var camera_target = Vector3(0,0,0)
+var camera_angle: float = .67
+var camera_elevation: float = .83
+var camera_distance: float = 23.0
+var live_enabled: bool = false
+var build_enabled: bool = false
+var placement_kind: String = ""
+var placement_angle: float = 0.0
+var ghost: Node3D
+var ghost_valid: bool = false
+var ghost_position = Vector3.ZERO
+var cutaway: bool = true
+var grid: Node3D
+var elapsed: float = 0.0
+var rng = RandomNumberGenerator.new()
+var material_cache: Dictionary = {}
+var construction: LifeConstruction
+
+func _ready() -> void:
+	rng.seed = 91517
+	camera = Camera3D.new()
+	camera.name = "Camera"
+	add_child(camera)
+	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+	camera.size = 17.5
+	camera.far = 200
+	camera.current = true
+	var we = WorldEnvironment.new()
+	environment = Environment.new()
+	environment.background_mode = Environment.BG_COLOR
+	environment.background_color = Color("cddfd6")
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	environment.ambient_light_color = Color("e4ede4")
+	environment.ambient_light_energy = .35
+	environment.tonemap_mode = Environment.TONE_MAPPER_REINHARDT
+	environment.ssao_enabled = true
+	environment.ssao_radius = 1.5
+	environment.ssao_intensity = 1.2
+	we.environment = environment
+	add_child(we)
+	sun = DirectionalLight3D.new()
+	sun.rotation_degrees = Vector3(-52,-35,0)
+	sun.light_color = Color("fff0d7")
+	sun.light_energy = .8
+	sun.shadow_enabled = true
+	sun.light_angular_distance = 3.0
+	sun.directional_shadow_max_distance = 60
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+	add_child(sun)
+	update_camera()
+
+func material(hex: String, roughness: float = .8) -> StandardMaterial3D:
+	if material_cache.has(hex): return material_cache[hex]
+	var m = StandardMaterial3D.new()
+	m.albedo_color = Color(hex)
+	m.roughness = roughness
+	material_cache[hex] = m
+	return m
+
+func box(parent: Node3D, at: Vector3, dimensions: Vector3, color: String) -> MeshInstance3D:
+	var n = MeshInstance3D.new()
+	var mesh = BoxMesh.new()
+	mesh.size = dimensions
+	n.mesh = mesh
+	n.material_override = material(color)
+	n.position = at
+	parent.add_child(n)
+	return n
+
+func sphere(parent: Node3D, at: Vector3, dimensions: Vector3, color: String) -> MeshInstance3D:
+	var n = MeshInstance3D.new()
+	var mesh = SphereMesh.new()
+	mesh.radial_segments = 16
+	mesh.rings = 8
+	n.mesh = mesh
+	n.material_override = material(color)
+	n.position = at
+	n.scale = dimensions
+	parent.add_child(n)
+	return n
+
+func cylinder(parent: Node3D, at: Vector3, radius: float, height: float, color: String) -> MeshInstance3D:
+	var n = MeshInstance3D.new()
+	var mesh = CylinderMesh.new()
+	mesh.top_radius = radius
+	mesh.bottom_radius = radius
+	mesh.height = height
+	mesh.radial_segments = 24
+	n.mesh = mesh
+	n.material_override = material(color)
+	n.position = at
+	parent.add_child(n)
+	return n
+
+func create_home(layout: Array = []) -> void:
+	if house: house.queue_free()
+	for a in actors.values():
+		if is_instance_valid(a): a.queue_free()
+	actors.clear()
+	house = Node3D.new()
+	house.name = "JuniperHouse"
+	add_child(house)
+	construction=LifeConstruction.new()
+	house.add_child(construction)
+	construction.initialize(self)
+	furniture = Node3D.new()
+	furniture.name = "Furniture"
+	house.add_child(furniture)
+	items.clear()
+	walls.clear()
+	box(house,Vector3(0,-.3,0),Vector3(120,.3,120),"b8cdaa")
+	box(house,Vector3(0,-.17,0),Vector3(17,.15,17),"a8c191")
+	box(house,Vector3(0,-.025,0),Vector3(12.35,.25,10.35),"d3c9b6")
+	box(house,Vector3(0,.105,0),Vector3(12,.045,10),"cfa97e")
+	# Individual floor boards, laid with staggered joints.
+	for row in range(40):
+		for col in range(7):
+			var x: float = -5.99 + row*.3
+			var z: float = -4.95 + col*1.66 + (row%2)*.83
+			if z < 4.95:
+				box(house,Vector3(x,.133,minf(z,4.7)),Vector3(.007,.003,minf(1.65,5-z)),"b98f65")
+				box(house,Vector3(x+.15,.134,z),Vector3(.29,.003,.008),"b98f65")
+	box(house,Vector3(3.5,.14,-3.05),Vector3(4.95,.02,3.87),"b7c7bd")
+	for x in range(10):
+		for z in range(8):
+			box(house,Vector3(1.02+x*.5,.154,-4.97+z*.5),Vector3(.47,.006,.47),"cbd4ca" if (x+z)%2==0 else "becfc4")
+	# Back wall, with inset windows on the kitchen and bath.
+	wall(Vector3(0,1.4,-5.04),Vector3(12.2,2.6,.16),"eae7d7",false)
+	wall(Vector3(-6.04,1.4,0),Vector3(.16,2.6,10.1),"8faf9f",false)
+	wall(Vector3(6.04,.4,0),Vector3(.16,.6,10.1),"e6d8c5",true)
+	wall(Vector3(-3.55,.4,5.04),Vector3(5.1,.6,.16),"e6d8c5",true)
+	wall(Vector3(3.55,.4,5.04),Vector3(5.1,.6,.16),"e6d8c5",true)
+	wall(Vector3(1,.47,-3.22),Vector3(.13,.72,3.6),"e4dfce",true)
+	wall(Vector3(1,.47,2.7),Vector3(.13,.72,4.6),"e4dfce",true)
+	wall(Vector3(1.9,.47,-1.15),Vector3(1.8,.72,.13),"e4dfce",true)
+	wall(Vector3(5.0,.47,-1.15),Vector3(2.1,.72,.13),"e4dfce",true)
+	for x in [-4.25,-1.25,3.3]: window_panel(Vector3(x,1.78,-4.945),false)
+	for z in [-2.3,2.2]: window_panel(Vector3(-5.945,1.75,z),true)
+	# Wall accents, skirting, door thresholds and entry.
+	box(house,Vector3(0,.24,-4.94),Vector3(12,.18,.04),"fcf5e6")
+	box(house,Vector3(-5.94,.24,0),Vector3(.04,.18,10),"fcf5e6")
+	box(house,Vector3(0,.02,5.72),Vector3(2.4,.2,1.35),"c7bea9")
+	box(house,Vector3(0,-.025,7.1),Vector3(1.75,.08,1.8),"dcd5be")
+	box(house,Vector3(0,-.02,8.5),Vector3(75,.10,1.25),"e0d9c7")
+	box(house,Vector3(0,-.07,11.0),Vector3(100,.12,3.7),"798781")
+	for x in range(-30,31,5): box(house,Vector3(x,.003,11),Vector3(2,.009,.08),"e6ddbc")
+	for x in [-7.55,7.55]:
+		for z in [-6.8,-1.2,5.9]: tree(Vector3(x,-.10,z),rng.randf_range(.8,1.1) if z<0 else .55)
+	for x in [-10.5,10.6,16,-17]:tree(Vector3(x,-.12,-8),rng.randf_range(1.0,1.6))
+	for z in [-7.4,-6.8]:
+		for x in range(-7,8):sphere(house,Vector3(x,.25,z),Vector3(1.0,.64,.80),"71945e")
+	for x in [-6.85,6.85]:
+		for z in range(-5,5):
+			if z%2==0:sphere(house,Vector3(x,.16,z),Vector3(.68,.34,.65),"84a366")
+	for x in [-3.5,3.5]:
+		for i in range(12):
+			var p=Vector3(x+rng.randf_range(-.9,.9),.13,6.8+rng.randf_range(-.45,.45))
+			for j in range(3):sphere(house,p+Vector3(j*.045,.16,0),Vector3(.08,.10,.08),"ddad93" if i%2 else "f2dba5")
+	for x in [-19,20]: neighbor_home(Vector3(x,0,-1))
+	# A simple open mailbox with a brass house number plate.
+	box(house,Vector3(2,.52,7.8),Vector3(.10,1.1,.10),"ab7951")
+	box(house,Vector3(2,1.06,7.8),Vector3(.45,.35,.33),"397e70")
+	box(house,Vector3(2,1.07,7.98),Vector3(.26,.05,.008),"c8a562")
+	grid = Node3D.new()
+	house.add_child(grid)
+	for i in range(-12,13):box(grid,Vector3(i*.5,.17,0),Vector3(.012,.005,10),"a6bca9")
+	for i in range(-10,11):box(grid,Vector3(0,.17,i*.5),Vector3(12,.005,.012),"a6bca9")
+	grid.visible = false
+	for entry in layout:
+		if entry.get("kind","")=="__construction":construction.restore(entry)
+		else:add_item(entry,false)
+	construction.refresh_decorations()
+	rebuild_navigation()
+	update_camera()
+
+func wall(p: Vector3, dimensions: Vector3, color: String, adjustable: bool) -> void:
+	construction.add_wall({"x":p.x,"z":p.z,"w":dimensions.x,"d":dimensions.z,"height":2.6,"color":color,"cut":adjustable})
+
+func window_panel(p: Vector3, side: bool) -> void:
+	var root=Node3D.new()
+	house.add_child(root)
+	root.position=p
+	root.set_meta("wall_decoration",true)
+	if side:root.rotation_degrees.y=90
+	box(root,Vector3.ZERO,Vector3(1.75,1.38,.025),"9ac0c1")
+	for x in [-.91,0,.91]:box(root,Vector3(x,0,.035),Vector3(.065,1.53,.065),"fff8e6")
+	for y in [-.72,0,.72]:box(root,Vector3(0,y,.035),Vector3(1.9,.055,.065),"fff8e6")
+	box(root,Vector3(0,-.78,.10),Vector3(2,.09,.25),"fff8e6")
+	for x in [-1.0,1.0]:box(root,Vector3(x,.03,.12),Vector3(.18,1.6,.09),"d9cbb2")
+
+func tree(p: Vector3, s: float) -> void:
+	cylinder(house,p+Vector3(0,1.45*s,0),.12*s,2.9*s,"8b7452")
+	for i in range(7):
+		var a:float=i*2.4
+		var offset=Vector3(sin(a)*.64,2.65+(i%3)*.4,cos(a)*.64)*s
+		sphere(house,p+offset,Vector3(1.75,1.8,1.65)*s,"73976a" if i%2 else "8eaa78")
+
+func neighbor_home(p: Vector3) -> void:
+	box(house,p+Vector3(0,1.6,0),Vector3(7,3.2,7),"d7dbca")
+	box(house,p+Vector3(0,3.28,0),Vector3(7.7,.3,7.7),"6b8578")
+	for x in [-2,1.8]:
+		box(house,p+Vector3(x,1.8,3.51),Vector3(1.2,1.6,.05),"8aabb0")
+	box(house,p+Vector3(0,1.1,3.54),Vector3(1,2.2,.08),"ab8963")
+
+func add_item(entry: Dictionary, rebuild: bool = true) -> void:
+	var kind: String=str(entry.get("kind","plant"))
+	if not LifeCatalog.ITEMS.has(kind):return
+	var data:Dictionary=LifeCatalog.get_item(kind)
+	var path="res://assets/models/%s.glb" % kind
+	if not ResourceLoader.exists(path):return
+	var node=Node3D.new()
+	node.name=str(entry.get("id","item_%d" % Time.get_ticks_usec()))
+	furniture.add_child(node)
+	var model:Node3D=load(path).instantiate()
+	node.add_child(model)
+	node.position=Vector3(float(entry.get("x",0)),.16,float(entry.get("z",0)))
+	node.rotation_degrees.y=float(entry.get("rotation",0))
+	var info:Dictionary=entry.duplicate(true)
+	info["node"]=node
+	info["label"]=data.label
+	info["size"]=data.size
+	var body=StaticBody3D.new()
+	body.collision_layer=2
+	node.add_child(body)
+	var shape=CollisionShape3D.new()
+	var bounds=BoxShape3D.new()
+	bounds.size=Vector3(data.size.x,data.height,data.size.y)
+	shape.shape=bounds
+	shape.position.y=float(data.height)/2
+	body.add_child(shape)
+	body.set_meta("item_id",info.id)
+	items.append(info)
+	if rebuild:rebuild_navigation()
+
+func remove_item(id: String) -> Dictionary:
+	for i in range(items.size()):
+		if items[i].id==id:
+			var data=items[i]
+			data.node.queue_free()
+			items.remove_at(i)
+			rebuild_navigation()
+			return data
+	return {}
+
+func serialize_items() -> Array:
+	var out:Array=[]
+	for item in items:
+		out.append({"id":item.id,"kind":item.kind,"x":item.node.position.x,"z":item.node.position.z,"rotation":item.node.rotation_degrees.y})
+	if construction:out.append(construction.snapshot())
+	return out
+
+func rebuild_navigation() -> void:
+	navigation.region=Rect2i(-36,-28,73,65)
+	navigation.cell_size=Vector2(.25,.25)
+	navigation.diagonal_mode=AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+	navigation.update()
+	for x in range(-36,37):
+		for z in range(-28,37):
+			var p=Vector2(x*.25,z*.25)
+			var solid:bool = construction.point_blocked(p)
+			for item in items:
+				if item.kind in ["rug","painting"]:continue
+				var local:Vector3=item.node.to_local(Vector3(p.x,.16,p.y))
+				var extent:Vector2=item.size*.5+Vector2(.16,.16)
+				if absf(local.x)<extent.x and absf(local.z)<extent.y:solid=true;break
+			navigation.set_point_solid(Vector2i(x,z),solid)
+
+func nearest_free(p:Vector3) -> Vector2i:
+	var cell=Vector2i(roundi(p.x*4),roundi(p.z*4))
+	cell.x=clampi(cell.x,-36,36)
+	cell.y=clampi(cell.y,-28,36)
+	if not navigation.is_point_solid(cell):return cell
+	for radius in range(1,14):
+		for x in range(-radius,radius+1):
+			for z in range(-radius,radius+1):
+				if absi(x)!=radius and absi(z)!=radius:continue
+				var c=cell+Vector2i(x,z)
+				if navigation.region.has_point(c) and not navigation.is_point_solid(c):return c
+	return cell
+
+func path_to(from:Vector3,to:Vector3) -> PackedVector3Array:
+	var points:PackedVector3Array=[]
+	var cells=navigation.get_id_path(nearest_free(from),nearest_free(to))
+	for c in cells:points.append(Vector3(c.x*.25,.16,c.y*.25))
+	return points
+
+func approach(item:Dictionary) -> Vector3:
+	var n:Node3D=item.node
+	var p:Vector3=n.to_global(Vector3(0,0,item.size.y*.5+.55))
+	var c=nearest_free(p)
+	return Vector3(c.x*.25,.16,c.y*.25)
+
+func simulation_targets() -> Array:
+	var a:Array=[]
+	for item in items:a.append({"id":item.id,"kind":item.kind,"position":approach(item)})
+	for id in actors:
+		if id!="player":a.append({"id":id,"kind":"neighbor","position":actors[id].position+Vector3(0,0,.8)})
+	return a
+
+func set_build(enabled:bool) -> void:
+	build_enabled=enabled
+	if grid:grid.visible=enabled
+	if not enabled:clear_placement()
+
+func begin_placement(kind:String) -> void:
+	if construction:construction.cancel()
+	clear_placement()
+	placement_kind=kind
+	placement_angle=0
+	ghost=load("res://assets/models/%s.glb" % kind).instantiate()
+	add_child(ghost)
+	for n in ghost.find_children("*","MeshInstance3D",true,false):
+		var m=StandardMaterial3D.new()
+		m.albedo_color=Color(.38,.8,.63,.48)
+		m.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED
+		n.material_override=m
+
+func clear_placement() -> void:
+	placement_kind=""
+	if is_instance_valid(ghost):ghost.queue_free()
+	ghost=null
+	if construction:construction.cancel()
+
+func begin_construction(tool:String) -> void:
+	clear_placement()
+	construction.begin(tool)
+
+func can_place(kind:String,p:Vector3,angle:float) -> bool:
+	var size:Vector2=LifeCatalog.ITEMS[kind].size
+	if int(roundf(angle/90))%2:size=Vector2(size.y,size.x)
+	var rect=Rect2(Vector2(p.x,p.z)-size/2,size)
+	for corner in [rect.position,rect.end,Vector2(rect.position.x,rect.end.y),Vector2(rect.end.x,rect.position.y)]:
+		if not construction.floor_contains(corner):return false
+	if kind in ["rug","painting"]:return true
+	# Interior walls and doorways stay usable.
+	if construction.rect_blocked(rect):return false
+	for item in items:
+		if item.kind in ["rug","painting"]:continue
+		var s:Vector2=item.size
+		if int(roundf(item.node.rotation_degrees.y/90))%2:s=Vector2(s.y,s.x)
+		var other=Rect2(Vector2(item.node.position.x,item.node.position.z)-s/2,s)
+		if rect.grow(.05).intersects(other):return false
+	return true
+
+func floor_point(screen:Vector2) -> Vector3:
+	var origin=camera.project_ray_origin(screen)
+	var direction=camera.project_ray_normal(screen)
+	var t=(.16-origin.y)/direction.y
+	return origin+direction*t
+
+func pick(screen:Vector2) -> void:
+	if not live_enabled:return
+	if build_enabled and construction and not construction.tool.is_empty():
+		var proposal:Dictionary=construction.click(floor_point(screen))
+		if not proposal.is_empty():construction_requested.emit(proposal)
+		return
+	if build_enabled and placement_kind!="":
+		if ghost_valid:placement_requested.emit(placement_kind,ghost_position,placement_angle)
+		return
+	var origin=camera.project_ray_origin(screen)
+	var ray=PhysicsRayQueryParameters3D.create(origin,origin+camera.project_ray_normal(screen)*150,2)
+	var hit=get_world_3d().direct_space_state.intersect_ray(ray)
+	if not hit.is_empty():
+		var id:String=str(hit.collider.get_meta("item_id",""))
+		for item in items:
+			if item.id==id:object_clicked.emit(item,screen);return
+		if actors.has(id):object_clicked.emit({"id":id,"kind":"neighbor","label":actors[id].get_meta("display_name"),"node":actors[id],"size":Vector2(.6,.6)},screen);return
+	ground_clicked.emit(floor_point(screen))
+
+func update_camera() -> void:
+	if not camera:return
+	camera.position=camera_target+Vector3(sin(camera_angle)*cos(camera_elevation),sin(camera_elevation),cos(camera_angle)*cos(camera_elevation))*camera_distance
+	camera.look_at(camera_target,Vector3.UP)
+
+func set_cutaway(value:bool) -> void:
+	cutaway=value
+	if construction:construction.update_cutaway(value)
+
+func _process(delta:float) -> void:
+	elapsed+=delta
+	if not live_enabled:return
+	if build_enabled and construction and not construction.tool.is_empty():construction.update_preview(floor_point(get_viewport().get_mouse_position()))
+	if build_enabled and is_instance_valid(ghost):
+		var p=floor_point(get_viewport().get_mouse_position())
+		p.x=snappedf(p.x,.25);p.z=snappedf(p.z,.25)
+		ghost.position=p
+		ghost.rotation_degrees.y=placement_angle
+		ghost_position=p
+		ghost_valid=can_place(placement_kind,p,placement_angle)
+		for n in ghost.find_children("*","MeshInstance3D",true,false):n.material_override.albedo_color=Color(.4,.85,.6,.48) if ghost_valid else Color(.9,.3,.25,.48)
+
+func daylight(minutes:float) -> void:
+	var brightness:float=clampf(sin((minutes-360)/1440.0*TAU)*.5+.5,.16,1)
+	sun.light_energy=.12+brightness*.68
+	sun.light_color=Color("b1c5dc").lerp(Color("fff0d7"),brightness)
+	environment.ambient_light_energy=.16+brightness*.20
