@@ -103,7 +103,7 @@ static func _atomic_json(path: String, data: Dictionary) -> Dictionary:
 	var temporary: String = path + ".tmp"
 	if not _safe_file(path) or not _safe_file(temporary):
 		return _error("The save location cannot be written safely.")
-	var content: String = JSON.stringify(_json_safe(data), "\t")
+	var content: String = JSON.stringify(_json_safe(data), "\t", true, true)
 	if content.to_utf8_buffer().size() > MAX_SAVE_BYTES:
 		return _error("This household is too large to save.")
 	var file: FileAccess = FileAccess.open(temporary, FileAccess.WRITE)

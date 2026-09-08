@@ -16,6 +16,13 @@ func capture(name:String) -> void:
 	var directory:String="user://release_check"
 	DirAccess.make_dir_recursive_absolute(directory)
 	check(app.get_viewport().get_texture().get_image().save_png(directory.path_join(name+".png"))==OK,"Capture "+name)
+func finish_trip() -> void:
+	for frame:int in range(1500):
+		if app.mode!="travel":return
+		app._process(.05)
+		if frame%20==0:await app.get_tree().process_frame
+	check(false,"Packaged car journey exceeded its bounded travel window.")
+
 func choose_age(label:String) -> void:
 	var selector:OptionButton=app.find_child("CreatorAge",true,false) as OptionButton
 	if selector!=null:
@@ -47,6 +54,8 @@ func run(owner_app:Node) -> void:
 	check(app.preview._cake_flames.size()==3,"The original birthday cake and three candles load from the PCK.")
 	check(ResourceLoader.load("res://assets/models/desk_booster.glb") is PackedScene,"The authored child desk booster loads from the PCK.")
 	for prop:String in ["meal_serving","meal_plate","meal_fork","meal_herb_pasta_serving","meal_herb_pasta_plate","meal_harvest_bake_serving","meal_harvest_bake_plate"]:
+		check(ResourceLoader.load("res://assets/models/"+prop+".glb") is PackedScene,"The original "+prop+" loads from the PCK.")
+	for prop:String in ["juniper_car","juniper_mop"]:
 		check(ResourceLoader.load("res://assets/models/"+prop+".glb") is PackedScene,"The original "+prop+" loads from the PCK.")
 	press("Face");await app.get_tree().process_frame
 	app.preview.set_face_feature("face_round",.5);app.profile.face_round=.5
@@ -113,10 +122,16 @@ func run(owner_app:Node) -> void:
 	check(LifeSaveLibrary.read_slot(id).ok,"Keep save leaves the file intact.")
 	press("Delete save…");press("Delete permanently");await app.get_tree().process_frame
 	check(not LifeSaveLibrary.read_slot(id).ok and app.household.members.size()==2,"Confirmed deletion removes only the selected file and preserves the open life.")
-	app.close_overlay();app.travel_to("library");await app.get_tree().process_frame
+	app.close_overlay()
+	var before_trip:float=(app.household.day-1)*1440.0+app.household.minutes
+	app.travel_to("library")
+	check(app.mode=="travel" and is_instance_valid(app.residents.car),"The packaged household starts its real shared-car journey.")
+	await finish_trip();await app.get_tree().process_frame
+	check((app.household.day-1)*1440.0+app.household.minutes==before_trip+15.0,"The packaged car trip advances exactly fifteen game minutes.")
 	check(app.current_venue=="library" and app.world.items.size()>5,"Packed neighborhood models and travel work.")
 	await capture("06_library")
 	var tree:SceneTree=app.get_tree()
 	print("JUSTLIFE_RELEASE_CHECK ",checks," checks, ",failures," failures")
+	# Schedule through SceneTree: freeing app also releases this RefCounted probe.
 	app.queue_free()
-	tree.quit.call_deferred(0 if failures==0 else 1)
+	tree.create_timer(.2).timeout.connect(tree.quit.bind(0 if failures==0 else 1), CONNECT_ONE_SHOT)

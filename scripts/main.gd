@@ -91,7 +91,9 @@ var release_probe:RefCounted
 var creator_family_links:Array=[]
 var activity_bubbles:Control
 var meal_flow:LifeMealFlow
+var sanitation_flow:LifeSanitationFlow
 var idle_space:RefCounted
+var residents:LifeResidents
 var adoption_flow:LifeAdoptionFlow
 
 func _ready() -> void:
@@ -106,8 +108,10 @@ func _ready() -> void:
 	world.name="World"
 	add_child(world)
 	meal_flow=LifeMealFlow.new();meal_flow.app=self;add_child(meal_flow)
+	sanitation_flow=LifeSanitationFlow.new();sanitation_flow.app=self;add_child(sanitation_flow)
 	idle_space=preload("res://scripts/idle_space.gd").new();idle_space.app=self
 	adoption_flow=LifeAdoptionFlow.new(self)
+	residents=LifeResidents.new(self)
 	household_profiles=[profile]
 	household=LifeHousehold.new()
 	household.name="Household"
@@ -536,6 +540,7 @@ func remove_creator_member() -> void:
 	select_creator_member(mini(creator_index,household_profiles.size()-1))
 
 func start_household() -> void:
+	residents.reset()
 	has_active_game=true
 	active_save_id="";active_save_name=""
 	for person:Dictionary in household_profiles:person.erase("world_state")
@@ -562,6 +567,7 @@ func setup_live(layout:Array) -> void:
 	mode="live"
 	if stage:stage.visible=false
 	if current_venue=="home":world.create_home(layout)
+	elif current_venue in ["maya_home","leo_home"]:world.create_resident_home(current_venue,layout)
 	else:world.create_public_venue(current_venue,layout)
 	world.live_enabled=true
 	world.set_build(false)
@@ -582,14 +588,14 @@ func setup_live(layout:Array) -> void:
 	bound_member_id=household.selected_id()
 	_bind_member(bound_member_id)
 	player.set_selected(true)
-	spawn_actor("maya",{"name":"Maya Chen","frame":0,"hair":2,"skin_color":"b77e58","hair_color":"2a2420","top_color":"417a71","bottom_color":"eadfc9"},Vector3(7.0,.16,3.2))
-	spawn_actor("leo",{"name":"Leo Morgan","frame":1,"hair":0,"skin_color":"e7b98f","hair_color":"89563a","top_color":"7195b3","bottom_color":"493e37"},Vector3(-7,.16,4.5))
+	residents.attach(current_venue)
 	path.clear();path_index=0;walk_only=false
 	pending_action={}
 	_restore_world_state(sim.character.get("world_state",{}))
 	for member:Dictionary in household.members:
 		var away:Dictionary=member.sim.get_away_state()
 		world.set_actor_away(str(member.id),str(away.get("phase",""))=="away",not away.is_empty())
+	sanitation_flow.sync_world()
 	household.register_targets(world.simulation_targets())
 	for member:Dictionary in household.members:
 		var member_actor:LifeActor=world.actors[member.id]
@@ -1098,6 +1104,8 @@ func undo_build() -> void:
 func on_object_clicked(item:Dictionary,screen:Vector2) -> void:
 	selected_item=item
 	if mode=="build":
+		if bool(item.get("transient_puddle",false)):
+			close_overlay();show_notice("Mop this puddle in Live mode.");return
 		if bool(item.get("transient_food",false)):
 			close_overlay();show_notice("Food and dishes can be handled in Live mode.");return
 		if not LifeCatalog.ITEMS.has(str(item.kind)):
@@ -1110,6 +1118,7 @@ func on_object_clicked(item:Dictionary,screen:Vector2) -> void:
 		else:show_interactions(item,screen)
 
 func close_overlay(restore_speed:bool=true) -> void:
+	if mode=="travel" and residents and not residents.trip.is_empty() and restore_speed:return
 	if is_instance_valid(overlay):
 		for child in overlay.get_children():
 			overlay.remove_child(child)
@@ -1298,6 +1307,7 @@ func _refresh_sim_targets(replan:bool=true) -> void:
 func _refresh_member_targets(replan:bool=true) -> void:
 	if not is_instance_valid(sim) or not is_instance_valid(world.house):return
 	sim.meal_service=meal_flow
+	sim.sanitation_service=sanitation_flow
 	if sim.is_away():
 		if str(sim.get_away_state().get("phase",""))=="returning":away_phases.erase(bound_member_id)
 		return
@@ -1378,8 +1388,9 @@ func _cancel_all_cooperative_actions() -> void:
 func queue_interaction(item:Dictionary,id:String) -> void:
 	if sim.is_away():show_notice("This Lifelet will be available after coming home.");return
 	if str(item.id)==bound_member_id:return
+	if LifeResidents.PEOPLE.has(str(item.id)) and not residents.present(str(item.id)):show_notice("This neighbor has gone home. Catch them on their next walk, or visit their home.");return
 	var destination:Vector3=world.approach(item)
-	if item.kind=="neighbor":destination=item.node.position+Vector3(0,0,.9)
+	if item.kind=="neighbor":destination=item.node.position+Vector3(0,0,.8)
 	sim.queue_action(id,item.id,destination)
 	refresh_hud()
 
@@ -1389,6 +1400,8 @@ func queue_nearest(kind:String,id:String) -> void:
 	show_notice("Add a %s in Build & buy first." % kind)
 
 func focus_neighbor(id:String) -> void:
+	if LifeResidents.PEOPLE.has(id) and not residents.present(id):show_neighborhood(str(LifeResidents.PEOPLE[id].home));return
+	if not is_instance_valid(world.actors.get(id)) or not world.actors[id].visible:show_notice("This Lifelet is not here right now.");return
 	var actor:LifeActor=world.actors[id]
 	world.camera_target=actor.position;world.update_camera()
 	show_interactions({"id":id,"kind":"neighbor","label":actor.get_meta("display_name"),"node":actor,"size":Vector2(.6,.6)},Vector2(850,380))
@@ -1406,6 +1419,7 @@ func _bind_member(id:String) -> void:
 	bound_member_id=id
 	sim=member
 	sim.meal_service=meal_flow
+	sim.sanitation_service=sanitation_flow
 	player=world.actors.get(id)
 	var motion:Dictionary=motion_states.get(id,_empty_motion())
 	path=motion.path;path_index=motion.index;walk_only=motion.walk;pending_action=motion.pending
@@ -1462,10 +1476,16 @@ func on_action_started(action:Dictionary) -> void:
 	if loading_game or reconciling_targets or not is_instance_valid(player) or sim.is_away():return
 	if str(action.id)=="arrive_home":adoption_flow.start_arrival(action);return
 	_clear_motion()
+	var resident_id:String=str(action.get("target_id",""))
+	if str(action.get("id","")) in LifeSim.SOCIAL_ACTIONS and LifeResidents.PEOPLE.has(resident_id) and not residents.present(resident_id):
+		show_notice(str(LifeResidents.PEOPLE[resident_id].name)+" has gone home. Catch them on their next walk, or arrange a visit.")
+		_cancel_blocked_action.call_deferred(route_generation,action,bound_member_id)
+		return
 	player.clear_speech()
 	if str(action.id) in LifeSim.SOCIAL_ACTIONS and world.actors.get(str(action.target_id)) is LifeActor:
 		world.actors[str(action.target_id)].clear_speech()
 	_resolve_activity_target(action)
+	residents.prepare_social(action)
 	meal_flow.resolve(sim,action)
 	if not is_same(sim.get_current_action(),action):return
 	pending_action=action
@@ -1603,7 +1623,7 @@ func save_game(slot_id:String="",title:String="") -> bool:
 	if not overlay_open:capture_save_preview()
 	cancel_placement()
 	_store_motion()
-	sim.character["world_state"]={"player":[player.position.x,player.position.y,player.position.z],"player_rotation":player.rotation.y,"camera":[world.camera_target.x,world.camera_target.y,world.camera_target.z],"angle":world.camera_angle,"elevation":world.camera_elevation,"zoom":world.camera.size,"floor":floor_color,"lot":selected_lot,"cutaway":world.cutaway,"sound":sound_enabled,"venue":current_venue,"home_layout":home_layout,"venue_layouts":venue_layouts}
+	sim.character["world_state"]={"player":[player.position.x,player.position.y,player.position.z],"player_rotation":player.rotation.y,"camera":[world.camera_target.x,world.camera_target.y,world.camera_target.z],"angle":world.camera_angle,"elevation":world.camera_elevation,"zoom":world.camera.size,"floor":floor_color,"lot":selected_lot,"cutaway":world.cutaway,"sound":sound_enabled,"venue":current_venue,"home_layout":home_layout,"venue_layouts":venue_layouts,"residents":residents.snapshot()}
 	# Store the user's live speed, not a temporary menu/build pause.
 	var current_speed:int=sim.speed
 	sim.speed=speed_before_build if mode=="build" else (pause_before_menu if overlay_pauses_sim else current_speed)
@@ -1693,6 +1713,7 @@ func load_game(slot_id:String="") -> void:
 		if saved_venues is Dictionary:
 			for key:String in saved_venues:
 				if key in LifeNeighborhood.PLACES and key!="home":venue_layouts[key]=_safe_layout(saved_venues[key])
+	residents.restore(saved_world.get("residents",{}) if saved_world is Dictionary else {})
 	bound_member_id=household.selected_id()
 	household_profiles=[]
 	for member:Dictionary in household.members:household_profiles.append(member.sim.character.duplicate(true))
@@ -1794,8 +1815,10 @@ func _process(delta:float) -> void:
 	if mode=="creator":
 		if is_instance_valid(preview):preview.animate(delta,1,false,"")
 		return
+	if mode=="travel":residents.tick_trip(delta);return
 	if mode not in ["live","build"]:return
 	if mode=="live":
+		residents.publish_targets()
 		meal_flow.sync_world()
 		_store_motion()
 		var selected_id:String=household.selected_id()
@@ -1804,6 +1827,7 @@ func _process(delta:float) -> void:
 			autonomy_values[member.id]=member.sim.autonomy
 			if bool(motion_states.get(member.id,_empty_motion()).walk):member.sim.autonomy=false
 		household.tick(delta)
+		sanitation_flow.sync_world()
 		for member:Dictionary in household.members:member.sim.autonomy=autonomy_values[member.id]
 		idle_space.update(delta)
 		world.daylight(household.minutes)
@@ -1825,16 +1849,7 @@ func _process(delta:float) -> void:
 		meal_flow.sync_world()
 		_bind_member(selected_id)
 		if away_targets_changed:_refresh_sim_targets(false)
-		for id:String in ["maya","leo"]:
-			var actor:LifeActor=world.actors[id]
-			var talk_id:String=""
-			for member:Dictionary in household.members:
-				var action:Dictionary=member.sim.get_current_action()
-				if not action.is_empty() and str(action.target_id)==id and action.phase=="active":
-					talk_id=action.id
-					var direction:Vector3=world.actors[member.id].position-actor.position
-					actor.rotation.y=lerp_angle(actor.rotation.y,atan2(direction.x,direction.z),minf(delta*4,1))
-			actor.animate(delta,float(sim.speed),false,talk_id)
+		residents.tick(delta)
 		hud_refresh+=delta
 		if hud_refresh>.25:hud_refresh=0;refresh_hud()
 	if mode=="build":refresh_build_quote()
@@ -2158,9 +2173,13 @@ func show_relationships() -> void:
 	var column=VBoxContainer.new();column.add_theme_constant_override("separation",10);scroll.add_child(column)
 	for id:String in sim.relationship_order():
 		var rel:Dictionary=sim.relationships[id]
-		var row=Control.new();row.custom_minimum_size=Vector2(450,83);column.add_child(row)
+		var row=Control.new();row.custom_minimum_size=Vector2(450,126 if LifeResidents.PEOPLE.has(id) else 83);column.add_child(row)
 		button(rel.name,Vector2.ZERO,Vector2(444,38),func():focus_neighbor(id),false,row)
 		text_label("%s · Friendship %d · Romance %d" % [rel.status,rel.friendship,rel.romance],Vector2(8,44),Vector2(438,30),13,P.MUTED,false,row)
+		if LifeResidents.PEOPLE.has(id):
+			var visit=button("Visit home  →",Vector2(8,83),Vector2(428,34),func():show_neighborhood(str(LifeResidents.PEOPLE[id].home)),false,row)
+			visit.name="VisitResident_"+id;visit.disabled=not residents.can_visit(id)
+			visit.tooltip_text="Reach 20 friendship to arrange a visit." if visit.disabled else str(LifeNeighborhood.PLACES[LifeResidents.PEOPLE[id].home].tag)
 	button("Family tree",Vector2(486,699),Vector2(222,43),show_family_tree,false,overlay)
 	button("Back to life",Vector2(724,699),Vector2(230,43),close_overlay,true,overlay)
 
@@ -2201,7 +2220,7 @@ func show_neighborhood(chosen:String="") -> void:
 			map.draw_circle(p,19,Color("a2bb84"));map.draw_circle(p-Vector2(5,5),12,Color("b5cb99"))
 		for p:Vector2 in [Vector2(70,122),Vector2(332,76),Vector2(356,92),Vector2(172,226),Vector2(417,144)]:
 			map.draw_style_box(P.panel(Color("c3bfa5"),4),Rect2(p,Vector2(32,28))))
-	var points:Dictionary={"home":Vector2(74,230),"park":Vector2(97,74),"library":Vector2(356,242),"studio":Vector2(335,80)}
+	var points:Dictionary={"home":Vector2(35,226),"park":Vector2(35,35),"library":Vector2(360,226),"studio":Vector2(360,35),"maya_home":Vector2(44,130),"leo_home":Vector2(353,130)}
 	for id:String in points:
 		var data:Dictionary=LifeNeighborhood.PLACES[id]
 		var p:Vector2=points[id]
@@ -2212,36 +2231,20 @@ func show_neighborhood(chosen:String="") -> void:
 	small_caps(str(data.tag),Vector2(848,282),Vector2(341,45),overlay)
 	text_label(str(data.name),Vector2(846,334),Vector2(342,46),28,P.INK,true,overlay)
 	paragraph(str(data.description),Vector2(848,395),Vector2(340,115),16,P.MUTED,overlay)
-	paragraph("Travel takes the household together and clears current activities. The walk across town takes 15 minutes.",Vector2(848,545),Vector2(331,84),13,P.MUTED,overlay)
+	paragraph("Travel takes the household together and clears current activities. A shared car takes you across town in 15 minutes.",Vector2(848,545),Vector2(331,84),13,P.MUTED,overlay)
 	var go=button("Travel here  →",Vector2(848,650),Vector2(344,50),func():travel_to(chosen),true,overlay)
-	go.disabled=chosen==current_venue
+	var resident:String=str(data.get("resident",""))
+	go.disabled=chosen==current_venue or (not resident.is_empty() and not residents.can_visit(resident))
+	if not resident.is_empty() and not residents.can_visit(resident):
+		go.text="Meet them first · 20 friendship"
+		go.tooltip_text="Say hello when they walk past your home. Get to know them, then arrange a visit."
 	button("Back to life",Vector2(848,716),Vector2(344,35),close_overlay,false,overlay)
 
 func travel_to(destination:String) -> void:
-	if not LifeNeighborhood.PLACES.has(destination) or destination==current_venue:return
-	cancel_placement()
-	if current_venue=="home":home_layout=world.serialize_items()
-	else:venue_layouts[current_venue]=world.serialize_items()
-	var resume:int=pause_before_menu if overlay_pauses_sim else (speed_before_build if mode=="build" else sim.speed)
-	close_overlay(false)
-	loading_game=true
-	_cancel_all_cooperative_actions()
-	var automatic:Array=[]
-	for member:Dictionary in household.members:
-		automatic.append(member.sim.autonomy);member.sim.autonomy=false
-		if not member.sim.is_away():
-			while not member.sim.action_queue.is_empty():member.sim.cancel_action()
-			member.sim.character.erase("world_state")
-	household.set_speed(1);household.tick(2.5)
-	for i in range(household.members.size()):household.members[i].sim.autonomy=automatic[i]
-	household.set_speed(resume)
-	current_venue=destination
-	var layout:Array=home_layout if destination=="home" else venue_layouts.get(destination,LifeNeighborhood.layout(destination))
-	if destination=="home" and layout.is_empty():layout=LifeCatalog.starter_layout(selected_lot)
-	setup_live(layout)
-	loading_game=false
-	for member:Dictionary in household.members:member.sim.remember("A change of scenery","Visited "+str(LifeNeighborhood.PLACES[destination].name)+".")
-	show_notice("Welcome to "+str(LifeNeighborhood.PLACES[destination].name)+".")
+	if mode not in ["live","build"] or not LifeNeighborhood.PLACES.has(destination) or destination==current_venue:return
+	var resident:String=str(LifeNeighborhood.PLACES[destination].get("resident",""))
+	if not resident.is_empty() and not residents.can_visit(resident):show_notice("Get to know this neighbor first. Visits open at 20 friendship.");return
+	residents.begin_trip(destination)
 
 func show_stories() -> void:
 	_begin_pause_overlay()

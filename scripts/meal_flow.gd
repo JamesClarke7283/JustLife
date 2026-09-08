@@ -218,7 +218,7 @@ func _floor_support(at:Vector3,half:Vector2) -> float:
 	var bounds:Rect2=Rect2(Vector2(at.x,at.z)-half,half*2)
 	if app.world.construction.rect_blocked(bounds.grow(.002)):return INF
 	for furnishing:Dictionary in app.world.items:
-		if str(furnishing.kind) in ["rug","painting","meal","plate"]:continue
+		if str(furnishing.kind) in ["rug","painting","meal","plate","puddle"]:continue
 		# Project the whole dish footprint into the furnishing's local axes.
 		# This conservative rectangle also covers furnishings at arbitrary yaw.
 		var inverse:Basis=furnishing.node.global_basis.inverse()

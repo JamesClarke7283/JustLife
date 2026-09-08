@@ -1,0 +1,8 @@
+{
+  "original_artwork": true,
+  "files": {
+    "tools/create_mop.py": "01e7501ccc5fbf98a23792ea48381f09df8a14ed292588a701ba595a57a23f2e",
+    "art/sanitation/juniper_mop.blend": "29b7f343a401fba23bd9062ca431518ba5a015f088450e362ba4567535462ecc",
+    "assets/models/juniper_mop.glb": "05dbdccb286a5fd0426b40033403b1fe450a9cd97b14ba9a4aacc58b2a97beeb"
+  }
+}

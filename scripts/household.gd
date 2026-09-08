@@ -22,6 +22,7 @@ var family_graph: Dictionary = LifeFamilyGraph.fresh()
 var adoptions: Dictionary = LifeAdoption.fresh()
 var _family_roles: Dictionary = {}
 var meals: LifeMeals = LifeMeals.new()
+var sanitation: LifeSanitation = LifeSanitation.new()
 var cooperations: Array = []
 var cooperation_serial: int = 0
 var _cooperation_depth: int = 0
@@ -30,6 +31,7 @@ const COOPERATION_WAIT_LIMIT: float = 60.0
 func new_household(profiles: Array) -> void:
 	adoptions=LifeAdoption.fresh()
 	meals.clear()
+	sanitation.clear()
 	cooperations.clear()
 	cooperation_serial = 0
 	for member in members:member.sim.queue_free()
@@ -181,7 +183,7 @@ func get_state(world_data: Array = []) -> Dictionary:
 	adopt_selected_changes()
 	var states:Array=[]
 	for member in members:states.append({"id":member.id,"state":member.sim.get_state()})
-	return {"household_version":1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state()}
+	return {"household_version":1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state(),"sanitation":sanitation.get_state()}
 
 func get_family_links() -> Array:
 	var links:Array=LifeFamilyGraph.links(family_graph)
@@ -349,7 +351,13 @@ func restore_state(data: Dictionary) -> Dictionary:
 	if not meal_error.is_empty():
 		for c in candidates:c.sim.free()
 		return {"ok":false,"error":meal_error}
+	var sanitation_data:Variant=data.get("sanitation",LifeSanitation.fresh())
+	var sanitation_error:String=LifeSanitation.validate(sanitation_data,ids,data.members,(lead.day-1)*1440.0+lead.minutes)
+	if not sanitation_error.is_empty():
+		for c in candidates:c.sim.free()
+		return {"ok":false,"error":sanitation_error}
 	restoring=true
+	sanitation.restore(sanitation_data)
 	adoptions=data.get("adoptions",LifeAdoption.fresh()).duplicate(true)
 	meals.restore(meal_data)
 	for old in members:old.sim.queue_free()

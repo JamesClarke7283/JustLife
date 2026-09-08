@@ -36,6 +36,7 @@ var _book: Node3D
 var _brush: Node3D
 var _snack: Node3D
 var _watering_can: Node3D
+var _mop: Node3D
 var _birthday_cake: Node3D
 var _cake_center: Node3D
 var _cake_flames: Array[Node3D] = []
@@ -471,6 +472,12 @@ func _recolor(node: Node) -> void:
 
 
 func _create_props() -> void:
+	if is_instance_valid(_mop):
+		remove_child(_mop);_mop.queue_free()
+	_mop=load("res://assets/models/juniper_mop.glb").instantiate()
+	_mop.name="JuniperMop"
+	add_child(_mop)
+	_mop.visible=false
 	_book = Node3D.new()
 	_book.name = "ReadingBook"
 	_model.add_child(_book)
@@ -609,6 +616,7 @@ func _update_grips(delta: float, moving: bool, action_id: String) -> void:
 			"eat_meal": targets.R = .78
 			"paint": targets.R = .80
 			"water": targets.R = .55
+			"mop_puddle": targets = {"L":.8,"R":.8}
 			"read": targets = {"L":.20,"R":.20}
 			"study","homework":
 				if str(_activity_anchor.get("kind","")) == "standing": targets = {"L":.20,"R":.20}
@@ -848,6 +856,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 	if _model == null or (delta <= 0.0 and not _reconstructing_cooking):
 		return
 	if not _reconstructing_cooking:_update_voice(delta, speed_factor, moving, action_id)
+	if is_instance_valid(_mop) and action_id!="mop_puddle":_mop.visible=false
 	var animation_delta: float = delta * clampf(speed_factor, 0.0, 3.0)
 	# Pause freezes the entire presentation, including props and transition clocks.
 	if animation_delta <= 0.0 and not _reconstructing_cooking:
@@ -887,6 +896,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 	_book.visible = false
 	_brush.visible = false
 	_watering_can.visible = false
+	_mop.visible=false
 	if moving:
 		var cycle: float = t * 7.6
 		var swing: float = sin(cycle)
@@ -981,6 +991,22 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 			"eat_meal":
 				if anchor_kind=="seat":_seated_pose(pose)
 				_meal_eating_pose(pose)
+			"plant_wee":
+				# Fully clothed, discreet emergency posture; no anatomy or stream.
+				pose["Head"]=Vector3(.18,-.20,.025)
+				pose["Arm_L"]=Vector3(-.08,0,.12);pose["Arm_R"]=Vector3(-.08,0,-.12)
+				pose["Forearm_L"]=Vector3(-.40,0,.08);pose["Forearm_R"]=Vector3(-.40,0,-.08)
+				lean.x=.035
+			"mop_puddle":
+				var mop_scale:float=clampf(_proportion,.72,1.10)
+				var orientation:Basis=Basis(Vector3.UP,float(_activity_anchor.get("yaw",rotation.y)))
+				var origin:Vector3=_activity_anchor.get("position",global_position)
+				var sweep:float=sin(_action_time*2.4)*.10
+				_mop.global_transform=Transform3D(orientation.scaled(Vector3.ONE*mop_scale),origin+orientation*Vector3(.035,0,.68+sweep))
+				_mop.visible=true
+				_reach_hand(pose,"L",_model.to_local(_mop.to_global(Vector3(0,.96,-.287))),Vector3(-.55,-.65,-.20))
+				_reach_hand(pose,"R",_model.to_local(_mop.to_global(Vector3(0,.68,-.198))),Vector3(.55,-.65,-.20))
+				pose["Head"]=Vector3(.26,0,.02)
 			"clean_plate":
 				pose["Arm_L"]=Vector3(-.5,0,.16);pose["Forearm_L"]=Vector3(-.8,0,0)
 				pose["Arm_R"]=Vector3(-.5+sin(_action_time*4.0)*.08,0,-.16);pose["Forearm_R"]=Vector3(-.8,0,0)

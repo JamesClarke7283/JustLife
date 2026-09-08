@@ -242,11 +242,25 @@ func tree(p: Vector3, s: float) -> void:
 		sphere(tree_root,offset,Vector3(1.75,1.8,1.65)*s,"73976a" if i%2 else "8eaa78")
 
 func neighbor_home(p: Vector3) -> void:
-	box(house,p+Vector3(0,1.6,0),Vector3(7,3.2,7),"d7dbca")
-	box(house,p+Vector3(0,3.28,0),Vector3(7.7,.3,7.7),"6b8578")
-	for x in [-2,1.8]:
-		box(house,p+Vector3(x,1.8,3.51),Vector3(1.2,1.6,.05),"8aabb0")
-	box(house,p+Vector3(0,1.1,3.54),Vector3(1,2.2,.08),"ab8963")
+	var cottage:bool=p.x<0
+	var width:float=6.5 if cottage else 8.4
+	var depth:float=7.8 if cottage else 5.9
+	var height:float=3.3 if cottage else 2.8
+	box(house,p+Vector3(0,height*.5,0),Vector3(width,height,depth),"aabfa7" if cottage else "bd9177")
+	var roof:MeshInstance3D=box(house,p+Vector3(-width*.25,height+.48,0),Vector3(width*.56,.16,depth+.6),"627e72" if cottage else "797f7a")
+	roof.rotation.z=.32
+	roof=box(house,p+Vector3(width*.25,height+.48,0),Vector3(width*.56,.16,depth+.6),"627e72" if cottage else "797f7a");roof.rotation.z=-.32
+	var door_x:float=0 if cottage else 2.45
+	for x:float in ([-2.0,2.0] if cottage else [-2.9,-.6]):
+		box(house,p+Vector3(x,1.8,depth*.5+.01),Vector3(1.2,1.4,.05),"698786")
+		for edge:float in [-.64,.64]:box(house,p+Vector3(x+edge,1.8,depth*.5+.05),Vector3(.08,1.55,.07),"ede7d5")
+	box(house,p+Vector3(door_x,1.1,depth*.5+.04),Vector3(1,2.2,.08),"b49167" if cottage else "68897c")
+	box(house,p+Vector3(door_x,.04,depth*.5+.7),Vector3(3.0 if cottage else 1.6,.18,1.3),"bdb29a")
+	if cottage:
+		for side:float in [-1.4,1.4]:box(house,p+Vector3(side,1.3,depth*.5+1.2),Vector3(.10,2.6,.10),"ede7d5")
+		box(house,p+Vector3(0,2.65,depth*.5+.7),Vector3(3.2,.16,1.65),"627e72")
+	else:
+		box(house,p+Vector3(-width*.5-.8,.05,0),Vector3(1.6,.2,depth+.4),"bdab91")
 
 func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	var kind: String=str(entry.get("kind","plant"))
@@ -291,7 +305,7 @@ func remove_item(id: String) -> Dictionary:
 func serialize_items() -> Array:
 	var out:Array=[]
 	for item in items:
-		if bool(item.get("transient_food",false)):continue
+		if bool(item.get("transient_food",false)) or bool(item.get("transient_puddle",false)):continue
 		out.append({"id":item.id,"kind":item.kind,"x":item.node.position.x,"z":item.node.position.z,"rotation":item.node.rotation_degrees.y})
 	if construction:out.append(construction.snapshot())
 	return out
@@ -306,7 +320,7 @@ func rebuild_navigation() -> void:
 			var p=Vector2(x*.25,z*.25)
 			var solid:bool = construction.point_blocked(p)
 			for item in items:
-				if item.kind in ["rug","painting","meal","plate"]:continue
+				if item.kind in ["rug","painting","meal","plate","puddle"]:continue
 				var local:Vector3=item.node.to_local(Vector3(p.x,.16,p.y))
 				var extent:Vector2=item.size*.5+Vector2(.16,.16)
 				if absf(local.x)<extent.x and absf(local.z)<extent.y:solid=true;break
@@ -404,7 +418,7 @@ func can_place(kind:String,p:Vector3,angle:float) -> bool:
 	# Interior walls and doorways stay usable.
 	if construction.rect_blocked(rect):return false
 	for item in items:
-		if item.kind in ["rug","painting","meal","plate"]:continue
+		if item.kind in ["rug","painting","meal","plate","puddle"]:continue
 		var s:Vector2=item.size
 		if int(roundf(item.node.rotation_degrees.y/90))%2:s=Vector2(s.y,s.x)
 		var other=Rect2(Vector2(item.node.position.x,item.node.position.z)-s/2,s)
@@ -539,7 +553,7 @@ func _clear_coaching_space(at:Vector3) -> bool:
 	for offset:Vector2 in [Vector2.ZERO,Vector2(.29,0),Vector2(-.29,0),Vector2(0,.29),Vector2(0,-.29),Vector2(.21,.21),Vector2(-.21,.21),Vector2(.21,-.21),Vector2(-.21,-.21)]:
 		if construction.point_blocked(Vector2(at.x,at.z)+offset):return false
 	for other:Dictionary in items:
-		if str(other.kind) in ["rug","painting"]:continue
+		if str(other.kind) in ["rug","painting","puddle"]:continue
 		var local:Vector3=other.node.to_local(at)
 		var extent:Vector2=other.size*.5+Vector2(.29,.29)
 		if absf(local.x)<extent.x and absf(local.z)<extent.y:return false
@@ -718,3 +732,71 @@ func flower_clump(at: Vector3, rng: RandomNumberGenerator, petal_color: String) 
 		batch.set_instance_transform(i, transforms[i]); batch.set_instance_color(i, colors[i])
 	plant.multimesh = batch
 	house.add_child(plant)
+
+func create_resident_home(place:String,layout:Array) -> void:
+	if house:house.queue_free()
+	actors.clear();items.clear();walls.clear();landscape_trees.clear();ceiling_beams.clear()
+	house=Node3D.new();house.name="ResidentHome_"+place;add_child(house)
+	construction=LifeConstruction.new();house.add_child(construction);construction.initialize(self)
+	furniture=Node3D.new();furniture.name="Furniture";house.add_child(furniture)
+	var cottage:bool=place=="maya_home"
+	var width:float=10.0 if cottage else 12.0
+	var depth:float=9.0 if cottage else 8.0
+	var plaster:String="cbd8c2" if cottage else "d5b39d"
+	box(house,Vector3(0,-.3,0),Vector3(120,.3,120),"b8cdaa")
+	box(house,Vector3(0,-.16,0),Vector3(17,.15,16),"a8c191")
+	box(house,Vector3(0,-.025,0),Vector3(width+.4,.25,depth+.4),"d3c9b6")
+	box(house,Vector3(0,.105,0),Vector3(width,.045,depth),"bb9a73" if cottage else "c9b299")
+	# The narrow cottage uses long oak boards; the wide bungalow has parquet blocks.
+	if cottage:
+		for row:int in range(33):
+			box(house,Vector3(-4.9+float(row)*.3,.132,0),Vector3(.009,.004,depth),"a98661")
+			for joint:int in range(4):box(house,Vector3(-4.75+float(row)*.3,.133,-3.9+float(joint)*2.2+float(row%2)*.9),Vector3(.29,.004,.009),"a98661")
+	else:
+		for x:int in range(-6,6):
+			for z:int in range(-4,4):
+				box(house,Vector3(float(x)+.5,.133,float(z)+.5),Vector3(.985,.004,.985),"c6ad8e" if (x+z)%2 else "cfb899")
+				for seam:int in range(1,4):
+					box(house,Vector3(float(x)+float(seam)*.25,.137,float(z)+.5) if (x+z)%2 else Vector3(float(x)+.5,.137,float(z)+float(seam)*.25),Vector3(.007,.003,.97) if (x+z)%2 else Vector3(.97,.003,.007),"b99e7e")
+	wall(Vector3(0,1.4,-depth*.5-.04),Vector3(width+.2,2.6,.16),plaster,false)
+	wall(Vector3(-width*.5-.04,1.4,0),Vector3(.16,2.6,depth+.1),plaster,false)
+	wall(Vector3(width*.5+.04,.4,0),Vector3(.16,.6,depth+.1),plaster,true)
+	for side:int in [-1,1]:wall(Vector3(side*(width*.25+.55),.4,depth*.5+.04),Vector3(width*.5-1.0,.6,.16),plaster,true)
+	if cottage:
+		wall(Vector3(-2,.4,-2.6),Vector3(.13,.6,3.7),"eee5d5",true)
+		wall(Vector3(-3.5,.4,.1),Vector3(3,.6,.13),"eee5d5",true)
+		wall(Vector3(.3,.4,-2.9),Vector3(.13,.6,3.0),"eee5d5",true)
+		box(house,Vector3(0,.08,5.35),Vector3(5.6,.15,1.7),"c8b79a")
+		for x:float in [-2.5,2.5]:
+			box(house,Vector3(x,1.35,5.85),Vector3(.13,2.65,.13),"f4efdc")
+			box(house,Vector3(x,.35,5.9),Vector3(.8,.55,.65),"739781")
+			for j:int in range(4):sphere(house,Vector3(x-.3+j*.2,.67,5.9),Vector3(.27,.30,.32),"bc8398")
+		var canopy:MeshInstance3D=box(house,Vector3(0,2.76,5.35),Vector3(5.9,.17,2.0),"759487")
+		canopy.visible=not cutaway;ceiling_beams.append(canopy)
+	else:
+		wall(Vector3(3.2,.4,-2.15),Vector3(.13,.6,3.7),"eadfcd",true)
+		wall(Vector3(4.95,.4,1.25),Vector3(2.15,.6,.13),"eadfcd",true)
+		box(house,Vector3(-6.65,.04,.2),Vector3(1.15,.12,7.4),"c1b49b")
+		for j:int in range(12):box(house,Vector3(-6.65,.11,-3.2+j*.6),Vector3(1.1,.025,.5),"d3c7b2")
+		box(house,Vector3(3.9,.07,4.8),Vector3(4.1,.14,1.4),"ac9480")
+		for x:float in [2.4,5.5]:box(house,Vector3(x,.47,5.5),Vector3(.11,.8,.11),"937757")
+	for x:float in ([-3.45,1.6,3.7] if cottage else [-4.5,-2.0,1.5,4.6]):window_panel(Vector3(x,1.78,-depth*.5+.055),false)
+	for z:float in [-2.2,2.1]:window_panel(Vector3(-width*.5+.055,1.75,z),true)
+	box(house,Vector3(0,-.02,7.0),Vector3(1.8,.1,2.8),"dcd5be")
+	box(house,Vector3(0,-.02,8.5),Vector3(75,.1,1.25),"e0d9c7")
+	box(house,Vector3(0,-.07,11),Vector3(100,.12,3.7),"798781")
+	for x:int in range(-30,31,5):box(house,Vector3(x,.003,11),Vector3(2,.009,.08),"e6ddbc")
+	for x:float in [-7.7,7.7]:
+		for z:float in [-5.5,3.3]:tree(Vector3(x,-.1,z),.75 if cottage else 1.05)
+	for x:float in [-11.0,12.0]:tree(Vector3(x,-.1,-8),1.4)
+	for x:int in range(-6,7):
+		if cottage:sphere(house,Vector3(x,.25,-6.0),Vector3(1.1,.65,.8),"73966d")
+		else:
+			box(house,Vector3(x,.35,-5.5),Vector3(.13,.85,.13),"a88667")
+	box(house,Vector3(2,.5,7.7),Vector3(.12,1.1,.12),"a08060")
+	box(house,Vector3(2,1.02,7.7),Vector3(.45,.35,.35),"739781" if cottage else "aa705c")
+	grid=Node3D.new();house.add_child(grid);grid.visible=false
+	for entry:Dictionary in layout:
+		if str(entry.get("kind",""))=="__construction":construction.restore(entry)
+		else:add_item(entry,false)
+	construction.refresh_decorations();rebuild_navigation();update_camera()

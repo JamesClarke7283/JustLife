@@ -6,6 +6,10 @@ signal changed()
 signal action_started(action: Dictionary)
 signal action_finished(action: Dictionary)
 var meal_service: Node
+var sanitation_service: Node
+const BLADDER_DESPERATE: float = 12.0
+const BLADDER_GRACE_MINUTES: float = 10.0
+var bladder_grace: float = 0.0
 signal notice(text: String)
 signal age_changed(previous: String, current: String)
 signal away_changed(state: Dictionary)
@@ -105,6 +109,7 @@ func new_household(profile: Dictionary) -> void:
 	character["traits"] = selected_traits
 	var aspiration: String = str(profile.get("aspiration", "Balanced"))
 	character["aspiration"] = aspiration if aspiration in ASPIRATION_NAMES else "Balanced"
+	bladder_grace = 0.0
 	needs = {"hunger": 76.0, "energy": 85.0, "hygiene": 86.0, "bladder": 78.0, "fun": 62.0, "social": 58.0}
 	skills.clear()
 	for skill_name: String in SKILL_NAMES:
@@ -167,6 +172,8 @@ func _build_actions() -> void:
 	_define("nap", "Take a nap", 75.0, {"energy": 38.0}, 0, "", 0.0, "A short, refreshing nap.")
 	_define("shower", "Take a shower", 30.0, {"hygiene": 85.0, "fun": 4.0}, 0, "", 0.0, "Freshen up and feel ready for the day.")
 	_define("toilet", "Use toilet", 15.0, {"bladder": 95.0, "hygiene": -3.0}, 0, "", 0.0, "Take care of a pressing need.")
+	_define("plant_wee", "Wee in plant pot (desperate)", 10.0, {"bladder":85.0,"hygiene":-12.0}, 0, "", 0.0, "An emergency option when bladder is 12 or lower. Walk to the pot first. A toilet is more hygienic.")
+	_define("mop_puddle", "Mop up accident", 8.0, {"hygiene":-2.0}, 0, "", 0.0, "Clean this puddle from the floor. Canceling leaves it for later.")
 	_define("relax", "Relax", 40.0, {"fun": 25.0, "energy": 12.0}, 0, "", 0.0, "Put your feet up and unwind.")
 	_define("watch", "Watch a show", 60.0, {"fun": 48.0, "energy": 5.0}, 0, "", 0.0, "Enjoy a favorite show.")
 	_define("read", "Read a book", 60.0, {"fun": 32.0}, 0, "logic", 25.0, "Lose yourself in a good book and build Logic.")
@@ -205,7 +212,8 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"bookshelf": ids = ["read", "study"]
 		"easel": ids = ["paint"]
 		"desk", "computer": ids = ["work", "study", "job"]
-		"plant": ids = ["water"]
+		"plant": ids = ["water","plant_wee"] if float(needs.bladder)<=BLADDER_DESPERATE else ["water"]
+		"puddle": ids = ["mop_puddle"]
 		"neighbor", "maya", "leo": ids = SOCIAL_ACTIONS
 	if str(character.age_stage) in LifeEducation.SCHOOL_STAGES:
 		if kind in ["desk","computer"]: ids = ["school","homework","study"]
@@ -389,7 +397,7 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 	if id in ["job","career_day"] and int(career["worked_day"]) == day:
 		_emit_notice("Today's shift is complete. You can work again tomorrow.")
 		return false
-	if id in SOCIAL_ACTIONS or id in ["birthday", "job", "work", "cook", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal"]:
+	if id in SOCIAL_ACTIONS or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal"]:
 		var availability: Dictionary = get_action_availability(id, target_id)
 		if not bool(availability.available):
 			_emit_notice(str(availability.reason))
@@ -431,6 +439,10 @@ func begin_current_action() -> void:
 	if action.has("cooperation_id"):
 		if is_instance_valid(cooperation_owner): cooperation_owner.mark_cooperative_ready(cooperation_member_id)
 		return
+	if str(action.id) in ["plant_wee","mop_puddle"]:
+		var sanitation_reason:String=_sanitation_reason(str(action.id),str(action.target_id),bool(action.paid) and float(action.elapsed)>0.0)
+		if not sanitation_reason.is_empty():
+			_emit_notice(sanitation_reason);cancel_action();return
 	if is_instance_valid(meal_service) and not meal_service.before_begin(self,action):return
 	var cost: int = int(action["cost"])
 	if str(action.id) == "birthday" and str(action.get("birthday_from_stage","")) != str(character.age_stage):
@@ -532,6 +544,7 @@ func tick(delta: float) -> void:
 
 
 func _step(game_minutes: float) -> void:
+	var bladder_before:float=float(needs.bladder)
 	for i in range(moodlets.size()-1,-1,-1):
 		moodlets[i].remaining=maxf(0,float(moodlets[i].remaining)-game_minutes)
 		if float(moodlets[i].remaining)<=0:moodlets.remove_at(i)
@@ -554,6 +567,7 @@ func _step(game_minutes: float) -> void:
 			decay *= 0.8
 		needs[need_name] = clampf(float(needs[need_name]) - decay * game_minutes / 60.0, 0.0, 100.0)
 	if is_away():
+		bladder_grace=0.0 # School and work include bathroom breaks.
 		_tick_away(game_minutes)
 		_check_need_notices()
 		_update_wants()
@@ -574,8 +588,39 @@ func _step(game_minutes: float) -> void:
 		_idle_minutes += game_minutes
 		if autonomy and _idle_minutes >= 15.0:
 			_choose_autonomous_action()
+	_tick_bladder(game_minutes,bladder_before)
 	_check_need_notices()
 	_update_wants()
+
+
+func _tick_bladder(game_minutes:float,bladder_before:float) -> void:
+	# Apply toilet/plant relief first, including the first minute at the target.
+	if float(needs.bladder)>0.0:
+		bladder_grace=0.0
+		return
+	var empty_minutes:float=maxf(0.0,game_minutes-bladder_before/(float(NEED_DECAY.bladder)/60.0)) if bladder_before>0.0 else game_minutes
+	bladder_grace=minf(BLADDER_GRACE_MINUTES,bladder_grace+empty_minutes)
+	if bladder_grace<BLADDER_GRACE_MINUTES:return
+	# The world must confirm a present Lifelet and real floor position. A
+	# detached simulation or car journey never creates a puddle at stale coordinates.
+	if not is_instance_valid(sanitation_service) or not sanitation_service.accident(self):return
+	bladder_grace=0.0
+	needs.bladder=75.0
+	needs.hygiene=maxf(0.0,float(needs.hygiene)-35.0)
+	add_moodlet("An awkward accident","Embarrassed","Could not reach the bathroom in time. A shower and a mop will help.",180.0,3)
+	_emit_notice(str(character.name)+" could not hold on any longer. Click the puddle to mop it up.")
+
+
+func _sanitation_reason(id:String,target:String,resuming:bool=false) -> String:
+	if is_away():return "This Lifelet will be available after coming home."
+	if id=="plant_wee":
+		if float(needs.bladder)>BLADDER_DESPERATE and not resuming:return "This emergency option is only available at 12 bladder or lower."
+		var found:bool=false
+		for entry:Dictionary in _targets:
+			if str(entry.id)==target and str(entry.kind)=="plant":found=true;break
+		if not found:return "Choose a real plant pot in this location."
+	if not is_instance_valid(sanitation_service):return "That activity needs a current location."
+	return sanitation_service.action_availability(self,id,target)
 
 
 func _apply_continuous_effects(action: Dictionary, fraction: float) -> void:
@@ -681,6 +726,7 @@ func _finish_front() -> void:
 			want["progress"] = float(want["progress"]) + 1.0
 	action["phase"] = "finished"
 	if is_instance_valid(meal_service):meal_service.finished(self,action)
+	if is_instance_valid(sanitation_service):sanitation_service.finished(self,action)
 	_emit_action_finished(action)
 	_idle_minutes = 0.0
 	_update_wants()
@@ -725,6 +771,9 @@ func _social_target(target_id: String) -> String:
 
 func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 	var reason: String = ""
+	if id in ["plant_wee","mop_puddle"]:
+		reason=_sanitation_reason(id,target_id)
+		if not reason.is_empty():return {"available":false,"reason":reason}
 	if is_instance_valid(meal_service) and id in ["cook","eat_meal","store_meal","clean_plate","discard_meal"]:
 		reason=meal_service.action_availability(self,id,target_id)
 		if not reason.is_empty():return {"available":false,"reason":reason}
@@ -1654,7 +1703,7 @@ func get_mood() -> Dictionary:
 
 
 func get_state() -> Dictionary:
-	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "wants": wants.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "bills_paid": bills_paid, "last_bill_day": last_bill_day,"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true)}
+	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "bladder_grace":bladder_grace, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "wants": wants.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "bills_paid": bills_paid, "last_bill_day": last_bill_day,"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true)}
 
 
 func save_game(world_data: Array = []) -> bool:
@@ -1715,6 +1764,7 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 	lifecycle.progress = float(lifecycle.progress)
 	for birthday: Dictionary in lifecycle.history: birthday.day = int(birthday.day)
 	needs = state["needs"].duplicate(true)
+	bladder_grace=float(state.get("bladder_grace",0.0))
 	skills = state["skills"].duplicate(true)
 	relationships = state["relationships"].duplicate(true)
 	character["life_stage"] = str(character.get("life_stage", "adult"))
@@ -1907,6 +1957,7 @@ func _validate_state(state: Dictionary) -> String:
 	for need_name: String in NEED_NAMES:
 		if not _number_in_range(state["needs"].get(need_name), 0.0, 100.0):
 			return "Save contains an invalid need."
+	if not _number_in_range(state.get("bladder_grace",0.0),0.0,BLADDER_GRACE_MINUTES):return "Save contains invalid bladder urgency."
 	for skill_name: String in SKILL_NAMES:
 		var skill: Variant = state["skills"].get(skill_name)
 		if not skill is Dictionary or not _number_in_range(skill.get("level"), 1.0, 10.0) or not _number_in_range(skill.get("xp"), 0.0, 10000.0):
@@ -1960,6 +2011,11 @@ func _validate_state(state: Dictionary) -> String:
 		if not action is Dictionary or not _actions.has(str(action.get("id", ""))):
 			return "Save contains an invalid action."
 		var action_id: String = str(action.id)
+		if action_id in ["plant_wee","mop_puddle"]:
+			var expected:Dictionary=_actions[action_id]
+			if not action.get("target_id") is String or str(action.target_id).is_empty() or action.get("cost")!=0 or not action.get("paid") is bool or not action.get("autonomous") is bool or not _number_in_range(action.get("duration"),float(expected.duration),float(expected.duration)) or not _number_in_range(action.get("elapsed"),0.0,float(expected.duration)) or str(action.get("phase","")) not in ["queued","approach","active"]:
+				return "Save contains invalid sanitation action progress."
+			if (float(action.elapsed)>0.0 or str(action.phase)=="active") and not bool(action.paid):return "Save contains sanitation progress that never began."
 		if action.has("adoption_serial") and action_id!="arrive_home":return "Save contains adoption metadata on an unrelated action."
 		if action_id=="arrive_home":
 			if not LifeAdoption.integer(action.get("adoption_serial"),1,7) or action.get("paid")!=false or not action.get("paid") is bool or action.get("autonomous")!=false or not action.get("autonomous") is bool or not LifeAdoption.integer(action.get("cost"),0,0) or not LifeAdoption.integer(action.get("duration"),1,1) or not LifeAdoption.integer(action.get("elapsed"),0,0) or str(action.get("phase",""))!="approach" or str(action.get("target_id",""))!="lot_exit" or str(action.get("target_kind",""))!="lot_exit" or not LifeAdoption.point(action.get("target_position")):

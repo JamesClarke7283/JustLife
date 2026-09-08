@@ -53,6 +53,9 @@ __pycache__/
 !/art/recipes/recipe_variants.blend
 !/art/recipes/README.md
 !/art/recipes/manifest.json
+!/art/transport/
+/art/transport/*
+!/art/transport/juniper_car.blend
 !/art/source/
 !/art/experiments/
 /art/experiments/**/*.png
@@ -61,3 +64,10 @@ __pycache__/
 
 # Browser reference downloads are research material, not game source/assets.
 /research/
+
+# Original sanitation prop and its editable source.
+!/art/sanitation/
+/art/sanitation/*
+!/art/sanitation/juniper_mop.blend
+!/art/sanitation/README.md
+!/art/sanitation/manifest.json
