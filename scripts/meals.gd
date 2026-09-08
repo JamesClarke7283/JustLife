@@ -259,10 +259,11 @@ static func validate_actions(data:Dictionary,members:Array) -> String:
 			var action_id:String=str(action.id)
 			var meal_action:bool=action_id in ["serve_meal","eat_meal","store_meal","clean_plate","discard_meal"]
 			if not meal_action:
-				for key:String in ["meal_source","meal_stage","meal_plate","meal_seat"]:
+				for key:String in ["meal_source","meal_stage","meal_plate","meal_seat","meal_standing"]:
 					if action.has(key):return "A non-meal action contains food ownership."
 				continue
-			if action_id!="eat_meal" and (action.has("meal_plate") or action.has("meal_seat")):return "A meal transport action contains a diner’s plate or chair."
+			if action_id!="eat_meal" and (action.has("meal_plate") or action.has("meal_seat") or action.has("meal_standing")):return "A meal transport action contains a diner’s plate or chair."
+			if action.has("meal_standing") and not action.meal_standing is bool:return "A standing diner’s reservation is invalid."
 			var source:Variant=action.get("meal_source",action.get("target_id",""))
 			var stage:Variant=action.get("meal_stage","pickup")
 			if not source is String or not foods.has(source) or not stage is String:return "A meal action refers to missing food."
@@ -280,6 +281,7 @@ static func validate_actions(data:Dictionary,members:Array) -> String:
 					if stage=="wash":owner_id=str(source)
 				"eat_meal":
 					if stage not in ["pickup","eat"]:return "The dining action has an invalid stage."
+					if action.has("meal_standing") and (stage!="eat" or not bool(action.meal_standing) or not str(action.get("meal_seat","")).is_empty() or str(action.get("target_id",""))!=str(action.get("meal_plate",""))):return "The standing diner’s place does not match their serving."
 					if stage=="eat":
 						var plate_id:Variant=action.get("meal_plate")
 						if not plate_id is String or not foods.has(plate_id) or not foods[plate_id].has("batch"):return "The diner’s plate is missing."

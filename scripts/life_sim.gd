@@ -1781,6 +1781,7 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 		if stored.has("target_kind"): action["target_kind"] = str(stored.target_kind)
 		for key: String in ["cooperation_id","cooperation_role","meal_source","meal_stage","meal_plate","meal_seat"]:
 			if stored.has(key): action[key] = str(stored[key])
+		if stored.has("meal_standing"): action["meal_standing"] = stored.meal_standing
 		if str(action.id) == "birthday": action["birthday_from_stage"] = str(stored.get("birthday_from_stage",character.age_stage))
 		if str(action.id) in ["school_day","career_day"] and is_away():
 			action.phase = "active"
@@ -1971,6 +1972,7 @@ func _validate_state(state: Dictionary) -> String:
 		if action_id == "birthday":
 			if LifeLifecycle.next_stage(LifeLifecycle.stage_for(profile)).is_empty(): return "Save contains a birthday beyond the supported age stages."
 			if str(action.get("birthday_from_stage",LifeLifecycle.stage_for(profile))) != LifeLifecycle.stage_for(profile): return "Save contains a birthday for an age stage that has already passed."
+		if action.has("meal_standing") and (action_id!="eat_meal" or not action.meal_standing is bool):return "Save contains an invalid standing diner reservation."
 		if not _number_in_range(action.get("elapsed", 0), 0.0, 10000.0) or not _number_in_range(action.get("duration", 1), 1.0, 10000.0):
 			return "Save contains invalid action progress."
 		var position: Variant = action.get("target_position", [0, 0, 0])

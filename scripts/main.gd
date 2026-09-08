@@ -1292,6 +1292,11 @@ func _refresh_member_targets(replan:bool=true) -> void:
 			sim.cancel_action(index)
 			continue
 		var destination:Vector3=world.lot_exit_position(_member_index(bound_member_id)) if str(action.id) in ["school_day","career_day"] else by_id[target_id].position
+		if str(action.id)=="eat_meal" and bool(action.get("meal_standing",false)):
+			destination=action.target_position
+			if not meal_flow.standing_geometry_clear(destination):
+				meal_flow.carry_diner_plate(action)
+				action.phase="approach"
 		if str(action.get("cooperation_role",""))=="helper":
 			destination=action.target_position
 			var desk:Dictionary=_find_item(target_id)
@@ -1432,6 +1437,7 @@ func on_action_started(action:Dictionary) -> void:
 		world.actors[str(action.target_id)].clear_speech()
 	_resolve_activity_target(action)
 	meal_flow.resolve(sim,action)
+	if not is_same(sim.get_current_action(),action):return
 	pending_action=action
 	if not pending_move.is_empty() and str(action.target_id)==str(pending_move.entry.id):return
 	path=world.path_to(player.position,action.target_position)
@@ -2001,6 +2007,7 @@ func _resolve_activity_target(action:Dictionary) -> void:
 
 func _activity_available(action:Dictionary) -> bool:
 	if action.is_empty():return false
+	if meal_flow.standing_place_blocks(bound_member_id,action):return false
 	var wanted:Array[String]=_activity_resources(action)
 	var session_id:String=str(action.get("cooperation_id",""))
 	var resuming_owner:bool=resume_activity and is_instance_valid(sim) and action==sim.get_current_action()

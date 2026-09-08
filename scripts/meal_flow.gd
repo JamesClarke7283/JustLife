@@ -80,9 +80,12 @@ func resolve(sim:LifeSim,action:Dictionary) -> void:
 	elif action.id=="eat_meal" and action.get("meal_stage")=="eat":
 		var chair:Dictionary=item(str(action.get("meal_seat","")))
 		if chair.is_empty() or _chair_table(chair).is_empty():
-			_choose_seat(person,action)
+			if not _choose_seat(person,action):_stop(sim,"There is no clear place to enjoy this serving.");return
 			var plate:Dictionary=food().portion(str(action.get("meal_plate","")))
 			if not plate.is_empty():plate.storage="carried";plate.seat=""
+		# A carried plate is the diner’s own resource, not their destination.
+		# Preserve the exact reserved walking endpoint through every resolver.
+		if bool(action.get("meal_standing",false)):return
 	elif action.get("meal_stage")=="store":
 		var fridge:Dictionary=app.world.closest_item("fridge",actor(person).position)
 		if not fridge.is_empty():action.target_id=fridge.id
@@ -107,11 +110,18 @@ func before_begin(sim:LifeSim,action:Dictionary) -> bool:
 		action.meal_plate=plate.id;action.meal_stage="eat"
 		action.elapsed=float(plate.progress)*LifeMeals.EATING_MINUTES
 		action.progress=float(plate.progress)
-		_choose_seat(person,action)
+		if not _choose_seat(person,action):_stop(sim,"There is no clear place to enjoy this serving.");return false
 		sync_due=true;sim._emit_action_started(action);return false
 	if action.id=="eat_meal":
 		var plate:Dictionary=food().portion(str(action.get("meal_plate","")))
 		if plate.is_empty() or str(plate.owner)!=person or now()>=float(plate.expires):_stop(sim,"This serving is no longer available.");return false
+		if bool(action.get("meal_standing",false)):
+			if not _standing_clear(person,action.target_position):
+				action.erase("meal_standing")
+				if not _choose_seat(person,action):_stop(sim,"There is no clear place to enjoy this serving.");return false
+				sim._emit_action_started(action);return false
+			if actor(person).position.distance_to(action.target_position)>.02:
+				sim._emit_action_started(action);return false
 		var place:Dictionary=eating_anchor(person,action)
 		var host:Dictionary=item(str(place.get("table_id","")))
 		var offset:Vector3=host.node.to_local(place.plate_position) if not host.is_empty() else Vector3.ZERO
@@ -300,7 +310,85 @@ func _chair_table(chair:Dictionary) -> Dictionary:
 	if chair.node.global_basis.z.dot(direction)<.65:return {}
 	return table
 
-func _choose_seat(person:String,action:Dictionary) -> void:
+func standing_geometry_clear(at:Vector3) -> bool:
+	if not at.is_finite():return false
+	var cell:=Vector2i(roundi(at.x*4),roundi(at.z*4))
+	if not app.world.navigation.region.has_point(cell) or app.world.navigation.is_point_solid(cell):return false
+	if not at.is_equal_approx(Vector3(cell.x*.25,.16,cell.y*.25)):return false
+	if not is_finite(_floor_support(at,Vector2(.30,.30))):return false
+	return true
+
+func _standing_clear(person:String,at:Vector3) -> bool:
+	if not standing_geometry_clear(at):return false
+	var owner:LifeSim=app.household.member_sim(person)
+	var prior_reservation:bool=is_instance_valid(owner) and bool(owner.get_current_action().get("meal_standing",false))
+	for other_id:String in app.world.actors:
+		if other_id==person:continue
+		var other_actor:Node3D=app.world.actors[other_id]
+		if not is_instance_valid(other_actor) or not other_actor.visible:continue
+		var other_sim:LifeSim=app.household.member_sim(other_id)
+		var other:Dictionary=other_sim.get_current_action() if is_instance_valid(other_sim) else {}
+		var clearance:float=1.15 if str(other.get("id","")) in ["nap","sleep"] else .85
+		if Vector2(at.x-other_actor.position.x,at.z-other_actor.position.z).length()<clearance:return false
+		if not other.is_empty() and not other_sim.is_away() and (not prior_reservation or str(other.get("phase",""))=="active" or bool(other.get("meal_standing",false))):
+			for target:Vector3 in _activity_places(other):
+				if Vector2(at.x-target.x,at.z-target.z).length()<clearance:return false
+			var displayed:Variant=other_actor.get("_activity_anchor")
+			if displayed is Dictionary and displayed.get("position") is Vector3:
+				var shown:Vector3=displayed.position
+				if Vector2(at.x-shown.x,at.z-shown.z).length()<clearance:return false
+		var motion:Dictionary=app.motion_states.get(other_id,{})
+		var waiting:Vector3=motion.get("wait_destination",Vector3.INF)
+		if bool(motion.get("waiting",false)) and waiting.is_finite() and Vector2(at.x-waiting.x,at.z-waiting.z).length()<.85:return false
+	for other:Dictionary in food().batches+food().portions:
+		if str(other.venue)!=app.current_venue or not str(other.host).is_empty() or not str(other.owner).is_empty():continue
+		if not other.has("batch") and int(other.remaining)<=0:continue
+		var half:Vector2=_footprint(other)+Vector2(.30,.30)
+		if absf(at.x-float(other.position[0]))<half.x and absf(at.z-float(other.position[2]))<half.y:return false
+	return true
+
+func _activity_places(action:Dictionary) -> Array[Vector3]:
+	var places:Array[Vector3]=[action.get("target_position",Vector3.INF)]
+	var target:Dictionary=item(str(action.get("target_id","")))
+	if not target.is_empty() and str(target.kind) not in ["meal","plate"]:
+		# Empty landmarks avoid creating a child desk booster during admission.
+		var anchor:Dictionary=app.world.activity_anchor(target,str(action.get("id","")))
+		if anchor.get("position") is Vector3:places.append(anchor.position)
+	return places
+
+func standing_place_blocks(person:String,action:Dictionary) -> bool:
+	if bool(action.get("meal_standing",false)):return false
+	var clearance:float=1.15 if str(action.get("id","")) in ["nap","sleep"] else .85
+	for member:Dictionary in app.household.members:
+		if str(member.id)==person or member.sim.is_away():continue
+		var other:Dictionary=member.sim.get_current_action()
+		if not bool(other.get("meal_standing",false)) or str(other.get("phase","")) not in ["approach","active"]:continue
+		var reserved:Vector3=other.target_position
+		for at:Vector3 in _activity_places(action):
+			if Vector2(at.x-reserved.x,at.z-reserved.z).length()<clearance:return true
+	return false
+
+func _standing_route(person:String,at:Vector3) -> bool:
+	if not _standing_clear(person,at):return false
+	var route:PackedVector3Array=app.world.path_to(actor(person).position,at)
+	return not route.is_empty() and route[-1].is_equal_approx(at)
+
+func _standing_slot(person:String) -> Vector3:
+	var from:Vector3=actor(person).position
+	var candidates:Array[Vector3]=[]
+	var origin:=Vector2i(roundi(from.x*4),roundi(from.z*4))
+	for x:int in range(-12,13):
+		for z:int in range(-12,13):
+			var at:=Vector3((origin.x+x)*.25,.16,(origin.y+z)*.25)
+			if at.distance_to(from)<=3.0:candidates.append(at)
+	candidates.sort_custom(func(a:Vector3,b:Vector3)->bool:return a.distance_squared_to(from)<b.distance_squared_to(from))
+	for at:Vector3 in candidates:
+		if _standing_route(person,at):return at
+	return Vector3.INF
+
+func _choose_seat(person:String,action:Dictionary) -> bool:
+	if bool(action.get("meal_standing",false)) and _standing_route(person,action.target_position):return true
+	action.erase("meal_standing")
 	var chairs:Array=[]
 	for candidate:Dictionary in app.world.items:
 		if str(candidate.kind)!="chair" or _chair_table(candidate).is_empty():continue
@@ -317,11 +405,13 @@ func _choose_seat(person:String,action:Dictionary) -> void:
 	chairs.sort_custom(func(a:Dictionary,b:Dictionary)->bool:return a.node.position.distance_squared_to(actor(person).position)<b.node.position.distance_squared_to(actor(person).position))
 	if not chairs.is_empty():
 		action.meal_seat=str(chairs[0].id);action.target_id=str(chairs[0].id);action.target_position=app.world.approach(chairs[0])
+		return true
 	else:
-		# Eating remains possible without enough chairs. Keep the actual carried
-		# plate and use a separate reachable standing spot near the meal.
-		action.meal_seat="";action.target_id=str(action.meal_source)
-		action.target_position=actor(person).position
+		var at:Vector3=_standing_slot(person)
+		if not at.is_finite():return false
+		action.meal_seat="";action.meal_standing=true;action.target_id=str(action.meal_plate)
+		action.target_position=at
+		return true
 
 func eating_anchor(person:String,action:Dictionary) -> Dictionary:
 	var chair:Dictionary=item(str(action.get("meal_seat","")))
