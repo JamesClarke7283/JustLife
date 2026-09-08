@@ -24,4 +24,6 @@ The renderer records separate reports for each selected style/view set, preservi
 
 `python art/experiments/hair_v19/verify_hair_assets.py` performs a fresh private Godot import and compares both candidates with production. The current run passed 2,120 checks, preserving 105 adult and 121 child non-hair meshes. Builds require all source inputs to match `art/source/character_v18_production_hashes.json` and reuse the accepted age functions in `tools/create_characters.py` without executing that generator.
 
+This study pins the historical v18 baseline. Both its generator and verifier reject mismatched production inputs. If current production moves beyond v18, reproduce the study in an isolated checkout of `1099b651934e1113c374c6048e236a4a5a08b675`, which contains the study and its accepted baseline. Do not interpret newer clothing or face changes as regressions in this held hair experiment, or update the historical baseline hashes to suppress that distinction.
+
 Current rendered PNGs, detailed reports and `evidence/` are ignored local output. The exact r13 source/manifest/export archive remains in `evidence/r13_before_r14/`. No teen/elder expansion, extreme-morph gallery, recolor review, production LOD or in-game action coverage has been performed for r14. Further work should follow the independent critique of this six-image checkpoint.
