@@ -40,6 +40,11 @@ __pycache__/
 !/art/celebration/
 /art/celebration/*
 !/art/celebration/birthday_cake.blend
+!/art/meals/
+/art/meals/*
+!/art/meals/garden_supper.blend
+!/art/meals/README.md
+!/art/meals/manifest.json
 !/art/source/
 !/art/experiments/
 /art/experiments/**/*.png

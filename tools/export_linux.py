@@ -10,8 +10,17 @@ def run():
     source=args.source.resolve()
     target=args.output.resolve();target.mkdir(parents=True,exist_ok=True)
     snapshot=Path(tempfile.mkdtemp(prefix='justlife-release-'))
+    def excluded_studies(directory,names):
+        relative=Path(directory).relative_to(source)
+        if relative==Path('assets/models'):
+            return [name for name in names if '_rig' in name or '_grip' in name]
+        if relative==Path('assets/audio'):
+            return [name for name in names if name=='measurements.json']
+        return []
     for directory in ('assets','scripts','scenes','licenses'):
-        shutil.copytree(source/directory,snapshot/directory)
+        # Match the existing export exclusions before copying/importing large
+        # local studies; they are not needed to build the production package.
+        shutil.copytree(source/directory,snapshot/directory,ignore=excluded_studies if directory=='assets' else None)
     for file in ('icon.svg','export_presets.cfg','CREDITS.md'):
         shutil.copy2(source/file,snapshot/file)
     lines=[];skip=False
@@ -20,7 +29,7 @@ def run():
         if not skip:lines.append(line)
     (snapshot/'project.godot').write_text('\n'.join(lines)+'\n')
     if (source/'.godot/imported').is_dir():
-        shutil.copytree(source/'.godot/imported',snapshot/'.godot/imported')
+        shutil.copytree(source/'.godot/imported',snapshot/'.godot/imported',ignore=shutil.ignore_patterns('*_rig*','*_grip*','measurements.json-*'))
     hashes={str(p.relative_to(snapshot)):hashlib.sha256(p.read_bytes()).hexdigest() for folder in ('scripts','scenes','assets') for p in (snapshot/folder).rglob('*') if p.is_file() and p.suffix!='.import'}
     godot=shutil.which('godot') or 'godot'
     version=subprocess.check_output([godot,'--version'],text=True).strip()

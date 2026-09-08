@@ -63,7 +63,7 @@ func _ready() -> void:
 	sun.light_color = Color("fff0d7")
 	sun.light_energy = .8
 	sun.shadow_enabled = true
-	sun.light_angular_distance = 3.0
+	sun.light_angular_distance = 0.5
 	sun.directional_shadow_max_distance = 60
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
 	add_child(sun)
@@ -269,6 +269,7 @@ func remove_item(id: String) -> Dictionary:
 func serialize_items() -> Array:
 	var out:Array=[]
 	for item in items:
+		if bool(item.get("transient_food",false)):continue
 		out.append({"id":item.id,"kind":item.kind,"x":item.node.position.x,"z":item.node.position.z,"rotation":item.node.rotation_degrees.y})
 	if construction:out.append(construction.snapshot())
 	return out
@@ -283,7 +284,7 @@ func rebuild_navigation() -> void:
 			var p=Vector2(x*.25,z*.25)
 			var solid:bool = construction.point_blocked(p)
 			for item in items:
-				if item.kind in ["rug","painting"]:continue
+				if item.kind in ["rug","painting","meal","plate"]:continue
 				var local:Vector3=item.node.to_local(Vector3(p.x,.16,p.y))
 				var extent:Vector2=item.size*.5+Vector2(.16,.16)
 				if absf(local.x)<extent.x and absf(local.z)<extent.y:solid=true;break
@@ -381,7 +382,7 @@ func can_place(kind:String,p:Vector3,angle:float) -> bool:
 	# Interior walls and doorways stay usable.
 	if construction.rect_blocked(rect):return false
 	for item in items:
-		if item.kind in ["rug","painting"]:continue
+		if item.kind in ["rug","painting","meal","plate"]:continue
 		var s:Vector2=item.size
 		if int(roundf(item.node.rotation_degrees.y/90))%2:s=Vector2(s.y,s.x)
 		var other=Rect2(Vector2(item.node.position.x,item.node.position.z)-s/2,s)

@@ -76,6 +76,9 @@ var _blink_wait: float = 2.5
 var _blink_elapsed: float = -1.0
 var _smile: float = 0.0
 var _activity_anchor: Dictionary = {}
+var meal_presentation: Dictionary = {}
+var _meal_fork: Node3D
+var _meal_tip: Vector3 = Vector3.ZERO
 
 
 func _ready() -> void:
@@ -388,7 +391,7 @@ func set_activity_anchor(world_position: Vector3,world_yaw: float,anchor_kind: S
 
 	if details.get("desk_surface_y") is float or details.get("desk_surface_y") is int:
 		if is_finite(float(details.desk_surface_y)): _activity_anchor["desk_surface_y"] = float(details.desk_surface_y)
-	for key: String in ["desk_front_edge","desk_forward","attention_target"]:
+	for key: String in ["desk_front_edge","desk_forward","attention_target","plate_position"]:
 		if details.get(key) is Vector3 and details[key].is_finite(): _activity_anchor[key] = details[key]
 
 
@@ -519,6 +522,10 @@ func _create_props() -> void:
 	_cooking_spoon.add_child(_spoon_tip)
 	_cooking_bowl.visible = false
 	_cooking_spoon.visible = false
+	_meal_fork = _hand_anchor("MealForkGrip", "R")
+	if ResourceLoader.exists("res://assets/models/meal_fork.glb"):
+		_meal_fork.add_child(load("res://assets/models/meal_fork.glb").instantiate())
+	_meal_fork.visible = false
 	_birthday_cake = _hand_anchor("BirthdayCakeGrip","L")
 	_cake_center = Node3D.new()
 	_cake_center.name = "CakeCenter"
@@ -566,6 +573,7 @@ func _update_grips(delta: float, moving: bool, action_id: String) -> void:
 		match action_id:
 			"cook": targets = {"L":.25,"R":.95}
 			"snack": targets.R = .45
+			"eat_meal": targets.R = .78
 			"paint": targets.R = .80
 			"water": targets.R = .55
 			"read": targets = {"L":.20,"R":.20}
@@ -573,6 +581,9 @@ func _update_grips(delta: float, moving: bool, action_id: String) -> void:
 				if str(_activity_anchor.get("kind","")) == "standing": targets = {"L":.20,"R":.20}
 			"birthday":
 				if _action_time < 3.85: targets = {"L":.30,"R":.30}
+	if bool(meal_presentation.get("carrying",false)):
+		var hold:float=.38 if bool(meal_presentation.get("platter",false)) else .20
+		targets={"L":hold,"R":hold}
 	var blend: float = 1.0-exp(-delta*8.0)
 	for side: String in ["L","R"]:
 		_grip_amounts[side] = lerpf(float(_grip_amounts[side]),float(targets[side]),blend)
@@ -710,6 +721,12 @@ func _orient_held_prop(prop: Node3D, model_basis: Basis) -> void:
 
 func _update_held_props(delta: float, moving: bool, action_id: String) -> void:
 	var blend: float = 1.0-exp(-delta*12.0)
+	if is_instance_valid(_meal_fork):
+		_meal_fork.visible=not moving and action_id=="eat_meal"
+		if _meal_fork.visible:
+			var grip:Vector3=_model.to_local(_meal_fork.global_position)
+			var direction:Vector3=(_meal_tip-grip).normalized()
+			_orient_held_prop(_meal_fork,Basis(Quaternion(Vector3.FORWARD,direction)).scaled(Vector3.ONE*_proportion))
 	var show_cake: bool = not moving and action_id == "birthday" and _action_time < 3.85
 	_birthday_weight = lerpf(_birthday_weight,1.0 if show_cake else 0.0,blend)
 	_birthday_cake.visible = _birthday_weight > .015
@@ -894,6 +911,12 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 				pose["Arm_L"] = Vector3(-.12,0,.06)
 				pose["Forearm_L"] = Vector3(-.32-.10*(1.0-explain),0,0)
 				pose["Head"] = Vector3(.18+.03*sin(_action_time*2.1),.04*sin(t*.7),-.015)
+			"eat_meal":
+				if anchor_kind=="seat":_seated_pose(pose)
+				_meal_eating_pose(pose)
+			"clean_plate":
+				pose["Arm_L"]=Vector3(-.5,0,.16);pose["Forearm_L"]=Vector3(-.8,0,0)
+				pose["Arm_R"]=Vector3(-.5+sin(_action_time*4.0)*.08,0,-.16);pose["Forearm_R"]=Vector3(-.8,0,0)
 			"snack":
 				var cycle: float = fmod(_action_time, 5.4)
 				var bite: float = smoothstep(.45,1.25,cycle) * (1.0-smoothstep(2.05,2.95,cycle))
@@ -941,6 +964,11 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 			"friendly", "joke", "deep_talk", "flirt", "argue", "ask_partner", "commit", "break_up":
 				var gesture_aliases: Dictionary = {"ask_partner":"deep_talk", "commit":"flirt", "break_up":"deep_talk"}
 				_conversation_pose(pose, str(gesture_aliases.get(action_id, action_id)), t)
+	if bool(meal_presentation.get("carrying",false)):
+		# Props keep their authored metre scale across ages. Solve the hands from
+		# the actual held transform so smaller Lifelets reach the same ceramic.
+		_reach_hand(pose,"L",_meal_carry_hand("L"),Vector3(-.25,-1.0,-.35))
+		_reach_hand(pose,"R",_meal_carry_hand("R"),Vector3(.25,-1.0,-.35))
 	if anchored and _activity_anchor.has("attention_target") and action_id in ["homework","help_homework"]:
 		var attention_weight:float=_coaching_attention_weight() if action_id=="homework" else .85
 		var direction:Vector3=_model.to_local(_activity_anchor.attention_target)-_model.to_local(_joints.Head.global_position)
@@ -951,6 +979,11 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		# Keep thighs horizontal while the torso leans from its supported hips.
 		pose["Leg_L"].x -= lean.x
 		pose["Leg_R"].x -= lean.x
+	if anchored and anchor_kind=="seat" and action_id=="eat_meal":
+		# Lean from supported hips, rather than locking short arms at full reach.
+		lean.x=.18 if _model_age=="child" else .045
+		pose["Leg_L"].x-=lean.x
+		pose["Leg_R"].x-=lean.x
 	if anchored:
 		var world_orientation: Basis = Basis(Vector3.UP,float(_activity_anchor.yaw)) * Basis.from_euler(lean)
 		var reference: Vector3 = Vector3.ZERO
@@ -975,7 +1008,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		var rest: Quaternion = entry.rest
 		var target_rotation: Quaternion = rest.inverse() * Quaternion.from_euler(pose[entry.name]) * rest
 		skeleton.set_bone_pose_rotation(bone_index,skeleton.get_bone_pose_rotation(bone_index).slerp(target_rotation,blend))
-	var seated: bool = not moving and ((action_id in ["relax", "watch", "toilet", "work", "study", "job", "school", "homework", "homework_wait"] and anchor_kind != "standing") or (action_id in ["sleep", "nap"] and anchor_kind == "seat"))
+	var seated: bool = not moving and ((action_id in ["relax", "watch", "toilet", "work", "study", "job", "school", "homework", "homework_wait", "eat_meal"] and anchor_kind != "standing") or (action_id in ["sleep", "nap"] and anchor_kind == "seat"))
 	_sit_amount = lerpf(_sit_amount, 1.0 if seated else 0.0, blend)
 	for entry: Dictionary in _sit_shapes:
 		entry.mesh.set_blend_shape_value(int(entry.index), _sit_amount)
@@ -1159,3 +1192,38 @@ func _cylinder(parent: Node3D, radius: float, length: float, color: Color) -> Me
 	node.material_override = _material(color)
 	parent.add_child(node)
 	return node
+
+
+func _meal_carry_point() -> Vector3:
+	var walking:bool=_motion_action=="walk"
+	var sway:float=sin((_time+_phase_offset)*3.8)*.003 if walking else 0.0
+	var lift:float=sin((_time+_phase_offset)*7.6)*.003 if walking else sin(_time*2.0)*.0015
+	return Vector3(sway,_hip_height+(.22+lift)*_proportion,.29*_proportion)
+
+func _meal_carry_hand(side:String) -> Vector3:
+	var platter:bool=bool(meal_presentation.get("platter",false))
+	var contact:Vector3=Vector3(.2395 if platter else .12,.037 if platter else .005,0)
+	if side=="L":contact.x=-contact.x
+	return _model.to_local(meal_carry_transform()*contact)
+
+func meal_carry_transform() -> Transform3D:
+	return Transform3D(global_basis.orthonormalized(),_model.to_global(_meal_carry_point()))
+
+func _meal_eating_pose(pose:Dictionary) -> void:
+	var cycle:float=fmod(_action_time,5.8)
+	var bite:float=smoothstep(.5,1.55,cycle)*(1.0-smoothstep(2.5,3.9,cycle))
+	var source:Vector3=_model.to_local(_activity_anchor.get("plate_position",to_global(Vector3(0,1.0,.35))))+Vector3(0,.035,0)
+	var mouth:Vector3=_model.to_local(_joints.Head.to_global(_mouth_anchor))
+	_meal_tip=source.lerp(mouth+Vector3(0,-.003,.010)*_proportion,bite)
+	# Scoop with the handle toward the diner, then turn the tines toward the
+	# mouth during the lift. A permanently reversed fork forced the wrist
+	# past the plate and outside the arm's reach at the bottom of the cycle.
+	var fork_pitch:float=lerpf(-.30,-PI,bite)
+	var forward:Vector3=Vector3(-.08,sin(fork_pitch),cos(fork_pitch)).normalized()
+	var hand:Vector3=_meal_tip-forward*.14*_proportion
+	_reach_hand(pose,"R",hand,Vector3(.75,-.45,-.05),forward,Vector3.FORWARD)
+	# Rest beside the near rim, then draw the free hand back while chewing.
+	# The short settling arc avoids a rigid extended arm without moving the plate.
+	var support:Vector3=source+Vector3(-.18+.02*bite,.003+sin(bite*PI)*.007,-.19-.075*bite)*_proportion
+	_reach_hand(pose,"L",support,Vector3(-.25,-.12,-1.0))
+	pose["Head"]=Vector3(.08*(1.0-bite),sin(_action_time*.5)*.025,0)

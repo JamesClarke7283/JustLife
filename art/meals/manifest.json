@@ -1,0 +1,31 @@
+{
+  "original_artwork": true,
+  "source": "art/meals/garden_supper.blend",
+  "generator": "tools/create_meal_props.py",
+  "source_sha256": "dcd1e2b72b24f9c5543d6e06f5e64c1c2de1365427f15868cd15ca9ad42fdf7e",
+  "generator_sha256": "95723dad4a4790e5d7951315be03e6a7b524d7b7dd401788df7b2efab8456f09",
+  "preview": "art/meals/studio/garden_supper_studio.png",
+  "assets": {
+    "meal_serving": {
+      "path": "assets/models/meal_serving.glb",
+      "root": "MealServing",
+      "sha256": "676f5f4f4bd436f8c6c11fb534aa5b3addeb0f3d5b92abad07f171abe71e8e57",
+      "objects": 545,
+      "bytes": 1178648
+    },
+    "meal_plate": {
+      "path": "assets/models/meal_plate.glb",
+      "root": "MealPlate",
+      "sha256": "b4f2e388b690a8af3557e0c9df3432f573728c887ec87e19db4d9db6ac72ce92",
+      "objects": 208,
+      "bytes": 509892
+    },
+    "meal_fork": {
+      "path": "assets/models/meal_fork.glb",
+      "root": "MealFork",
+      "sha256": "e4c39faac5edd35bd27bcb24fe3ad68f2786ad899b3b14d90786b8e72f9705ca",
+      "objects": 9,
+      "bytes": 55664
+    }
+  }
+}

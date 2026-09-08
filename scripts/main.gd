@@ -89,12 +89,14 @@ var build_quote_card:Panel
 var release_probe:RefCounted
 var creator_family_links:Array=[]
 var activity_bubbles:Control
+var meal_flow:LifeMealFlow
 
 func _ready() -> void:
 	DisplayServer.window_set_title("JustLife — make room for your story")
 	world=LifeWorld.new()
 	world.name="World"
 	add_child(world)
+	meal_flow=LifeMealFlow.new();meal_flow.app=self;add_child(meal_flow)
 	household_profiles=[profile]
 	household=LifeHousehold.new()
 	household.name="Household"
@@ -214,6 +216,7 @@ func clear_ui() -> void:
 		ui.remove_child(child)
 		child.queue_free()
 	need_bars.clear();need_values.clear();speed_buttons.clear()
+	household_chips.clear();cancel_action_button=null
 	skill_labels.clear();skill_bars.clear();skill_progress_labels.clear();relationship_labels.clear();career_labels.clear();goal_labels.clear()
 	queue_box=null;time_label=null;funds_label=null;mood_label=null;action_label=null;action_context=null;action_bar=null
 	build_quote=null;build_quote_card=null
@@ -826,6 +829,8 @@ func refresh_hud() -> void:
 	var partner:LifeSim=household.member_sim(str(together.get("partner_id","")))
 	if action_context:
 		action_context.text="WITH "+str(partner.character.name).to_upper() if partner else "TODAY IS YOURS"
+		var meal_company:String=meal_flow.company_label(bound_member_id)
+		if not meal_company.is_empty():action_context.text=meal_company
 		action_context.tooltip_text="Learning with "+str(partner.character.name) if partner else ""
 	if action_label:
 		action_label.text="Enjoying a moment" if action.is_empty() else ((("Waiting for " if waiting_for_target else "Walking to ") if action.phase=="approach" else "")+str(action.label))
@@ -836,6 +841,8 @@ func refresh_hud() -> void:
 			elif bool(together.get("ready",false)):
 				action_label.text="Waiting for "+str(partner.character.name)
 			else:action_label.text="Meeting at the desk"
+		var meal_title:String=meal_flow.action_title(action)
+		if not meal_title.is_empty():action_label.text=meal_title
 		action_label.tooltip_text=action_label.text+(" · With "+str(partner.character.name)+". Canceling ends the activity for both Lifelets." if partner else "")
 		action_label.mouse_filter=Control.MOUSE_FILTER_PASS
 		action_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -1068,6 +1075,8 @@ func undo_build() -> void:
 func on_object_clicked(item:Dictionary,screen:Vector2) -> void:
 	selected_item=item
 	if mode=="build":
+		if bool(item.get("transient_food",false)):
+			close_overlay();show_notice("Food and dishes can be handled in Live mode.");return
 		if not LifeCatalog.ITEMS.has(str(item.kind)):
 			show_notice("Lifelets can be visited in Live mode.");return
 		show_build_object(item,screen);return
@@ -1111,6 +1120,7 @@ func dismiss_layer() -> void:
 func show_interactions(item:Dictionary,screen:Vector2) -> void:
 	close_overlay();overlay_open=true;dismiss_layer()
 	var actions:Array=sim.get_actions_for(str(item.kind),str(item.id))
+	if str(item.kind)=="meal":actions.append({"id":"call_to_meal","label":"Call everyone to eat","cost":0,"duration":0,"available":true,"description":"Invite available hungry household members. Busy Lifelets keep their plans."})
 	if str(item.kind) in ["desk","computer"] and str(sim.character.age_stage) in ["child","teen"]:
 		var availability:Dictionary=sim.get_action_availability("homework",str(item.id))
 		var reason:String=str(availability.reason)
@@ -1139,7 +1149,10 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 		b.disabled=not bool(a.available)
 		b.pressed.connect(func():
 			play_click()
-			if str(a.id)=="supported_homework":show_homework_helpers(item)
+			if str(a.id)=="choose_leftovers":meal_flow.show_leftovers(str(item.id))
+			elif str(a.id)=="call_to_meal":
+				var joined:int=meal_flow.call_to_meal(str(item.id));close_overlay();show_notice("%d Lifelets are coming to eat." % joined)
+			elif str(a.id)=="supported_homework":show_homework_helpers(item)
 			else:queue_interaction(item,a.id);close_overlay())
 		column.add_child(b)
 	if actions.is_empty():paragraph("A little detail that makes this place home.",pos+Vector2(18,80),Vector2(304,55),13,P.MUTED,overlay)
@@ -1186,7 +1199,9 @@ func _queue_supported_homework(furniture_id:String,helper_id:String) -> void:
 	show_notice("Meet at the desk. Your homework begins when you are both ready.")
 
 func show_build_object(item:Dictionary,screen:Vector2) -> void:
-	close_overlay();overlay_open=true;dismiss_layer()
+	close_overlay()
+	if bool(item.get("transient_food",false)) or not LifeCatalog.ITEMS.has(str(item.get("kind",""))):return
+	overlay_open=true;dismiss_layer()
 	var p=Vector2(clampf(screen.x-140,300,1100),clampf(screen.y-70,99,440))
 	card(p,Vector2(290,176),P.WHITE,17,overlay)
 	text_label(item.label,p+Vector2(18,14),Vector2(261,38),22,P.INK,true,overlay)
@@ -1195,9 +1210,9 @@ func show_build_object(item:Dictionary,screen:Vector2) -> void:
 
 func sell_item(item:Dictionary) -> void:
 	if mode!="build":return
-	cancel_placement()
 	var existing:Dictionary=_find_item(str(item.get("id","")))
-	if existing.is_empty():return
+	if existing.is_empty() or bool(existing.get("transient_food",false)) or not LifeCatalog.ITEMS.has(str(existing.get("kind",""))):return
+	cancel_placement()
 	var credit:int=int(LifeCatalog.ITEMS[existing.kind].price*.7)
 	build_undo.append(_build_snapshot(-credit))
 	_cancel_all_cooperative_actions()
@@ -1207,7 +1222,7 @@ func sell_item(item:Dictionary) -> void:
 	refresh_hud()
 
 func move_item(item:Dictionary) -> void:
-	if mode!="build":return
+	if mode!="build" or bool(item.get("transient_food",false)) or not LifeCatalog.ITEMS.has(str(item.get("kind",""))):return
 	cancel_placement()
 	var snapshot:Dictionary=_build_snapshot()
 	var original:Dictionary={}
@@ -1243,6 +1258,7 @@ func _find_item(id:String) -> Dictionary:
 
 func _refresh_sim_targets(replan:bool=true) -> void:
 	if not is_instance_valid(household) or household.members.is_empty():return
+	meal_flow.sync_world()
 	_store_motion()
 	var prior:String=bound_member_id
 	household.register_targets(world.simulation_targets())
@@ -1254,6 +1270,7 @@ func _refresh_sim_targets(replan:bool=true) -> void:
 
 func _refresh_member_targets(replan:bool=true) -> void:
 	if not is_instance_valid(sim) or not is_instance_valid(world.house):return
+	sim.meal_service=meal_flow
 	if sim.is_away():
 		if str(sim.get_away_state().get("phase",""))=="returning":away_phases.erase(bound_member_id)
 		return
@@ -1266,6 +1283,7 @@ func _refresh_member_targets(replan:bool=true) -> void:
 		var action:Dictionary=sim.action_queue[index]
 		var target_id:String=str(action.target_id)
 		if not pending_move.is_empty() and target_id==str(pending_move.entry.id):continue
+		if not pending_move.is_empty() and str(action.id)=="eat_meal" and str(household.meals.portion(str(action.get("meal_plate",""))).get("host",""))==str(pending_move.entry.id):continue
 		if not by_id.has(target_id):
 			sim.cancel_action(index)
 			continue
@@ -1277,6 +1295,7 @@ func _refresh_member_targets(replan:bool=true) -> void:
 				household.cancel_cooperative_action(bound_member_id)
 				continue
 		if str(action.phase)=="active" and destination.distance_to(action.target_position)>.05:
+			if str(action.id)=="eat_meal":meal_flow.carry_diner_plate(action)
 			action.phase="approach"
 		action.target_position=destination
 	reconciling_targets=false
@@ -1348,6 +1367,7 @@ func _bind_member(id:String) -> void:
 	if not member:return
 	bound_member_id=id
 	sim=member
+	sim.meal_service=meal_flow
 	player=world.actors.get(id)
 	var motion:Dictionary=motion_states.get(id,_empty_motion())
 	path=motion.path;path_index=motion.index;walk_only=motion.walk;pending_action=motion.pending
@@ -1407,6 +1427,7 @@ func on_action_started(action:Dictionary) -> void:
 	if str(action.id) in LifeSim.SOCIAL_ACTIONS and world.actors.get(str(action.target_id)) is LifeActor:
 		world.actors[str(action.target_id)].clear_speech()
 	_resolve_activity_target(action)
+	meal_flow.resolve(sim,action)
 	pending_action=action
 	if not pending_move.is_empty() and str(action.target_id)==str(pending_move.entry.id):return
 	path=world.path_to(player.position,action.target_position)
@@ -1427,7 +1448,7 @@ func _cancel_blocked_action(generation:int,action:Dictionary,member_id:String=""
 
 func on_action_finished(action:Dictionary) -> void:
 	if is_instance_valid(player):
-		player.speech({"school_day":"Learned something new today.","career_day":"Home after a busy day.","cook":"Delicious!","read":"One more chapter…","paint":"Made something lovely.","friendly":"Good to talk with you!","joke":"Ha!","deep_talk":"I understand.","water":"Looking greener.","work":"All done!","homework":"Ready for tomorrow.","help_homework":"We worked it out."}.get(action.id,"That feels better."))
+		player.speech({"school_day":"Learned something new today.","career_day":"Home after a busy day.","cook":"Ready to serve.","serve_meal":"Come and get it!","eat_meal":"That was lovely.","store_meal":"Something for later.","clean_plate":"All clean.","read":"One more chapter…","paint":"Made something lovely.","friendly":"Good to talk with you!","joke":"Ha!","deep_talk":"I understand.","water":"Looking greener.","work":"All done!","homework":"Ready for tomorrow.","help_homework":"We worked it out."}.get(action.id,"That feels better."))
 	refresh_hud()
 
 func show_notice(message:String) -> void:
@@ -1716,6 +1737,7 @@ func _process(delta:float) -> void:
 		return
 	if mode not in ["live","build"]:return
 	if mode=="live":
+		meal_flow.sync_world()
 		_store_motion()
 		var selected_id:String=household.selected_id()
 		var autonomy_values:Dictionary={}
@@ -1736,9 +1758,11 @@ func _process(delta:float) -> void:
 			if not str(action.get("cooperation_id","")).is_empty() and action_id.is_empty():
 				var shared:Dictionary=household.cooperative_presentation(bound_member_id)
 				if bool(shared.get("ready",false)) and str(shared.get("role",""))=="learner":action_id="homework_wait"
+			meal_flow.present_actor(bound_member_id)
 			_update_activity_facing(delta,action,action_id)
 			player.animate(delta,float(sim.speed),moving,action_id)
 			_store_motion()
+		meal_flow.sync_world()
 		_bind_member(selected_id)
 		if away_targets_changed:_refresh_sim_targets(false)
 		for id:String in ["maya","leo"]:
@@ -1924,6 +1948,10 @@ func _has_placement_tool() -> bool:
 func _update_activity_facing(delta:float,action:Dictionary,action_id:String) -> void:
 	if player.has_method("clear_activity_anchor"):player.clear_activity_anchor()
 	if action_id.is_empty():return
+	if action_id=="eat_meal":
+		var meal_anchor:Dictionary=meal_flow.eating_anchor(bound_member_id,action)
+		player.set_activity_anchor(meal_anchor.position,meal_anchor.yaw,meal_anchor.kind,action_id,meal_anchor)
+		return
 	var item:Dictionary=_find_item(str(action.target_id))
 	if not item.is_empty():
 		var attention:Variant=null

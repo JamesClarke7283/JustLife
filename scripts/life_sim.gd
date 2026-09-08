@@ -5,6 +5,7 @@ class_name LifeSim
 signal changed()
 signal action_started(action: Dictionary)
 signal action_finished(action: Dictionary)
+var meal_service: Node
 signal notice(text: String)
 signal age_changed(previous: String, current: String)
 signal away_changed(state: Dictionary)
@@ -154,8 +155,13 @@ func _build_actions() -> void:
 	_define("school", "Attend online classes", 180.0, {}, 0, "", 0.0, "Weekday lessons at your desk, 08:00–14:00. Prepared homework improves learning and grades.")
 	_define("homework", "Do homework", 45.0, {}, 0, "", 0.0, "Complete a weekday assignment and prepare for the next attended class.")
 	_define("birthday", "Celebrate a birthday", 45.0, {"fun":30.0,"social":20.0}, 30, "", 0.0, "Celebrate the next chapter of your life. Advances this Lifelet to the next age stage.")
+	_define("serve_meal","Serve the meal",2.0,{},0,"",0.0,"Carry the serving dish to a table or counter.")
+	_define("eat_meal","Take a serving",32.0,{},0,"",0.0,"Collect a plate and eat at an available dining chair.")
+	_define("store_meal","Put away leftovers",5.0,{},0,"",0.0,"Carry the remaining servings to the fridge to keep them fresh longer.")
+	_define("discard_meal","Clear this meal",5.0,{},0,"",0.0,"Carry the serving dish to the sink and discard its remaining food.")
+	_define("clean_plate","Wash this plate",10.0,{"hygiene":-1.0},0,"",0.0,"Carry the used plate to a sink and wash it.")
 	_define("snack", "Grab a snack", 15.0, {"hunger": 32.0}, 8, "", 0.0, "A quick bite to keep the day going.")
-	_define("cook", "Cook a fresh meal", 45.0, {"hunger": 70.0, "fun": 8.0, "hygiene": -5.0}, 25, "cooking", 34.0, "Make a wholesome meal and build Cooking skill.")
+	_define("cook", "Cook a fresh meal", 45.0, {"fun": 8.0, "hygiene": -5.0}, 25, "cooking", 34.0, "Prepare four servings, then carry the dish to a table. Eating restores hunger.")
 	_define("sleep", "Sleep", 360.0, {"energy": 95.0}, 0, "", 0.0, "A full night's rest restores energy.")
 	_define("nap", "Take a nap", 75.0, {"energy": 38.0}, 0, "", 0.0, "A short, refreshing nap.")
 	_define("shower", "Take a shower", 30.0, {"hygiene": 85.0, "fun": 4.0}, 0, "", 0.0, "Freshen up and feel ready for the day.")
@@ -183,6 +189,7 @@ func _define(id: String, label: String, duration: float, changes: Dictionary, co
 
 
 func get_actions_for(kind: String, target_id: String = "") -> Array:
+	if is_instance_valid(meal_service) and kind in ["meal","plate"]:return meal_service.actions_for(self,kind,target_id)
 	var ids: Array = []
 	match kind:
 		"lot_exit": ids = ["school_day"] if str(character.age_stage) in LifeEducation.SCHOOL_STAGES else (["career_day"] if str(character.life_stage)=="adult" else [])
@@ -209,6 +216,8 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		data["available"] = availability.available
 		data["unavailable_reason"] = availability.reason
 		result.append(data)
+	if kind=="fridge" and is_instance_valid(meal_service):
+		result.append({"id":"choose_leftovers","label":"Choose leftovers…","available":true,"cost":0,"duration":0,"description":"See the food stored in this fridge."})
 	return result
 
 
@@ -374,7 +383,7 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 	if id in ["job","career_day"] and int(career["worked_day"]) == day:
 		_emit_notice("Today's shift is complete. You can work again tomorrow.")
 		return false
-	if id in SOCIAL_ACTIONS or id in ["birthday", "job", "work", "cook", "school", "homework"]:
+	if id in SOCIAL_ACTIONS or id in ["birthday", "job", "work", "cook", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal"]:
 		var availability: Dictionary = get_action_availability(id, target_id)
 		if not bool(availability.available):
 			_emit_notice(str(availability.reason))
@@ -415,6 +424,7 @@ func begin_current_action() -> void:
 	if action.has("cooperation_id"):
 		if is_instance_valid(cooperation_owner): cooperation_owner.mark_cooperative_ready(cooperation_member_id)
 		return
+	if is_instance_valid(meal_service) and not meal_service.before_begin(self,action):return
 	var cost: int = int(action["cost"])
 	if str(action.id) == "birthday" and str(action.get("birthday_from_stage","")) != str(character.age_stage):
 		_emit_notice("This birthday has already arrived. Choose a new celebration for the next stage.")
@@ -465,6 +475,7 @@ func cancel_action(index: int = 0) -> void:
 	if action_queue[index].has("cooperation_id") and is_instance_valid(cooperation_owner):
 		cooperation_owner.cancel_cooperative_action(cooperation_member_id)
 		return
+	if is_instance_valid(meal_service):meal_service.canceled(self,action_queue[index])
 	action_queue.remove_at(index)
 	if index == 0:
 		_start_front()
@@ -544,6 +555,9 @@ func _step(game_minutes: float) -> void:
 		action["elapsed"] = float(action["elapsed"]) + actual_step
 		action["progress"] = clampf(float(action["elapsed"]) / float(action["duration"]), 0.0, 1.0)
 		_apply_continuous_effects(action, actual_step / float(action["duration"]))
+		# A meal can expire and cancel during its effects callback. Never finish
+		# a replacement action using the removed action’s progress.
+		if action_queue.is_empty() or not is_same(action_queue[0],action):return
 		if float(action["progress"]) >= 1.0:
 			_finish_front()
 	elif action_queue.is_empty():
@@ -555,6 +569,7 @@ func _step(game_minutes: float) -> void:
 
 
 func _apply_continuous_effects(action: Dictionary, fraction: float) -> void:
+	if str(action.id)=="eat_meal" and is_instance_valid(meal_service):meal_service.consume(self,action,fraction*float(action.duration))
 	var changes: Dictionary = action["changes"]
 	for need_name: String in changes:
 		var amount: float = float(changes[need_name]) * fraction
@@ -655,6 +670,7 @@ func _finish_front() -> void:
 		elif str(want["id"]) == "earn" and id in ["work", "job", "paint"]:
 			want["progress"] = float(want["progress"]) + 1.0
 	action["phase"] = "finished"
+	if is_instance_valid(meal_service):meal_service.finished(self,action)
 	_emit_action_finished(action)
 	_idle_minutes = 0.0
 	_update_wants()
@@ -699,6 +715,9 @@ func _social_target(target_id: String) -> String:
 
 func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 	var reason: String = ""
+	if is_instance_valid(meal_service) and id in ["cook","eat_meal","store_meal","clean_plate","discard_meal"]:
+		reason=meal_service.action_availability(self,id,target_id)
+		if not reason.is_empty():return {"available":false,"reason":reason}
 	if not _actions.has(id):
 		return {"available":false, "reason":"That activity is unavailable."}
 	if id=="career_day":
@@ -1172,7 +1191,7 @@ func _autonomy_need_choice(need:String,excluded_target_ids:Array=[],preparing:bo
 	if need=="social":return _autonomy_social_choice(excluded_target_ids)
 	var candidates:Array[String]=[]
 	match need:
-		"hunger":candidates=["snack","cook"]
+		"hunger":candidates=["eat_meal","snack","cook"]
 		"energy":
 			if preparing or (LifeEducation.weekday(day) and minutes>=240.0 and minutes<=960.0):candidates=["nap","sleep"]
 			else:candidates=["sleep","nap"]
@@ -1215,6 +1234,14 @@ func _autonomous_choice(excluded_target_ids:Array=[]) -> Dictionary:
 		if not choice.is_empty():return choice
 	return {}
 
+func _autonomy_eating_owned_portion(action: Dictionary) -> bool:
+	# Eating restores hunger through the food ledger, not action.changes.
+	# Protect only a real, fresh, unfinished portion already owned by this diner.
+	if str(action.get("id",""))!="eat_meal" or str(action.get("meal_stage",""))!="eat" or not is_instance_valid(meal_service):return false
+	if float(action.get("duration",0.0))<=0.0 or float(action.duration)>90.0:return false
+	var plate: Dictionary=meal_service.food().portion(str(action.get("meal_plate","")))
+	return not plate.is_empty() and str(plate.owner)==meal_service.member_id(self) and float(plate.progress)>=0.0 and float(plate.progress)<1.0 and _autonomy_now()<float(plate.expires)
+
 func _reconsider_active_autonomy() -> void:
 	if is_away(): return
 	if not autonomy or action_queue.is_empty():return
@@ -1226,6 +1253,7 @@ func _reconsider_active_autonomy() -> void:
 	# A short recovery must get a useful turn when several needs are critical.
 	# Otherwise minute-by-minute replanning can repeatedly buy and abandon food.
 	if str(current.phase)=="active":
+		if _autonomy_eating_owned_portion(current):return
 		if str(current.id) in ["nap","snack","shower","toilet"] and float(current.duration)<=90.0:return
 		for need:String in NEED_NAMES:
 			if float(current.changes.get(need,0.0))>0.0 and float(needs[need])<35.0:
@@ -1736,7 +1764,7 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 		action["started_day"] = int(stored.get("started_day", day))
 		if stored.has("started_minutes"): action["started_minutes"] = float(stored.started_minutes)
 		if stored.has("target_kind"): action["target_kind"] = str(stored.target_kind)
-		for key: String in ["cooperation_id","cooperation_role"]:
+		for key: String in ["cooperation_id","cooperation_role","meal_source","meal_stage","meal_plate","meal_seat"]:
 			if stored.has(key): action[key] = str(stored[key])
 		if str(action.id) == "birthday": action["birthday_from_stage"] = str(stored.get("birthday_from_stage",character.age_stage))
 		if str(action.id) in ["school_day","career_day"] and is_away():
