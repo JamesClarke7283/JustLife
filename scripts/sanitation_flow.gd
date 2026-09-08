@@ -19,6 +19,7 @@ func accident(sim:LifeSim)->bool:
 	at.y=.16+3.0*level
 	app.household.sanitation.add(id,app.current_venue,at,level,(sim.day-1)*1440.0+sim.minutes)
 	actor.speech("Oh no… I couldn't hold on.")
+	actor.react_to_accident()
 	return true
 func action_availability(sim:LifeSim,id:String,target:String)->String:
 	if not app.household.meals.carried_by(member_id(sim)).is_empty():return "Put down the food you are carrying first."

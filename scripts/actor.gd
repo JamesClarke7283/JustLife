@@ -49,6 +49,9 @@ var _arm_rest: Dictionary = {}
 var _leg_rest: Dictionary = {}
 var _motion_action: String = ""
 var _action_time: float = 0.0
+# Short presentation event; never an action, route or saved simulation timer.
+var _accident_time: float = -1.0
+var _accident_visible: bool = false
 var _cook_weight: float = 0.0
 var _snack_weight: float = 0.0
 var _time: float = 0.0
@@ -191,6 +194,8 @@ func configure(new_profile: Dictionary) -> void:
 	_snack_weight = 0.0
 	_motion_action = ""
 	_action_time = 0.0
+	_accident_time = -1.0
+	_accident_visible = false
 	_arm_rest.clear()
 	_leg_rest.clear()
 	_smile = 0.0
@@ -852,6 +857,16 @@ func reconstruct_cooking_pose() -> void:
 	animate(0.0,0.0,false,action)
 	_reconstructing_cooking=false
 
+func react_to_accident() -> void:
+	# Animation ownership is checked on the next real Live pose update. An
+	# occupied actor loses this brief gesture rather than playing it much later.
+	_accident_time = 0.0
+
+
+func _can_react_to_accident(moving:bool,action_id:String) -> bool:
+	return not moving and action_id.is_empty() and not bool(meal_presentation.get("carrying",false)) and cooking_presentation.is_empty() and _cook_weight<.01 and _snack_weight<.01 and _birthday_weight<.01 and _seasoning_weight<.01
+
+
 func animate(delta: float, speed_factor: float, moving: bool, action_id: String) -> void:
 	if _model == null or (delta <= 0.0 and not _reconstructing_cooking):
 		return
@@ -867,6 +882,14 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 			_motion_action = motion_action
 			_action_time = 0.0
 		_action_time += animation_delta
+	_accident_visible = false
+	if not _reconstructing_cooking and _accident_time >= 0.0:
+		if not _can_react_to_accident(moving,action_id):
+			_accident_time = -1.0
+		else:
+			_accident_time += animation_delta
+			_accident_visible = _accident_time < 2.0
+			if not _accident_visible:_accident_time = -1.0
 	if not moving and action_id=="cook":
 		_presented_cooking_recipe=_cooking_recipe()
 		_ensure_cooking_recipe_props()
@@ -992,21 +1015,19 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 				if anchor_kind=="seat":_seated_pose(pose)
 				_meal_eating_pose(pose)
 			"plant_wee":
-				# Fully clothed, discreet emergency posture; no anatomy or stream.
-				pose["Head"]=Vector3(.18,-.20,.025)
-				pose["Arm_L"]=Vector3(-.08,0,.12);pose["Arm_R"]=Vector3(-.08,0,-.12)
-				pose["Forearm_L"]=Vector3(-.40,0,.08);pose["Forearm_R"]=Vector3(-.40,0,-.08)
-				lean.x=.035
+				# A quick privacy glance, braced knees and an exhale. Hands stay
+				# over clothing at the upper waist; there is no anatomy or stream.
+				var brace:float=_pot_brace()
+				var release:float=smoothstep(.80,1.35,_action_time)
+				var glance:float=sin(clampf(_action_time/.65,0,1)*TAU)*.36*(1.0-release)
+				pose["Head"]=Vector3(.07+.17*brace-.10*release,glance,-.025*brace)
+				lean.x=.045+.07*brace-.035*release
+				var waist:float=_hip_height+.23*_proportion
+				_reach_hand(pose,"L",Vector3(-.16*_proportion,waist,.245*_proportion),Vector3(-.45,-1.0,-.2))
+				_reach_hand(pose,"R",Vector3(.21*_proportion,waist-.055*_proportion,.24*_proportion),Vector3(.45,-1.0,-.2))
 			"mop_puddle":
-				var mop_scale:float=clampf(_proportion,.72,1.10)
-				var orientation:Basis=Basis(Vector3.UP,float(_activity_anchor.get("yaw",rotation.y)))
-				var origin:Vector3=_activity_anchor.get("position",global_position)
-				var sweep:float=sin(_action_time*2.4)*.10
-				_mop.global_transform=Transform3D(orientation.scaled(Vector3.ONE*mop_scale),origin+orientation*Vector3(.035,0,.68+sweep))
-				_mop.visible=true
-				_reach_hand(pose,"L",_model.to_local(_mop.to_global(Vector3(0,.96,-.287))),Vector3(-.55,-.65,-.20))
-				_reach_hand(pose,"R",_model.to_local(_mop.to_global(Vector3(0,.68,-.198))),Vector3(.55,-.65,-.20))
-				pose["Head"]=Vector3(.26,0,.02)
+				# Lean from supported hips to reach the unchanged low shaft grip.
+				lean.x=.75
 			"clean_plate":
 				pose["Arm_L"]=Vector3(-.5,0,.16);pose["Forearm_L"]=Vector3(-.8,0,0)
 				pose["Arm_R"]=Vector3(-.5+sin(_action_time*4.0)*.08,0,-.16);pose["Forearm_R"]=Vector3(-.8,0,0)
@@ -1051,6 +1072,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 			"friendly", "joke", "deep_talk", "flirt", "argue", "ask_partner", "commit", "break_up":
 				var gesture_aliases: Dictionary = {"ask_partner":"deep_talk", "commit":"flirt", "break_up":"deep_talk"}
 				_conversation_pose(pose, str(gesture_aliases.get(action_id, action_id)), t)
+	if _accident_visible:_accident_pose(pose)
 	if bool(meal_presentation.get("carrying",false)):
 		# Props keep their authored metre scale across ages. Solve the hands from
 		# the actual held transform so smaller Lifelets reach the same ceramic.
@@ -1090,29 +1112,40 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 				var shoulders:Vector3=(Vector3(_arm_rest.L.shoulder)+Vector3(_arm_rest.R.shoulder))*.5*visual.scale
 				var shoulder_height:float=(world_origin+world_orientation*shoulders).y
 				world_origin.y+=maxf(0,rack.global_position.y+.19-shoulder_height)*bend*LifeOvenSequence.transfer_height(_cooking_progress())
+		if action_id=="plant_wee":
+			var upright:Basis=Basis(Vector3.UP,float(_activity_anchor.yaw))
+			var hips:Vector3=Vector3(0,_hip_height*_height,0)
+			world_origin=_activity_anchor.position+upright*(hips+Vector3(0,-.065*_height*_proportion,0)*_pot_brace())-world_orientation*hips
+		if action_id=="mop_puddle":
+			var upright:Basis=Basis(Vector3.UP,float(_activity_anchor.yaw))
+			var hips:Vector3=Vector3(0,_hip_height*_height,0)
+			world_origin=_activity_anchor.position+upright*(hips+Vector3(0,-.09*_height*_proportion,.04+.50*(1.0-_proportion)))-world_orientation*hips
 		offset = to_local(world_origin) + interaction_offset
 		lean = (global_basis.orthonormalized().inverse() * world_orientation).get_euler()
-	visual.position = visual.position.lerp(offset, blend)
-	visual.rotation = _angle_lerp(visual.rotation, lean, blend)
+	var body_blend:float=1.0 if anchored and action_id=="mop_puddle" else blend
+	visual.position = visual.position.lerp(offset, body_blend)
+	visual.rotation = _angle_lerp(visual.rotation, lean, body_blend)
 	_update_visual_followers(anchored,action_id)
 	if not moving and action_id=="cook" and _has_oven():
 		_oven_cooking_pose(pose)
 		_oven_leg_pose(pose)
+	if anchored and action_id in ["plant_wee","mop_puddle"]:_sanitation_leg_pose(pose)
+	if anchored and action_id=="mop_puddle":_mopping_pose(pose)
 	for joint_name: String in _joints:
 		var joint: Node3D = _joints[joint_name]
 		var goal_rotation: Vector3 = _rest_rotations[joint_name] + pose[joint_name]
-		var joint_blend:float=1.0 if action_id=="cook" and _has_oven() and joint_name!="Head" else blend
+		var joint_blend:float=1.0 if (action_id=="cook" and _has_oven() and joint_name!="Head") or (anchored and action_id=="plant_wee" and (joint_name.begins_with("Leg_") or joint_name.begins_with("Shin_"))) or (anchored and action_id=="mop_puddle" and joint_name!="Head") else blend
 		joint.quaternion = joint.quaternion.slerp(Quaternion.from_euler(goal_rotation),joint_blend)
 	for entry: Dictionary in _rig_bones:
 		var skeleton: Skeleton3D = entry.skeleton
 		var bone_index: int = int(entry.index)
 		var rest: Quaternion = entry.rest
 		var target_rotation: Quaternion = rest.inverse() * Quaternion.from_euler(pose[entry.name]) * rest
-		var joint_blend:float=1.0 if action_id=="cook" and _has_oven() and entry.name!="Head" else blend
+		var joint_blend:float=1.0 if (action_id=="cook" and _has_oven() and entry.name!="Head") or (anchored and action_id=="plant_wee" and (str(entry.name).begins_with("Leg_") or str(entry.name).begins_with("Shin_"))) or (anchored and action_id=="mop_puddle" and entry.name!="Head") else blend
 		skeleton.set_bone_pose_rotation(bone_index,skeleton.get_bone_pose_rotation(bone_index).slerp(target_rotation,joint_blend))
 	for rest:Dictionary in _leg_rest.values():
 		var shoe:Node3D=rest.shoe
-		if not moving and action_id=="cook" and _has_oven():shoe.global_basis=Basis(Vector3.UP,float(_activity_anchor.yaw))*Basis(rest.shoe_basis)
+		if not moving and ((action_id=="cook" and _has_oven()) or (anchored and action_id in ["plant_wee","mop_puddle"])):shoe.global_basis=Basis(Vector3.UP,float(_activity_anchor.yaw))*Basis(rest.shoe_basis)
 		else:shoe.basis=Basis.IDENTITY
 	var seated: bool = not moving and ((action_id in ["relax", "watch", "toilet", "work", "study", "job", "school", "homework", "homework_wait", "eat_meal"] and anchor_kind != "standing") or (action_id in ["sleep", "nap"] and anchor_kind == "seat"))
 	_sit_amount = lerpf(_sit_amount, 1.0 if seated else 0.0, blend)
@@ -1120,6 +1153,62 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		entry.mesh.set_blend_shape_value(int(entry.index), _sit_amount)
 	if not _reconstructing_cooking:_update_expression(animation_delta,action_id,blend)
 	_update_held_props(animation_delta,moving,action_id)
+
+
+func _mopping_pose(pose:Dictionary) -> void:
+	# Solve after anchored body transforms, so contacts use the rendered pose.
+	var mop_scale:float=clampf(_proportion,.72,1.10)
+	var orientation:Basis=Basis(Vector3.UP,float(_activity_anchor.get("yaw",rotation.y)))
+	var origin:Vector3=_activity_anchor.get("position",global_position)
+	var sweep:float=sin(_action_time*2.4)*.10
+	_mop.global_transform=Transform3D(orientation.scaled(Vector3.ONE*mop_scale),origin+orientation*Vector3(.035,0,.68+sweep))
+	_mop.visible=true
+	_reach_hand(pose,"L",_model.to_local(_mop.to_global(Vector3(0,.96,-.287))),Vector3(-.55,-.65,-.20))
+	_reach_hand(pose,"R",_model.to_local(_mop.to_global(Vector3(0,.68,-.198))),Vector3(.55,-.65,-.20))
+	pose["Head"]=Vector3(.18,0,.02)
+
+
+func _pot_brace() -> float:
+	return smoothstep(0.0,.25,_action_time)*(1.0-.65*smoothstep(.80,1.35,_action_time))
+
+
+func _accident_pose(pose:Dictionary) -> void:
+	var t:float=_accident_time
+	var notice:float=smoothstep(0.0,.18,t)*(1.0-smoothstep(1.25,1.9,t))
+	var cover:float=smoothstep(.20,.65,t)*(1.0-smoothstep(1.05,1.65,t))
+	pose["Head"]=Vector3(.34*notice,-.16*cover,.055*cover)
+	var hand:Vector3=Vector3(.24*_proportion,_hip_height+.18*_proportion,.24*_proportion)
+	var forehead:Vector3=_model.to_local(_joints.Head.global_position)+Vector3(.145,.10,.16)*_proportion
+	var relaxed_arm:Quaternion=Quaternion.from_euler(pose.Arm_R)
+	var relaxed_forearm:Quaternion=Quaternion.from_euler(pose.Forearm_R)
+	_reach_hand(pose,"R",hand.lerp(forehead,cover),Vector3(.45,-.9,.05))
+	pose.Arm_R=relaxed_arm.slerp(Quaternion.from_euler(pose.Arm_R),notice).get_euler()
+	pose.Forearm_R=relaxed_forearm.slerp(Quaternion.from_euler(pose.Forearm_R),notice).get_euler()
+	pose["Arm_L"]=Vector3(-.06*notice,0,-.08*notice)
+	pose["Forearm_L"]=Vector3(-.20*notice,0,0)
+
+
+func _sanitation_leg_pose(pose:Dictionary)->void:
+	# Keep the original ankle contacts as the sanitation pose moves the hips.
+	# This changes rendered joints only; the controller owns the actor root.
+	var orientation:Basis=Basis(Vector3.UP,float(_activity_anchor.yaw))
+	for side:String in _leg_rest:
+		var rest:Dictionary=_leg_rest[side]
+		var target:Vector3=_activity_anchor.position+orientation*(Vector3(rest.foot)*visual.scale)
+		var local:Vector3=Transform3D(rest.space).affine_inverse()*_model.to_local(target)
+		var upper:Vector3=rest.upper;var lower:Vector3=rest.lower
+		var reach:Vector3=local-Vector3(rest.hip)
+		var distance:float=clampf(reach.length(),absf(upper.length()-lower.length())+.005,upper.length()+lower.length()-.005)
+		var forward:Vector3=reach.normalized()
+		var pole:Vector3=Transform3D(rest.space).basis.inverse()*_model.global_basis.inverse()*(orientation*Vector3(0,.2,1))
+		var bend:Vector3=(pole-forward*pole.dot(forward)).normalized()
+		var along:float=(upper.length_squared()-lower.length_squared()+distance*distance)/(2*distance)
+		var away:float=sqrt(maxf(0,upper.length_squared()-along*along))
+		var upper_goal:Vector3=forward*along+bend*away
+		var lower_goal:Vector3=forward*distance-upper_goal
+		var thigh:Quaternion=Quaternion(upper.normalized(),upper_goal.normalized())
+		pose["Leg_"+side]=thigh.get_euler()
+		pose["Shin_"+side]=Quaternion(lower.normalized(),thigh.inverse()*lower_goal.normalized()).get_euler()
 
 
 func _coaching_attention_weight() -> float:
@@ -1168,9 +1257,9 @@ func _update_expression(delta: float,action_id: String,blend: float) -> void:
 		target_smile = 0.55 if action_id == "joke" else 0.34
 	elif action_id == "birthday":
 		target_smile = .12 if _action_time > 1.7 and _action_time < 3.2 else .55
-	elif action_id in ["argue","sleep","nap","break_up"]:
+	elif action_id in ["argue","sleep","nap","break_up","plant_wee"] or _accident_visible:
 		target_smile = 0.0
-	if _voice != null and _voice.playing:
+	if _voice != null and _voice.playing and action_id!="plant_wee" and not _accident_visible:
 		target_smile += (0.5 + 0.5 * sin(_time * 12.0)) * 0.10
 	_smile = lerpf(_smile,target_smile,blend)
 	for entry: Dictionary in _smile_shapes:

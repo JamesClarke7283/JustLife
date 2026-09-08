@@ -1,0 +1,15 @@
+# Original mop contacts
+
+The released lower shaft grip could sit about 0.337 m beyond the Lifelet's hand in normal cleanup. The repair keeps the original mop mesh, shaft points and floor placement, and fits the character's pose to those points. A forward bend from supported hips and a small knee flex bring the low grip into reach. Smaller bodies shift the hips farther forward. The character root and route remain controller-owned.
+
+The hand solver now runs in `_mopping_pose` after the anchored visual transform. Both hands use the actual model transform and current grip shape. Mop body, arm and leg joints evaluate directly so visible cleanup does not drag the held prop through a stale pose. The shared `_sanitation_leg_pose` keeps the original ankle destinations; its pot-use math is unchanged apart from the generalized name. Existing cooking and accident gesture ownership remain intact.
+
+`tests/run_mop_reach.py` makes an isolated project with separate XDG and JustLife data folders before starting Godot. Run it with a repository-private `TMPDIR`; `--capture` opens a temporary game window. It tests actual walking, an actual accident, real queued cleanup, both shaft contacts, both ankle contacts and pause over fourteen production frame/age/body-size combinations. The original geometry limits remain 25 mm for hands and 12 mm for ankles. The controller's single final walking frame is checked separately: it still hides the unheld mop, and the next frame must visibly hold it. The entire subsequent held phase is measured.
+
+The gameplay test's short teardown timer runs after the scene is freed, allowing pending engine/audio cleanup to settle before exit. It changes no assertion or simulation step. Historical two-ObjectDB warnings are retained in the development evidence; a passing assertion count with an engine warning is not a qualified runner pass.
+
+This current-main repair does not include the separate staged two-floor sanitation work. When combining them, preserve `reconstruct_sanitation_pose`, its zero-time clock guards, and the V2 helper's explicit `mop_contact` floor origin. Layer the supported-body and post-transform hand math into the same `_mopping_pose` helper rather than overwriting that origin. Run the V2 paused-load and upper-floor contact controls after integration.
+
+The actor assumes the supported cleanup pose immediately after the last approach frame; the entry remains brisk. The tests verify grip positions, not a full physical simulation of finger contact or a full-game quality rating.
+
+The independent review accepted this bounded repair at 8.5/10 for function and 7/10 visually. The initial producer test sampled only 65 updates; its historical claim of full-duration coverage was too broad. The maintained extension now measures all 80 held frames through completion, pauses during the held midpoint and verifies final puddle and prop removal. It passes 112 assertions over fourteen body configurations without engine errors or warnings. Maximum hand and ankle errors are 14.49 mm and 4.82 mm. See `REVIEWS/iteration_19_sanitation_acting.md` for exact frozen evidence and the separate V2 integration boundary.
