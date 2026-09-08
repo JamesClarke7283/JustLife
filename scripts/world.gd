@@ -201,14 +201,34 @@ func wall(p: Vector3, dimensions: Vector3, color: String, adjustable: bool) -> v
 
 func window_panel(p: Vector3, side: bool) -> void:
 	var root=Node3D.new()
+	root.name="Window"
 	house.add_child(root)
 	root.position=p
 	root.set_meta("wall_decoration",true)
+	root.set_meta("window_aperture",Rect2(-.878,-.692,1.756,1.384))
+	root.set_meta("window_frame_bounds",Rect2(-1.09,-.825,2.18,1.655))
 	if side:root.rotation_degrees.y=90
-	box(root,Vector3.ZERO,Vector3(1.75,1.38,.025),"9ac0c1")
-	for x in [-.91,0,.91]:box(root,Vector3(x,0,.035),Vector3(.065,1.53,.065),"fff8e6")
-	for y in [-.72,0,.72]:box(root,Vector3(0,y,.035),Vector3(1.9,.055,.065),"fff8e6")
-	box(root,Vector3(0,-.78,.10),Vector3(2,.09,.25),"fff8e6")
+	# A single double-sided pane avoids the stacked alpha faces of a glass box.
+	# Give glass its own material so opaque furniture with this tint stays opaque.
+	var glass=MeshInstance3D.new()
+	glass.name="Glass"
+	var pane=QuadMesh.new();pane.size=Vector2(1.756,1.384)
+	glass.mesh=pane;glass.position.z=-.095
+	var glass_material=StandardMaterial3D.new()
+	glass_material.albedo_color=Color(.72,.87,.87,.13)
+	glass_material.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
+	glass_material.cull_mode=BaseMaterial3D.CULL_DISABLED
+	glass_material.roughness=.14
+	glass_material.metallic_specular=.55
+	glass.material_override=glass_material
+	glass.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(glass)
+	# Deep reveals finish both sides of the real opening through the wall.
+	for x in [-.91,.91]:box(root,Vector3(x,0,-.095),Vector3(.065,1.53,.24),"fff8e6")
+	for y in [-.72,.72]:box(root,Vector3(0,y,-.095),Vector3(1.9,.055,.24),"fff8e6")
+	box(root,Vector3(0,0,-.095),Vector3(.065,1.44,.06),"fff8e6")
+	box(root,Vector3(0,0,-.095),Vector3(1.82,.055,.06),"fff8e6")
+	box(root,Vector3(0,-.78,.01),Vector3(2,.09,.43),"fff8e6")
 	for x in [-1.0,1.0]:box(root,Vector3(x,.03,.12),Vector3(.18,1.6,.09),"d9cbb2")
 
 func tree(p: Vector3, s: float) -> void:

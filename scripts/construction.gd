@@ -2,6 +2,8 @@ extends Node3D
 class_name LifeConstruction
 ## Editable axis-aligned rooms, walls and door openings on the household lot.
 
+const WindowGeometry=preload("res://scripts/window_geometry.gd")
+
 var world: Node3D
 var records: Array = []
 var floor_records: Array = []
@@ -27,12 +29,28 @@ func add_wall(entry: Dictionary) -> void:
 	var node=Node3D.new()
 	add_child(node)
 	node.position=Vector3(float(e.x),.16,float(e.z))
-	var h:float=.65 if bool(e.cut) and cutaway else float(e.height)
-	world.box(node,Vector3(0,h/2,0),Vector3(float(e.w),h,float(e.d)),str(e.color))
-	world.box(node,Vector3(0,h+.025,0),Vector3(float(e.w)+.025,.05,float(e.d)+.025),"f5efdf")
-	world.box(node,Vector3(0,.055,0),Vector3(float(e.w)+.015,.11,float(e.d)+.015),"f5efdf")
 	records.append(e)
 	wall_nodes[e.id]=node
+	_rebuild_wall(e)
+
+func _rebuild_wall(e:Dictionary)->void:
+	var node:Node3D=wall_nodes[e.id]
+	for child:Node in node.get_children():child.free()
+	var h:float=.65 if bool(e.cut) and cutaway else float(e.height)
+	var horizontal:bool=float(e.w)>float(e.d)
+	var length:float=float(e.w) if horizontal else float(e.d)
+	var pieces:Array[Rect2]=[Rect2(-length*.5,0,length,h)]
+	for window:Node in world.house.get_children():
+		if not window is Node3D or not window.has_meta("window_aperture"):continue
+		var aperture:Rect2=WindowGeometry.opening(window,e,h)
+		if aperture.has_area():pieces=WindowGeometry.subtract(pieces,aperture)
+	for piece:Rect2 in pieces:
+		var c:Vector2=piece.get_center()
+		var pos:Vector3=Vector3(c.x,c.y,0) if horizontal else Vector3(0,c.y,c.x)
+		var size:Vector3=Vector3(piece.size.x,piece.size.y,float(e.d)) if horizontal else Vector3(float(e.w),piece.size.y,piece.size.x)
+		world.box(node,pos,size,str(e.color))
+	world.box(node,Vector3(0,h+.025,0),Vector3(float(e.w)+.025,.05,float(e.d)+.025),"f5efdf")
+	world.box(node,Vector3(0,.055,0),Vector3(float(e.w)+.015,.11,float(e.d)+.015),"f5efdf")
 
 func add_floor(entry: Dictionary) -> void:
 	var e=entry.duplicate(true)
@@ -46,6 +64,7 @@ func remove_wall(id: String) -> void:
 		wall_nodes.erase(id)
 	for i in range(records.size()-1,-1,-1):
 		if records[i].id==id:records.remove_at(i)
+	refresh_decorations()
 
 func snapshot() -> Dictionary:
 	return {"kind":"__construction","walls":records.duplicate(true),"floors":floor_records.duplicate(true)}
@@ -59,6 +78,7 @@ func restore(data: Dictionary) -> void:
 		if valid_record(e):add_wall(e)
 	for e in data.get("floors",[]):
 		if valid_record(e):add_floor(e)
+	refresh_decorations()
 
 func valid_record(e: Variant) -> bool:
 	if not e is Dictionary:return false
@@ -216,11 +236,15 @@ func commit(data: Dictionary) -> void:
 	refresh_decorations()
 
 func refresh_decorations() -> void:
+	for e:Dictionary in records:_rebuild_wall(e)
 	for n in world.house.get_children():
 		if n.has_meta("wall_decoration"):
 			var supported:bool=false
 			for e in records:
-				if wall_rect(e).grow(.25).has_point(Vector2(n.position.x,n.position.z)):supported=true;break
+				if n.has_meta("window_aperture"):
+					var h:float=.65 if bool(e.cut) and cutaway else float(e.height)
+					if WindowGeometry.opening(n,e,h).has_area():supported=true;break
+				elif wall_rect(e).grow(.25).has_point(Vector2(n.position.x,n.position.z)):supported=true;break
 			n.visible=supported
 		elif n.has_meta("garden_decoration"):
 			n.visible=true
