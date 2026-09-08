@@ -19,6 +19,7 @@ var minutes: float = 480
 var targets: Array = []
 var restoring: bool = false
 var family_graph: Dictionary = LifeFamilyGraph.fresh()
+var adoptions: Dictionary = LifeAdoption.fresh()
 var _family_roles: Dictionary = {}
 var meals: LifeMeals = LifeMeals.new()
 var cooperations: Array = []
@@ -27,6 +28,7 @@ var _cooperation_depth: int = 0
 const COOPERATION_WAIT_LIMIT: float = 60.0
 
 func new_household(profiles: Array) -> void:
+	adoptions=LifeAdoption.fresh()
 	meals.clear()
 	cooperations.clear()
 	cooperation_serial = 0
@@ -179,7 +181,7 @@ func get_state(world_data: Array = []) -> Dictionary:
 	adopt_selected_changes()
 	var states:Array=[]
 	for member in members:states.append({"id":member.id,"state":member.sim.get_state()})
-	return {"household_version":1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state()}
+	return {"household_version":1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state()}
 
 func get_family_links() -> Array:
 	var links:Array=LifeFamilyGraph.links(family_graph)
@@ -336,6 +338,10 @@ func restore_state(data: Dictionary) -> Dictionary:
 			if absf(float(candidate.sim.get(field))-expected)>.00001:
 				for c in candidates:c.sim.free()
 				return {"ok":false,"error":"The saved Lifelets do not share the same %s." % field}
+	var adoption_error:String=LifeAdoption.validate(data.get("adoptions",LifeAdoption.fresh()),data)
+	if not adoption_error.is_empty():
+		for candidate:Dictionary in candidates:candidate.sim.free()
+		return {"ok":false,"error":adoption_error}
 	var meal_data: Variant = data.get("meals",LifeMeals.new().get_state())
 	var meal_error: String = LifeMeals.validate(meal_data,ids,(lead.day-1)*1440.0+lead.minutes)
 	if meal_error.is_empty():meal_error=LifeMeals.validate_actions(meal_data,data.members)
@@ -344,6 +350,7 @@ func restore_state(data: Dictionary) -> Dictionary:
 		for c in candidates:c.sim.free()
 		return {"ok":false,"error":meal_error}
 	restoring=true
+	adoptions=data.get("adoptions",LifeAdoption.fresh()).duplicate(true)
 	meals.restore(meal_data)
 	for old in members:old.sim.queue_free()
 	members=candidates
@@ -764,3 +771,85 @@ func _validate_saved_cooperations(data: Dictionary) -> String:
 				if index != 0 or not used_members.has(member_id) or not used_tokens.has(str(action.get("cooperation_id",""))): return "Save contains an orphaned or delayed paired action."
 	if actual_actions != bound_actions: return "Save contains mismatched homework sessions and actions."
 	return ""
+
+
+func adoption_availability(guardians:Array) -> String:
+	if members.size()>=MAX_MEMBERS:return "Your household already has eight Lifelets."
+	if selected().funds<LifeAdoption.FEE:return "Adoption costs §1,000. Your household needs more funds."
+	if guardians.is_empty() or guardians.size()>2:return "Choose one or two adult guardians."
+	var seen:Array=[]
+	for id:Variant in guardians:
+		if not id is String or seen.has(id):return "Choose different adult guardians."
+		var guardian:LifeSim=member_sim(str(id))
+		if guardian==null or str(guardian.character.life_stage)!="adult":return "An adult Lifelet must become the child's guardian."
+		if guardian.is_away():return "All chosen guardians must be home before adoption."
+		seen.append(id)
+	return ""
+
+func prepare_adoption(guardians:Array,choice:int) -> Dictionary:
+	var reason:String=adoption_availability(guardians)
+	if not reason.is_empty():return {"ok":false,"error":reason}
+	if choice<0 or choice>=LifeAdoption.CANDIDATE_COUNT:return {"ok":false,"error":"Choose a child to review."}
+	return {"ok":true,"request":{"serial":int(adoptions.next_serial),"choice":choice,"member_count":members.size(),"fee":LifeAdoption.FEE,"guardians":guardians.duplicate()}}
+
+func commit_adoption(request:Dictionary,spawn:Vector3,destination:Vector3,world_data:Array) -> Dictionary:
+	var reason:String=LifeAdoption.request_error(request)
+	if not reason.is_empty():return {"ok":false,"error":reason}
+	# Returning the original receipt makes a repeated confirmation harmless.
+	for event:Dictionary in adoptions.events:
+		if int(event.serial)==int(request.serial):
+			if int(event.choice)==int(request.choice) and event.guardians==request.guardians:return {"ok":true,"duplicate":true,"child":str(event.child)}
+			return {"ok":false,"error":"That adoption review has already been used. Open the phone again."}
+	if int(request.serial)!=int(adoptions.next_serial) or int(request.member_count)!=members.size():return {"ok":false,"error":"Your household changed. Please review the adoption again."}
+	reason=adoption_availability(request.guardians)
+	if not reason.is_empty():return {"ok":false,"error":reason}
+	if not LifeAdoption.point(spawn) or not LifeAdoption.point(destination):return {"ok":false,"error":"A safe arrival route is required."}
+	var snapshot:Dictionary=get_state(world_data)
+	var id:String="housemate_%d" % members.size()
+	var child:=LifeSim.new()
+	child.new_household(LifeAdoption.candidate(int(request.serial),int(request.choice)))
+	child.day=day;child.minutes=minutes;child.funds=funds-LifeAdoption.FEE;child.speed=speed
+	child.education=LifeEducation.fresh("child",day);child.education.first_class_day=day+1
+	child.career.schedule=LifeCareerSchedule.fresh(day)
+	child._story_generated_day=day
+	var guardian:LifeSim=member_sim(str(request.guardians[0]))
+	child.set_aging(str(guardian.lifecycle.lifespan),bool(guardian.lifecycle.auto_age))
+	child.character.world_state={"player":[spawn.x,spawn.y,spawn.z],"player_rotation":PI}
+	var arrival:Dictionary=child._actions.arrive_home.duplicate(true)
+	arrival.merge({"target_id":"lot_exit","target_kind":"lot_exit","target_position":destination,"elapsed":0.0,"progress":0.0,"phase":"approach","paid":false,"autonomous":false,"adoption_serial":int(request.serial)},true)
+	child.action_queue.append(arrival)
+	var child_state:Dictionary=child.get_state();child.free()
+	for entry:Dictionary in snapshot.members:entry.state.funds=funds-LifeAdoption.FEE
+	snapshot.members.append({"id":id,"state":child_state});snapshot.funds=funds-LifeAdoption.FEE
+	for parent:String in request.guardians:snapshot.family_graph.parents.append({"a":parent,"b":id})
+	var ids:Array=[]
+	for entry:Dictionary in snapshot.members:ids.append(str(entry.id))
+	snapshot.family_graph=LifeFamilyGraph.canonical(snapshot.family_graph,ids)
+	for entry:Dictionary in snapshot.members:
+		if str(entry.id)==id:continue
+		var role:String=LifeFamilyGraph.relationship(snapshot.family_graph,str(entry.id),id)
+		var familiar:bool=LifeFamilyGraph.is_family(role)
+		var relation:Dictionary={"name":child_state.character.name,"friendship":55.0 if familiar else 18.0,"romance":0.0,"status":LifeFamilyGraph.label(role),"life_stage":"minor","bond":"none","milestones":["met","friends"] if familiar else [],"family_role":role}
+		entry.state.relationships[id]=relation
+		var reverse:Dictionary=relation.duplicate(true)
+		reverse.name=entry.state.character.name;reverse.life_stage=entry.state.character.life_stage
+		reverse.family_role=LifeFamilyGraph.inverse(role);reverse.status=LifeFamilyGraph.label(str(reverse.family_role))
+		child_state.relationships[str(entry.id)]=reverse
+	snapshot.adoptions.events.append({"serial":int(request.serial),"choice":int(request.choice),"child":id,"guardians":request.guardians.duplicate(),"day":day,"minutes":minutes,"fee":LifeAdoption.FEE})
+	snapshot.adoptions.next_serial=int(request.serial)+1
+	# Validate the complete proposed household before mutating any live member.
+	var validator:=LifeHousehold.new()
+	var checked:Dictionary=validator.restore_state(snapshot)
+	if not bool(checked.ok):validator.free();return checked
+	var added:LifeSim=validator.member_sim(id)
+	validator.remove_child(added)
+	validator.free()
+	# No signals, awaits, queue reconstruction or whole-world rebuild here.
+	for entry:Dictionary in snapshot.members:
+		if str(entry.id)!=id:member_sim(str(entry.id)).relationships[id]=entry.state.relationships[id].duplicate(true)
+	family_graph=snapshot.family_graph.duplicate(true);adoptions=snapshot.adoptions.duplicate(true)
+	members.append({"id":id,"sim":added});add_child(added)
+	added.name="Life_"+id;added.household_bills_enabled=false
+	connect_member(id,added)
+	_rebuild_family_roles();set_funds(int(snapshot.funds))
+	return {"ok":true,"duplicate":false,"child":id,"spawn":spawn}

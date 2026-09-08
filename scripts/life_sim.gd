@@ -149,6 +149,7 @@ func new_household(profile: Dictionary) -> void:
 
 
 func _build_actions() -> void:
+	_define("arrive_home","Arriving home",1.0,{},0,"",0.0,"Walk into your new home. Canceling the walk keeps this Lifelet in the family.")
 	_define("career_day", "Go to work", LifeCareerSchedule.LENGTH, {"hunger":30.0,"bladder":38.0,"social":24.0,"energy":-12.0,"fun":-12.0}, 0, "", 0.0, "Weekday work, 09:00–17:00. Arrive by 10:00; late arrivals until noon reduce pay and performance. Lunch and bathroom breaks are included.")
 	_define("school_day", "Go to school", 420.0, {"hunger":22.0,"bladder":28.0,"social":35.0,"energy":-7.0,"fun":-10.0}, 0, "", 0.0, "Leave for school on weekdays from 08:00. Arrive by 09:00 to be on time; late arrival is possible until 12:00. Return at 15:00. Lunch and bathroom breaks are part of the school day.")
 	_define("help_homework", "Help with homework", 45.0, {}, 0, "", 0.0, "Support a child or teen through one assignment and build Parenting skill.")
@@ -355,6 +356,7 @@ func complete_away_return() -> bool:
 
 
 func queue_action(id: String, target_id: String = "", target_position: Vector3 = Vector3.ZERO, recipe: String = "garden_skillet") -> bool:
+	if id=="arrive_home":return false # Only the validated household transaction creates arrival.
 	if id=="career_day":
 		var problem:String=_career_departure_error(target_id)
 		if target_id.is_empty():problem="Choose the neighborhood exit to leave for work."
@@ -419,6 +421,7 @@ func begin_current_action() -> void:
 	if action_queue.is_empty() or str(action_queue[0]["phase"]) != "approach":
 		return
 	var action: Dictionary = action_queue[0]
+	if str(action.id)=="arrive_home":return # Physical arrival is confirmed by the controller.
 	if str(action.id)=="career_day":
 		_begin_career_departure(action)
 		return
@@ -1694,6 +1697,8 @@ func load_game() -> Dictionary:
 
 func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictionary:
 	state = state.duplicate(true)
+	state["action_queue"]=state.get("action_queue",[]) # Legacy idle saves may omit this optional list.
+	if not state.action_queue is Array:return {"ok":false,"error":"Save contains an invalid action queue."}
 	if state.get("skills") is Dictionary and not state.skills.has("parenting"):
 		state.skills.parenting = {"level":1,"xp":0.0}
 	for action: Variant in state.get("action_queue",[]):
@@ -1782,6 +1787,7 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 		for key: String in ["cooperation_id","cooperation_role","meal_source","meal_stage","meal_plate","meal_seat"]:
 			if stored.has(key): action[key] = str(stored[key])
 		if stored.has("meal_standing"): action["meal_standing"] = stored.meal_standing
+		if stored.has("adoption_serial"): action["adoption_serial"]=int(stored.adoption_serial)
 		if str(action.id) == "birthday": action["birthday_from_stage"] = str(stored.get("birthday_from_stage",character.age_stage))
 		if str(action.id) in ["school_day","career_day"] and is_away():
 			action.phase = "active"
@@ -1954,6 +1960,10 @@ func _validate_state(state: Dictionary) -> String:
 		if not action is Dictionary or not _actions.has(str(action.get("id", ""))):
 			return "Save contains an invalid action."
 		var action_id: String = str(action.id)
+		if action.has("adoption_serial") and action_id!="arrive_home":return "Save contains adoption metadata on an unrelated action."
+		if action_id=="arrive_home":
+			if not LifeAdoption.integer(action.get("adoption_serial"),1,7) or action.get("paid")!=false or not action.get("paid") is bool or action.get("autonomous")!=false or not action.get("autonomous") is bool or not LifeAdoption.integer(action.get("cost"),0,0) or not LifeAdoption.integer(action.get("duration"),1,1) or not LifeAdoption.integer(action.get("elapsed"),0,0) or str(action.get("phase",""))!="approach" or str(action.get("target_id",""))!="lot_exit" or str(action.get("target_kind",""))!="lot_exit" or not LifeAdoption.point(action.get("target_position")):
+				return "Save contains invalid adoption arrival progress."
 		if action.has("cooperation_id") or action.has("cooperation_role") or action_id == "help_homework":
 			if not action.get("cooperation_id") is String or str(action.cooperation_id).is_empty() or str(action.get("cooperation_role","")) != ("helper" if action_id == "help_homework" else "learner") or action_id not in ["homework","help_homework"]:
 				return "Save contains an invalid cooperative action."
@@ -2487,3 +2497,11 @@ func _validate_career_away_state(state:Dictionary) -> String:
 			if int(schedule.get("last_attendance_day",0))!=int(value.departure_day) or float(schedule.get("late_minutes",0.0))+.00000001<maxf(0.0,float(value.departure_minutes)-LifeCareerSchedule.ON_TIME):return "Save has a work return without earned attendance and lateness."
 		elif float(value.ended_at)>=due:return "Save marks a completed workday as an early return."
 	return ""
+
+
+func complete_adoption_arrival(action:Dictionary) -> bool:
+	if action_queue.is_empty() or not is_same(action_queue[0],action) or str(action.get("id",""))!="arrive_home":return false
+	action_queue.pop_front()
+	_emit_action_finished(action)
+	_start_front();_emit_changed()
+	return true

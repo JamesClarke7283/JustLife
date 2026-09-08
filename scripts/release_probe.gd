@@ -74,6 +74,21 @@ func run(owner_app:Node) -> void:
 	check(is_instance_valid(app.find_child("FamilyCard_player",true,false)) and is_instance_valid(app.find_child("FamilyCard_housemate_1",true,false)),"The packaged family tree displays both household members.")
 	await capture("03b_family_tree")
 	press("Back to life")
+	app.select_household_member(1)
+	var before_adoption:Dictionary=app.household.get_state(app.world.serialize_items())
+	press("Phone");press("Adopt a child");await app.get_tree().process_frame
+	var candidates:int=0
+	for index:int in range(3):
+		var candidate:Button=app.find_child("AdoptionCandidate_%d" % index,true,false)
+		if is_instance_valid(candidate) and candidate.is_visible_in_tree() and not candidate.disabled:candidates+=1
+	check(candidates==3,"Packaged phone opens three original adoption candidates.")
+	press("Meet Wren");await app.get_tree().process_frame
+	var confirmation:Button=app.find_child("AdoptionConfirm",true,false)
+	check(is_instance_valid(confirmation) and not confirmation.disabled,"Packaged adoption review prepares an eligible guardian and displayed fee.")
+	await capture("03c_adoption_review")
+	press("Cancel adoption")
+	check(app.household.get_state(app.world.serialize_items())==before_adoption,"Packaged adoption cancellation preserves household and funds.")
+	press("Back to phone");press("Back to life");app.select_household_member(0)
 	app.show_menu();press("Save this life");await app.get_tree().process_frame
 	app.menus.name_input.text="Packaged release verification"
 	press("Save as new");await app.get_tree().process_frame

@@ -91,6 +91,7 @@ var creator_family_links:Array=[]
 var activity_bubbles:Control
 var meal_flow:LifeMealFlow
 var idle_space:RefCounted
+var adoption_flow:LifeAdoptionFlow
 
 func _ready() -> void:
 	DisplayServer.window_set_title("JustLife — make room for your story")
@@ -99,6 +100,7 @@ func _ready() -> void:
 	add_child(world)
 	meal_flow=LifeMealFlow.new();meal_flow.app=self;add_child(meal_flow)
 	idle_space=preload("res://scripts/idle_space.gd").new();idle_space.app=self
+	adoption_flow=LifeAdoptionFlow.new(self)
 	household_profiles=[profile]
 	household=LifeHousehold.new()
 	household.name="Household"
@@ -626,6 +628,7 @@ func draw_live() -> void:
 	button("Live",Vector2(514,27),Vector2(116,39),func():set_build_mode(false),mode=="live")
 	button("Build & buy",Vector2(638,27),Vector2(150,39),func():set_build_mode(true),mode=="build")
 	button("My Lifelet",Vector2(796,27),Vector2(130,39),show_person)
+	button("Phone",Vector2(952,27),Vector2(153,43),adoption_flow.show_phone).name="HouseholdPhone"
 	card(Vector2(1125,18),Vector2(293,62),P.WHITE,14)
 	funds_label=text_label("§ 2,500",Vector2(1145,29),Vector2(170,38),25,P.TEAL)
 	button("☰",Vector2(1357,27),Vector2(48,42),show_menu)
@@ -837,6 +840,7 @@ func refresh_hud() -> void:
 	if action_label:
 		action_label.text="Enjoying a moment" if action.is_empty() else ((("Waiting for " if waiting_for_target else "Walking to ") if action.phase=="approach" else "")+str(action.label))
 		if str(action.get("id","")) in ["school_day","career_day"] and str(action.get("phase",""))=="approach":action_label.text="Walking to work" if str(action.id)=="career_day" else "Walking to school"
+		if str(action.get("id",""))=="arrive_home":action_label.text="Waiting for a clear path" if bool(adoption_flow.blocked.get(bound_member_id,false)) else "Walking home"
 		if partner:
 			if str(together.get("phase",""))=="active":
 				action_label.text="Learning together" if str(together.role)=="learner" else "Helping with homework"
@@ -1287,6 +1291,7 @@ func _refresh_member_targets(replan:bool=true) -> void:
 	reconciling_targets=true
 	for index:int in range(sim.action_queue.size()-1,-1,-1):
 		var action:Dictionary=sim.action_queue[index]
+		if str(action.id)=="arrive_home":continue
 		var target_id:String=str(action.target_id)
 		if not pending_move.is_empty() and target_id==str(pending_move.entry.id):continue
 		if not pending_move.is_empty() and str(action.id)=="eat_meal" and str(household.meals.portion(str(action.get("meal_plate",""))).get("host",""))==str(pending_move.entry.id):continue
@@ -1438,6 +1443,7 @@ func on_ground_clicked(p:Vector3) -> void:
 
 func on_action_started(action:Dictionary) -> void:
 	if loading_game or reconciling_targets or not is_instance_valid(player) or sim.is_away():return
+	if str(action.id)=="arrive_home":adoption_flow.start_arrival(action);return
 	_clear_motion()
 	player.clear_speech()
 	if str(action.id) in LifeSim.SOCIAL_ACTIONS and world.actors.get(str(action.target_id)) is LifeActor:
@@ -1465,7 +1471,7 @@ func _cancel_blocked_action(generation:int,action:Dictionary,member_id:String=""
 
 func on_action_finished(action:Dictionary) -> void:
 	if is_instance_valid(player):
-		player.speech({"school_day":"Learned something new today.","career_day":"Home after a busy day.","cook":"Ready to serve.","serve_meal":"Come and get it!","eat_meal":"That was lovely.","store_meal":"Something for later.","clean_plate":"All clean.","read":"One more chapter…","paint":"Made something lovely.","friendly":"Good to talk with you!","joke":"Ha!","deep_talk":"I understand.","water":"Looking greener.","work":"All done!","homework":"Ready for tomorrow.","help_homework":"We worked it out."}.get(action.id,"That feels better."))
+		player.speech({"arrive_home":"This feels like a new beginning.","school_day":"Learned something new today.","career_day":"Home after a busy day.","cook":"Ready to serve.","serve_meal":"Come and get it!","eat_meal":"That was lovely.","store_meal":"Something for later.","clean_plate":"All clean.","read":"One more chapter…","paint":"Made something lovely.","friendly":"Good to talk with you!","joke":"Ha!","deep_talk":"I understand.","water":"Looking greener.","work":"All done!","homework":"Ready for tomorrow.","help_homework":"We worked it out."}.get(action.id,"That feels better."))
 	refresh_hud()
 
 func show_notice(message:String) -> void:
@@ -1830,6 +1836,8 @@ func _process(delta:float) -> void:
 
 func _advance_movement(delta:float) -> bool:
 	if not is_instance_valid(player) or sim.speed<=0:return false
+	var current_arrival:Dictionary=sim.get_current_action()
+	if str(current_arrival.get("id",""))=="arrive_home":return adoption_flow.advance_arrival(delta,current_arrival)
 	if not walk_only and sim.action_queue.is_empty():
 		_clear_motion();return false
 	if waiting_for_target:
@@ -2539,18 +2547,18 @@ func show_family_tree(focus_id:String="") -> void:
 		var row:Array=rows[level]
 		var left:float=(diagram.custom_minimum_size.x-row.size()*222+22)*.5
 		for i:int in range(row.size()):positions[str(row[i].id)]=Vector2(left+i*222,24+level*138)
+	var parent_routes:Array=_family_parent_routes(links,positions)
 	diagram.draw.connect(func():
+		for route:Dictionary in parent_routes:
+			diagram.draw_polyline(route.points,P.WHITE,6.0,true)
+			diagram.draw_polyline(route.points,P.TEAL,2.5,true)
+			var tip:Vector2=route.points[-1]
+			diagram.draw_polyline(PackedVector2Array([tip+Vector2(-3,-6),tip,tip+Vector2(3,-6)]),P.TEAL,2.5,true)
 		for edge:Dictionary in links:
 			var a:Vector2=positions[str(edge.a)]
 			var b:Vector2=positions[str(edge.b)]
 			var role:String=str(edge.role)
-			if role=="parent":
-				var start:Vector2=a+Vector2(100,112)
-				var finish:Vector2=b+Vector2(100,0)
-				var midway:float=(start.y+finish.y)*.5
-				diagram.draw_polyline(PackedVector2Array([start,Vector2(start.x,midway),Vector2(finish.x,midway),finish]),P.TEAL,2.5,true)
-				diagram.draw_circle(finish,4,P.TEAL)
-			elif role in ["partners","siblings"]:
+			if role in ["partners","siblings"]:
 				var start:Vector2=a+Vector2(100,0)
 				var finish:Vector2=b+Vector2(100,0)
 				var bridge:float=minf(start.y,finish.y)-18
@@ -2570,7 +2578,7 @@ func show_family_tree(focus_id:String="") -> void:
 		var relation:String=str(household.call("family_relationship",focus_id,id))
 		if relation=="none" and focus.romantic_partner==id:relation="partners"
 		text_label("You are viewing" if id==focus_id else family_role_label(relation),Vector2(13,84),Vector2(174,26),14,P.TEAL,id==focus_id,tile)
-	text_label("Parent & child",Vector2(207,705),Vector2(153,25),12,P.TEAL,false,overlay)
+	text_label("Parent → child",Vector2(207,705),Vector2(153,25),12,P.TEAL,false,overlay)
 	text_label("Partners",Vector2(374,705),Vector2(108,25),12,Color("b86e5b"),false,overlay)
 	text_label("Declared siblings",Vector2(496,705),Vector2(165,25),12,P.MUTED,false,overlay)
 	button("People",Vector2(203,747),Vector2(218,43),show_relationships,false,overlay)
@@ -2673,3 +2681,26 @@ func show_career_record() -> void:
 	var change:Button=button("Find a job",Vector2(720,580),Vector2(251,43),show_careers,false,overlay)
 	change.disabled=sim.is_away()
 	button("Back to life",Vector2(465,653),Vector2(506,43),close_overlay,true,overlay)
+
+
+func _family_parent_routes(links:Array,positions:Dictionary) -> Array:
+	# Each actual edge has a separate port at both cards. Shared middle-row
+	# junctions implied that every adult parented every child in a blended family.
+	var routes:Array=[]
+	var parents:Array=links.filter(func(edge:Dictionary)->bool:return str(edge.role)=="parent")
+	for edge:Dictionary in parents:
+		var outgoing:Array=parents.filter(func(other:Dictionary)->bool:return str(other.a)==str(edge.a))
+		var incoming:Array=parents.filter(func(other:Dictionary)->bool:return str(other.b)==str(edge.b))
+		var start_x:float=36.0+128.0*float(outgoing.find(edge)+1)/float(outgoing.size()+1)
+		var end_x:float=36.0+128.0*float(incoming.find(edge)+1)/float(incoming.size()+1)
+		var start:Vector2=positions[str(edge.a)]+Vector2(start_x,112)
+		var finish:Vector2=positions[str(edge.b)]+Vector2(end_x,0)
+		var gap:float=(finish.y-start.y)*.42
+		var control_a:Vector2=start+Vector2(0,gap)
+		var control_b:Vector2=finish-Vector2(0,gap)
+		var points:=PackedVector2Array()
+		for step:int in range(33):
+			var t:float=float(step)/32.0;var reverse:float=1.0-t
+			points.append(reverse*reverse*reverse*start+3.0*reverse*reverse*t*control_a+3.0*reverse*t*t*control_b+t*t*t*finish)
+		routes.append({"a":str(edge.a),"b":str(edge.b),"points":points})
+	return routes
