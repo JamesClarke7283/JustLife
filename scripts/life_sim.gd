@@ -1239,6 +1239,10 @@ func _autonomous_choice(excluded_target_ids:Array=[]) -> Dictionary:
 		if float(needs[need])>=52.0:break
 		var choice:Dictionary=_autonomy_need_choice(need,excluded_target_ids)
 		if not choice.is_empty():return choice
+	# Housekeeping is an idle choice only, after ordinary needs, school/work
+	# preparation and current responsibilities. Explicit queues remain untouched.
+	if duty.is_empty() and preparing.is_empty() and is_instance_valid(meal_service):
+		return meal_service.autonomous_cleanup_choice(self,excluded_target_ids)
 	return {}
 
 func _autonomy_eating_owned_portion(action: Dictionary) -> bool:
@@ -1309,6 +1313,9 @@ func reconsider_waiting_autonomy(blocked_target_ids: Array, waited_game_minutes:
 	var replacement: Dictionary = _actions[str(choice.id)].duplicate(true)
 	if str(choice.id) in ["school","school_day","career_day","homework"]:replacement["target_kind"]=_education_target_kind(str(choice.target_id))
 	replacement.merge({"target_id":str(choice.target_id),"target_position":choice.position,"phase":"queued","elapsed":0.0,"progress":0.0,"paid":false,"autonomous":true})
+	# Replanning must release the current meal's actual carrier before changing
+	# its action identity. Later player instructions retain their exact objects.
+	if is_instance_valid(meal_service):meal_service.canceled(self,current)
 	action_queue[0] = replacement
 	_idle_minutes=0.0
 	_start_front()

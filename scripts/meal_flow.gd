@@ -75,7 +75,7 @@ func resolve(sim:LifeSim,action:Dictionary) -> void:
 	if not action.has("meal_source"):action.meal_source=str(action.target_id)
 	if not action.has("meal_stage"):action.meal_stage="pickup"
 	if action.id=="serve_meal":
-		var surface:Dictionary=_serving_surface(actor(person).position)
+		var surface:Dictionary=_serving_surface(actor(person).position,str(action.meal_source))
 		if not surface.is_empty():action.target_id=surface.id
 	elif action.id=="eat_meal" and action.get("meal_stage")=="eat":
 		var chair:Dictionary=item(str(action.get("meal_seat","")))
@@ -136,11 +136,162 @@ func carry_diner_plate(action:Dictionary) -> void:
 		plate.storage="carried"
 		plate.seat=""
 
-func _serving_surface(from:Vector3) -> Dictionary:
-	var table:Dictionary=app.world.closest_item("dining",from)
-	if not table.is_empty():return table
-	var counter:Dictionary=app.world.closest_item("counter",from)
-	return counter if not counter.is_empty() else app.world.closest_item("stove",from)
+func _footprint(value:Dictionary) -> Vector2:
+	return LifeMeals.PLATE_HALF_SIZE if value.has("batch") else LifeMeals.PLATTER_HALF_SIZE
+
+func _plate_offset(chair:Dictionary,table:Dictionary) -> Vector3:
+	var toward:Vector3=(table.node.position-chair.node.position).normalized()
+	var at:Vector3=table.node.to_local(chair.node.position+toward*.48)
+	return Vector3(clampf(at.x,-.62,.62),SURFACE_HEIGHTS.dining,clampf(at.z,-.39,.39))
+
+func _surface_clear(host:Dictionary,at:Vector3,half:Vector2,except_id:String="") -> bool:
+	var extent:Vector2=LifeMeals.SURFACE_HALF_SIZE[str(host.kind)]
+	if absf(at.x)+half.x+LifeMeals.SURFACE_INSET>extent.x+.00001 or absf(at.z)+half.y+LifeMeals.SURFACE_INSET>extent.y+.00001:return false
+	for value:Dictionary in food().batches+food().portions:
+		if str(value.id)==except_id or str(value.host)!=str(host.id) or str(value.venue)!=app.current_venue or str(value.storage) in ["carried","fridge"]:continue
+		# Empty platters are no longer rendered; retained ledger records do not
+		# occupy physical tabletop space while their dirty plates await washing.
+		if not value.has("batch") and int(value.remaining)<=0:continue
+		var other:Vector2=_footprint(value)
+		var offset:Array=value.get("offset",[0,0,0])
+		if absf(at.x-float(offset[0]))<half.x+other.x+.01 and absf(at.z-float(offset[2]))<half.y+other.y+.01:return false
+	# A diner walking to a free chair already reserves their reachable setting.
+	for member:Dictionary in app.household.members:
+		var action:Dictionary=member.sim.get_current_action()
+		if str(action.get("id",""))!="eat_meal" or str(action.get("meal_plate",""))==except_id:continue
+		var chair:Dictionary=item(str(action.get("meal_seat","")))
+		if chair.is_empty() or str(_chair_table(chair).get("id",""))!=str(host.id):continue
+		var reserved:Vector3=_plate_offset(chair,host)
+		if absf(at.x-reserved.x)<half.x+LifeMeals.PLATE_HALF_SIZE.x+.01 and absf(at.z-reserved.z)<half.y+LifeMeals.PLATE_HALF_SIZE.y+.01:return false
+	return true
+
+func _surface_slot(host:Dictionary,half:Vector2,except_id:String="") -> Vector3:
+	var extent:Vector2=LifeMeals.SURFACE_HALF_SIZE[str(host.kind)]-half-Vector2.ONE*LifeMeals.SURFACE_INSET
+	var candidates:Array[Vector3]=[Vector3(0,SURFACE_HEIGHTS[str(host.kind)],0)]
+	for x:int in range(-8,9):
+		for z:int in range(-8,9):candidates.append(Vector3(extent.x*x/8.0,SURFACE_HEIGHTS[str(host.kind)],extent.y*z/8.0))
+	candidates.sort_custom(func(a:Vector3,b:Vector3)->bool:return Vector2(a.x,a.z).length_squared()<Vector2(b.x,b.z).length_squared())
+	for at:Vector3 in candidates:
+		if _surface_clear(host,at,half,except_id):return at
+	return Vector3.INF
+
+func _serving_surface(from:Vector3,except_id:String="") -> Dictionary:
+	for kind:String in ["dining","counter","stove"]:
+		var candidates:Array=[]
+		for host:Dictionary in app.world.items:
+			if str(host.kind)==kind and _surface_slot(host,LifeMeals.PLATTER_HALF_SIZE,except_id).is_finite():candidates.append(host)
+		candidates.sort_custom(func(a:Dictionary,b:Dictionary)->bool:return a.node.position.distance_squared_to(from)<b.node.position.distance_squared_to(from))
+		for host:Dictionary in candidates:
+			if not app.world.path_to(from,app.world.approach(host)).is_empty():return host
+	return {}
+
+func _floor_height(at:Vector3) -> float:
+	# Measure the authored horizontal floor boxes, including player-built floors.
+	# The navigation plane is not necessarily the top of the visible floor.
+	var surfaces:Array=app.world.house.get_children()
+	if is_instance_valid(app.world.construction):surfaces.append_array(app.world.construction.floor_nodes)
+	var height:float=-.15
+	for node:Node in surfaces:
+		if not node is MeshInstance3D or not node.mesh is BoxMesh:continue
+		var half:Vector3=node.mesh.size*.5
+		var local:Vector3=node.to_local(at)
+		var top:float=node.to_global(Vector3(0,half.y,0)).y
+		if top>.20 or top<height or absf(local.x)>half.x or absf(local.z)>half.z:continue
+		height=top
+	return height+.002
+
+func _floor_support(at:Vector3,half:Vector2) -> float:
+	var bounds:Rect2=Rect2(Vector2(at.x,at.z)-half,half*2)
+	if app.world.construction.rect_blocked(bounds.grow(.002)):return INF
+	for furnishing:Dictionary in app.world.items:
+		if str(furnishing.kind) in ["rug","painting","meal","plate"]:continue
+		# Project the whole dish footprint into the furnishing's local axes.
+		# This conservative rectangle also covers furnishings at arbitrary yaw.
+		var inverse:Basis=furnishing.node.global_basis.inverse()
+		var across:Vector3=inverse*Vector3(half.x,0,0)
+		var along:Vector3=inverse*Vector3(0,0,half.y)
+		var extent:Vector2=Vector2(absf(across.x)+absf(along.x),absf(across.z)+absf(along.z))
+		var local:Vector3=furnishing.node.to_local(at)
+		var body:Vector2=furnishing.size*.5
+		if absf(local.x)<body.x+extent.x+.002 and absf(local.z)<body.y+extent.y+.002:return INF
+	var low:float=INF;var high:float=-INF
+	for x:float in [-half.x,0.0,half.x]:
+		for z:float in [-half.y,0.0,half.y]:
+			var height:float=_floor_height(at+Vector3(x,0,z));low=minf(low,height);high=maxf(high,height)
+	# Small authored board/tile details differ by millimetres. A raised floor
+	# edge must support every corner/edge of the ceramic at the same level.
+	return high if high-low<=.012 else INF
+
+func _floor_slot(from:Vector3,value:Dictionary) -> Vector3:
+	var candidates:Array[Vector3]=[Vector3(from.x,.16,from.z)]
+	var region:Rect2i=app.world.navigation.region
+	for x:int in range(region.position.x,region.end.x):
+		for z:int in range(region.position.y,region.end.y):
+			if not app.world.navigation.is_point_solid(Vector2i(x,z)):candidates.append(Vector3(x*.25,.16,z*.25))
+	candidates.sort_custom(func(a:Vector3,b:Vector3)->bool:return a.distance_squared_to(from)<b.distance_squared_to(from))
+	for at:Vector3 in candidates:
+		var cell:Vector2i=Vector2i(roundi(at.x*4),roundi(at.z*4))
+		if not region.has_point(cell) or app.world.navigation.is_point_solid(cell):continue
+		var height:float=_floor_support(at,_footprint(value))
+		if not is_finite(height):continue
+		var clear:bool=true
+		for other:Dictionary in food().batches+food().portions:
+			if str(other.id)==str(value.id) or str(other.venue)!=app.current_venue or not str(other.host).is_empty() or not str(other.owner).is_empty():continue
+			if not other.has("batch") and int(other.remaining)<=0:continue
+			var gap:Vector2=_footprint(value)+_footprint(other)+Vector2(.01,.01)
+			if absf(at.x-float(other.position[0]))<gap.x and absf(at.z-float(other.position[2]))<gap.y:clear=false;break
+		if clear:at.y=height;return at
+	# No fallback may silently overlap a wall or hang over an unsupported edge.
+	return Vector3.INF
+
+func _settle_food(value:Dictionary,from:Vector3) -> void:
+	# Keep a legitimate current setting. Otherwise set food down within reach,
+	# then fall back to an unoccupied visible floor point, never hand height.
+	var host:Dictionary=item(str(value.host))
+	var offset:Array=value.get("offset",[0,0,0])
+	var local:Vector3=Vector3(float(offset[0]),float(offset[1]),float(offset[2]))
+	if not host.is_empty() and SURFACE_HEIGHTS.has(str(host.kind)) and _surface_clear(host,local,_footprint(value),str(value.id)):
+		var position:Vector3=host.node.to_global(local);value.position=[position.x,position.y,position.z]
+		return
+	var near:Array=[]
+	for candidate:Dictionary in app.world.items:
+		if not SURFACE_HEIGHTS.has(str(candidate.kind)):continue
+		var slot:Vector3=_surface_slot(candidate,_footprint(value),str(value.id))
+		if not slot.is_finite():continue
+		var position:Vector3=candidate.node.to_global(slot)
+		if Vector2(position.x-from.x,position.z-from.z).length()<=.85:near.append({"host":candidate,"slot":slot,"position":position})
+	near.sort_custom(func(a:Dictionary,b:Dictionary)->bool:return a.position.distance_squared_to(from)<b.position.distance_squared_to(from))
+	if not near.is_empty():
+		var selected:Dictionary=near[0];value.host=str(selected.host.id)
+		value.offset=[selected.slot.x,selected.slot.y,selected.slot.z]
+		value.position=[selected.position.x,selected.position.y,selected.position.z]
+	else:
+		var at:Vector3=_floor_slot(from,value)
+		if not at.is_finite():
+			push_error("The lot has no supported clear space for this dish.");return
+		value.host="";value.offset=[0.0,0.0,0.0];value.position=[at.x,at.y,at.z]
+	if value.has("batch"):value.seat=""
+
+func autonomous_cleanup_choice(sim:LifeSim,excluded:Array=[]) -> Dictionary:
+	if not sim.action_queue.is_empty() or sim.is_away() or not food().carried_by(member_id(sim)).is_empty():return {}
+	var person:LifeActor=actor(member_id(sim))
+	if not is_instance_valid(person):return {}
+	var candidates:Array=[]
+	for plate:Dictionary in food().portions:
+		if str(plate.venue)!=app.current_venue or not str(plate.owner).is_empty() or excluded.has(str(plate.id)):continue
+		if str(plate.storage)!="dirty" and now()<float(plate.expires):continue
+		var reserved:bool=false
+		for member:Dictionary in app.household.members:
+			for action:Dictionary in member.sim.action_queue:
+				if str(action.id)=="clean_plate" and str(action.get("meal_source",action.target_id))==str(plate.id):reserved=true
+		if reserved or not action_availability(sim,"clean_plate",str(plate.id)).is_empty():continue
+		var target:Dictionary=item(str(plate.id))
+		if target.is_empty():continue
+		var at:Vector3=app.world.approach(target)
+		if app.world.path_to(person.position,at).is_empty():continue
+		candidates.append({"id":"clean_plate","target_id":str(plate.id),"position":at})
+	candidates.sort_custom(func(a:Dictionary,b:Dictionary)->bool:return a.position.distance_squared_to(person.position)<b.position.distance_squared_to(person.position))
+	return candidates[0] if not candidates.is_empty() else {}
 
 func _chair_table(chair:Dictionary) -> Dictionary:
 	var table:Dictionary=app.world.closest_item("dining",chair.node.position,1.6)
@@ -160,6 +311,8 @@ func _choose_seat(person:String,action:Dictionary) -> void:
 			if str(other.get("meal_seat",""))==str(candidate.id) or str(other.get("target_id",""))==str(candidate.id):occupied=true
 		for plate:Dictionary in food().portions:
 			if str(plate.seat)==str(candidate.id) and str(plate.owner)!=person:occupied=true
+		var table:Dictionary=_chair_table(candidate)
+		if not _surface_clear(table,_plate_offset(candidate,table),LifeMeals.PLATE_HALF_SIZE,str(action.get("meal_plate",""))):occupied=true
 		if not occupied and not app.world.path_to(actor(person).position,app.world.approach(candidate)).is_empty():chairs.append(candidate)
 	chairs.sort_custom(func(a:Dictionary,b:Dictionary)->bool:return a.node.position.distance_squared_to(actor(person).position)<b.node.position.distance_squared_to(actor(person).position))
 	if not chairs.is_empty():
@@ -177,8 +330,7 @@ func eating_anchor(person:String,action:Dictionary) -> Dictionary:
 		if not table.is_empty():
 			var seated:Dictionary=app.world.activity_anchor(chair,"eat_meal",actor(person).get_body_landmarks())
 			var toward:Vector3=(table.node.position-chair.node.position).normalized()
-			var local:Vector3=table.node.to_local(chair.node.position+toward*.48)
-			local.x=clampf(local.x,-.62,.62);local.z=clampf(local.z,-.39,.39);local.y=SURFACE_HEIGHTS.dining
+			var local:Vector3=_plate_offset(chair,table)
 			if str(actor(person).profile.get("age_stage",""))=="child":
 				app.world._show_desk_booster(chair.node)
 				seated.position+=Vector3(0,.18,0)+toward*.10
@@ -210,13 +362,13 @@ func finished(sim:LifeSim,action:Dictionary) -> void:
 		if not batch.is_empty():_prepend(sim,"serve_meal",str(batch.id),{"meal_source":str(batch.id)})
 	elif action.id=="serve_meal":
 		var target:Dictionary=item(str(action.target_id))
-		var position:Vector3=target.node.to_global(Vector3(0,float(SURFACE_HEIGHTS.get(str(target.kind),.847)),0)) if not target.is_empty() else actor(person).position
-		food().set_batch_location(str(action.meal_source),"surface",str(action.target_id),position,now())
-		if not target.is_empty():
-			var offset:Vector3=target.node.to_local(position)
-			food().batch(str(action.meal_source)).offset=[offset.x,offset.y,offset.z]
-		var served:Dictionary=food().batch(str(action.meal_source))
-		if not served.is_empty():sim._emit_notice("Dinner is ready: %d servings of %s." % [int(served.remaining),str(LifeMeals.RECIPES[str(served.recipe)].label).to_lower()])
+		var batch:Dictionary=food().batch(str(action.meal_source))
+		var slot:Vector3=_surface_slot(target,LifeMeals.PLATTER_HALF_SIZE,str(batch.id)) if not target.is_empty() and SURFACE_HEIGHTS.has(str(target.kind)) else Vector3.INF
+		var position:Vector3=target.node.to_global(slot) if slot.is_finite() else actor(person).position
+		food().set_batch_location(str(batch.id),"surface",str(target.id) if slot.is_finite() else "",position,now())
+		if slot.is_finite():batch.offset=[slot.x,slot.y,slot.z]
+		else:_settle_food(batch,actor(person).position)
+		if not batch.is_empty():sim._emit_notice("Dinner is ready: %d servings of %s." % [int(batch.remaining),str(LifeMeals.RECIPES[str(batch.recipe)].label).to_lower()])
 		if float(sim.needs.hunger)<75:_prepend(sim,"eat_meal",str(action.meal_source),{})
 	elif action.id=="eat_meal":
 		var plate:Dictionary=food().portion(str(action.get("meal_plate","")))
@@ -226,6 +378,7 @@ func finished(sim:LifeSim,action:Dictionary) -> void:
 				for partner:String in plate.company:
 					if sim.relationships.has(partner):sim.relationships[partner].friendship=minf(100,float(sim.relationships[partner].friendship)+4)
 			food().finish_portion(str(plate.id))
+			_settle_food(plate,actor(person).position)
 	elif action.id=="store_meal":
 		var fridge:Dictionary=item(str(action.target_id))
 		if not fridge.is_empty():
@@ -250,6 +403,7 @@ func canceled(sim:LifeSim,action:Dictionary) -> void:
 	var owned_id:String=str(action.get("meal_plate",action.get("meal_source","")))
 	if not carried.is_empty() and str(carried.id)==owned_id and is_same(sim.get_current_action(),action) and is_instance_valid(actor(person)):
 		food().release_member(person,actor(person).position)
+		_settle_food(carried,actor(person).position)
 	sync_due=true
 
 func call_to_meal(target:String) -> int:
@@ -288,10 +442,14 @@ func sync_world() -> void:
 			var at:Vector3=host.node.to_global(Vector3(float(offset[0]),float(offset[1]),float(offset[2])))
 			value.position=[at.x,at.y,at.z]
 		elif host.is_empty() and not str(value.host).is_empty() and str(value.storage)!="carried" and not _pending_furniture(str(value.host)):
-			var at:Vector3=Vector3(float(value.position[0]),.17,float(value.position[2]))
+			var at:Vector3=Vector3(float(value.position[0]),.16,float(value.position[2]));at.y=_floor_height(at)
 			if value.has("batch"):
 				value.position=[at.x,at.y,at.z];value.host="";value.seat=""
 			else:food().set_batch_location(key,"surface","",at,now())
+			if str(value.owner).is_empty():_settle_food(value,at)
+		if str(value.owner).is_empty() and str(value.host).is_empty() and str(value.storage) in ["surface","dirty"]:
+			var at:Vector3=Vector3(float(value.position[0]),float(value.position[1]),float(value.position[2]))
+			if absf(at.y-_floor_height(at))>.025:_settle_food(value,at)
 		var view:Node3D=views[key]
 		view.visible=str(value.storage)!="fridge" and not _pending_furniture(str(value.host)) and (value.has("batch") or int(value.remaining)>0)
 		if not str(value.owner).is_empty() and (str(value.storage)=="carried" or (str(value.storage)=="table" and str(value.host).is_empty())) and is_instance_valid(actor(str(value.owner))):

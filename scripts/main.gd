@@ -90,6 +90,7 @@ var release_probe:RefCounted
 var creator_family_links:Array=[]
 var activity_bubbles:Control
 var meal_flow:LifeMealFlow
+var idle_space:RefCounted
 
 func _ready() -> void:
 	DisplayServer.window_set_title("JustLife — make room for your story")
@@ -97,6 +98,7 @@ func _ready() -> void:
 	world.name="World"
 	add_child(world)
 	meal_flow=LifeMealFlow.new();meal_flow.app=self;add_child(meal_flow)
+	idle_space=preload("res://scripts/idle_space.gd").new();idle_space.app=self
 	household_profiles=[profile]
 	household=LifeHousehold.new()
 	household.name="Household"
@@ -1748,6 +1750,7 @@ func _process(delta:float) -> void:
 			if bool(motion_states.get(member.id,_empty_motion()).walk):member.sim.autonomy=false
 		household.tick(delta)
 		for member:Dictionary in household.members:member.sim.autonomy=autonomy_values[member.id]
+		idle_space.update(delta)
 		world.daylight(household.minutes)
 		world.begin_activity_frame(household.speed<=0)
 		var away_targets_changed:bool=false
