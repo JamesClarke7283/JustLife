@@ -104,3 +104,12 @@ The starter lineup and individual creator views make character identity readable
 Three browser-observed storyboard composites from a cooking-animation comparison are retained in `topics/cooking_animation_2026/`. Their original browser bundle, source page, decoded dimensions and SHA-256 hashes are recorded alongside them. The full archive was rechecked against its manifest: **473 unique image contents**, including **385 at least 250 × 140 pixels**.
 
 These composites are only 250 pixels wide and contain much smaller individual frames. They show coarse preparation and appliance transitions across three Sims games; they do not establish exact Sims 4 oven reach, hand contact, timing or audio. They are research references, not game assets or additional proof that the whole game is mapped. [Cooking animation comparison by onlyabidoang](https://www.youtube.com/shorts/fegx1WH7OIc).
+
+
+### Current body shapes and clothing · 8 September 2026
+
+The browser downloaded three 1280×720 samples from EA’s [25 August 2026 free-content article](https://www.ea.com/games/the-sims/the-sims-4/news/the-sims-new-hair-and-size-inclusive-looks). Raw AVIF files and their exact URL/hash manifest are in `topics/body_clothing_august_2026/` under the Downloads reference archive. One is a gameplay crop, one a hair/face portrait and one a staged five-character lineup; these are not three full-interface captures. The site redirected to its Polish version, recorded in the manifest. Lossless PNG decodes for local inspection remain outside the archive and source counts.
+
+The lineup makes identities distinct through body silhouette and clothing construction: open jackets, collars, puff sleeves, fitted waists, skirts and loose trousers. The portrait separates large hair volumes from small hairline strands and varies skin/eye/lip highlights. The gameplay pose uses an expressive face, head tilt and asymmetrical shoulders. JustLife needs comparable variety and acting clarity in its own artwork; recoloring one outfit does not establish this breadth. These images do not demonstrate garment deformation under movement or any new simulation mechanics.
+
+Five current identity/relationship panels were also downloaded again through the browser and compared by SHA-256 with `topics/current_identity_romance/`. All five match the existing files; the revisit receipt records that result and adds no distinct-image count. The broader coverage gaps in `GAME_COVERAGE_MAP.md` remain open.

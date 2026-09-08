@@ -17,7 +17,7 @@ Folders are relative to the archive root. Additional topics have exact source UR
 | System | Inspected images/folders | Base / expansion distinction | Remaining research gaps |
 |---|---|---|---|
 | Main menu, tutorials, settings | full/: start/main menu, lessons, graphics, audio, capture; save_recovery | Core, historical interface and 2022/2023 save/recovery UI | Current accessibility setup and contemporary menu comparison |
-| Human appearance editor | full/: body, eyebrows, hats, shoes, face paint, walk style; household_rotation | Core; some garments pack-dependent | Shape dragging, skin controls, outfit categories, genetics, diversity only partly represented |
+| Human appearance editor | full/: body, eyebrows, hats, shoes, face paint, walk style; household_rotation; body_clothing_august_2026 | Core; some garments pack-dependent | Current body/clothing silhouettes and hair detail supplemented by three official art samples; shape dragging, skin controls, outfit categories and genetics remain partial |
 | Identity, traits, aspirations | traits, aspiration_icons, current_identity_romance, full/new-question | Core/free updates; icons mix DLC | Current aspiration milestone/reward-store full panels; voice/pronoun/reproduction panels incomplete |
 | Multiple members | household_rotation, moving_households, children | Core | Eight-member queue management, off-lot control and simultaneous emergencies need motion evidence |
 | World/home choice | full/select-a-world-to-move-into and select-a-place-to-live; moving_households | Core, available worlds pack-dependent | Actual travel choice/loading beyond move-in partial |
