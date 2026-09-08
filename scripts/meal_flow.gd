@@ -70,6 +70,10 @@ func actions_for(sim:LifeSim,kind:String,target:String) -> Array:
 	return result
 
 func resolve(sim:LifeSim,action:Dictionary) -> void:
+	if str(action.id)=="cook" and str(action.get("recipe",""))=="harvest_bake":
+		var oven:Dictionary=item(str(action.target_id))
+		if not oven.is_empty():action.target_position=app.world.oven_approach(oven)
+		return
 	if str(action.id) not in ACTIONS:return
 	var person:String=member_id(sim)
 	if not action.has("meal_source"):action.meal_source=str(action.target_id)
@@ -517,6 +521,7 @@ func _mesh_view(value:Dictionary) -> Node3D:
 
 func sync_world() -> void:
 	if not is_instance_valid(app.world.house):return
+	sync_oven_presentations()
 	_reconcile_dining_furniture()
 	var present:Dictionary={}
 	var rebuilt:bool=false
@@ -583,6 +588,30 @@ func present_actor(person:String) -> void:
 	lifelet.meal_presentation={"carrying":not held.is_empty() and str(held.storage)=="carried","platter":not held.is_empty() and not held.has("batch")}
 	var current:Dictionary=app.household.member_sim(person).get_current_action()
 	lifelet.cooking_presentation={"recipe":str(current.get("recipe","garden_skillet")),"progress":float(current.get("progress",0))} if str(current.get("id",""))=="cook" else {}
+	if str(current.get("id",""))=="cook" and str(current.get("recipe",""))=="harvest_bake":
+		lifelet.cooking_presentation["oven_suspended"]=_pending_furniture(str(current.target_id))
+	var oven_state:Dictionary=oven_presentation(person)
+	if not oven_state.is_empty():
+		lifelet.cooking_presentation.merge({"oven":item(str(oven_state.target_id)).node,"oven_interior":bool(oven_state.inside),"progress":float(oven_state.progress)},true)
+
+func oven_presentation(person:String) -> Dictionary:
+	# Only the current paid instruction owns preparation. No animator cache or
+	# separate job advances this state while the cook is walking or paused.
+	var current:Dictionary=app.household.member_sim(person).get_current_action()
+	if str(current.get("id",""))!="cook" or str(current.get("recipe",""))!="harvest_bake" or not bool(current.get("paid",false)):return {}
+	if str(current.get("phase","")) not in ["active","approach"]:return {}
+	var target:String=str(current.target_id)
+	var oven:Dictionary=item(target)
+	if _pending_furniture(target) or oven.is_empty() or str(oven.kind)!="stove":return {}
+	var progress:float=clampf(float(current.elapsed)/float(current.duration),0.0,1.0)
+	return {"person":person,"target_id":target,"recipe":"harvest_bake","progress":progress,"inside":LifeOvenSequence.inside(progress)}
+
+func sync_oven_presentations() -> void:
+	var states:Dictionary={}
+	for member:Dictionary in app.household.members:
+		var state:Dictionary=oven_presentation(str(member.id))
+		if not state.is_empty():states[str(state.target_id)]=state
+	app.world.update_oven_presentations(states)
 
 
 func show_leftovers(fridge_id:String) -> void:
@@ -612,7 +641,18 @@ func show_leftovers(fridge_id:String) -> void:
 
 
 func action_title(action:Dictionary) -> String:
-	if str(action.get("id",""))=="cook":return ("Preparing " if str(action.get("phase",""))=="active" else "Getting ready to cook ")+str(LifeMeals.RECIPES[str(action.get("recipe","garden_skillet"))].label).to_lower()
+	if str(action.get("id",""))=="cook":
+		var host_available:bool=not _pending_furniture(str(action.target_id)) and not item(str(action.target_id)).is_empty()
+		var preparing:bool=str(action.get("phase",""))=="active" and host_available
+		# Loading revalidates routes before play. A paid cook already at its
+		# unchanged appliance still displays the preparation restored on pause.
+		if not preparing and bool(action.get("paid",false)) and host_available:
+			for member:Dictionary in app.household.members:
+				if is_same(member.sim.get_current_action(),action):
+					var lifelet:LifeActor=actor(str(member.id))
+					preparing=is_instance_valid(lifelet) and lifelet.position.distance_to(action.target_position)<.02
+					break
+		return ("Preparing " if preparing else "Getting ready to cook ")+str(LifeMeals.RECIPES[str(action.get("recipe","garden_skillet"))].label).to_lower()
 	if str(action.get("id","")) not in ACTIONS:return ""
 	var approaching:bool=str(action.get("phase",""))=="approach"
 	match str(action.id):

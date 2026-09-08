@@ -60,9 +60,9 @@ func prepare_recipe(recipe:String,save_partial:bool)->void:
   await screenshot("03b_pasta_seasoning",false,false)
  if save_partial:
   await press("▶▶▶")
-  if not await wait_until(func()->bool:return active_is("cook",54.0/70.0),"bake progress exceeds original45min recipe",35):return
+  if not await wait_until(func()->bool:return active_is("cook",.91),"actual tray retrieval beyond the original45min recipe",35):return
   await press("Ⅱ")
-  check(app.player._baking_tray.visible and not app.player._seasoning_jar.visible,"Late bake preparation uses the two-hand oven-ready tray")
+  check(app.player._baking_tray.visible and not app.player._seasoning_jar.visible,"Late bake preparation displays the retrieved oven dish")
   expected={"funds":app.household.funds,"elapsed":app.sim.get_current_action().elapsed,"xp":app.sim.skills.cooking.xp,"food":app.household.meals.get_state()}
   await _public_save("Pasta for later, bake in progress")
   var file:=FileAccess.open("user://recipe_expected.json",FileAccess.WRITE);file.store_string(JSON.stringify(expected));file.close()

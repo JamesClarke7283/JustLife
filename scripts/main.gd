@@ -1271,6 +1271,8 @@ func _refresh_sim_targets(replan:bool=true) -> void:
 		_refresh_member_targets(replan)
 		_store_motion()
 	_bind_member(prior)
+	meal_flow.sync_oven_presentations()
+	_reconstruct_paused_cooking()
 
 func _refresh_member_targets(replan:bool=true) -> void:
 	if not is_instance_valid(sim) or not is_instance_valid(world.house):return
@@ -1292,6 +1294,9 @@ func _refresh_member_targets(replan:bool=true) -> void:
 			sim.cancel_action(index)
 			continue
 		var destination:Vector3=world.lot_exit_position(_member_index(bound_member_id)) if str(action.id) in ["school_day","career_day"] else by_id[target_id].position
+		if str(action.id)=="cook" and str(action.get("recipe",""))=="harvest_bake":
+			var oven:Dictionary=_find_item(target_id)
+			if not oven.is_empty() and str(oven.kind)=="stove":destination=world.oven_approach(oven)
 		if str(action.id)=="eat_meal" and bool(action.get("meal_standing",false)):
 			destination=action.target_position
 			if not meal_flow.standing_geometry_clear(destination):
@@ -1341,6 +1346,8 @@ func cancel_current_action(index:int=0) -> void:
 		for member:Dictionary in household.members:
 			if member.sim.get_current_action().is_empty():motion_states[member.id]=_empty_motion()
 	else:sim.cancel_action(index)
+	meal_flow.sync_oven_presentations()
+	_reconstruct_paused_cooking()
 	refresh_hud()
 
 func _cancel_all_cooperative_actions() -> void:
@@ -1673,8 +1680,27 @@ func load_game(slot_id:String="") -> void:
 	loading_game=false
 	_refresh_sim_targets()
 	_restore_resource_waits()
+	meal_flow.sync_oven_presentations()
+	_reconstruct_paused_cooking()
 	_sync_actor_sound()
 	show_notice("Welcome back, %s." % sim.character.name)
+
+func _reconstruct_paused_cooking() -> void:
+	if mode!="build" and sim.speed>0:return
+	var prior:String=bound_member_id
+	_store_motion()
+	for member:Dictionary in household.members:
+		_bind_member(str(member.id))
+		var was_cooking:bool=not player.cooking_presentation.is_empty()
+		meal_flow.present_actor(str(member.id))
+		var state:Dictionary=meal_flow.oven_presentation(str(member.id))
+		if not player.has_method("reconstruct_cooking_pose") or (state.is_empty() and not was_cooking):continue
+		var action:Dictionary=sim.get_current_action()
+		if not state.is_empty() and player.position.distance_to(action.target_position)<.02:
+			_update_activity_facing(0.0,action,"cook")
+		else:player.clear_activity_anchor()
+		player.reconstruct_cooking_pose()
+	_bind_member(prior)
 
 func _restore_resource_waits() -> void:
 	var now:float=(household.day-1)*1440.0+household.minutes
@@ -1978,6 +2004,7 @@ func _update_activity_facing(delta:float,action:Dictionary,action_id:String) -> 
 			player.set_activity_anchor(at,anchor.yaw,"standing",action_id,anchor)
 			return
 		var landmarks:Dictionary=player.get_body_landmarks() if player.has_method("get_body_landmarks") else {}
+		if action_id=="cook":landmarks.merge({"recipe":str(action.get("recipe","")),"cooking_position":action.target_position})
 		var anchor:Dictionary=world.activity_anchor(item,action_id,landmarks)
 		if attention is Vector3:anchor["attention_target"]=attention
 		if player.has_method("set_activity_anchor"):

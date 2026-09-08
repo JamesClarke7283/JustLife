@@ -1,5 +1,5 @@
 """Original JustLife furniture. Run: blender -b --python tools/create_furniture.py."""
-import bpy, math, random, pathlib
+import bpy, math, random, pathlib, argparse, sys
 from mathutils import Vector
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 random.seed(23)
@@ -75,12 +75,55 @@ def counter():
     for x in [-.25,.25]:
         box('Shaker door',(x,.46,.369),(.45,.67,.02),'teal_light',.015); rod('Cabinet pull',(x-.10,.65,.41),(x+.10,.65,.41),.012,'gold')
 def stove():
-    box('Oven',(0,.46,0),(1,.90,.74),'cream',.035); box('Cooktop',(0,.94,0),(1.02,.065,.77),'black',.02)
+    # A real hollow appliance. The external footprint and cooktop remain the
+    # original dimensions used by navigation and supported meal placement.
+    for x in [-.46,.46]:box('Enamel side',(x,.46,0),(.08,.90,.74),'cream',.024)
+    box('Enamel back',(0,.46,-.335),(.85,.90,.07),'cream',.024)
+    box('Lower plinth',(0,.23,0),(.86,.44,.73),'cream',.02)
+    box('Warming drawer face',(0,.25,.38),(.84,.30,.035),'teal_light',.016)
+    rod('Warming drawer pull',(-.25,.36,.43),(.25,.36,.43),.016,'gold')
+    box('Control panel',(0,.837,.331),(.86,.145,.082),'cream',.02)
+    box('Cavity roof',(0,.767,-.01),(.85,.04,.64),'black',.009)
+    box('Cavity floor',(0,.49,-.01),(.85,.04,.64),'black',.009)
+    box('Cavity back',(0,.625,-.29),(.85,.27,.025),'black',.009)
+    for x in [-.412,.412]:box('Cavity lining',(x,.625,-.01),(.02,.27,.60),'dark',.006)
+    for y in [.55,.65]:
+        for x in [-.40,.40]:rod('Rack support',(x,y,-.23),(x,y,.27),.009,'gold')
+    rack_carrier=bpy.data.objects.new('OvenRackCarrier',None);bpy.context.collection.objects.link(rack_carrier);active.append(rack_carrier)
+    rack_parts=[]
+    for z in [-.23,-.13,-.03,.07,.17,.27,.33]:rack_parts.append(rod('Rack wire',(-.393,.554,z),(.393,.554,z),.005,'gold'))
+    for x in [-.393,.393]:rack_parts.append(rod('Rack frame',(x,.554,-.23),(x,.554,.34),.009,'gold'))
+    rack_parts.append(rod('Rack front grip',(-.15,.554,.34),(.15,.554,.34),.010,'gold'))
+    bpy.context.view_layer.update()
+    for o in rack_parts:
+        world=o.matrix_world.copy();o.parent=rack_carrier;o.matrix_world=world
+    box('Cooktop',(0,.94,0),(1.02,.065,.77),'black',.02)
     for x in [-.25,.25]:
         for z in [-.20,.20]:
             cyl('Burner',(x,.98,z),.14,.015,'dark'); cyl('Burner ring',(x,.991,z),.095,.009,'black')
-    box('Oven window',(0,.46,.386),(.73,.40,.025),'black',.04); box('Glass reflection',(-.18,.47,.401),(.13,.3,.006),'screen',.01)
-    rod('Oven handle',(-.36,.74,.44),(.36,.74,.44),.027,'gold')
+    pivot=bpy.data.objects.new('OvenDoor',None);bpy.context.collection.objects.link(pivot)
+    pivot.location=xyz((0,.45,.385));active.append(pivot)
+    door_parts=[]
+    def door_box(n,p,s,m,bevel=.01):
+        o=box(n,p,s,m,bevel);door_parts.append(o);return o
+    # Inner panel sits behind the window; dark glass does not expose a false
+    # empty cavity while closed. All door pieces share the lower hinge.
+    door_box('Door inner enamel',(0,.6075,.385),(.87,.315,.056),'dark',.025)
+    door_box('Oven window',(0,.605,.421),(.69,.205,.018),'black',.035)
+    door_box('Glass reflection',(-.18,.605,.433),(.12,.145,.004),'screen',.01)
+    for x in [-.405,.405]:door_box('Door edge',(x,.6075,.423),(.055,.305,.055),'cream',.012)
+    for y in [.478,.738]:door_box('Door edge',(0,y,.423),(.81,.052,.055),'cream',.012)
+    handle=rod('Oven handle',(-.36,.70,.482),(.36,.70,.482),.027,'gold');door_parts.append(handle)
+    for x in [-.31,.31]:
+        handle=rod('Handle mount',(x,.70,.422),(x,.70,.482),.019,'gold');door_parts.append(handle)
+    bpy.context.view_layer.update()
+    for o in door_parts:
+        world=o.matrix_world.copy();o.parent=pivot;o.matrix_world=world
+    # Exported reference nodes are authored in metres, not inferred bounds.
+    for name,p,parent in [('OvenRack',(0,.565,.17),rack_carrier),('OvenRackGrip',(-.12,.554,.34),rack_carrier),('OvenHandleGrip',(0,.70,.49),pivot)]:
+        o=bpy.data.objects.new(name,None);bpy.context.collection.objects.link(o);o.location=xyz(p);active.append(o)
+        if parent:
+            bpy.context.view_layer.update();world=o.matrix_world.copy();o.parent=parent;o.matrix_world=world
     for x in [-.3,-.1,.1,.3]:ell('Dial',(x,.85,.398),(.037,.037,.023),'dark')
     cyl('Sauce pot',(-.25,1.075,-.20),.14,.16,'coral'); cyl('Lid',(-.25,1.17,-.20),.15,.035,'cream'); ell('Pot grip',(-.25,1.205,-.2),(.04,.025,.04),'walnut')
 def sink():
@@ -177,14 +220,20 @@ def bench():
     for y in [.71,.89]:box('Back slat',(0,y,-.29),(2,.14,.055),'oak_light',.025)
 
 catalog={'bench':bench,'sofa':sofa,'bed':bed,'fridge':fridge,'counter':counter,'stove':stove,'sink':sink,'toilet':toilet,'shower':shower,'table':table,'dining':dining,'chair':chair,'desk':desk,'bookshelf':bookshelf,'easel':easel,'tv':tv,'lamp':lamp,'nightstand':nightstand,'rug':rug,'plant':plant,'painting':painting}
+parser=argparse.ArgumentParser()
+parser.add_argument('--only',choices=tuple(catalog))
+parser.add_argument('--source-out',default='art/furniture.blend')
+args=parser.parse_args(sys.argv[sys.argv.index('--')+1:] if '--' in sys.argv else [])
+if args.only:catalog={args.only:catalog[args.only]}
 for idx,(name,fn) in enumerate(catalog.items()):
     active=[]; fn()
     root=bpy.data.objects.new(name,None); bpy.context.collection.objects.link(root)
-    for o in active:o.parent=root
+    for o in active:
+        if o.parent is None:o.parent=root
     bpy.ops.object.select_all(action='DESELECT'); root.select_set(True)
     for o in active:o.select_set(True)
     bpy.context.view_layer.objects.active=root
     bpy.ops.export_scene.gltf(filepath=str(ROOT/'assets/models'/f'{name}.glb'),export_format='GLB',use_selection=True,export_apply=True,export_animations=False)
     root.location=((idx%5)*4,(idx//5)*4,0)
-bpy.ops.wm.save_as_mainfile(filepath=str(ROOT/'art/furniture.blend'))
+bpy.ops.wm.save_as_mainfile(filepath=str(ROOT/args.source_out))
 print('JUSTLIFE_FURNITURE_COMPLETE', len(catalog))

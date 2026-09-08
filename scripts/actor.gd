@@ -45,6 +45,7 @@ var _cooking_spoon: Node3D
 var _bowl_center: Node3D
 var _spoon_tip: Node3D
 var _arm_rest: Dictionary = {}
+var _leg_rest: Dictionary = {}
 var _motion_action: String = ""
 var _action_time: float = 0.0
 var _cook_weight: float = 0.0
@@ -79,6 +80,7 @@ var _activity_anchor: Dictionary = {}
 var meal_presentation: Dictionary = {}
 # Controller-owned recipe identity and normalized progress; visual state only.
 var cooking_presentation: Dictionary = {}
+var _reconstructing_cooking: bool = false
 var _presented_cooking_recipe: String = "garden_skillet"
 var _recipe_bowl: Node3D
 var _recipe_bowl_food: Node3D
@@ -189,6 +191,7 @@ func configure(new_profile: Dictionary) -> void:
 	_motion_action = ""
 	_action_time = 0.0
 	_arm_rest.clear()
+	_leg_rest.clear()
 	_smile = 0.0
 	_activity_anchor = {}
 	var frame: int = clampi(int(profile.get("frame", 0)), 0, 1)
@@ -245,6 +248,16 @@ func configure(new_profile: Dictionary) -> void:
 			_arm_rest[side] = {"shoulder": _model.to_local(shoulder.global_position),
 				"upper": elbow.position, "lower": _palm_offset(side), "local_shoulder":shoulder.position,
 				"space":_model.global_transform.affine_inverse()*shoulder.get_parent().global_transform}
+		if _joints.has("Leg_"+side) and _joints.has("Shin_"+side):
+			var hip:Node3D=_joints["Leg_"+side]
+			var knee:Node3D=_joints["Shin_"+side]
+			var lower:Vector3=Vector3(0,-(_knee_height-.10*_proportion),0)
+			var ankle:=Node3D.new();ankle.name="PlantedShoe_"+side;knee.add_child(ankle);ankle.position=lower
+			for child:Node in knee.get_children().duplicate():
+				if child is Node3D and child.name.begins_with("Shoes_"):child.reparent(ankle,true)
+			_leg_rest[side]={"hip":hip.position,"upper":knee.position,"lower":lower,
+				"foot":_model.to_local(knee.to_global(lower)),"space":_model.global_transform.affine_inverse()*hip.get_parent().global_transform,
+				"shoe":ankle,"shoe_basis":global_basis.inverse()*ankle.global_basis}
 	_discover_deformation(_model)
 	for key: String in IDENTITY_KEYS:
 		var value: Variant = profile.get(key, 0.0)
@@ -408,6 +421,7 @@ func set_activity_anchor(world_position: Vector3,world_yaw: float,anchor_kind: S
 		if is_finite(float(details.desk_surface_y)): _activity_anchor["desk_surface_y"] = float(details.desk_surface_y)
 	for key: String in ["desk_front_edge","desk_forward","attention_target","plate_position"]:
 		if details.get(key) is Vector3 and details[key].is_finite(): _activity_anchor[key] = details[key]
+	if is_instance_valid(details.get("oven")):_activity_anchor["oven"]=details.oven
 
 
 func clear_activity_anchor() -> void:
@@ -603,7 +617,7 @@ func _update_grips(delta: float, moving: bool, action_id: String) -> void:
 	if bool(meal_presentation.get("carrying",false)):
 		var hold:float=.38 if bool(meal_presentation.get("platter",false)) else .20
 		targets={"L":hold,"R":hold}
-	var blend: float = 1.0-exp(-delta*8.0)
+	var blend: float = 1.0 if _reconstructing_cooking or (not moving and action_id=="cook" and _has_oven()) else 1.0-exp(-delta*8.0)
 	for side: String in ["L","R"]:
 		_grip_amounts[side] = lerpf(float(_grip_amounts[side]),float(targets[side]),blend)
 		for entry: Dictionary in _grip_shapes[side]:
@@ -739,7 +753,7 @@ func _orient_held_prop(prop: Node3D, model_basis: Basis) -> void:
 
 
 func _update_held_props(delta: float, moving: bool, action_id: String) -> void:
-	var blend: float = 1.0-exp(-delta*12.0)
+	var blend: float = 1.0 if _reconstructing_cooking or (not moving and action_id=="cook" and _has_oven()) else 1.0-exp(-delta*12.0)
 	if is_instance_valid(_meal_fork):
 		_meal_fork.visible=not moving and action_id=="eat_meal"
 		if _meal_fork.visible:
@@ -758,15 +772,18 @@ func _update_held_props(delta: float, moving: bool, action_id: String) -> void:
 	_cooking_bowl.visible = _cook_weight > .015 and not bake
 	_seasoning_weight=lerpf(_seasoning_weight,1.0 if not moving and action_id=="cook" and _is_seasoning() else 0.0,blend)
 	_cooking_spoon.visible = _cook_weight > .015 and not bake and _seasoning_weight<.05
-	_seasoning_jar.visible=_seasoning_weight>.015
-	_baking_tray.visible=_cook_weight>.015 and bake
+	_seasoning_jar.visible=_seasoning_weight>.015 and not bool(cooking_presentation.get("oven_suspended",false)) and not bool(cooking_presentation.get("oven_interior",false))
+	_baking_tray.visible=not moving and action_id=="cook" and bake and not bool(cooking_presentation.get("oven_interior",false)) and not bool(cooking_presentation.get("oven_suspended",false))
 	for child:Node3D in _bowl_center.get_children():
 		child.visible=child==_recipe_bowl if _presented_cooking_recipe=="herb_pasta" and is_instance_valid(_recipe_bowl) else child!=_recipe_bowl
 	_snack.visible = _snack_weight > .015
 	# Counter-rotate each grip so the ceramic stays level while its palm moves.
 	_orient_held_prop(_cooking_bowl,Basis.IDENTITY.scaled(Vector3.ONE*maxf(.001,_cook_weight)*_proportion))
 	_orient_held_prop(_snack,Basis.IDENTITY.scaled(Vector3.ONE*maxf(.001,_snack_weight)*_proportion))
-	if _baking_tray.visible:_baking_tray.global_transform=_preparation_tray_transform()
+	# Keep the hidden actor cache on the same progress-derived transform as
+	# the world-owned interior dish; visibility is not preparation ownership.
+	if not moving and action_id=="cook" and bake and not bool(cooking_presentation.get("oven_suspended",false)):
+		_baking_tray.global_transform=_preparation_tray_transform()
 	if _seasoning_jar.visible:
 		_orient_held_prop(_seasoning_jar,Basis(Quaternion(Vector3.UP,_seasoning_axis)).scaled(Vector3.ONE*_proportion*maxf(.001,_seasoning_weight)))
 		_update_seasoning_grains()
@@ -817,30 +834,44 @@ func speech(text: String) -> void:
 		_pending_voice = "thoughtful"
 
 
+func reconstruct_cooking_pose() -> void:
+	# Rebuild only the presentation from its current authoritative cook data.
+	# Ordinary animate(..., speed=0) remains an exact freeze. No synthetic dt,
+	# simulation progress, clock reset, blink sampling or voice update is used.
+	if _model == null:return
+	_reconstructing_cooking=true
+	var action:String="cook" if not cooking_presentation.is_empty() and not bool(cooking_presentation.get("oven_suspended",false)) else ""
+	animate(0.0,0.0,false,action)
+	_reconstructing_cooking=false
+
 func animate(delta: float, speed_factor: float, moving: bool, action_id: String) -> void:
-	if _model == null or delta <= 0.0:
+	if _model == null or (delta <= 0.0 and not _reconstructing_cooking):
 		return
-	_update_voice(delta, speed_factor, moving, action_id)
+	if not _reconstructing_cooking:_update_voice(delta, speed_factor, moving, action_id)
 	var animation_delta: float = delta * clampf(speed_factor, 0.0, 3.0)
 	# Pause freezes the entire presentation, including props and transition clocks.
-	if animation_delta <= 0.0:
+	if animation_delta <= 0.0 and not _reconstructing_cooking:
 		return
-	var motion_action: String = "walk" if moving else action_id
-	if motion_action != _motion_action:
-		_motion_action = motion_action
-		_action_time = 0.0
-	_action_time += animation_delta
+	if not _reconstructing_cooking:
+		var motion_action: String = "walk" if moving else action_id
+		if motion_action != _motion_action:
+			_motion_action = motion_action
+			_action_time = 0.0
+		_action_time += animation_delta
 	if not moving and action_id=="cook":
 		_presented_cooking_recipe=_cooking_recipe()
 		_ensure_cooking_recipe_props()
 	_update_grips(animation_delta,moving,action_id)
-	_time += animation_delta
-	_speech_remaining = maxf(0.0, _speech_remaining - delta)
-	_speech.visible = not screen_speech and _speech_remaining > 0.0 and not _speech.text.is_empty()
+	if not _reconstructing_cooking:
+		_time += animation_delta
+		_speech_remaining = maxf(0.0, _speech_remaining - delta)
+		_speech.visible = not screen_speech and _speech_remaining > 0.0 and not _speech.text.is_empty()
 	_marker.position.y = (_authored_height+.21) * _height + sin(_time * 2.0 + _phase_offset) * 0.026
 	_marker.rotation.y = sin(_time * 0.8) * 0.20
 	var t: float = _time + _phase_offset
-	var blend: float = 1.0 - exp(-animation_delta * 8.0)
+	# Oven handling already has smooth progress curves. Evaluating its pose
+	# directly makes live and paused reconstruction agree without frame lag.
+	var blend: float = 1.0 if _reconstructing_cooking or (not moving and action_id=="cook" and _has_oven()) else 1.0 - exp(-animation_delta * 8.0)
 	var anchored: bool = not moving and not action_id.is_empty() and not _activity_anchor.is_empty()
 	anchored = anchored and (str(_activity_anchor.get("action","")) in ["",action_id])
 	var anchor_kind: String = str(_activity_anchor.get("kind","")) if anchored else ""
@@ -964,7 +995,8 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 				pose["Arm_L"] = Vector3(-.10,0,.025)
 				pose["Forearm_L"] = Vector3(-.20,0,0)
 			"cook":
-				_cooking_pose(pose)
+				if _has_oven():lean.x=.90*LifeOvenSequence.crouch(_cooking_progress())
+				else:_cooking_pose(pose)
 			"read":
 				pose["Arm_L"] = Vector3(-0.43, 0, 0.17)
 				pose["Arm_R"] = Vector3(-0.43, 0, -0.17)
@@ -1022,26 +1054,45 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 			# Match the back of the body at its midpoint to the mattress surface.
 			reference = Vector3(0.0,_hip_height * _height,-.10 * _proportion * visual.scale.z)
 		var world_origin: Vector3 = _activity_anchor.position - world_orientation * reference
+		if action_id=="cook" and _has_oven():
+			var bend:float=LifeOvenSequence.crouch(_cooking_progress())
+			var upright:Basis=Basis(Vector3.UP,float(_activity_anchor.yaw))
+			var hips:Vector3=Vector3(0,_hip_height*_height,0)
+			world_origin=_activity_anchor.position+upright*(hips+Vector3(0,-.42*_height,-.20+.55*(1.0-_proportion*visual.scale.x))*bend)-world_orientation*hips
+			var rack:Node3D=_activity_anchor.oven.find_child("OvenRack",true,false)
+			if is_instance_valid(rack) and _arm_rest.has("L") and _arm_rest.has("R"):
+				var shoulders:Vector3=(Vector3(_arm_rest.L.shoulder)+Vector3(_arm_rest.R.shoulder))*.5*visual.scale
+				var shoulder_height:float=(world_origin+world_orientation*shoulders).y
+				world_origin.y+=maxf(0,rack.global_position.y+.19-shoulder_height)*bend*LifeOvenSequence.transfer_height(_cooking_progress())
 		offset = to_local(world_origin) + interaction_offset
 		lean = (global_basis.orthonormalized().inverse() * world_orientation).get_euler()
 	visual.position = visual.position.lerp(offset, blend)
 	visual.rotation = _angle_lerp(visual.rotation, lean, blend)
 	_update_visual_followers(anchored,action_id)
+	if not moving and action_id=="cook" and _has_oven():
+		_oven_cooking_pose(pose)
+		_oven_leg_pose(pose)
 	for joint_name: String in _joints:
 		var joint: Node3D = _joints[joint_name]
 		var goal_rotation: Vector3 = _rest_rotations[joint_name] + pose[joint_name]
-		joint.quaternion = joint.quaternion.slerp(Quaternion.from_euler(goal_rotation),blend)
+		var joint_blend:float=1.0 if action_id=="cook" and _has_oven() and joint_name!="Head" else blend
+		joint.quaternion = joint.quaternion.slerp(Quaternion.from_euler(goal_rotation),joint_blend)
 	for entry: Dictionary in _rig_bones:
 		var skeleton: Skeleton3D = entry.skeleton
 		var bone_index: int = int(entry.index)
 		var rest: Quaternion = entry.rest
 		var target_rotation: Quaternion = rest.inverse() * Quaternion.from_euler(pose[entry.name]) * rest
-		skeleton.set_bone_pose_rotation(bone_index,skeleton.get_bone_pose_rotation(bone_index).slerp(target_rotation,blend))
+		var joint_blend:float=1.0 if action_id=="cook" and _has_oven() and entry.name!="Head" else blend
+		skeleton.set_bone_pose_rotation(bone_index,skeleton.get_bone_pose_rotation(bone_index).slerp(target_rotation,joint_blend))
+	for rest:Dictionary in _leg_rest.values():
+		var shoe:Node3D=rest.shoe
+		if not moving and action_id=="cook" and _has_oven():shoe.global_basis=Basis(Vector3.UP,float(_activity_anchor.yaw))*Basis(rest.shoe_basis)
+		else:shoe.basis=Basis.IDENTITY
 	var seated: bool = not moving and ((action_id in ["relax", "watch", "toilet", "work", "study", "job", "school", "homework", "homework_wait", "eat_meal"] and anchor_kind != "standing") or (action_id in ["sleep", "nap"] and anchor_kind == "seat"))
 	_sit_amount = lerpf(_sit_amount, 1.0 if seated else 0.0, blend)
 	for entry: Dictionary in _sit_shapes:
 		entry.mesh.set_blend_shape_value(int(entry.index), _sit_amount)
-	_update_expression(animation_delta,action_id,blend)
+	if not _reconstructing_cooking:_update_expression(animation_delta,action_id,blend)
 	_update_held_props(animation_delta,moving,action_id)
 
 
@@ -1268,7 +1319,7 @@ func _cooking_progress() -> float:
 
 func _is_seasoning() -> bool:
 	var progress:float=_cooking_progress()
-	return (_presented_cooking_recipe=="herb_pasta" and progress>=.48 and progress<.68) or (_presented_cooking_recipe=="harvest_bake" and progress<.62)
+	return (_presented_cooking_recipe=="herb_pasta" and progress>=.48 and progress<.68) or (_presented_cooking_recipe=="harvest_bake" and (LifeOvenSequence.phase(progress)=="season" if _has_oven() else progress<.62))
 
 func _create_recipe_props() -> void:
 	_recipe_bowl=null;_recipe_bowl_food=null
@@ -1290,7 +1341,99 @@ func _create_recipe_props() -> void:
 		grain.name="FallingHerb"+str(i);grain.hide();_seasoning_grains.append(grain)
 
 func _preparation_tray_transform() -> Transform3D:
+	if _has_oven():
+		var p:float=_cooking_progress()
+		var orientation:Basis=Basis(Vector3.UP,float(_activity_anchor.yaw))
+		var bend:float=LifeOvenSequence.crouch(p)
+		var side_carry:float=LifeOvenSequence.side_carry(p)
+		var rack_anchor:Node3D=_activity_anchor.oven.find_child("OvenRack",true,false)
+		var standing_clearance:float=maxf(0,visual.scale.x-1.0)*.12+(.04 if _model_age=="elder" else 0.0)
+		var center:Vector3=_activity_anchor.position+orientation*Vector3(-(.285+.13*visual.scale.x)*side_carry,(_hip_height+.22*_proportion)*_height-.40*_height*bend,(.30+standing_clearance*(1-bend)+.08*bend)*_proportion)
+		if is_instance_valid(rack_anchor):center.y=maxf(center.y,rack_anchor.global_position.y+.30*side_carry)
+		var phase:String=LifeOvenSequence.phase(p)
+		var gather:float=0.0
+		if phase=="load":gather=smoothstep(0,.50,LifeOvenSequence.fraction(p,phase))
+		elif phase=="unload":gather=1.0
+		elif phase=="push_unload":gather=1.0-smoothstep(0,.50,LifeOvenSequence.fraction(p,phase))
+		if gather>0:
+			var rack:Node3D=_activity_anchor.oven.find_child("OvenRack",true,false)
+			var centered:Vector3=_activity_anchor.position+orientation*Vector3(0,0,(.45+.35*maxf(0,1.0-_proportion*visual.scale.x))*_proportion)
+			centered.y=minf(center.y,rack.global_position.y+.07) if is_instance_valid(rack) else center.y
+			var local_start:Vector3=orientation.inverse()*(center-Vector3(_activity_anchor.position))
+			var local_finish:Vector3=orientation.inverse()*(centered-Vector3(_activity_anchor.position))
+			var local_center:Vector3=Vector3(lerpf(local_start.x,local_finish.x,smoothstep(.50,1,gather)),lerpf(local_start.y,local_finish.y,smoothstep(0,.30,gather)),lerpf(local_start.z,local_finish.z,smoothstep(.20,.50,gather)))
+			center=Vector3(_activity_anchor.position)+orientation*local_center
+		return LifeOvenSequence.tray(_activity_anchor.oven,p,Transform3D(orientation,center))
 	return Transform3D(global_basis.orthonormalized(),_model.to_global(Vector3(0,_hip_height+.22*_proportion,.30*_proportion)))
+
+func _has_oven()->bool:
+	return _presented_cooking_recipe=="harvest_bake" and is_instance_valid(_activity_anchor.get("oven"))
+
+func _oven_cooking_pose(pose:Dictionary)->void:
+	var oven:Node3D=_activity_anchor.oven
+	var p:float=_cooking_progress()
+	var phase:String=LifeOvenSequence.phase(p)
+	var part:float=LifeOvenSequence.fraction(p,phase)
+	LifeOvenSequence.apply_door(oven,p)
+	if phase=="season":_cooking_pose(pose);return
+	pose.Head=Vector3(.10*LifeOvenSequence.crouch(p),0,0)
+	var held:Transform3D=_preparation_tray_transform()
+	var door:Node3D=oven.find_child("OvenHandleGrip",true,false)
+	var rack:Node3D=oven.find_child("OvenRackGrip",true,false)
+	if not is_instance_valid(door) or not is_instance_valid(rack):return
+	var support:Vector3=held*LifeOvenSequence.support_offset(p)
+	var left_grip:Vector3=held*Vector3(-.2395,.046,0)
+	var right_grip:Vector3=held*Vector3(.2395,.046,0)
+	var left_rest:Vector3=_model.to_global(Vector3(-.23,_hip_height+.15,.12)*_proportion)
+	var right_rest:Vector3=_model.to_global(Vector3(.23,_hip_height+.15,.12)*_proportion)
+	var left:Vector3=left_rest;var right:Vector3=right_rest
+	var handoff:float=smoothstep(0,.50,part)
+	match phase:
+		"reach_load":
+			left=support
+			right=_model.to_global(_recipe_food_point()+Vector3(.055,.205,.020)*_proportion).lerp(door.global_position,smoothstep(0,1,part))
+		"open_load":left=support;right=door.global_position
+		"pull_load":left=support;right=door.global_position.lerp(rack.global_position,handoff)
+		"load":
+			left=support.lerp(left_grip,smoothstep(0,.50,part))
+			right=rack.global_position.lerp(right_grip,smoothstep(0,.50,part))
+		"push_load":left=left_grip.lerp(left_rest,smoothstep(0,.65,part));right=right_grip.lerp(rack.global_position,handoff)
+		"close_load":right=rack.global_position.lerp(door.global_position,handoff)
+		"release_load":right=door.global_position.lerp(right_rest,smoothstep(0,1,part))
+		"reach_unload":right=right_rest.lerp(door.global_position,smoothstep(0,1,part))
+		"open_unload":right=door.global_position
+		"pull_unload":right=door.global_position.lerp(rack.global_position,handoff)
+		"unload":
+			left=left_rest.lerp(left_grip,smoothstep(0,.50,part))
+			right=rack.global_position.lerp(right_grip,smoothstep(0,.50,part))
+		"push_unload":left=left_grip.lerp(support,handoff);right=right_grip.lerp(rack.global_position,handoff)
+		"close_unload":left=support;right=rack.global_position.lerp(door.global_position,handoff)
+		"release_unload":left=support.lerp(left_grip,smoothstep(0,1,part));right=door.global_position.lerp(right_grip,smoothstep(0,1,part))
+	_reach_hand(pose,"L",_model.to_local(left),Vector3(-.4,-.6,0))
+	_reach_hand(pose,"R",_model.to_local(right),Vector3(.4,-.6,0))
+
+
+func _oven_leg_pose(pose:Dictionary)->void:
+	# Feet retain their neutral ankle destinations while the knees bend and the
+	# body lowers to the real rack. Navigation ownership remains in main.gd.
+	var orientation:Basis=Basis(Vector3.UP,float(_activity_anchor.yaw))
+	for side:String in _leg_rest:
+		var rest:Dictionary=_leg_rest[side]
+		var target:Vector3=_activity_anchor.position+orientation*(Vector3(rest.foot)*visual.scale)
+		var local:Vector3=Transform3D(rest.space).affine_inverse()*_model.to_local(target)
+		var upper:Vector3=rest.upper;var lower:Vector3=rest.lower
+		var reach:Vector3=local-Vector3(rest.hip)
+		var distance:float=clampf(reach.length(),absf(upper.length()-lower.length())+.005,upper.length()+lower.length()-.005)
+		var forward:Vector3=reach.normalized()
+		var pole:Vector3=Transform3D(rest.space).basis.inverse()*_model.global_basis.inverse()*(orientation*Vector3(0,.2,1))
+		var bend:Vector3=(pole-forward*pole.dot(forward)).normalized()
+		var along:float=(upper.length_squared()-lower.length_squared()+distance*distance)/(2*distance)
+		var away:float=sqrt(maxf(0,upper.length_squared()-along*along))
+		var upper_goal:Vector3=forward*along+bend*away
+		var lower_goal:Vector3=forward*distance-upper_goal
+		var thigh:Quaternion=Quaternion(upper.normalized(),upper_goal.normalized())
+		pose["Leg_"+side]=thigh.get_euler()
+		pose["Shin_"+side]=Quaternion(lower.normalized(),thigh.inverse()*lower_goal.normalized()).get_euler()
 
 func _recipe_food_point() -> Vector3:
 	if _presented_cooking_recipe=="harvest_bake":
@@ -1298,9 +1441,16 @@ func _recipe_food_point() -> Vector3:
 	if is_instance_valid(_recipe_bowl_food):return _model.to_local(_recipe_bowl.to_global(_food_surface_point(_recipe_bowl,_recipe_bowl_food)))
 	return _model.to_local(_bowl_center.global_position)+Vector3(0,.027,0)*_proportion
 
+func _preparation_sample_time() -> float:
+	# Oven preparation must reconstruct from paid progress in a fresh actor.
+	# This is a read-only sample coordinate, never an animation-clock update.
+	if _has_oven():return _cooking_progress()*float(LifeMeals.RECIPES.harvest_bake.duration)/LifeSim.GAME_MINUTES_PER_SECOND
+	return _action_time
+
 func _cooking_pose(pose:Dictionary) -> void:
 	var recipe:String=_presented_cooking_recipe
-	var stir:float=_action_time*(1.7 if recipe=="herb_pasta" else 2.3)
+	var sample_time:float=_preparation_sample_time()
+	var stir:float=sample_time*(1.7 if recipe=="herb_pasta" else 2.3)
 	var bowl_hand:Vector3=Vector3(-.070,1.120,.350)*_proportion
 	bowl_hand.y+=sin(stir*.5)*.005*_proportion
 	if recipe=="harvest_bake":
@@ -1309,17 +1459,17 @@ func _cooking_pose(pose:Dictionary) -> void:
 		_reach_hand(pose,"L",_model.to_local(held*left),Vector3(-.25,-1.0,-.3))
 		if not _is_seasoning():
 			_reach_hand(pose,"R",_model.to_local(held*Vector3(.2395,.037,0)),Vector3(.25,-1.0,-.3))
-			pose.Head=Vector3(.12,sin(_action_time*.6)*.035,0)
+			pose.Head=Vector3(.12,sin(sample_time*.6)*.035,0)
 			return
 	else:
 		_reach_hand(pose,"L",bowl_hand,Vector3(-.7,-.8,-.1),Vector3.UP,Vector3(0,0,1))
 	if _is_seasoning():
 		var food:Vector3=_recipe_food_point()
-		var hand:Vector3=food+Vector3(.055+sin(_action_time*1.8)*.022,.205+sin(_action_time*8)*.009,.020)*_proportion
+		var hand:Vector3=food+Vector3(.055+sin(sample_time*1.8)*.022,.205+sin(sample_time*8)*.009,.020)*_proportion
 		_seasoning_axis=(food-hand).normalized()
 		_reach_hand(pose,"R",hand,Vector3(.6,-.45,-.1),_seasoning_axis)
 		_preparation_tip=food
-		pose.Head=Vector3(.14,-.04+sin(_action_time*.7)*.025,0)
+		pose.Head=Vector3(.14,-.04+sin(sample_time*.7)*.025,0)
 		return
 	if recipe=="herb_pasta":
 		var food:Vector3=_recipe_food_point()
@@ -1333,13 +1483,14 @@ func _cooking_pose(pose:Dictionary) -> void:
 	pose.Head=Vector3(.16,-.025+sin(stir*.5)*.018,0)
 
 func _update_seasoning_grains() -> void:
+	var sample_time:float=_preparation_sample_time()
 	var mouth:Node3D=_seasoning_jar.get_node("SprinkleMouth")
 	var start:Vector3=_model.to_local(mouth.global_position)
 	var finish:Vector3=_recipe_food_point()
 	for i:int in range(_seasoning_grains.size()):
 		var grain:MeshInstance3D=_seasoning_grains[i]
 		grain.visible=_seasoning_weight>.8
-		var fall:float=fmod(_action_time*2.8+float(i)*.143,1.0)
+		var fall:float=fmod(sample_time*2.8+float(i)*.143,1.0)
 		grain.position=start.lerp(finish,fall)+Vector3(sin(i*2.4)*.014,0,cos(i*2.4)*.014)*fall*_proportion
 
 func _food_surface_point(dish:Node3D,food:Node3D) -> Vector3:

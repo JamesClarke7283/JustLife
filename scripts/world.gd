@@ -35,6 +35,8 @@ var construction: LifeConstruction
 var landscape_trees:Array[Node3D]=[]
 var ceiling_beams:Array[MeshInstance3D]=[]
 var _desk_boosters:Dictionary={}
+var oven_presentations:Dictionary={}
+var oven_food_views:Dictionary={}
 
 func _ready() -> void:
 	rng.seed = 91517
@@ -528,6 +530,10 @@ func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -
 	var local:Vector3=Vector3(0,0,float(item.size.y)*.5+.36)
 	var yaw:float=node.rotation.y+PI
 	var kind:String="standing"
+	if str(item.kind)=="stove" and action_id=="cook" and str(landmarks.get("recipe",""))=="harvest_bake":
+		var at:Vector3=landmarks.get("cooking_position",oven_approach(item))
+		at.y=node.global_position.y
+		return {"position":at,"yaw":yaw,"kind":"standing","oven":node}
 	match str(item.kind):
 		"fridge":
 			# Turn toward the room to present the cake at the reached position.
@@ -568,6 +574,37 @@ func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -
 	if str(item.kind)=="desk":
 		anchor.merge(_desk_surface(node))
 	return anchor
+
+func oven_approach(item:Dictionary)->Vector3:
+	var at:Vector3=item.node.to_global(Vector3(0,0,1.0))
+	return Vector3(roundf(at.x*4)*.25,.16,roundf(at.z*4)*.25)
+
+func update_oven_presentations(states:Dictionary) -> void:
+	# These views are presentation only: never world items, servings, pickable
+	# food or independent jobs. Their sole owner is a current paid cook action.
+	oven_presentations=states.duplicate(true)
+	var visible_ids:Dictionary={}
+	for appliance:Dictionary in items:
+		if str(appliance.kind)!="stove":continue
+		var id:String=str(appliance.id)
+		var state:Dictionary=states.get(id,{})
+		LifeOvenSequence.apply_door(appliance.node,float(state.get("progress",0.0)))
+		var rack:Node3D=appliance.node.find_child("OvenRack",true,false)
+		if not bool(state.get("inside",false)) or not is_instance_valid(rack):continue
+		visible_ids[id]=true
+		var view:Node3D=oven_food_views.get(id) if is_instance_valid(oven_food_views.get(id)) else null
+		if is_instance_valid(view) and view.get_parent()!=appliance.node:
+			view.hide();view.queue_free();view=null
+		if not is_instance_valid(view):
+			view=load(LifeMeals.model_path("harvest_bake")).instantiate()
+			view.name="OvenPreparation";appliance.node.add_child(view);oven_food_views[id]=view
+		view.global_transform=Transform3D(appliance.node.global_basis*Basis(Vector3.UP,PI),rack.global_position)
+		view.show()
+	for id:String in oven_food_views.keys():
+		if not visible_ids.has(id):
+			var view:Node3D=oven_food_views[id] if is_instance_valid(oven_food_views[id]) else null
+			if is_instance_valid(view):view.hide();view.queue_free()
+			oven_food_views.erase(id)
 
 func create_public_venue(place:String,layout:Array) -> void:
 	if house:house.queue_free()
