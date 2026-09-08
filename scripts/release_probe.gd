@@ -60,6 +60,11 @@ func run(owner_app:Node) -> void:
 	app.household.members[1].sim.needs.hunger=43.0
 	app.set_game_speed(0)
 	check(app.household.members.size()==2 and app.world.actors.size()==4,"Two Lifelets enter their home.")
+	var oven:Dictionary=app.world.closest_item("stove",Vector3.ZERO)
+	var rack:Node3D=oven.node.find_child("OvenRack",true,false) if not oven.is_empty() else null
+	var handle:Node3D=oven.node.find_child("OvenHandleGrip",true,false) if not oven.is_empty() else null
+	check(is_instance_valid(rack) and str(rack.get_parent().name)=="OvenRackCarrier" and is_instance_valid(handle) and str(handle.get_parent().name)=="OvenDoor","The packaged stove retains its sliding rack and hinged handle anchors.")
+	check(LifeOvenSequence.phase(.5)=="bake" and LifeOvenSequence.inside(.5),"The packaged oven sequence includes closed interior baking.")
 	check(app.household.members[0].sim.character.age_stage=="child" and app.household.members[0].sim.wants[0].id=="first_snack","A child enters the packaged home with an attainable first want.")
 	check(app.household.members[0].sim.education.stage=="child" and app.household.members[1].sim.education.stage=="adult","Packed schooling enrolls the child and leaves the adult unenrolled.")
 	check(app.household.family_relationship("player","housemate_1")=="parent","The packaged creator starts a directed parent-child family.")

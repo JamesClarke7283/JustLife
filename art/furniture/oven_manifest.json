@@ -1,0 +1,12 @@
+{
+  "asset": "Original JustLife hollow enamel oven with hinged door and sliding rack",
+  "authoring": "Blender 5.2.1; tools/create_furniture.py -- --only stove --source-out art/furniture/oven.blend",
+  "runtime": "assets/models/stove.glb",
+  "art_revision": "r9; qualified with actor motion r20",
+  "scope": "Only stove is replaced; the other production furniture and all character models retain their previous meshes.",
+  "sha256": {
+    "tools/create_furniture.py": "f0d915fd84bf2e2af9b86c4baa49909c4c4ba6b8230e14bdd6c8438fe4266d69",
+    "art/furniture/oven.blend": "ff7c6a651066bc8aa6cba6bcd99cd19052232afdaf04dbb6d6baa0ecd514efa9",
+    "assets/models/stove.glb": "788c93bbfb0837a34e2330f872741b07338b306a36f876341358cea21b1f82ec"
+  }
+}

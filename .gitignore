@@ -37,6 +37,9 @@ __pycache__/
 !/art/furniture/
 /art/furniture/*
 !/art/furniture/desk_booster.blend
+!/art/furniture/oven.blend
+!/art/furniture/oven.md
+!/art/furniture/oven_manifest.json
 !/art/celebration/
 /art/celebration/*
 !/art/celebration/birthday_cake.blend

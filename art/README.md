@@ -4,6 +4,7 @@ Production artwork is original JustLife work. The runtime loads exported GLBs fr
 
 - `characters.blend`, `characters_child.blend`, `characters_teen.blend`, `characters_elder.blend`: accepted character sources for the four authored age families. Young adults use the adult sculpt.
 - `furniture.blend`: the furniture collection.
+- `furniture/oven.blend`: the current hollow oven, hinged door and sliding rack, superseding the stove in the older collection file. `furniture/oven.md` records its regeneration and runtime anchors.
 - `furniture/desk_booster.blend`: the child's visible desk-seat support.
 - `celebration/birthday_cake.blend`: the birthday cake, plate and candles.
 - `meals/garden_supper.blend`: original serving dish, individual plate, food and fork; export hashes and regeneration instructions are in its README.
