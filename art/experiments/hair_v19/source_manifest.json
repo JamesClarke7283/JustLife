@@ -1,9 +1,75 @@
 {
-  "status": "Unpromoted hair study, hair revision 19 / study revision 3; no final critic acceptance.",
-  "origin": "Copied from local art/iterations/character_hair_v19 during source-tree cleanup. Generator changed only to use portable maintained source paths and validate its baseline.",
-  "files": {
+  "status": "Unpromoted hair revision 19 / study revision 14; six-image directional checkpoint independently reviewed in docs/REVIEWS/iteration_12_hair.md. Production remains v18.",
+  "baseline_hashes": "art/source/character_v18_production_hashes.json",
+  "origin": "Original JustLife Blender study, based on reviewed v18. r14 diagnoses and repairs local normal pinches and studies overlapping tapered curl locks in the front/left region.",
+  "initial_retained_revision_3": {
     "characters_adult_hair_v19.blend": "be51e04c03d69abc8bcf1656efde88bd3860187918d74e9fb6465b1db4832242",
     "characters_child_hair_v19.blend": "507962d3b333910015b2003184d19556a9e4e58f5e0d7ea8062339c0eb69b3eb"
   },
-  "baseline_hashes": "art/source/character_v18_production_hashes.json"
+  "files": {
+    "create_hair_v19.py": "6ce5974b059756c9f0c0e559304e149d085a7a2c79f9b9f337c3fe71bb7486b9",
+    "render_hair_review.py": "09521395f5b67ee5a93d578aaace8b50c516d6244e7f445b443d47271d5b12af",
+    "verify_hair_assets.py": "0ede6fe02ab3b3d0c902d9a8045f95d946a046f195ce1968ac992138b87c2730",
+    "verify_hair_assets.gd": "52a07a9f949df2351efbbc9aacd5a8a71754e0ec57d31ba56f5c73fce3bd7a55",
+    "characters_adult_hair_v19.blend": "61a42a4639c9af74d243d3bc60357c06f34e36e09fa40b3bf78d307d9f10eb25",
+    "characters_child_hair_v19.blend": "4b0f754a6123611b45537aa251dc905f639da34ebddb94ba4fb6516f9c0e87cf"
+  },
+  "preserved_nonhair_meshes": {
+    "adult": 105,
+    "child": 121
+  },
+  "godot_import_verification": {
+    "checks": 2120,
+    "failures": 0,
+    "coverage": "Fresh isolated import; unchanged non-hair vertex/bone/weight arrays, transforms, morph names and neutral values, and skeleton bone names/rests. This does not establish in-game artistic acceptance."
+  },
+  "candidate_exports": {
+    "assets/models/character_adult_hair_v19_grip.glb": {
+      "sha256": "818c2d0438a08958095f7e487d278604384dbd6393c34b379e479241dc4ed1c8",
+      "bytes": 10593340,
+      "skin_count": 1,
+      "joint_count": 11,
+      "stored_morph_targets": 93
+    },
+    "assets/models/character_child_hair_v19_grip.glb": {
+      "sha256": "3a88b947824da8bbb876559f894d12fdc772af199870aa6dea73dc889365d871",
+      "bytes": 10585960,
+      "skin_count": 1,
+      "joint_count": 11,
+      "stored_morph_targets": 93
+    }
+  },
+  "current_review_gallery": {
+    "source_revision": 14,
+    "candidate_image_count": 6,
+    "baseline_image_count": 20,
+    "resolution": "900 x900",
+    "samples": 40,
+    "candidate_images": [
+      "r14_adult_bob_creator.png",
+      "r14_adult_curls_creator.png",
+      "r14_adult_curls_front.png",
+      "r14_child_bob_left.png",
+      "r14_child_bob_right.png",
+      "r14_child_curls_left.png"
+    ],
+    "scope": "Only six requested neutral directional-checkpoint views. Backward r13 Curls relief intentionally remains outside the front/left study region. No new age/extreme/runtime coverage.",
+    "all_render_source_hashes_match_current_editable_files": true,
+    "camera_lighting_recorded_in_render_reports": true
+  },
+  "previous_r13_archive": "evidence/r13_before_r14 (ignored exact editable/source/manifest/export backup)",
+  "diagnosis": {
+    "r13_closed_manifold": true,
+    "r13_zero_area_faces": 0,
+    "child_bob_local_max_normal_difference_degrees": {
+      "r13": 35.1,
+      "r14": 3.7
+    },
+    "child_curls_base_local_max_normal_difference_degrees": {
+      "r13": 68.8,
+      "r14": 1.2
+    },
+    "note": "Raycast exact cited pixel neighborhoods. Curls statistic is the continuous base mesh; new overlaid lock meshes are visually reviewed separately."
+  },
+  "material_change": "Exact base colors and recolorable material names retained. Shared hair materials roughness floor0.79 and specularIOR level0.27; this shared hair material also supplies existing brows/crop in the experimental source."
 }
