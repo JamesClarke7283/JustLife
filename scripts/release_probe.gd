@@ -23,10 +23,15 @@ func choose_age(label:String) -> void:
 			if selector.get_item_text(index)==label:
 				selector.select(index);selector.item_selected.emit(index);return
 	check(false,"Missing packaged age choice "+label)
+static func isolated_environment() -> bool:
+	var data: String = OS.get_environment("XDG_DATA_HOME")
+	var saves: String = OS.get_environment("JUSTLIFE_DATA_DIR")
+	return OS.get_name() == "Linux" and data.is_absolute_path() and data == data.simplify_path() and data.get_file().begins_with("justlife-release-check-") and saves == data.path_join("save_data") and preload("res://scripts/save_storage.gd").safe_directory(data)
+
 func run(owner_app:Node) -> void:
 	app=owner_app
-	if not OS.get_environment("XDG_DATA_HOME").begins_with("/tmp/justlife-release-check-"):
-		printerr("Release check requires an isolated /tmp/justlife-release-check-* XDG_DATA_HOME.")
+	if not isolated_environment():
+		printerr("Release check requires an isolated justlife-release-check-* XDG_DATA_HOME and JUSTLIFE_DATA_DIR set to its save_data folder.")
 		app.get_tree().quit(2);return
 	app.set_process(false);app.set_sound(false)
 	check(app.mode=="menu","Packaged main menu starts.")

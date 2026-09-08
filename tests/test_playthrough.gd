@@ -29,7 +29,7 @@ class MotionObserver extends Node:
 
 func _initialize() -> void:
 	var project_path: String = ProjectSettings.globalize_path("res://")
-	if not project_path.trim_suffix("/").get_file().begins_with("justlife-playthrough-") or OS.get_environment("XDG_DATA_HOME")!=project_path.path_join("userdata") or ProjectSettings.has_setting("autoload/MCPRuntimeServer"):
+	if not project_path.trim_suffix("/").get_file().begins_with("justlife-playthrough-") or OS.get_environment("XDG_DATA_HOME")!=project_path.path_join("userdata") or OS.get_environment("JUSTLIFE_DATA_DIR") != project_path.path_join("userdata/save_data") or ProjectSettings.has_setting("autoload/MCPRuntimeServer"):
 		push_error("Refusing to run outside an isolated playthrough copy with private userdata.")
 		quit(2)
 		return
@@ -101,7 +101,7 @@ func _public_save(title: String) -> void:
 		check(not str(app.active_save_id).is_empty() and bool(library.read_slot(app.active_save_id).ok), "Public named-save flow writes a readable household slot.")
 		check(app.active_save_name == title, "Saved slot retains its chosen name.")
 	else:
-		check(FileAccess.file_exists("user://justlife_save.json"), "Public save button writes an isolated household file.")
+		check(FileAccess.file_exists(load("res://scripts/save_library.gd").LEGACY_PATH), "Public save button writes an isolated household file.")
 
 func _public_load() -> void:
 	if is_instance_valid(button_matching("Continue your life", true)) and app.mode == "menu":

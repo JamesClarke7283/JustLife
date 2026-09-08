@@ -38,6 +38,10 @@ func listing(id: String) -> Dictionary:
 
 
 func run() -> void:
+	if not OS.get_environment("JUSTLIFE_DATA_DIR").is_absolute_path() or not OS.get_environment("XDG_DATA_HOME").is_absolute_path():
+		push_error("Save tests require isolated JUSTLIFE_DATA_DIR and XDG_DATA_HOME.")
+		quit(2)
+		return
 	DirAccess.make_dir_recursive_absolute(Library.SAVE_DIR)
 	for id: String in TEST_IDS + ["legacy"]:
 		for suffix: String in [".json", ".json.tmp", ".png", ".png.tmp"]:
@@ -63,7 +67,7 @@ func run() -> void:
 	check(saved.ok and saved.id == "test_library_one", "A named eight-Lifelet household must save successfully.")
 	var entry: Dictionary = listing("test_library_one")
 	check(entry.valid and entry.name == "A quiet home" and entry.members.size() == 8 and entry.day == home.day, "Listing metadata must come from the actual household.")
-	check(entry.preview_path == "user://saves/test_library_one.png" and FileAccess.file_exists(entry.preview_path), "Preview paths must point to the exact selected slot's generated PNG.")
+	check(entry.preview_path == Library.SAVE_DIR.path_join("test_library_one.png") and FileAccess.file_exists(entry.preview_path), "Preview paths must point to the exact selected slot's generated PNG.")
 	var decoded_preview: Image = Image.load_from_file(entry.preview_path)
 	check(decoded_preview.get_width() == 80 and decoded_preview.get_pixel(2, 2).is_equal_approx(Color("74a68d")), "The stored preview must be a usable PNG.")
 	var read: Dictionary = Library.read_slot("test_library_one")
@@ -72,11 +76,11 @@ func run() -> void:
 	check(read.ok and restored.restore_state(read.data).ok, "A slot must restore through the real household validator.")
 	check(restored.members.size() == 8 and restored.selected_id() == "housemate_7" and restored.selected().action_queue.size() == 1, "Save/load must retain all members, selection and an active queue.")
 	check(restored.selected().get_current_action().elapsed == 6.0 and restored.selected().get_current_action().target_position == Vector3(2, .16, 4), "Active action progress and destinations must survive the named-slot round-trip.")
-	var old_content: PackedByteArray = FileAccess.get_file_as_bytes("user://saves/test_library_one.json")
+	var old_content: PackedByteArray = FileAccess.get_file_as_bytes(Library.SAVE_DIR.path_join("test_library_one.json"))
 	var damaged: Dictionary = state.duplicate(true)
 	damaged.members[0].state.needs.energy = "bad"
-	check(not Library.save_slot("test_library_one", "Must not replace", damaged).ok and FileAccess.get_file_as_bytes("user://saves/test_library_one.json") == old_content, "Invalid state must not replace a previous valid save.")
-	check(not FileAccess.file_exists("user://saves/test_library_one.json.tmp"), "A completed save must leave no temporary JSON file.")
+	check(not Library.save_slot("test_library_one", "Must not replace", damaged).ok and FileAccess.get_file_as_bytes(Library.SAVE_DIR.path_join("test_library_one.json")) == old_content, "Invalid state must not replace a previous valid save.")
+	check(not FileAccess.file_exists(Library.SAVE_DIR.path_join("test_library_one.json.tmp")), "A completed save must leave no temporary JSON file.")
 	check(Library.save_slot("test_library_two", "Another home", state).ok, "A second slot must coexist with the first.")
 	check(Library.read_slot("test_library_one").ok and Library.read_slot("test_library_two").ok, "Creating another slot must preserve existing saves.")
 	var generated: Dictionary = Library.save_slot("", "New household", state)
@@ -84,26 +88,26 @@ func run() -> void:
 	check(generated.ok and not generated_id.is_empty() and Library.latest_id() == generated_id, "Creating a slot must generate a unique ID and make it the newest readable save.")
 	for id: String in ["../test_library_one", "a/b", "a\\b", ".", "A", "%2e%2e"]:
 		check(not Library.save_slot(id, "Unsafe path", state).ok and not Library.read_slot(id).ok and not Library.delete_slot(id).ok, "All slot operations must reject path-like or noncanonical IDs.")
-	var envelope: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("user://saves/test_library_one.json"))
+	var envelope: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(Library.SAVE_DIR.path_join("test_library_one.json")))
 	envelope.metadata = {"name":{}, "day":9999, "members":["fake"], "preview_path":"/tmp/other-person.png", "saved_at":[]}
-	write_json("user://saves/test_library_one.json", envelope)
+	write_json(Library.SAVE_DIR.path_join("test_library_one.json"), envelope)
 	entry = listing("test_library_one")
 	check(entry.valid and entry.name == "Saved household" and entry.day == home.day and entry.members.size() == 8, "Malformed optional metadata must fall back to validated household information.")
-	check(entry.preview_path == "user://saves/test_library_one.png", "Metadata must never be able to inject an arbitrary preview path.")
-	var broken_file: FileAccess = FileAccess.open("user://saves/test_library_broken.json", FileAccess.WRITE)
+	check(entry.preview_path == Library.SAVE_DIR.path_join("test_library_one.png"), "Metadata must never be able to inject an arbitrary preview path.")
+	var broken_file: FileAccess = FileAccess.open(Library.SAVE_DIR.path_join("test_library_broken.json"), FileAccess.WRITE)
 	broken_file.store_string("{broken json")
 	broken_file.close()
 	entry = listing("test_library_broken")
 	check(not entry.valid and not entry.error.is_empty() and not Library.read_slot("test_library_broken").ok, "Damaged saves must remain visible for deletion while loading is disabled.")
-	var large_file: FileAccess = FileAccess.open("user://saves/test_library_large.json", FileAccess.WRITE)
+	var large_file: FileAccess = FileAccess.open(Library.SAVE_DIR.path_join("test_library_large.json"), FileAccess.WRITE)
 	large_file.store_string(" ".repeat(Library.MAX_SAVE_BYTES + 1))
 	large_file.close()
 	check(not Library.read_slot("test_library_large").ok, "Oversized files must be rejected before parsing.")
 	var directory: DirAccess = DirAccess.open(Library.SAVE_DIR)
 	if OS.get_name() != "Windows":
-		var link_status: Error = directory.create_link(ProjectSettings.globalize_path("user://saves/test_library_two.json"), "test_library_link.json")
+		var link_status: Error = directory.create_link(ProjectSettings.globalize_path(Library.SAVE_DIR.path_join("test_library_two.json")), "test_library_link.json")
 		check(link_status == OK and not Library.read_slot("test_library_link").ok and not Library.delete_slot("test_library_link").ok, "Symbolic links must not let a slot read or delete another file.")
-		DirAccess.remove_absolute(ProjectSettings.globalize_path("user://saves/test_library_link.json"))
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(Library.SAVE_DIR.path_join("test_library_link.json")))
 	check(Library.save_slot("legacy", "The original home", state, preview).ok, "The fixed legacy slot must support named updates without changing its raw household format.")
 	check(Library.read_slot("legacy").ok and listing("legacy").name == "The original home", "Legacy state and its safe metadata sidecar must appear in the picker.")
 	var legacy_raw: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(Library.LEGACY_PATH))
@@ -119,7 +123,7 @@ func run() -> void:
 			"fractional_selection": damaged.selected_index = .5
 			"string_selection": damaged.selected_index = "7"
 		check(not restored.restore_state(damaged).ok and restored.get_state() == valid_state, "Malformed household identity '%s' must not mutate the live household." % fault)
-	check(Library.delete_slot("test_library_one").ok and not FileAccess.file_exists("user://saves/test_library_one.png"), "Deleting a selected slot must remove its state and its own preview.")
+	check(Library.delete_slot("test_library_one").ok and not FileAccess.file_exists(Library.SAVE_DIR.path_join("test_library_one.png")), "Deleting a selected slot must remove its state and its own preview.")
 	check(Library.read_slot("test_library_two").ok and Library.read_slot(generated_id).ok, "Deleting one slot must preserve every other slot.")
 	check(not Library.delete_slot("test_library_one").ok, "Repeated deletion must report a missing slot.")
 	check(Library.delete_slot("legacy").ok and not FileAccess.file_exists(Library.LEGACY_PATH), "Deleting legacy must target only its explicit fixed save.")

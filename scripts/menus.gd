@@ -44,6 +44,7 @@ func show_picker(which:String="load",selected:String="") -> void:
 	app._begin_pause_overlay()
 	shade()
 	var slots:Array=LifeSaveLibrary.list_saves()
+	var storage_error:String=LifeSaveLibrary.storage_error()
 	if selected.is_empty():selected=picker_selection
 	if not slots.any(func(s:Dictionary):return str(s.id)==selected):selected="" if slots.is_empty() else str(slots[0].id)
 	picker_selection=selected
@@ -69,7 +70,10 @@ func show_picker(which:String="load",selected:String="") -> void:
 		app.text_label("Day %d  ·  %s Lifelet%s" % [int(slot.get("day",1)),str(slot.get("members",[]).size()),"" if slot.get("members",[]).size()==1 else "s"],Vector2(22,49),Vector2(462,24),13,P.TEAL,false,row)
 		app.text_label(_date_text(slot.get("saved_at",0)),Vector2(22,76),Vector2(460,21),12,P.MUTED,false,row)
 	if is_instance_valid(selected_row):reveal_save.call_deferred(scroll,selected_row)
-	if slots.is_empty():
+	if not storage_error.is_empty():
+		app.text_label("Your saves need attention.",Vector2(240,338),Vector2(497,42),28,P.INK,true,app.overlay)
+		app.paragraph(storage_error,Vector2(243,399),Vector2(451,150),17,P.MUTED,app.overlay)
+	elif slots.is_empty():
 		app.text_label("Your first story starts here.",Vector2(240,338),Vector2(497,42),28,P.INK,true,app.overlay)
 		app.paragraph("Saved households will appear here with the day, everyone who lives there, and a glimpse of home.",Vector2(243,399),Vector2(451,95),17,P.MUTED,app.overlay)
 		if which=="load":app.button("Create a household",Vector2(244,532),Vector2(440,48),app.new_game,true,app.overlay)

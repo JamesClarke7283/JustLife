@@ -61,6 +61,7 @@ def run():
         (root/"resume_checkpoint_manifest.json").write_text(json.dumps(receipt,indent=2))
     env=os.environ.copy()
     env["XDG_DATA_HOME"]=str(root/"userdata")
+    env["JUSTLIFE_DATA_DIR"]=str(root/"userdata"/"save_data")
     env["XDG_CONFIG_HOME"]=str(root/"config")
     env["XDG_CACHE_HOME"]=str(root/"cache")
     manifests={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest()

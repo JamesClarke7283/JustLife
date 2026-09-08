@@ -95,6 +95,12 @@ var idle_space:RefCounted
 var adoption_flow:LifeAdoptionFlow
 
 func _ready() -> void:
+	# Check before opening the menu: its save listing can initialize storage.
+	if "--release-check" in OS.get_cmdline_user_args() and not preload("res://scripts/release_probe.gd").isolated_environment():
+		set_process(false)
+		printerr("Release check requires isolated XDG_DATA_HOME and JUSTLIFE_DATA_DIR before game startup.")
+		get_tree().quit(2)
+		return
 	DisplayServer.window_set_title("JustLife — make room for your story")
 	world=LifeWorld.new()
 	world.name="World"

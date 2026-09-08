@@ -46,6 +46,7 @@ def run():
             clean.append(line)
     (root / "project.godot").write_text("\n".join(clean) + "\n")
     env = os.environ.copy()
+    env["JUSTLIFE_DATA_DIR"] = str(root / "userdata" / "save_data")
     for key, folder in (("XDG_DATA_HOME", "userdata"), ("XDG_CONFIG_HOME", "config"), ("XDG_CACHE_HOME", "cache")):
         env[key] = str(root / folder)
     hashes = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()

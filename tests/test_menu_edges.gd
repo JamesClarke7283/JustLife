@@ -99,7 +99,7 @@ func _run() -> void:
 	await screenshot("05_after_exact_deletion")
 	await press("Close")
 	# A corrupt local fixture checks the public recovery UI, not filesystem trust.
-	var bad_file := FileAccess.open("user://saves/unreadable_fixture.json", FileAccess.WRITE)
+	var bad_file := FileAccess.open(library.SAVE_DIR.path_join("unreadable_fixture.json"), FileAccess.WRITE)
 	bad_file.store_string("{broken test fixture");bad_file.close()
 	await press("☰")
 	await press("Load a saved life")
@@ -109,7 +109,7 @@ func _run() -> void:
 	await screenshot("06_unreadable_save_recovery")
 	await press("Delete save…")
 	await press("Delete permanently")
-	check(not FileAccess.file_exists("user://saves/unreadable_fixture.json") and library.list_saves().size() == 4, "Confirmed cleanup removes only the unreadable fixture.")
+	check(not FileAccess.file_exists(library.SAVE_DIR.path_join("unreadable_fixture.json")) and library.list_saves().size() == 4, "Confirmed cleanup removes only the unreadable fixture.")
 	_write_report()
 	app.queue_free()
 	await frames(3)

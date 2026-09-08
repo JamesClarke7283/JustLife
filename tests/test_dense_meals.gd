@@ -9,7 +9,7 @@ var next_density_capture: float=1920.0
 
 func _initialize()->void:
 	var path:String=ProjectSettings.globalize_path("res://")
-	if not path.trim_suffix("/").get_file().begins_with("justlife-playthrough-") or OS.get_environment("XDG_DATA_HOME")!=path.path_join("userdata") or ProjectSettings.has_setting("autoload/MCPRuntimeServer"):
+	if not path.trim_suffix("/").get_file().begins_with("justlife-playthrough-") or OS.get_environment("XDG_DATA_HOME")!=path.path_join("userdata") or OS.get_environment("JUSTLIFE_DATA_DIR") != path.path_join("userdata/save_data") or ProjectSettings.has_setting("autoload/MCPRuntimeServer"):
 		push_error("Refusing dense meal fixture outside its isolated source and userdata.");quit(2);return
 	resume_only="--resume-only" in OS.get_cmdline_user_args()
 	_run.call_deferred()

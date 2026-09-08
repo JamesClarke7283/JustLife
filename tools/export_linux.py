@@ -42,6 +42,7 @@ def run():
         preset=preset.replace('custom_template/'+configuration+'=""','custom_template/'+configuration+'="'+str(template)+'"')
     (snapshot/'export_presets.cfg').write_text(preset)
     env=os.environ.copy();env['XDG_DATA_HOME']=str(snapshot/'userdata')
+    env['JUSTLIFE_DATA_DIR']=str(snapshot/'userdata'/'save_data')
     executable=target/'JustLife.x86_64'
     commands=[['--headless','--editor','--path',str(snapshot),'--import'],['--headless','--path',str(snapshot),'--export-release','Linux',str(executable)]]
     for phase,args in zip(('import','export'),commands):

@@ -28,7 +28,7 @@ At a desk, **Do homework together…** lets a child or teen learn with a trusted
 
 The pause menu opens **Save this life**, with Save as new and confirmed overwrite. The main menu and pause menu open the save picker. **Delete save…** shows the selected name and requires **Delete permanently**; **Keep save** cancels. Deleting a file preserves other saves and the currently open household. Returning to the main menu preserves the current in-memory life; quitting without saving does not.
 
-On Linux, saves normally live at `~/.local/share/godot/app_userdata/JustLife/saves/`, or under the configured XDG data directory. The earlier single-household `justlife_save.json` format remains readable as an Original household entry. Current saves preserve home changes, all household members, queues, paid activity progress, money, time, skills, relationships, stories, age settings/history, school records, adoption history, directed family connections and the venue being visited.
+Saves and previews live in `~/.justlife/saves/` (Windows: `%USERPROFILE%\.justlife\saves`). The first launch imports older saves from Godot's user data folder, preserving the original files and any existing destination saves. Deleted imports stay deleted after restart. The earlier single-household `justlife_save.json` format remains readable as an Original household entry. Current saves preserve home changes, all household members, queues, paid activity progress, money, time, skills, relationships, stories, age settings/history, school records, adoption history, directed family connections and the venue being visited. `JUSTLIFE_DATA_DIR` can select a different storage root; named saves go in its `saves` subfolder.
 
 ## Development and verification
 

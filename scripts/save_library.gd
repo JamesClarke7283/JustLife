@@ -3,8 +3,9 @@ class_name LifeSaveLibrary
 ## Named local households. All paths are derived here from a restricted slot ID.
 
 const Household = preload("res://scripts/household.gd")
-const SAVE_DIR: String = "user://saves"
-const LEGACY_PATH: String = "user://justlife_save.json"
+const Storage = preload("res://scripts/save_storage.gd")
+static var SAVE_DIR: String = Storage.root_path().path_join("saves")
+static var LEGACY_PATH: String = Storage.root_path().path_join("justlife_save.json")
 const MAX_SAVE_BYTES: int = 8 * 1024 * 1024
 const LIBRARY_VERSION: int = 1
 
@@ -18,18 +19,16 @@ static func _valid_id(id: String) -> bool:
 	return true
 
 
-static func _directory_safe(create: bool = false) -> bool:
-	var user_directory: DirAccess = DirAccess.open("user://")
-	if user_directory == null or user_directory.is_link("saves"):
-		return false
-	if not user_directory.dir_exists("saves"):
-		return create and user_directory.make_dir("saves") == OK
-	return true
+static func _directory_safe(_create: bool = false) -> bool:
+	return Storage.prepare(_valid_id)
+
+
+static func storage_error() -> String:
+	return Storage.last_error
 
 
 static func _safe_file(path: String) -> bool:
-	var directory: DirAccess = DirAccess.open(path.get_base_dir())
-	return directory != null and not directory.is_link(path.get_file()) and not directory.dir_exists(path.get_file())
+	return Storage.safe_file(ProjectSettings.globalize_path(path))
 
 
 static func _slot_path(id: String) -> String:
@@ -160,7 +159,7 @@ static func save_slot(id: String, name: String, state: Dictionary, preview: Imag
 	if not bool(validation.ok):
 		return _error(str(validation.get("error", "This household cannot be saved.")))
 	if not _directory_safe(true):
-		return _error("The save directory cannot be used safely.")
+		return _error(storage_error())
 	var slot_id: String = _new_id() if id.is_empty() else id
 	var metadata: Dictionary = _summary(state)
 	metadata.merge({"id":slot_id, "name":_clean_name(name), "saved_at":Time.get_datetime_string_from_system(true), "saved_at_unix":Time.get_unix_time_from_system()}, true)
@@ -193,8 +192,10 @@ static func save_slot(id: String, name: String, state: Dictionary, preview: Imag
 
 
 static func read_slot(id: String) -> Dictionary:
-	if not _valid_id(id) or (id != "legacy" and not _directory_safe()):
-		return _error("The save slot ID or directory is invalid.")
+	if not _valid_id(id):
+		return _error("The save slot ID is invalid.")
+	if not _directory_safe():
+		return _error(storage_error())
 	var read: Dictionary = _read_json(_slot_path(id))
 	if not bool(read.ok):
 		return read
@@ -245,6 +246,8 @@ static func _listing(id: String) -> Dictionary:
 
 static func list_saves() -> Array:
 	var entries: Array = []
+	if not _directory_safe():
+		return entries
 	if _directory_safe():
 		var directory: DirAccess = DirAccess.open(SAVE_DIR)
 		for filename: String in directory.get_files():
@@ -272,8 +275,10 @@ static func latest_id() -> String:
 
 
 static func delete_slot(id: String) -> Dictionary:
-	if not _valid_id(id) or (id != "legacy" and not _directory_safe()):
-		return _error("The save slot ID or directory is invalid.")
+	if not _valid_id(id):
+		return _error("The save slot ID is invalid.")
+	if not _directory_safe():
+		return _error(storage_error())
 	var path: String = _slot_path(id)
 	if not _safe_file(path) or not FileAccess.file_exists(path):
 		return _error("The selected save no longer exists.")
