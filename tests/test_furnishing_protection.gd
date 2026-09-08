@@ -1,4 +1,5 @@
 extends "res://tests/test_stair_controller.gd"
+const MainScene=preload("res://scenes/main.tscn")
 ## Actual main Build callbacks/50ms movement; food creation is explicit ledger
 ## setup, not paid cooking. No pointer UI or rendered contact claim.
 var details:Array=[]

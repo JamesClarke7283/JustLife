@@ -43,3 +43,5 @@ finite interaction sequence deterministic; camera framing is controlled. Button
 signals exercise the production callbacks, while construction, furnishing and
 interaction clicks use actual viewport input. This is a functional bare upper
 floor example, not a furnished house design or a whole-game quality score.
+
+The construction and furnishing protection fixtures preload the actual main scene before their dynamic setup. An unchanged-runtime comparison showed that late loading could retain 23 script objects and 15 resources at shutdown despite passing assertions. The maintained preload change preserves all assertions and passes **49 + 52 checks, zero failures or engine warnings**, at `dist/test-work/justlife-regression-8cn_in2o`. Historical warning logs remain in the wood-material evidence; this test dependency change does not alter production teardown or hide warnings.

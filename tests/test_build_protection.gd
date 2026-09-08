@@ -1,4 +1,5 @@
 extends "res://tests/test_stair_controller.gd"
+const MainScene=preload("res://scenes/main.tscn")
 ## Actual main/controller frames and Build callbacks. Food is created through
 ## the ledger API as explicit setup; this does not qualify paid cooking or art.
 var protection_observations:Array=[]
