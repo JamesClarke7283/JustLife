@@ -28,6 +28,7 @@ var funds_label: Label
 var age_label: Label
 var mood_label: Label
 var action_label: Label
+var action_context: Label
 var action_bar: ProgressBar
 var need_bars: Dictionary = {}
 var need_values: Dictionary = {}
@@ -60,7 +61,11 @@ var walk_destination: Vector3 = Vector3.ZERO
 var waiting_for_target: bool = false
 var wait_started: float = -1.0
 var wait_review: float = -1.0
+var wait_destination: Vector3 = Vector3.INF
+var resume_activity: bool = false
 var skill_labels: Dictionary = {}
+var skill_bars: Dictionary = {}
+var skill_progress_labels: Dictionary = {}
 var relationship_labels: Dictionary = {}
 var career_labels: Dictionary = {}
 var goal_labels: Dictionary = {}
@@ -201,8 +206,8 @@ func clear_ui() -> void:
 		ui.remove_child(child)
 		child.queue_free()
 	need_bars.clear();need_values.clear();speed_buttons.clear()
-	skill_labels.clear();relationship_labels.clear();career_labels.clear();goal_labels.clear()
-	queue_box=null;time_label=null;funds_label=null;mood_label=null;action_label=null;action_bar=null
+	skill_labels.clear();skill_bars.clear();skill_progress_labels.clear();relationship_labels.clear();career_labels.clear();goal_labels.clear()
+	queue_box=null;time_label=null;funds_label=null;mood_label=null;action_label=null;action_context=null;action_bar=null
 	build_quote=null;build_quote_card=null
 	last_queue=""
 	close_overlay()
@@ -633,6 +638,13 @@ func _refresh_progress_labels() -> void:
 		stories_button.text="Stories"+(" · %d" % count if count>0 else "")
 	for skill_name:String in skill_labels:
 		skill_labels[skill_name].text="Level %d" % int(sim.skills[skill_name].level)
+		var skill:Dictionary=sim.skills[skill_name]
+		var mastered:bool=int(skill.level)>=10
+		var progress:float=100.0 if mastered else clampf(float(skill.xp)/(int(skill.level)*50.0)*100.0,0,100)
+		if skill_bars.has(skill_name):skill_bars[skill_name].value=progress
+		if skill_progress_labels.has(skill_name):
+			skill_progress_labels[skill_name].text="MAX" if mastered else "%d%%" % int(progress)
+			skill_progress_labels[skill_name].tooltip_text="Skill mastered" if mastered else "%d / %d experience toward level %d" % [int(skill.xp),int(skill.level)*50,int(skill.level)+1]
 	for id:String in relationship_labels:
 		var relationship:Dictionary=sim.relationships[id]
 		relationship_labels[id].text="%s · %d" % [relationship.status,int(relationship.friendship)]
@@ -684,7 +696,9 @@ func draw_household_bar() -> void:
 	age_label.mouse_filter=Control.MOUSE_FILTER_PASS
 	button("Center",Vector2(42,841),Vector2(111,27),func():world.camera_target=player.position;world.update_camera())
 	button("Wishes",Vector2(165,841),Vector2(111,27),show_wishes)
-	text_label("TODAY IS YOURS",Vector2(327,738),Vector2(220,23),11,P.MUTED)
+	action_context=text_label("TODAY IS YOURS",Vector2(327,738),Vector2(286,23),11,P.MUTED)
+	action_context.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	action_context.mouse_filter=Control.MOUSE_FILTER_PASS
 	action_label=text_label("Enjoying a moment",Vector2(326,770),Vector2(286,36),21,P.INK,true)
 	action_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	action_bar=ProgressBar.new()
@@ -721,8 +735,14 @@ func draw_household_bar() -> void:
 		for i in range(mini(6,sim.skills.size())):
 			var key:String=sim.skills.keys()[i]
 			var p=Vector2(989+(i%2)*208,781+(i/2)*28)
-			text_label(key.capitalize(),p,Vector2(130,22),12)
+			text_label(key.capitalize(),p,Vector2(87,22),12)
+			var progress_text:Label=text_label("0%",p+Vector2(89,0),Vector2(44,22),10,P.MUTED)
+			progress_text.mouse_filter=Control.MOUSE_FILTER_PASS
+			skill_progress_labels[key]=progress_text
 			skill_labels[key]=text_label("Level %d" % sim.skills[key].level,p+Vector2(137,0),Vector2(62,22),12,P.TEAL)
+			var progress_bar:=ProgressBar.new();progress_bar.show_percentage=false
+			rect(progress_bar,p+Vector2(0,22),Vector2(196,3))
+			skill_bars[key]=progress_bar
 	elif panel_tab=="People":
 		var ids:Array=sim.relationship_order()
 		for i in range(mini(2,ids.size())):
@@ -776,17 +796,25 @@ func refresh_hud() -> void:
 		need_bars[key].add_theme_stylebox_override("fill",bar_style)
 		need_values[key].text=str(int(value))
 	var action=sim.get_current_action()
+	var together:Dictionary=household.cooperative_presentation(bound_member_id) if not str(action.get("cooperation_id","")).is_empty() else {}
+	var partner:LifeSim=household.member_sim(str(together.get("partner_id","")))
+	if action_context:
+		action_context.text="WITH "+str(partner.character.name).to_upper() if partner else "TODAY IS YOURS"
+		action_context.tooltip_text="Learning with "+str(partner.character.name) if partner else ""
 	if action_label:
 		action_label.text="Enjoying a moment" if action.is_empty() else ((("Waiting for " if waiting_for_target else "Walking to ") if action.phase=="approach" else "")+str(action.label))
-		if not str(action.get("cooperation_id","")).is_empty():
-			var together:Dictionary=household.cooperative_presentation(bound_member_id)
-			var partner:LifeSim=household.member_sim(str(together.get("partner_id","")))
-			if partner and bool(together.get("ready",false)) and str(together.get("phase",""))!="active":
+		if partner:
+			if str(together.get("phase",""))=="active":
+				action_label.text="Learning together" if str(together.role)=="learner" else "Helping with homework"
+			elif bool(together.get("ready",false)):
 				action_label.text="Waiting for "+str(partner.character.name)
+			else:action_label.text="Meeting at the desk"
+		action_label.tooltip_text=action_label.text+(" · With "+str(partner.character.name)+". Canceling ends the activity for both Lifelets." if partner else "")
+		action_label.mouse_filter=Control.MOUSE_FILTER_PASS
 		action_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	if action_bar:action_bar.value=0 if action.is_empty() else float(action.progress)*100
 	if queue_box:
-		var key:String=str(sim.action_queue.map(func(a:Dictionary):return a.id+":"+str(a.phase)))
+		var key:String=bound_member_id+str(sim.action_queue.map(func(a:Dictionary):return a.id+":"+str(a.phase)+":"+str(a.get("cooperation_id",""))))
 		if key!=last_queue:
 			last_queue=key
 			for c in queue_box.get_children():
@@ -797,11 +825,13 @@ func refresh_hud() -> void:
 				var b=Button.new();b.custom_minimum_size=Vector2(155,43)
 				queue_box.add_child(b)
 				compact_button(b)
-				var title=text_label(str(a.label),Vector2(10,6),Vector2(112,31),12,P.INK,false,b)
+				var shared:bool=not str(a.get("cooperation_id","")).is_empty()
+				var queue_title:String=("Learn together" if str(a.id)=="homework" else "Help with homework") if shared else str(a.label)
+				var title=text_label(queue_title,Vector2(10,6),Vector2(112,31),12,P.INK,false,b)
 				title.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 				title.size=Vector2(112,31)
 				text_label("×",Vector2(132,6),Vector2(17,31),17,P.MUTED,false,b)
-				b.tooltip_text=str(a.label)+" · Click to cancel this activity"
+				b.tooltip_text=queue_title+(" · With "+str(partner.character.name) if shared and partner else "")+(" · Click to cancel for both Lifelets" if shared else " · Click to cancel this activity")
 				b.pressed.connect(func():cancel_current_action(i))
 
 func commas(value:int) -> String:
@@ -1225,6 +1255,8 @@ func _clear_motion() -> void:
 	waiting_for_target=false
 	wait_started=-1.0
 	wait_review=-1.0
+	wait_destination=Vector3.INF
+	resume_activity=false
 	route_generation+=1
 	path.clear()
 	path_index=0
@@ -1261,11 +1293,11 @@ func focus_neighbor(id:String) -> void:
 	show_interactions({"id":id,"kind":"neighbor","label":actor.get_meta("display_name"),"node":actor,"size":Vector2(.6,.6)},Vector2(850,380))
 
 func _empty_motion() -> Dictionary:
-	return {"path":PackedVector3Array(),"index":0,"walk":false,"pending":{},"generation":0,"destination":Vector3.ZERO,"waiting":false,"wait_started":-1.0,"wait_review":-1.0}
+	return {"path":PackedVector3Array(),"index":0,"walk":false,"pending":{},"generation":0,"destination":Vector3.ZERO,"waiting":false,"wait_started":-1.0,"wait_review":-1.0,"wait_destination":Vector3.INF,"resume_active":false}
 
 func _store_motion() -> void:
 	if bound_member_id.is_empty():return
-	motion_states[bound_member_id]={"path":path,"index":path_index,"walk":walk_only,"pending":pending_action,"generation":route_generation,"destination":walk_destination,"waiting":waiting_for_target,"wait_started":wait_started,"wait_review":wait_review}
+	motion_states[bound_member_id]={"path":path,"index":path_index,"walk":walk_only,"pending":pending_action,"generation":route_generation,"destination":walk_destination,"waiting":waiting_for_target,"wait_started":wait_started,"wait_review":wait_review,"wait_destination":wait_destination,"resume_active":resume_activity}
 
 func _bind_member(id:String) -> void:
 	var member:LifeSim=household.member_sim(id)
@@ -1278,6 +1310,8 @@ func _bind_member(id:String) -> void:
 	route_generation=motion.generation;walk_destination=motion.destination;waiting_for_target=motion.get("waiting",false)
 	wait_started=float(motion.get("wait_started",-1.0))
 	wait_review=float(motion.get("wait_review",-1.0))
+	wait_destination=motion.get("wait_destination",Vector3.INF)
+	resume_activity=bool(motion.get("resume_active",false))
 
 func select_household_member(index:int) -> void:
 	if index<0 or index>=household.members.size():return
@@ -1475,6 +1509,7 @@ func save_game(slot_id:String="",title:String="") -> bool:
 		var motion:Dictionary=motion_states.get(str(member.id),_empty_motion())
 		var action:Dictionary=member.sim.get_current_action()
 		member.sim.character.world_state["resource_wait_started"]=float(motion.wait_started) if bool(motion.waiting) else -1.0
+		member.sim.character.world_state["resource_action_active"]=str(action.get("phase",""))=="active" or bool(motion.get("resume_active",false))
 		member.sim.character.world_state["waiting_action_id"]=str(action.get("id",""))
 		member.sim.character.world_state["waiting_target_id"]=str(action.get("target_id",""))
 	household.adopt_selected_changes()
@@ -1573,7 +1608,18 @@ func _restore_resource_waits() -> void:
 		if not saved is Dictionary or action.is_empty() or str(action.phase)!="approach":continue
 		if str(saved.get("waiting_action_id",""))!=str(action.id) or str(saved.get("waiting_target_id",""))!=str(action.target_id):continue
 		var started:float=_saved_number(saved.get("resource_wait_started",-1.0),-1.0,-1.0,now)
-		if started>=0:motion_states[str(member.id)]["wait_started"]=started
+		var was_active:bool=saved.get("resource_action_active",false) is bool and bool(saved.get("resource_action_active",false))
+		if not saved.has("resource_action_active"):
+			# Older saves already retain the paid flag after begin_current_action.
+			# Preserve their unfinished occupant when no arrived wait was saved.
+			was_active=started<0 and bool(action.get("paid",false))
+		if started>=0 or was_active:
+			var motion:Dictionary=motion_states[str(member.id)]
+			motion["wait_started"]=started
+			motion["resume_active"]=was_active
+			motion["waiting"]=true
+			motion["path"]=PackedVector3Array()
+			motion["index"]=0
 	_bind_member(household.selected_id())
 
 func setup_audio() -> void:
@@ -1675,15 +1721,48 @@ func _process(delta:float) -> void:
 
 func _advance_movement(delta:float) -> bool:
 	if not is_instance_valid(player) or sim.speed<=0:return false
-	if waiting_for_target:
-		if _activity_available(sim.get_current_action()):
-			waiting_for_target=false
-			wait_started=-1.0
-			household.begin_action(bound_member_id)
-		else:_reconsider_waiting_activity()
-		return false
 	if not walk_only and sim.action_queue.is_empty():
 		_clear_motion();return false
+	if waiting_for_target:
+		var action:Dictionary=sim.get_current_action()
+		if _activity_available(action):
+			# Keep the arrived reservation until the Lifelet has walked back
+			# from their queue position. New arrivals cannot steal this turn.
+			var cell:Vector2i=world.nearest_free(action.target_position)
+			var destination:Vector3=Vector3(cell.x*.25,.16,cell.y*.25)
+			if player.position.distance_to(destination)<.01:
+				waiting_for_target=false
+				wait_started=-1.0
+				wait_destination=Vector3.INF
+				resume_activity=false
+				path.clear();path_index=0
+				household.begin_action(bound_member_id)
+				return false
+			if wait_destination!=destination:
+				path=world.path_to(player.position,destination);path_index=0
+				wait_destination=destination
+		else:
+			_reconsider_waiting_activity()
+			if not waiting_for_target:return false
+			if not wait_destination.is_finite() or wait_destination.distance_to(action.target_position)<.1:
+				_route_to_wait_position(action)
+		return _advance_path(delta)
+	var was_moving:bool=_advance_path(delta)
+	if was_moving and path_index>=path.size():
+		path.clear();path_index=0
+		var should_begin:bool=not walk_only
+		walk_only=false
+		if should_begin:
+			if wait_started<0:wait_started=(household.day-1)*1440.0+household.minutes
+			if _activity_available(sim.get_current_action()):
+				wait_started=-1.0
+				household.begin_action(bound_member_id)
+			else:
+				waiting_for_target=true
+				_route_to_wait_position(sim.get_current_action())
+	return was_moving
+
+func _advance_path(delta:float) -> bool:
 	var was_moving:bool=path_index<path.size()
 	var distance_left:float=maxf(0.0,delta)*1.6*float(sim.speed)
 	while path_index<path.size() and distance_left>0.00001:
@@ -1697,17 +1776,41 @@ func _advance_movement(delta:float) -> bool:
 			player.position=goal;distance_left-=distance;path_index+=1
 		else:
 			player.position+=direction/distance*distance_left;distance_left=0.0
-	if was_moving and path_index>=path.size():
-		path.clear();path_index=0
-		var should_begin:bool=not walk_only
-		walk_only=false
-		if should_begin:
-			if wait_started<0:wait_started=(household.day-1)*1440.0+household.minutes
-			if _activity_available(sim.get_current_action()):
-				wait_started=-1.0
-				household.begin_action(bound_member_id)
-			else:waiting_for_target=true
 	return was_moving
+
+func _route_to_wait_position(action:Dictionary) -> void:
+	var origin:Vector3=action.target_position
+	for radius:int in range(1,7):
+		for x:int in range(-radius,radius+1):
+			for z:int in range(-radius,radius+1):
+				if absi(x)!=radius and absi(z)!=radius:continue
+				var destination:Vector3=origin+Vector3(x*.75,0,z*.75)
+				if not _wait_position_clear(destination):continue
+				var route:PackedVector3Array=world.path_to(player.position,destination)
+				if route.is_empty() or route[-1].distance_to(destination)>.1:continue
+				wait_destination=destination
+				path=route;path_index=0
+				return
+	# A completely packed room keeps its existing position and reservation;
+	# autonomy can still reconsider another activity after the bounded wait.
+	wait_destination=player.position
+	path.clear();path_index=0
+
+func _wait_position_clear(destination:Vector3) -> bool:
+	for offset:Vector2 in [Vector2.ZERO,Vector2(.25,0),Vector2(-.25,0),Vector2(0,.25),Vector2(0,-.25)]:
+		var cell:Vector2i=Vector2i(roundi((destination.x+offset.x)*4),roundi((destination.z+offset.y)*4))
+		if not world.navigation.region.has_point(cell) or world.navigation.is_point_solid(cell):return false
+	for id:String in world.actors:
+		if id==bound_member_id:continue
+		if world.actors[id].position.distance_to(destination)<.8:return false
+	for member:Dictionary in household.members:
+		var current:Dictionary=member.sim.get_current_action()
+		if not current.is_empty() and destination.distance_to(current.target_position)<.8:return false
+		if str(member.id)==bound_member_id:continue
+		var motion:Dictionary=motion_states.get(str(member.id),_empty_motion())
+		var reserved:Vector3=motion.get("wait_destination",Vector3.INF)
+		if bool(motion.waiting) and reserved.is_finite() and reserved.distance_to(destination)<.8:return false
+	return true
 
 func _reconsider_waiting_activity() -> void:
 	var action:Dictionary=sim.get_current_action()
@@ -1775,14 +1878,21 @@ func _update_activity_facing(delta:float,action:Dictionary,action_id:String) -> 
 	if action_id.is_empty():return
 	var item:Dictionary=_find_item(str(action.target_id))
 	if not item.is_empty():
+		var attention:Variant=null
+		if not str(action.get("cooperation_id","")).is_empty():
+			var shared:Dictionary=household.cooperative_presentation(bound_member_id)
+			var partner_actor:LifeActor=world.actors.get(str(shared.get("partner_id","")))
+			if is_instance_valid(partner_actor):attention=partner_actor.to_global(partner_actor.get_portrait_center())
 		if action_id=="help_homework":
 			var at:Vector3=action.target_position
 			var toward:Vector3=item.node.to_global(Vector3(0,.9,.3))-at
 			var anchor:Dictionary={"position":at,"yaw":atan2(toward.x,toward.z),"kind":"standing"}
+			if attention is Vector3:anchor["attention_target"]=attention
 			player.set_activity_anchor(at,anchor.yaw,"standing",action_id,anchor)
 			return
 		var landmarks:Dictionary=player.get_body_landmarks() if player.has_method("get_body_landmarks") else {}
 		var anchor:Dictionary=world.activity_anchor(item,action_id,landmarks)
+		if attention is Vector3:anchor["attention_target"]=attention
 		if player.has_method("set_activity_anchor"):
 			player.set_activity_anchor(anchor.position,anchor.yaw,anchor.kind,action_id,anchor)
 		else:
@@ -1810,6 +1920,7 @@ func _activity_available(action:Dictionary) -> bool:
 	if action.is_empty():return false
 	var wanted:Array[String]=_activity_resources(action)
 	var session_id:String=str(action.get("cooperation_id",""))
+	var resuming_owner:bool=resume_activity and is_instance_valid(sim) and action==sim.get_current_action()
 	for member:Dictionary in household.members:
 		if member.id==bound_member_id:continue
 		var other:Dictionary=member.sim.get_current_action()
@@ -1817,7 +1928,10 @@ func _activity_available(action:Dictionary) -> bool:
 		var other_session:String=str(other.get("cooperation_id",""))
 		if not session_id.is_empty() and session_id==other_session:continue
 		var other_wait:Dictionary=motion_states.get(str(member.id),_empty_motion())
-		if other.phase!="active" and other_session.is_empty():
+		if other.phase!="active" and other_session.is_empty() and not bool(other_wait.get("resume_active",false)):
+			# A saved active owner resumes its existing paid activity before
+			# arrived waiters; it is not a new request at the back of the queue.
+			if resuming_owner:continue
 			if not bool(other_wait.waiting):continue
 			var earlier:float=float(other_wait.get("wait_started",-1.0))
 			if earlier<0:continue

@@ -1,6 +1,6 @@
 # Homework together
 
-Source development, 8 September 2026. This feature is not in the v18 executable described in `RELEASE_VERIFICATION.md`.
+Reviewed source and care/v19 executable, 8 September 2026. The earlier v18 package did not contain this feature; see `RELEASE_VERIFICATION.md` for the current build and its verification limits.
 
 Control a child or teen, click a desk, and choose **Do homework together…**. The picker lists household members and explains unavailable choices. A young adult, adult or elder can help when both Lifelets are idle, present and have at least 20 friendship in both directions. Parent relationships are not required or invented by the interaction.
 
@@ -9,6 +9,10 @@ The child uses the desk's actual chair and, for children, its visible booster. T
 A completed assignment grants ordinary homework preparation and learning, plus extra Logic based on the caregiver's Parenting level. Both Lifelets gain Social and reciprocal friendship; the learner gains Fun, and the adult spends a little Energy and earns Parenting experience. Cancellation grants no completion rewards. The ordinary once-per-weekday assignment limit remains in force. This does not grant school attendance or wages.
 
 The household owns the pair token, participants, readiness, cancellation and atomic completion. Named saves preserve the pair and elapsed progress, then re-establish arrival on load. Both participants share one desk/chair reservation; another Lifelet cannot take their support chair. Standing space is checked against the real rotated furniture and walls, without moving the desk or chair.
+
+The live HUD names the partner from either participant's perspective and distinguishes learning from helping. Shared queue tooltips explain that canceling ends the activity for both Lifelets. The Skills panel shows progress within the current level; the first completed session earns 20 of the 50 Parenting XP needed for level 2, displayed as 40% with a proportional bar.
+
+Iteration 10 independently accepted the directed child/adult presentation after rejecting an explaining gesture that was too low to read in the live camera. The revised adult raises an open hand toward the upper torso while the learner periodically looks up toward that person. The final rendered run passed 72 first-process and 23 fresh-process checks with no runtime errors, including partner selection, cancellation, restored progress and once-only completion. These supersede the overlapping earlier developer checks below. Actual images, traces, rejected controls and executed source hashes are preserved locally in `art/screenshots/cooperative_homework_iteration_10/`; see `REVIEWS/iteration_10_homework.md` for the independent review and remaining limits.
 
 Developer verification: `test_supported_homework_ui.gd` exercised public creation, desk menu and helper picker, actual routed arrival, pause, cancellation from the helper, retry, named saving, fresh-process restoration, completion and the Parenting skill display. The first run passed 47 checks. The corrected restart passed 22 checks; an initial restart assertion compared JSON floats exactly, which was corrected to the engine's approximate Vector3 comparison. No product movement change was needed for that assertion. Logs and screenshots are preserved in `art/screenshots/supported_homework_iteration_09/developer_first/`. This first rendered run predates the new coaching gestures and is not their visual approval.
 

@@ -58,11 +58,39 @@ func _cancel_partial_pair() -> void:
 	var child_transform:Transform3D=app.world.actors.player.visual.transform
 	await create_timer(.4).timeout
 	check(is_equal_approx(app.sim.get_current_action().elapsed,progress) and adult_transform.is_equal_approx(app.world.actors.housemate_1.visual.transform) and child_transform.is_equal_approx(app.world.actors.player.visual.transform),"Pause freezes the shared progress and both poses.")
+	await _coaching_cycle()
 	await press_member(FAMILY_NAMES[1]);await press("Cancel action")
 	check(app.household.members[0].sim.action_queue.is_empty() and app.household.members[1].sim.action_queue.is_empty(),"Canceling from the helper ends both activities.")
 	check(app.household.members[0].sim.education.homework==0 and app.sim.skills.parenting==baseline.parenting,"Partial cancellation awards neither homework nor Parenting XP.")
 	await press_member(FAMILY_NAMES[0])
 	check(app.sim.relationships.housemate_1.friendship==baseline.friendship,"Partial cancellation grants no cooperative friendship reward.")
+	check(app.action_context.text=="TODAY IS YOURS","Canceling clears the previous partner from the selected Lifelet's HUD.")
+
+func _coaching_cycle() -> void:
+	var camera_state:Dictionary={"target":app.world.camera_target,"size":app.world.camera.size,"angle":app.world.camera_angle,"elevation":app.world.camera_elevation}
+	var desk:Dictionary=first_item("desk")
+	app.world.camera_target=desk.node.position+Vector3(0,.8,-.35)
+	app.world.camera.size=5.0;app.world.camera_angle=1.1;app.world.camera_elevation=.48;app.world.update_camera()
+	check(app.action_context.text.contains(FAMILY_NAMES[1].to_upper()) and app.action_label.text=="Learning together","The active learner sees who is helping and that this is shared learning.")
+	check(app.queue_box.get_child(0).tooltip_text.contains("both Lifelets"),"The shared queue explains that cancellation ends both participants' work.")
+	await press_member(FAMILY_NAMES[1])
+	check(app.action_context.text.contains(FAMILY_NAMES[0].to_upper()) and app.action_label.text=="Helping with homework","Selecting the helper reverses the partner context without losing shared progress.")
+	var samples:Array=[]
+	for i:int in range(5):
+		await press("▶");await create_timer(.85).timeout;await press("Ⅱ")
+		var actor:LifeActor=app.world.actors.housemate_1
+		var learner_actor:LifeActor=app.world.actors.player
+		var sample:Dictionary={"index":i,"action":app.sim.get_current_action().duplicate(true),"motion_action":actor._motion_action,"action_time":actor._action_time,"right_arm":vec(actor._joints.Arm_R.rotation),"right_forearm":vec(actor._joints.Forearm_R.rotation),"learner_head":vec(learner_actor._joints.Head.rotation),"learner_action_time":learner_actor._action_time,"bone_poses":{}}
+		for entry:Dictionary in actor._rig_bones:
+			var rotation:Quaternion=entry.skeleton.get_bone_pose_rotation(int(entry.index))
+			sample.bone_poses[str(entry.name)]=[rotation.x,rotation.y,rotation.z,rotation.w]
+		samples.append(sample)
+		check(actor._motion_action=="help_homework","Actual rendered helper keeps its coaching motion while the assignment runs.")
+		await screenshot("02_coaching_cycle_%02d"%i,false,false)
+	var trace:=FileAccess.open(screenshot_dir+"/coaching_cycle.json",FileAccess.WRITE)
+	trace.store_string(JSON.stringify(samples,"\t"));trace.close()
+	app.world.camera_target=camera_state.target;app.world.camera.size=camera_state.size
+	app.world.camera_angle=camera_state.angle;app.world.camera_elevation=camera_state.elevation;app.world.update_camera()
 
 func _save_partial_pair() -> void:
 	await _open_helper_picker();await press("▶")
@@ -98,6 +126,7 @@ func _resume_pair() -> void:
 	check(app.household.funds==int(baseline.funds),"Cooperative homework does not invent household money.")
 	await press_member(FAMILY_NAMES[1]);await press("Skills")
 	check(app.skill_labels.has("parenting"),"The adult's Parenting level is visible in the Skills panel.")
+	check(app.skill_progress_labels.parenting.text=="40%" and is_equal_approx(app.skill_bars.parenting.value,40.0),"The caregiver sees the earned20XP as40percent progress toward level2.")
 	await screenshot("05_parenting_progress")
 	await press_member(FAMILY_NAMES[0])
 	var desk:Dictionary=first_item("desk")

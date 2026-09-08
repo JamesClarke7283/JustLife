@@ -820,7 +820,9 @@ func _autonomous_choice(excluded_target_ids: Array = []) -> Dictionary:
 			"energy": candidates = ["sleep", "nap"]
 			"hygiene": candidates = ["shower"]
 			"bladder": candidates = ["toilet"]
-			"fun": candidates = ["read", "watch", "relax"] if _has_trait("Bookworm") else ["paint", "read", "watch", "relax"]
+			"fun":
+				if _has_trait("Bookworm"): candidates = ["read", "watch", "relax"]
+				else: candidates = ["paint", "read", "watch", "relax"]
 			"social": candidates = ["friendly", "joke"]
 		for id: String in candidates:
 			for target: Dictionary in _targets:

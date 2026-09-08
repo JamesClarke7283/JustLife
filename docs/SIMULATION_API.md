@@ -18,6 +18,12 @@
 
 `get_current_action()` returns the front dictionary or `{}`. Public `action_queue` exposes the whole queue; later entries have phase `queued`. `cancel_action(index = 0)` removes a queued or active item and advances the queue when needed. Started activities do not refund ingredients; partial need and skill gains remain. Social target IDs may be `maya`, `leo`, or a household member ID. The exact aliases `neighbor_maya` and `neighbor_leo` also resolve.
 
+## Reconsidering blocked autonomy
+
+`reconsider_waiting_autonomy(blocked_target_ids: Array, waited_game_minutes: float) -> bool` replaces only an **autonomous front action in approach**, after at least 30 game minutes of waiting. It excludes unavailable objects, considers recoverable needs below 52 in ascending order, and can choose another object or another depleted need. A blocked bed can therefore lead to a sofa nap; a blocked bed and sofa can lead to food or another available recovery activity. The returned `true` means the replacement was queued and its normal movement signal emitted. Later queued actions remain unchanged.
+
+Explicit player-directed actions, disabled autonomy, coordinated sessions, active actions and brief waits are preserved. The controller checks availability and requests reconsideration; LifeSim does not reserve furniture or move actors. The controller retries an unsuccessful reconsideration after another 15 game minutes. This policy does not yet schedule school, homework or employment autonomously, and social choices still favor earlier registered targets. `tests/test_waiting_autonomy.gd` covers alternative recovery, urgent hunger, preserving directed/paired work, and both fun-selection trait branches (11 checks).
+
 ## Relationships and adult partnerships
 
 `get_action_availability(action_id, target_id = "") -> {available, reason}` exposes the same gate used by the menu and action queue. Romantic eligibility is checked when queued, again on arrival, and again when a partnership action finishes. An unknown target is rejected instead of silently changing a different relationship.

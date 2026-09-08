@@ -28,6 +28,11 @@ func _run()->void:
 		var expected:Dictionary=JSON.parse_string(FileAccess.get_file_as_string("user://autonomy_expected.json"))
 		audit=expected.audit
 		await _public_load();await _compare_saved(expected,"midweek fresh-process")
+		for id:String in expected.get("resource_waits",{}):
+			var saved_wait:Dictionary=expected.resource_waits[id]
+			if not bool(saved_wait.waiting):continue
+			var restored_wait:Dictionary=app.motion_states[id]
+			check(bool(restored_wait.waiting) and is_equal_approx(float(restored_wait.wait_started),float(saved_wait.started)),"Midweek fresh load preserves arrived resource priority before movement: "+id)
 		check(equivalent(app.household.family_graph,expected.family_graph),"Midweek fresh load preserves exact directed family graph.")
 		for member:Dictionary in expected.members:
 			var restored:Node=app.household.member_sim(member.id)
@@ -49,7 +54,7 @@ func _run()->void:
 			audit.members[str(member.id)]={"name":member.sim.character.name,"stage":member.sim.character.age_stage,"minimum_needs":member.sim.needs.duplicate(true),"critical_minutes":{},"waiting_minutes":0.0,"idle_minutes":0.0,"max_stationary_approach_minutes":0.0}
 			for need:String in LifeSim.NEED_NAMES:audit.members[str(member.id)].critical_minutes[need]=0.0
 		check(stages.has("elder") and stages.has("adult") and stages.has("young_adult") and stages.has("teen") and stages.has("child"),"Audit includes all five selectable age stages.")
-		audit["fixture"]={"source":"accepted packaged-source checkpoint","lot":"Willow Cottage","beds":1,"bathrooms":1,"desk":1,"funds":app.sim.funds,"note":"Default small furnished home; no extra resources or money granted by harness."}
+		audit["fixture"]={"source":"isolated development candidate; see source_snapshot.json","lot":"Willow Cottage","beds":1,"bathrooms":1,"desk":1,"funds":app.sim.funds,"note":"Default small furnished home; no extra resources or money granted by harness."}
 		await _run_days(audit_start+3*1440)
 		await _save_midweek()
 	var file:=FileAccess.open(screenshot_dir.path_join("audit_resume.json" if resume_only else "audit_first.json"),FileAccess.WRITE)
@@ -100,7 +105,8 @@ func _sample()->void:
 		else:still_minutes[id]=0.0
 		stats.max_stationary_approach_minutes=maxf(stats.max_stationary_approach_minutes,float(still_minutes[id]))
 		sample_positions[id]=position;last_actions[id]=signature
-		record.members.append({"id":id,"needs":sim.needs.duplicate(true),"action":action.duplicate(true),"waiting":waiting,"path_size":motion.get("path",[]).size(),"path_index":motion.get("index",0),"position":vec(position),"mood":sim.get_mood()})
+		var wait_position:Vector3=motion.get("wait_destination",Vector3.INF)
+		record.members.append({"id":id,"needs":sim.needs.duplicate(true),"action":action.duplicate(true),"waiting":waiting,"wait_started":motion.get("wait_started",-1.0),"wait_destination":vec(wait_position) if wait_position.is_finite() else [],"path_size":motion.get("path",[]).size(),"path_index":motion.get("index",0),"position":vec(position),"mood":sim.get_mood()})
 	audit.samples.append(record)
 
 func _daily_capture()->void:
@@ -121,6 +127,10 @@ func _daily_capture()->void:
 
 func _save_midweek()->void:
 	var expected:Dictionary={"state":app.sim.get_state(),"player":vec(app.player.position),"world":app.world.serialize_items(),"lot":app.selected_lot,"floor":app.floor_color,"selected_index":app.household.selected_index,"family_graph":app.household.family_graph.duplicate(true),"members":[],"audit":audit}
+	expected["resource_waits"]={}
+	for member:Dictionary in app.household.members:
+		var motion:Dictionary=app.motion_states.get(str(member.id),app._empty_motion())
+		expected.resource_waits[str(member.id)]={"waiting":motion.waiting,"started":motion.wait_started}
 	for member:Dictionary in app.household.members:expected.members.append({"id":member.id,"state":member.sim.get_state(),"position":vec(app.world.actors[member.id].position)})
 	await _public_save("Reed family — autonomous week halfway")
 	var file:=FileAccess.open("user://autonomy_expected.json",FileAccess.WRITE);file.store_string(JSON.stringify(expected));file.close()
@@ -130,12 +140,17 @@ func _final_review()->void:
 	for member:Dictionary in app.household.members:
 		var count:int=0
 		var last_finish:float=audit_start
+		var longest_gap:float=0.0
 		for event:Dictionary in audit.completions:
 			if event.id==member.id:
 				count+=1
-				last_finish=maxf(last_finish,float(event.day-1)*1440.0+float(event.minutes))
+				var finish:float=float(event.day-1)*1440.0+float(event.minutes)
+				longest_gap=maxf(longest_gap,finish-last_finish)
+				last_finish=maxf(last_finish,finish)
+		longest_gap=maxf(longest_gap,_now()-last_finish)
 		check(count>0,"Each member completes at least one autonomous activity over the week: "+str(member.sim.character.name))
 		check(_now()-last_finish<1440.0,"No member is starved of all completed actions for a full game day: "+str(member.sim.character.name))
+		check(longest_gap<1440.0,"Every observed game day includes a useful completed action: "+str(member.sim.character.name))
 		check(float(audit.members[str(member.id)].max_stationary_approach_minutes)<120,"No non-waiting route remains stationary for two game hours: "+str(member.sim.character.name))
 	audit["final_household"]=app.household.get_state(app.world.serialize_items())
 	await press("Stories",true);await screenshot("day_08_unattended_stories",false,false);await press("Back to life")

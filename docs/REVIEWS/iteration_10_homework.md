@@ -1,0 +1,55 @@
+# Independent review — homework together
+
+8 September 2026. **The directed child/adult homework flow and its repaired partner/gesture/progress presentation are accepted with the limits below. No new full-request score is assigned by this focused report.** The initial issues and diagnostic correction are preserved, followed by the verified repair checkpoint. A successful directed homework interaction cannot, by itself, establish sustained autonomy or the requested breadth; those need the separate combined review.
+
+## Evidence inspected
+
+Frozen source: `/tmp/justlife-homework-source-jaxcm0l2`. Executed isolated project: `/tmp/justlife-playthrough-_jvp6c5g`. The critic read the executed harness, relevant controller/household/actor code, both result reports and source manifest, and directly inspected all five distinct screenshots. Both processes exited successfully with no reported runtime errors: **47 first-process checks; 22 fresh-process checks**. Counts include navigation and setup assertions, not 69 independent product features.
+
+The executed actor is SHA-256 `3a0f4ef190cfea845049fd50374af4f3f3da2640a593db4261d2f63ca148cb7b`; the controller is `3d3d554de6b663b2ca55e9f546b036ec03bf1de5fe275d0b8fc830fdacd834c6`. The source manifest records all executed script/model hashes. This baseline uses the current production models and coaching code, not the earlier gesture-free demonstration documented in `COOPERATIVE_HOMEWORK.md`.
+
+The harness creates a Child, Alex Rowan, and Adult parent, Blair Rowan, through the public creation controls, moves into Willow Cottage, disables autonomy and chooses the desk interaction through the displayed object menu and helper picker. Public controls are activated by their signals; this is rendered UI integration, not independent physical mouse-hit testing. Routes, arrival and activity progress advance through normal simulation updates. The camera is temporarily framed more closely around the actual desk for two captures.
+
+## What the evidence establishes
+
+- The helper picker names the parent and clearly explains meeting at the desk, the 45-minute assignment, Parenting/Logic/relationship benefits and cancellation for both participants. The inspected 1440×900 modal is readable and fits the window. The eligible parent button is enabled; choosing it pauses while planning and creates the linked pair.
+- Actual routed arrival precedes progress. At the first close view, the learner is seated on the desk chair/booster and the adult stands at a distinct clear point. Their bodies do not overlap in this view. The screen, hands and feet need an additional side view before a stronger contact-quality conclusion.
+- Pausing preserves elapsed progress and the two actor visual transforms. Canceling through the helper's public action button clears both participants' actions. The unfinished assignment grants no homework completion, Parenting XP or cooperative friendship reward. Retrying successfully reaches a new shared session.
+- A named save at approximately one-quarter progress is loaded in a fresh process. The pair token, authoritative elapsed time and helper's separate target position survive. Both actions re-establish arrival before continuing. Completion produces one prepared assignment, exactly 20 Parenting XP, reciprocal friendship improvement and one completion event per participant, without adding money. Another shared assignment is unavailable that day with an explanatory tooltip.
+- The code keeps a single learner-owned homework clock, mirrors helper progress and applies completion/cancellation changes as a household operation. Component test source additionally exercises malformed saves, interruption and callback consistency; those source assertions are not counted here as independently executed results.
+
+Screenshots support the layout and spatial observations. Save/arrival/reward statements rely on the inspected executed harness and recorded state, not on the screenshots.
+
+## Changes required from this baseline
+
+**P2 — the active interface loses the shared relationship.** Both the learner's activity heading and queue say only “Do homework.” Once the picker closes, the displayed activity is indistinguishable from solo work, and the cancellation button no longer explains that it ends the partner's activity too. Identify the partner while meeting, waiting and learning; expose the same authoritative progress from either participant; explain joint cancellation at the relevant control. Acceptance needs both learner-selected and helper-selected views, including after fresh load.
+
+**P2 — coaching is not yet visually convincing.** In both inspected active close views, the adult's arms appear almost at rest by their sides. These two images do not establish whether a visible teaching gesture occurs between captures. The source requests an explaining arm pose, but source intent is not proof that the production skeleton renders it correctly. Request a short actual-play cycle with joint/action state and a clear desk-side view. Acceptance should show a legible explain/listen gesture without clipping, a learner visibly attending to the helper at an appropriate moment, and continuity through pause/restart. Generic arm movement beside uninterrupted solo typing would still leave expressive interaction quality limited.
+
+**P2 — small completion feedback is difficult to read.** In the normal-zoom completion view, the two small speech labels visually collide. The Skills panel exposes “Parenting — Level 1,” but does not show the 20 XP earned in this session; the screenshot alone therefore does not demonstrate progress within the level. A readable shared completion notice and visible within-level skill progress would make the consequences clearer.
+
+## Limits and next gate
+
+This directed flow covers one child/adult pair, one default desk orientation and one window size, with audio explicitly disabled. It does not establish teen/elder posture, extreme body/frame fits, several eligible/ineligible helper rows, perceived talking sounds, crowded-household performance or furniture edits during a rendered session. Routing and invalidation component coverage should be retained, then paired with specific additional rendered cases rather than treating code assertions as visual approval.
+
+The feature adds a useful directed family activity. It does not establish autonomous school/homework responsibility, shared meals, childbirth/adoption, infants/toddlers, values/advice, inheritance or families beyond the current household. The combined iteration review must await the independently inspected sustained-autonomy candidate and character evidence. **Decision: iterate.**
+
+## Follow-up: clearer identity, confirmed gesture defect
+
+Executed checkpoint `/tmp/justlife-playthrough-vi39r0zh` uses the same actor hash and controller SHA-256 `76f45bda8f2c7670482e390d0af19c65cc8225cc13c60f6f68e5d004b1607ed8`. Its reports record **68 first-process and 22 restart checks, no assertion failures**. These overlap the baseline and are not additive feature coverage.
+
+Directly inspected `02_coaching_cycle_00.png` and `02_coaching_cycle_02.png` show the selected helper's new **“WITH ALEX ROWAN” / “Helping with homework”** context clearly. This is a verified improvement to active partner identity. Controller inspection also finds joint-cancellation explanation on the action-heading tooltip; a label tooltip is less discoverable than feedback on the cancellation control itself.
+
+The new desk-side sequence confirms that the helper's arms remain visibly down during the activity. The accompanying trace records `help_homework`, active phase, increasing progress, action time approximately 2.4–5.4 seconds and substantially non-neutral right-arm/forearm rotations. The requested joint pose therefore does not produce the intended visible teaching gesture. The original request for more evidence has become a **confirmed presentation defect**, not an acceptance of subtle motion. A read-only GLB inspection confirms that the visible continuous right-arm mesh has substantial upper-arm and forearm skin weights; the defect must be resolved through the actual rendered binding/pose path, not by declaring the animation correct from joint values alone. The learner also continues typing without visible reciprocal attention in the inspected samples. Both points remain open pending a corrected render.
+
+**Diagnostic correction:** subsequently inspected `art/single_help_homework.png` and `art/shared_help_homework.png` in that isolated project show a visible forearm bend toward the waist, including with two instances of the same model. These controls contradict a confident diagnosis of broken skeleton binding. The verified problem is that the low gesture reads as near-idle from the actual pair's camera; the earlier binding suspicion is unproven. Raising and opening the explaining hand, then verifying the real desk scene, is an appropriate next repair. Do not treat non-neutral joint values or an isolated pose as acceptance of the interaction's visual readability.
+
+## Accepted focused repair
+
+Executed checkpoint `/tmp/justlife-playthrough-mlhsvob_` uses controller SHA-256 `cc62a38a99e9586ebcaa718ce75ffe209f640d03b2aca98460c8e71b20ad6e3d` and actor `248407b8069dc52e77e094c8f6aa315b36230d20344a24e49ffbbc29a037d1d9`. The critic inspected the actual rendered cycle frames 00, 02 and 04, the completed Parenting panel, both runner outcomes, result reports and the executed actor/controller/harness changes. **72 first-process and 23 fresh-process checks pass; both stages exit 0 with no runtime errors.** These supersede the overlapping earlier directed checks, rather than being added to their totals.
+
+The later explaining phase in frame 04 now visibly raises an open hand to the upper torso while the learner looks upward and toward the helper. The hand remains clear of the desk and learner in this view. Other phases return to listening and typing. Source inspection confirms the learner's attention target is the actual partner and typing motion reduces during the attention phase. This is a legible improvement over the near-idle baseline, not a claim of varied or finished acting across the whole game.
+
+The active heading names the partner from either participant's perspective, distinguishes learning from helping, and preserves shared progress. The queue tooltip explains that cancellation ends both Lifelets' work. The Skills panel now visibly shows **Parenting 40%** with a proportional bar, matching the 20 XP out of 50 needed for the next level; its tooltip gives the numerical experience. The named restart and once-only completion behavior still pass with the new presentation.
+
+**Decision: accept this directed child/adult pair and these focused presentation repairs.** Other ages, frame/height extremes, crowded helpers, smaller-window readability and perceived talking sounds remain unverified here. The ordinary-zoom completion speech labels remain small and visually crowded. These limits and the broader family/autonomy gaps above continue to prevent a 10/10 or full-target claim.

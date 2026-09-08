@@ -387,7 +387,7 @@ func set_activity_anchor(world_position: Vector3,world_yaw: float,anchor_kind: S
 
 	if details.get("desk_surface_y") is float or details.get("desk_surface_y") is int:
 		if is_finite(float(details.desk_surface_y)): _activity_anchor["desk_surface_y"] = float(details.desk_surface_y)
-	for key: String in ["desk_front_edge","desk_forward"]:
+	for key: String in ["desk_front_edge","desk_forward","attention_target"]:
 		if details.get(key) is Vector3 and details[key].is_finite(): _activity_anchor[key] = details[key]
 
 
@@ -696,8 +696,9 @@ func _typing_pose(pose: Dictionary, t: float, anchor_kind: String) -> void:
 		center = _model.to_local(_activity_anchor.hand_center)
 		var world_side: Vector3 = Basis(Vector3.UP,float(_activity_anchor.yaw))*side
 		side = _model.global_basis.inverse()*world_side
-	_reach_hand(pose,"L",center-side+Vector3(0,sin(t*8.0)*.006,0),_typing_elbow("L",_model.global_basis))
-	_reach_hand(pose,"R",center+side+Vector3(0,cos(t*8.0)*.006,0),_typing_elbow("R",_model.global_basis))
+	var typing:float=1.0-_coaching_attention_weight() if _activity_anchor.has("attention_target") else 1.0
+	_reach_hand(pose,"L",center-side+Vector3(0,sin(t*8.0)*.006*typing,0),_typing_elbow("L",_model.global_basis))
+	_reach_hand(pose,"R",center+side+Vector3(0,cos(t*8.0)*.006*typing,0),_typing_elbow("R",_model.global_basis))
 
 
 func _orient_held_prop(prop: Node3D, model_basis: Basis) -> void:
@@ -881,9 +882,9 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 			"help_homework":
 				# Stand at the controller's clear side position, explain a step,
 				# then lower the hand to listen. No reach through the child's desk.
-				var explain: float = .5+.5*sin(_action_time*1.6)
-				pose["Arm_R"] = Vector3(-.42-.22*explain,.08,-.13)
-				pose["Forearm_R"] = Vector3(-.68-.28*explain,0,.10)
+				var explain: float = _coaching_attention_weight()
+				var hand:Vector3=Vector3(.25,1.08+.23*explain,.28+.08*explain)*_proportion
+				_reach_hand(pose,"R",hand,Vector3(.8,-.45,.05),Vector3.DOWN,Vector3(0,0,1))
 				pose["Arm_L"] = Vector3(-.12,0,.06)
 				pose["Forearm_L"] = Vector3(-.32-.10*(1.0-explain),0,0)
 				pose["Head"] = Vector3(.18+.03*sin(_action_time*2.1),.04*sin(t*.7),-.015)
@@ -934,6 +935,11 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 			"friendly", "joke", "deep_talk", "flirt", "argue", "ask_partner", "commit", "break_up":
 				var gesture_aliases: Dictionary = {"ask_partner":"deep_talk", "commit":"flirt", "break_up":"deep_talk"}
 				_conversation_pose(pose, str(gesture_aliases.get(action_id, action_id)), t)
+	if anchored and _activity_anchor.has("attention_target") and action_id in ["homework","help_homework"]:
+		var attention_weight:float=_coaching_attention_weight() if action_id=="homework" else .85
+		var direction:Vector3=_model.to_local(_activity_anchor.attention_target)-_model.to_local(_joints.Head.global_position)
+		var gaze:Vector3=Vector3(clampf(-atan2(direction.y,Vector2(direction.x,direction.z).length()),-.38,.4),clampf(atan2(direction.x,direction.z),-.72,.72),0)
+		pose["Head"]=Vector3(pose.Head).lerp(gaze,attention_weight)
 	if anchored and anchor_kind == "seat" and _activity_anchor.has("hand_center") and action_id in ["work","study","job","school","homework"]:
 		lean.x = _desk_lean()
 		# Keep thighs horizontal while the torso leans from its supported hips.
@@ -969,6 +975,11 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		entry.mesh.set_blend_shape_value(int(entry.index), _sit_amount)
 	_update_expression(animation_delta,action_id,blend)
 	_update_held_props(animation_delta,moving,action_id)
+
+
+func _coaching_attention_weight() -> float:
+	var phase:float=fmod(_action_time,5.0)
+	return smoothstep(.15,.6,phase)*(1.0-smoothstep(1.5,2.1,phase))
 
 
 func _update_visual_followers(anchored: bool,action_id: String) -> void:
