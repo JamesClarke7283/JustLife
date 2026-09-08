@@ -15,6 +15,9 @@ func run() -> void:
 		{"id":"books","kind":"bookshelf","position":Vector3(6,.16,0)},
 		{"id":"easel","kind":"easel","position":Vector3(8,.16,0)}])
 	for need:String in LifeSim.NEED_NAMES:sim.needs[need]=90.0
+	# Daytime weekday recovery intentionally prefers a nap. This first control
+	# needs a night-time bed preference before testing a blocked-bed fallback.
+	sim.minutes=1320.0
 	sim.needs.energy=5.0
 	sim._choose_autonomous_action()
 	check(sim.get_current_action().id=="sleep","Energy first chooses sleep when all recovery objects are available.")

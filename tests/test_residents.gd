@@ -91,7 +91,7 @@ func run() -> void:
  var saved_id:String=app.active_save_id
  var state:Dictionary=app.residents.snapshot()
  var receipt:Dictionary={"slot":saved_id,"residents":state,"friendship":friendship_saved,"home":home}
- var output:=FileAccess.open("user://resident_expected.json",FileAccess.WRITE);output.store_string(JSON.stringify(receipt, "", true, true));output.close()
+ var output:=FileAccess.open("user://resident_expected.json",FileAccess.WRITE);output.store_string(JSON.stringify(receipt,"",true,true));output.close()
  app.load_game(saved_id);await process_frame
  check(app.current_venue=="maya_home","Loading returns to the friend’s home")
  check(JSON.stringify(app.residents.snapshot())==JSON.stringify(state),"Resident route state is restored exactly")
@@ -110,6 +110,6 @@ func run() -> void:
   if not app.residents.present("maya"):absent_seen=true
   elif absent_seen:returned=true;break
  check(absent_seen and returned,"A walker leaves the street and returns on a later walk")
- app.queue_free();await process_frame;await process_frame;await create_timer(.15).timeout
+ app.queue_free();await process_frame;await process_frame
  print("RESIDENTS_RESULT ",checks,"/",failures)
  quit(0 if failures==0 else 1)

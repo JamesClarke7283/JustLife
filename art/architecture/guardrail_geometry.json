@@ -1,0 +1,15 @@
+{
+  "status": "Private authored kit; awaiting integrated rendered and clearance review",
+  "span_axis": "+X",
+  "span_length": 1,
+  "rail_top": 1.0275,
+  "post_top": 1.076,
+  "post_max_half_width": 0.039,
+  "post_max_half_depth": 0.043,
+  "placement": "Use one post per boundary/junction. Span begins/ends at post centers; keep landing exit clear. Offset guard footprint onto the supported slab, not into stair opening.",
+  "hashes": {
+    "juniper_guard_span.glb": "46f294ee716d5fa52eb49bfb0b5f65315eab330c7372cf8b7f0d3bc2137adde5",
+    "juniper_guard_post.glb": "379915f0f6e88ed4b22950bcde4fa94d90a88b58e56b8792ec59dbeee82d6724"
+  },
+  "generator_sha256": "549287411726437564429d004fafd6e7a05c403f493fabcee7d7fadcc0c73a3a"
+}

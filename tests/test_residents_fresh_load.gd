@@ -34,5 +34,5 @@ func run()->void:
  var actor:LifeActor=app.world.actors.maya
  app.queue_interaction({"id":"maya","kind":"neighbor","node":actor,"size":Vector2(.6,.6)},"friendly")
  check(not app.sim.action_queue.is_empty() and str(app.sim.get_current_action().target_id)=="maya","The restored resident can be approached socially")
- app.queue_free();await process_frame;await process_frame;await create_timer(.15).timeout
+ app.queue_free();await process_frame;await process_frame
  print("RESIDENTS_FRESH_RESULT ",checks,"/",failures);quit(0 if failures==0 else 1)

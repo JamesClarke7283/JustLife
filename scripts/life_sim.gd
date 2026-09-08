@@ -520,12 +520,12 @@ func set_speed(value: int) -> void:
 	_emit_changed()
 
 
-func register_targets(targets: Array) -> void:
+func register_targets(targets: Array, reconcile:bool=true) -> void:
 	_targets.clear()
 	for entry: Variant in targets:
 		if entry is Dictionary and entry.has("id") and entry.has("kind") and entry.get("position") is Vector3:
 			_targets.append(entry.duplicate(true))
-	_prune_school_actions()
+	if reconcile:_prune_school_actions()
 
 
 func tick(delta: float) -> void:
@@ -1831,7 +1831,7 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 		action["phase"] = "queued"
 		action["paid"] = bool(stored.get("paid", false))
 		action["autonomous"] = bool(stored.get("autonomous", false))
-		action["started_day"] = int(stored.get("started_day", day))
+		if stored.has("started_day"): action["started_day"] = int(stored.started_day)
 		if stored.has("started_minutes"): action["started_minutes"] = float(stored.started_minutes)
 		if stored.has("target_kind"): action["target_kind"] = str(stored.target_kind)
 		for key: String in ["cooperation_id","cooperation_role","meal_source","meal_stage","meal_plate","meal_seat"]:
@@ -2039,8 +2039,24 @@ func _validate_state(state: Dictionary) -> String:
 			if LifeLifecycle.next_stage(LifeLifecycle.stage_for(profile)).is_empty(): return "Save contains a birthday beyond the supported age stages."
 			if str(action.get("birthday_from_stage",LifeLifecycle.stage_for(profile))) != LifeLifecycle.stage_for(profile): return "Save contains a birthday for an age stage that has already passed."
 		if action.has("meal_standing") and (action_id!="eat_meal" or not action.meal_standing is bool):return "Save contains an invalid standing diner reservation."
-		if not _number_in_range(action.get("elapsed", 0), 0.0, 10000.0) or not _number_in_range(action.get("duration", 1), 1.0, 10000.0):
+		var saved_duration:Variant=action.get("duration",_actions[action_id].duration)
+		var saved_elapsed:Variant=action.get("elapsed",0.0)
+		var saved_paid:Variant=action.get("paid",false)
+		if not _number_in_range(saved_duration,1.0,10000.0) or not _number_in_range(saved_elapsed,0.0,float(saved_duration)) or not saved_paid is bool:
 			return "Save contains invalid action progress."
+		# A paid interrupted action can approach again without losing progress.
+		# Picking up an existing partial plate inherits its eating progress before
+		# arrival/payment. Household ingress then requires the exact owned plate
+		# and matching progress through LifeMeals.validate_actions.
+		var inherited_meal:bool=action_id=="eat_meal" and action.get("meal_stage","")=="eat" and action.get("phase","")=="approach"
+		if float(saved_elapsed)>0.0 and not saved_paid and not inherited_meal:return "Save contains progress on an action that has not begun."
+		# Recipes and off-lot schedules validate their derived duration separately.
+		# Ordinary activities keep their authored duration, including the explicit
+		# shorter Active nap. The ordinary 75-minute nap remains a valid old state.
+		if action_id not in ["cook","school_day","career_day"]:
+			var expected_duration:float=float(_actions[action_id].duration)
+			var active_nap:bool=action_id=="nap" and "Active" in profile.traits and float(saved_duration)==60.0
+			if float(saved_duration)!=expected_duration and not active_nap:return "Save contains an invalid activity duration."
 		var position: Variant = action.get("target_position", [0, 0, 0])
 		if not position is Vector3:
 			if not position is Array or position.size() != 3:

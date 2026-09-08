@@ -18,6 +18,8 @@ var day: int = 1
 var minutes: float = 480
 var targets: Array = []
 var restoring: bool = false
+var journeys: Dictionary = {}
+var physical_snapshot_provider:Callable=Callable()
 var family_graph: Dictionary = LifeFamilyGraph.fresh()
 var adoptions: Dictionary = LifeAdoption.fresh()
 var _family_roles: Dictionary = {}
@@ -29,6 +31,7 @@ var _cooperation_depth: int = 0
 const COOPERATION_WAIT_LIMIT: float = 60.0
 
 func new_household(profiles: Array) -> void:
+	journeys.clear()
 	adoptions=LifeAdoption.fresh()
 	meals.clear()
 	sanitation.clear()
@@ -139,11 +142,11 @@ func set_speed(value: int) -> void:
 	speed=value if value in [0,1,3,8] else 1
 	_sync_wallet()
 
-func register_targets(new_targets: Array) -> void:
-	var paired: bool = not cooperations.is_empty()
+func register_targets(new_targets: Array, reconcile:bool=true) -> void:
+	var paired: bool = reconcile and not cooperations.is_empty()
 	if paired: _begin_cooperation_change()
 	targets=new_targets.duplicate(true)
-	for member in members:member.sim.register_targets(targets.filter(func(target:Dictionary):return str(target.id)!=str(member.id)))
+	for member in members:member.sim.register_targets(targets.filter(func(target:Dictionary):return str(target.id)!=str(member.id)),reconcile)
 	if paired:
 		_reconcile_cooperations()
 		_end_cooperation_change()
@@ -183,7 +186,16 @@ func get_state(world_data: Array = []) -> Dictionary:
 	adopt_selected_changes()
 	var states:Array=[]
 	for member in members:states.append({"id":member.id,"state":member.sim.get_state()})
-	return {"household_version":1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state(),"sanitation":sanitation.get_state()}
+	var result:Dictionary={"household_version":2 if not journeys.is_empty() else 1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state(),"sanitation":sanitation.get_state()}
+	if not journeys.is_empty():result.journeys=journeys.duplicate(true)
+	if physical_snapshot_provider.is_valid():
+		var physical:Dictionary=physical_snapshot_provider.call()
+		if physical.has("error"):result.snapshot_error=str(physical.error)
+		elif not physical.is_empty():
+			result.household_version=2;result.journeys=physical.journeys.duplicate(true)
+			result.world=physical.world.duplicate(true)
+			for member:Dictionary in result.members:member.state.character.world_state=physical.members[str(member.id)].duplicate(true)
+	return result
 
 func get_family_links() -> Array:
 	var links:Array=LifeFamilyGraph.links(family_graph)
@@ -294,16 +306,22 @@ func load_game() -> Dictionary:
 	return restore_state(parser.data)
 
 func restore_state(data: Dictionary) -> Dictionary:
+	if data.has("snapshot_error"):return {"ok":false,"error":"Cannot restore an incomplete live physical snapshot: "+str(data.snapshot_error)}
 	data=data.duplicate(true)
 	# Single-Lifelet saves from the first playable version are accepted.
 	if data.has("version") and not data.has("household_version"):
+		if data.has("journeys"):return {"ok":false,"error":"A legacy save cannot contain versioned journeys."}
 		var legacy_state:Dictionary=data.duplicate(true)
 		if legacy_state.get("relationships") is Dictionary:
 			for relation_id:Variant in legacy_state.relationships.keys():
 				if str(relation_id)=="player" or str(relation_id).begins_with("housemate_"):legacy_state.relationships.erase(relation_id)
 		data={"household_version":1,"selected_index":0,"funds":data.get("funds",2500),"members":[{"id":"player","state":legacy_state}],"world":data.get("world",[])}
-	if data.get("household_version")!=1 or not data.get("members") is Array:return {"ok":false,"error":"This household save uses an unsupported format."}
+	if not LifeJourneyState.number(data.get("household_version"),1,2,true) or not data.get("members") is Array:return {"ok":false,"error":"This household save uses an unsupported format."}
 	if data.members.is_empty() or data.members.size()>MAX_MEMBERS or not data.get("world",[]) is Array:return {"ok":false,"error":"The saved household has invalid members."}
+	if (data.get("household_version")==2)!=data.has("journeys"):return {"ok":false,"error":"The household and journey save versions disagree."}
+	if data.get("household_version")==2:
+		for key:String in ["selected_index","funds","day","minutes","speed","world"]:
+			if not data.has(key):return {"ok":false,"error":"The physical household save is missing "+key+"."}
 	var identity_error:String=_validate_member_identity(data)
 	if not identity_error.is_empty():return {"ok":false,"error":identity_error}
 	var family_result:Dictionary=_prepare_saved_family(data)
@@ -344,22 +362,37 @@ func restore_state(data: Dictionary) -> Dictionary:
 	if not adoption_error.is_empty():
 		for candidate:Dictionary in candidates:candidate.sim.free()
 		return {"ok":false,"error":adoption_error}
+	var journey_result:Dictionary={"ok":true}
+	if data.has("journeys"):
+		journey_result=LifeJourneyState.validate(data.journeys,data)
+		if bool(journey_result.ok):
+			var physical_error:String=LifeJourneyState.validate_actions(data)
+			if not physical_error.is_empty():journey_result={"ok":false,"error":physical_error}
+		if not bool(journey_result.ok):
+			for candidate:Dictionary in candidates:candidate.sim.free()
+			return journey_result
+	var sanitation_data:Variant=data.get("sanitation",LifeSanitation.fresh())
+	var sanitation_error:String=LifeSanitation.validate(sanitation_data,ids,data.members,(lead.day-1)*1440.0+lead.minutes)
+	if sanitation_error.is_empty():sanitation_error=LifeSanitation.validate_layout(sanitation_data,data)
+	if not sanitation_error.is_empty():
+		for candidate:Dictionary in candidates:candidate.sim.free()
+		return {"ok":false,"error":sanitation_error}
 	var meal_data: Variant = data.get("meals",LifeMeals.new().get_state())
 	var meal_error: String = LifeMeals.validate(meal_data,ids,(lead.day-1)*1440.0+lead.minutes)
-	if meal_error.is_empty():meal_error=LifeMeals.validate_actions(meal_data,data.members)
+	if meal_error.is_empty():meal_error=LifeMeals.validate_actions(meal_data,data.members,journey_result.get("custody",{}),str(journey_result.get("venue","")))
 	if meal_error.is_empty():meal_error=LifeMeals.validate_layout(meal_data,data)
 	if not meal_error.is_empty():
 		for c in candidates:c.sim.free()
 		return {"ok":false,"error":meal_error}
-	var sanitation_data:Variant=data.get("sanitation",LifeSanitation.fresh())
-	var sanitation_error:String=LifeSanitation.validate(sanitation_data,ids,data.members,(lead.day-1)*1440.0+lead.minutes)
-	if not sanitation_error.is_empty():
-		for c in candidates:c.sim.free()
-		return {"ok":false,"error":sanitation_error}
 	restoring=true
-	sanitation.restore(sanitation_data)
+	journeys=data.get("journeys",{}).duplicate(true)
+	if not journeys.is_empty():
+		for index:int in candidates.size():
+			for action_index:int in candidates[index].sim.action_queue.size():
+				candidates[index].sim.action_queue[action_index].phase=data.members[index].state.action_queue[action_index].phase
 	adoptions=data.get("adoptions",LifeAdoption.fresh()).duplicate(true)
 	meals.restore(meal_data)
+	sanitation.restore(sanitation_data)
 	for old in members:old.sim.queue_free()
 	members=candidates
 	# The saved world is rebuilt after restoration; old target IDs belong to the previous venue.
@@ -813,6 +846,7 @@ func commit_adoption(request:Dictionary,spawn:Vector3,destination:Vector3,world_
 	if not reason.is_empty():return {"ok":false,"error":reason}
 	if not LifeAdoption.point(spawn) or not LifeAdoption.point(destination):return {"ok":false,"error":"A safe arrival route is required."}
 	var snapshot:Dictionary=get_state(world_data)
+	if snapshot.has("snapshot_error"):return {"ok":false,"error":str(snapshot.snapshot_error)}
 	var id:String="housemate_%d" % members.size()
 	var child:=LifeSim.new()
 	child.new_household(LifeAdoption.candidate(int(request.serial),int(request.choice)))
@@ -822,13 +856,17 @@ func commit_adoption(request:Dictionary,spawn:Vector3,destination:Vector3,world_
 	child._story_generated_day=day
 	var guardian:LifeSim=member_sim(str(request.guardians[0]))
 	child.set_aging(str(guardian.lifecycle.lifespan),bool(guardian.lifecycle.auto_age))
-	child.character.world_state={"player":[spawn.x,spawn.y,spawn.z],"player_rotation":PI}
+	child.character.world_state={"player":[spawn.x,spawn.y,spawn.z],"player_rotation":PI,"resource_wait_started":-1.0,"resource_action_active":false,"waiting_action_id":"arrive_home","waiting_target_id":"lot_exit"}
 	var arrival:Dictionary=child._actions.arrive_home.duplicate(true)
 	arrival.merge({"target_id":"lot_exit","target_kind":"lot_exit","target_position":destination,"elapsed":0.0,"progress":0.0,"phase":"approach","paid":false,"autonomous":false,"adoption_serial":int(request.serial)},true)
 	child.action_queue.append(arrival)
 	var child_state:Dictionary=child.get_state();child.free()
 	for entry:Dictionary in snapshot.members:entry.state.funds=funds-LifeAdoption.FEE
 	snapshot.members.append({"id":id,"state":child_state});snapshot.funds=funds-LifeAdoption.FEE
+	if snapshot.has("journeys"):
+		var journey_identity:int=int(snapshot.journeys.next_identity)
+		snapshot.journeys.next_identity=journey_identity+1
+		snapshot.journeys.members[id]={"position":LifeJourneyState.packed(spawn),"yaw":PI,"motion":{"phase":"route","identity":journey_identity,"ticket":0,"safety":false,"custody":"","destination":LifeJourneyState.packed(destination),"stair_id":"","direction":0,"distance":0.0,"wait":[],"clear":[],"intent":{"kind":"action","id":"arrive_home","target_id":"lot_exit","meal_source":"","meal_stage":"","meal_plate":""}}}
 	for parent:String in request.guardians:snapshot.family_graph.parents.append({"a":parent,"b":id})
 	var ids:Array=[]
 	for entry:Dictionary in snapshot.members:ids.append(str(entry.id))
@@ -856,6 +894,7 @@ func commit_adoption(request:Dictionary,spawn:Vector3,destination:Vector3,world_
 	for entry:Dictionary in snapshot.members:
 		if str(entry.id)!=id:member_sim(str(entry.id)).relationships[id]=entry.state.relationships[id].duplicate(true)
 	family_graph=snapshot.family_graph.duplicate(true);adoptions=snapshot.adoptions.duplicate(true)
+	if snapshot.has("journeys"):journeys=snapshot.journeys.duplicate(true)
 	members.append({"id":id,"sim":added});add_child(added)
 	added.name="Life_"+id;added.household_bills_enabled=false
 	connect_member(id,added)

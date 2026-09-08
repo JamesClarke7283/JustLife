@@ -48,7 +48,7 @@ func run() -> void:
 	check(app.current_venue=="studio","Save/resume retains the current public venue.")
 	check(app.home_layout.size()==home.size(),"Away save retains the remodeled home snapshot.")
 	app.travel_to("home");await finish_trip();await process_frame
-	check(JSON.stringify(app.world.serialize_items())==JSON.stringify(home),"Returning home restores furnishings and custom walls.")
+	check(JSON.parse_string(JSON.stringify(app.world.serialize_items(),"",true,true))==JSON.parse_string(JSON.stringify(home,"",true,true)),"Returning home restores furnishings and custom walls.")
 	check(app.floor_color=="896953","Returning home retains the chosen flooring.")
 	app.household.day=1;app.household.minutes=1439
 	app.household.set_speed(1);app.household.tick(.5)

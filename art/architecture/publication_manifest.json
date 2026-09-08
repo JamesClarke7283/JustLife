@@ -1,0 +1,23 @@
+{
+  "description": "Original Juniper stair/rail and rectangular gable source plus live exports. Historical captures and unused study exports are excluded.",
+  "files": {
+    "art/architecture/GUARDRAILS.md": "0809f5a61aa1cc87e87477d26f1b0701f5013f5056a4f411462e01b0810ec79d",
+    "art/architecture/README.md": "abbd1d4818b6d08ec82e8e1c9e4ea2f5d5492d65dd9a52a40a7c6315b5147709",
+    "art/architecture/ROOF_KIT.md": "c8b249a848aa204be18c8a13bcddd1e3db31bc2f12596ae8695ef81f14af07ba",
+    "art/architecture/RUNTIME_ROOFS.md": "c66bda5aab9d98f619c1dc368bc8ad6e7a41429c617848b6e820848fbd5a05b8",
+    "art/architecture/guardrail_geometry.json": "2af70817f8a86204842353a316e81e62af1e18cf28686a5b7c24db009f7f1de3",
+    "art/architecture/juniper_guardrails.blend": "0a2ac69422bf5892914644259fd924653bdb3ff30a6336039e3233fba68fa508",
+    "art/architecture/juniper_stair.blend": "be99eb3aed95804561cb4eea8d8f53efd99c5d8a61cfb403557fa2b0094217dd",
+    "art/architecture/justlife_roof_kit.blend": "a4117e9d67b4e69b7b1253788d6853f9d3bb4b45f4d9d3dee948fb1817c9e124",
+    "art/architecture/roof_geometry_contract.json": "99234265d7363cb80d44c47a61fa02776a60bb01f54683b72e069a78ab1a9ecf",
+    "art/architecture/roof_parameters.json": "3ba71a9bda138d0698c5ae35bf2c25976e1500b2ad474213a491fb4911842055",
+    "art/architecture/stair_geometry.json": "9a0c75d4fb60f79dac7e92bf5ef2f3588b7b32f2de0e0c746b13b19e9095b2e7",
+    "assets/models/juniper_guard_post.glb": "379915f0f6e88ed4b22950bcde4fa94d90a88b58e56b8792ec59dbeee82d6724",
+    "assets/models/juniper_guard_span.glb": "46f294ee716d5fa52eb49bfb0b5f65315eab330c7372cf8b7f0d3bc2137adde5",
+    "assets/models/juniper_stair.glb": "ebbe97283a7231831dcd5c497a2a91d208701ef607da4f9f0241714da08a6f4f",
+    "assets/models/roof_gable_modules.glb": "3ce6595912343bf3bac8171347f216627001b831419e7cb68fcee03ad7c1f22b",
+    "tools/create_guardrails.py": "549287411726437564429d004fafd6e7a05c403f493fabcee7d7fadcc0c73a3a",
+    "tools/create_roof_kit.py": "1ad18a870999a8e644e1a2bd6662f63853a644f0e1586b40e4379f50f89454b4",
+    "tools/create_stair.py": "6cfa905fe1c55f983f01e4961d55cbd06b9d876eb3f3dee701dad581449363dc"
+  }
+}

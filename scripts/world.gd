@@ -1,5 +1,16 @@
 extends Node3D
 class_name LifeWorld
+const Building=preload("res://scripts/building_state.gd")
+const RoofRules=preload("res://scripts/roof_rules.gd")
+const LotNavigation=preload("res://scripts/lot_navigation.gd")
+const VIEW_ENVIRONMENT:int=1
+const VIEW_GROUND:int=2
+const VIEW_UPPER:int=4
+const VIEW_STAIRS:int=8
+const VIEW_ACTOR_GROUND:int=16
+const VIEW_ACTOR_UPPER:int=32
+const PICK_GROUND:int=2
+const PICK_UPPER:int=4
 
 signal object_clicked(info: Dictionary, screen_position: Vector2)
 signal ground_clicked(world_position: Vector3)
@@ -13,8 +24,13 @@ var house: Node3D
 var furniture: Node3D
 var walls: Array[Node3D] = []
 var items: Array[Dictionary] = []
+var _furnishing_volume_cache:Dictionary={}
 var actors: Dictionary = {}
 var navigation = AStarGrid2D.new()
+var lot_navigation=LotNavigation.new()
+var view_level:int=0
+var starter_floor_nodes:Array[Node3D]=[]
+var last_layout_error:String=""
 var camera_target = Vector3(0,0,0)
 var camera_angle: float = .67
 var camera_elevation: float = .83
@@ -115,11 +131,14 @@ func cylinder(parent: Node3D, at: Vector3, radius: float, height: float, color: 
 	return n
 
 func create_home(layout: Array = []) -> void:
+	last_layout_error=validate_home_layout(layout)
+	if not last_layout_error.is_empty():return
 	if house: house.queue_free()
 	for a in actors.values():
 		if is_instance_valid(a): a.queue_free()
 	actors.clear()
 	landscape_trees.clear();ceiling_beams.clear()
+	starter_floor_nodes.clear();view_level=0
 	house = Node3D.new()
 	house.name = "JuniperHouse"
 	add_child(house)
@@ -133,8 +152,9 @@ func create_home(layout: Array = []) -> void:
 	walls.clear()
 	box(house,Vector3(0,-.3,0),Vector3(120,.3,120),"b8cdaa")
 	box(house,Vector3(0,-.17,0),Vector3(17,.15,17),"a8c191")
+	var surface_start:int=house.get_child_count()
 	box(house,Vector3(0,-.025,0),Vector3(12.35,.25,10.35),"d3c9b6")
-	box(house,Vector3(0,.105,0),Vector3(12,.045,10),"cfa97e")
+	box(house,Vector3(0,.105,0),Vector3(12,.045,10),"cfa97e").set_meta("starter_wood_finish",true)
 	# Individual floor boards, laid with staggered joints.
 	for row in range(40):
 		for col in range(7):
@@ -147,6 +167,9 @@ func create_home(layout: Array = []) -> void:
 	for x in range(10):
 		for z in range(8):
 			box(house,Vector3(1.02+x*.5,.154,-4.97+z*.5),Vector3(.47,.006,.47),"cbd4ca" if (x+z)%2==0 else "becfc4")
+	for index:int in range(surface_start,house.get_child_count()):
+		var node:Node3D=house.get_child(index)
+		node.set_meta("starter_surface",true);starter_floor_nodes.append(node);assign_structure_layer(node,0)
 	# Back wall, with inset windows on the kitchen and bath.
 	wall(Vector3(0,1.4,-5.04),Vector3(12.2,2.6,.16),"eae7d7",false)
 	wall(Vector3(-6.04,1.4,0),Vector3(.16,2.6,10.1),"8faf9f",false)
@@ -160,8 +183,10 @@ func create_home(layout: Array = []) -> void:
 	for x in [-4.25,-1.25,3.3]: window_panel(Vector3(x,1.78,-4.945),false)
 	for z in [-2.3,2.2]: window_panel(Vector3(-5.945,1.75,z),true)
 	# Wall accents, skirting, door thresholds and entry.
-	box(house,Vector3(0,.24,-4.94),Vector3(12,.18,.04),"fcf5e6").set_meta("wall_decoration",true)
-	box(house,Vector3(-5.94,.24,0),Vector3(.04,.18,10),"fcf5e6").set_meta("wall_decoration",true)
+	var back_skirting:MeshInstance3D=box(house,Vector3(0,.24,-4.94),Vector3(12,.18,.04),"fcf5e6")
+	back_skirting.set_meta("wall_decoration",true);back_skirting.set_meta("wall_support_normal",Vector3.FORWARD)
+	var side_skirting:MeshInstance3D=box(house,Vector3(-5.94,.24,0),Vector3(.04,.18,10),"fcf5e6")
+	side_skirting.set_meta("wall_decoration",true);side_skirting.set_meta("wall_support_normal",Vector3.LEFT)
 	box(house,Vector3(0,.02,5.72),Vector3(2.4,.2,1.35),"c7bea9")
 	box(house,Vector3(0,-.025,7.1),Vector3(1.75,.08,1.8),"dcd5be")
 	box(house,Vector3(0,-.02,8.5),Vector3(75,.10,1.25),"e0d9c7")
@@ -189,12 +214,136 @@ func create_home(layout: Array = []) -> void:
 	for i in range(-12,13):box(grid,Vector3(i*.5,.17,0),Vector3(.012,.005,10),"a6bca9")
 	for i in range(-10,11):box(grid,Vector3(0,.17,i*.5),Vector3(12,.005,.012),"a6bca9")
 	grid.visible = false
-	for entry in layout:
+	# Structural state must exist before an upper furnishing is instantiated,
+	# regardless of the serialized record ordering.
+	for entry:Dictionary in layout:
 		if entry.get("kind","")=="__construction":construction.restore(entry)
-		else:add_item(entry,false)
+	for entry:Dictionary in layout:
+		if entry.get("kind","")!="__construction":add_item(entry,false)
 	construction.refresh_decorations()
 	rebuild_navigation()
+	set_view_level(0)
 	update_camera()
+
+func validate_home_layout(layout:Variant) -> String:
+	if not layout is Array or layout.size()>1024:return "Invalid home layout."
+	var canonical:Dictionary={};var ids:Dictionary={};var marker:bool=false
+	for entry:Variant in layout:
+		if not entry is Dictionary:return "Invalid layout record."
+		if str(entry.get("kind",""))=="__construction":
+			if marker:return "Two construction records describe one home."
+			marker=true
+			var result:Dictionary=Building.migrate(entry)
+			if not bool(result.ok):return str(result.error)
+			if entry.has("version"):canonical=result.state
+			continue
+		if not LifeCatalog.ITEMS.has(str(entry.get("kind",""))) or not Building.identifier(entry.get("id")) or ids.has(entry.id):return "Invalid or duplicate furnishing identity."
+		ids[entry.id]=true
+		if not Building.number(entry.get("level",0),0,1,true):return "Invalid furnishing level."
+		for key:String in ["x","z","rotation"]:
+			if not Building.number(entry.get(key,0),-10000,10000):return "Invalid furnishing transform."
+		if not Building.LOT.encloses(furnishing_rect(entry)):return "A furnishing extends beyond the navigable lot."
+	# Align ingress with the detached graph's obstacle bound so a valid layout
+	# cannot replace the live scene and only then fail graph construction.
+	if ids.size()>512:return "Too many furnishings for this lot."
+	for entry:Dictionary in layout:
+		if str(entry.get("kind",""))=="__construction":continue
+		var level:int=int(entry.get("level",0))
+		if level==1 and canonical.is_empty():return "Upper furniture needs a validated two-level building."
+		if canonical.is_empty():continue # Preserve old ground layout migration behavior.
+		var area:Rect2=furnishing_rect(entry)
+		if not Building.footprint_supported(canonical,level,area):return "A furnishing crosses unsupported floor or a stair opening."
+		if str(entry.kind) not in ["rug","painting"] and Building.blocked_rect(canonical,level,area):return "A furnishing intersects a wall or stair run."
+		if not canonical.roofs.is_empty():
+			var roof_error:String=RoofRules.obstruction(canonical,furnishing_volume(entry))
+			if not roof_error.is_empty():return roof_error
+	return ""
+
+func load_home(layout:Variant) -> Dictionary:
+	var error:String=validate_home_layout(layout)
+	if not error.is_empty():return {"ok":false,"error":error}
+	create_home(layout)
+	return {"ok":last_layout_error.is_empty(),"error":last_layout_error}
+
+func furnishing_rect(entry:Dictionary) -> Rect2:
+	var size:Vector2=LifeCatalog.ITEMS[str(entry.kind)].size
+	var basis:=Basis(Vector3.UP,deg_to_rad(float(entry.get("rotation",0))))
+	var x_axis:Vector3=basis*Vector3(size.x*.5,0,0)
+	var z_axis:Vector3=basis*Vector3(0,0,size.y*.5)
+	var half:=Vector2(absf(x_axis.x)+absf(z_axis.x),absf(x_axis.z)+absf(z_axis.z))
+	return Rect2(Vector2(float(entry.get("x",0)),float(entry.get("z",0)))-half,half*2)
+
+func _gather_visual_bounds(node:Node,transform:Transform3D,vertices:Array[Vector3])->void:
+	if node is Node3D:transform=transform*node.transform
+	if node is MeshInstance3D and node.mesh!=null:
+		var box:AABB=node.mesh.get_aabb()
+		for x:int in [0,1]:
+			for y:int in [0,1]:
+				for z:int in [0,1]:vertices.append(transform*(box.position+box.size*Vector3(x,y,z)))
+	for child:Node in node.get_children():_gather_visual_bounds(child,transform,vertices)
+
+func furnishing_volume(entry:Dictionary)->AABB:
+	var kind:String=str(entry.kind)
+	if not _furnishing_volume_cache.has(kind):
+		var scene:Node3D=load("res://assets/models/%s.glb"%kind).instantiate();var vertices:Array[Vector3]=[]
+		_gather_visual_bounds(scene,Transform3D.IDENTITY,vertices);scene.free()
+		var data:Dictionary=LifeCatalog.ITEMS[kind]
+		var box:=AABB(Vector3(-data.size.x*.5,0,-data.size.y*.5),Vector3(data.size.x,data.height,data.size.y))
+		for point:Vector3 in vertices:box=box.expand(point)
+		_furnishing_volume_cache[kind]=box
+	var local:AABB=_furnishing_volume_cache[kind]
+	var transform:=Transform3D(Basis(Vector3.UP,deg_to_rad(float(entry.get("rotation",0)))),Vector3(float(entry.get("x",0)),Building.level_y(int(entry.get("level",0))),float(entry.get("z",0))))
+	return transform*local
+
+func set_starter_floor_visible(value:bool) -> void:
+	for node:Node3D in starter_floor_nodes:
+		if is_instance_valid(node):node.visible=value
+
+func apply_starter_floor_finish(color:String) -> void:
+	for node:Node3D in starter_floor_nodes:
+		if is_instance_valid(node) and node is MeshInstance3D and node.get_meta("starter_wood_finish",false):
+			node.material_override=material(color)
+
+func _assign_layers(node:Node,mask:int) -> void:
+	if node is VisualInstance3D:node.layers=mask
+	for child:Node in node.get_children():_assign_layers(child,mask)
+
+func assign_structure_layer(node:Node,level:int) -> void:
+	_assign_layers(node,VIEW_GROUND if level==0 else VIEW_UPPER)
+
+func assign_stair_layer(node:Node) -> void:_assign_layers(node,VIEW_STAIRS)
+
+func item_level(item:Dictionary) -> int:
+	if Building.number(item.get("level"),0,1,true):return int(item.level)
+	if is_instance_valid(item.get("node")):return clampi(roundi((item.node.global_position.y-Building.GROUND_Y)/Building.RISE),0,1)
+	return 0
+
+func point_level(point:Vector3) -> int:
+	if not point.is_finite():return -1
+	for level:int in [0,1]:
+		if absf(point.y-Building.level_y(level))<.025:return level
+	return -1
+
+func set_view_level(level:int) -> bool:
+	if level not in [0,1] or (level==1 and (not is_instance_valid(construction) or construction.building_state.is_empty())):return false
+	if level!=view_level:clear_placement()
+	view_level=level
+	if construction:construction.build_level=level
+	if grid:grid.position.y=Building.RISE*level
+	camera.cull_mask=VIEW_ENVIRONMENT|VIEW_GROUND|VIEW_STAIRS|(VIEW_ACTOR_GROUND if level==0 else VIEW_UPPER|VIEW_ACTOR_UPPER)
+	camera_target.y=Building.RISE*level
+	refresh_actor_layers();construction.set_roof_visibility(construction.roofs_visible);update_camera()
+	return true
+
+func refresh_actor_layers() -> void:
+	for id:String in actors:
+		var actor:Node3D=actors[id]
+		if not is_instance_valid(actor):continue
+		var level:int=point_level(actor.position)
+		var visual_mask:int=VIEW_ACTOR_GROUND|VIEW_ACTOR_UPPER if level<0 else (VIEW_ACTOR_GROUND if level==0 else VIEW_ACTOR_UPPER)
+		_assign_layers(actor,visual_mask)
+		for body:Node in actor.find_children("*","CollisionObject3D",true,false):
+			body.collision_layer=0 if bool(actor.get_meta("away",false)) else (PICK_GROUND|PICK_UPPER if level<0 else (PICK_GROUND if level==0 else PICK_UPPER))
 
 func wall(p: Vector3, dimensions: Vector3, color: String, adjustable: bool) -> void:
 	construction.add_wall({"x":p.x,"z":p.z,"w":dimensions.x,"d":dimensions.z,"height":2.6,"color":color,"cut":adjustable})
@@ -205,6 +354,7 @@ func window_panel(p: Vector3, side: bool) -> void:
 	house.add_child(root)
 	root.position=p
 	root.set_meta("wall_decoration",true)
+	root.set_meta("wall_support_normal",Vector3.FORWARD)
 	root.set_meta("window_aperture",Rect2(-.878,-.692,1.756,1.384))
 	root.set_meta("window_frame_bounds",Rect2(-1.09,-.825,2.18,1.655))
 	if side:root.rotation_degrees.y=90
@@ -230,6 +380,7 @@ func window_panel(p: Vector3, side: bool) -> void:
 	box(root,Vector3(0,0,-.095),Vector3(1.82,.055,.06),"fff8e6")
 	box(root,Vector3(0,-.78,.01),Vector3(2,.09,.43),"fff8e6")
 	for x in [-1.0,1.0]:box(root,Vector3(x,.03,.12),Vector3(.18,1.6,.09),"d9cbb2")
+	assign_structure_layer(root,clampi(floori((p.y-Building.GROUND_Y)/Building.RISE),0,1))
 
 func tree(p: Vector3, s: float) -> void:
 	var tree_root=Node3D.new();house.add_child(tree_root)
@@ -265,6 +416,9 @@ func neighbor_home(p: Vector3) -> void:
 func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	var kind: String=str(entry.get("kind","plant"))
 	if not LifeCatalog.ITEMS.has(kind):return
+	if not Building.number(entry.get("level",0),0,1,true):return
+	var level:int=int(entry.get("level",0))
+	if level==1 and (not is_instance_valid(construction) or construction.building_state.is_empty()):return
 	var data:Dictionary=LifeCatalog.get_item(kind)
 	var path="res://assets/models/%s.glb" % kind
 	if not ResourceLoader.exists(path):return
@@ -273,14 +427,16 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	furniture.add_child(node)
 	var model:Node3D=load(path).instantiate()
 	node.add_child(model)
-	node.position=Vector3(float(entry.get("x",0)),.16,float(entry.get("z",0)))
+	node.position=Vector3(float(entry.get("x",0)),Building.level_y(level),float(entry.get("z",0)))
 	node.rotation_degrees.y=float(entry.get("rotation",0))
 	var info:Dictionary=entry.duplicate(true)
 	info["node"]=node
 	info["label"]=data.label
 	info["size"]=data.size
+	info["level"]=level
+	assign_structure_layer(node,level)
 	var body=StaticBody3D.new()
-	body.collision_layer=2
+	body.collision_layer=PICK_GROUND if level==0 else PICK_UPPER
 	node.add_child(body)
 	var shape=CollisionShape3D.new()
 	var bounds=BoxShape3D.new()
@@ -306,11 +462,14 @@ func serialize_items() -> Array:
 	var out:Array=[]
 	for item in items:
 		if bool(item.get("transient_food",false)) or bool(item.get("transient_puddle",false)):continue
-		out.append({"id":item.id,"kind":item.kind,"x":item.node.position.x,"z":item.node.position.z,"rotation":item.node.rotation_degrees.y})
+		var entry:Dictionary={"id":item.id,"kind":item.kind,"x":item.node.position.x,"z":item.node.position.z,"rotation":item.node.rotation_degrees.y}
+		if item_level(item)!=0:entry["level"]=item_level(item)
+		out.append(entry)
 	if construction:out.append(construction.snapshot())
 	return out
 
 func rebuild_navigation() -> void:
+	# Compatibility grid stays ground-only until main/food callers are migrated.
 	navigation.region=Rect2i(-36,-28,73,65)
 	navigation.cell_size=Vector2(.25,.25)
 	navigation.diagonal_mode=AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
@@ -320,11 +479,22 @@ func rebuild_navigation() -> void:
 			var p=Vector2(x*.25,z*.25)
 			var solid:bool = construction.point_blocked(p)
 			for item in items:
+				if item_level(item)!=0:continue
 				if item.kind in ["rug","painting","meal","plate","puddle"]:continue
 				var local:Vector3=item.node.to_local(Vector3(p.x,.16,p.y))
 				var extent:Vector2=item.size*.5+Vector2(.16,.16)
 				if absf(local.x)<extent.x and absf(local.z)<extent.y:solid=true;break
 			navigation.set_point_solid(Vector2i(x,z),solid)
+	var result:Dictionary=construction.validated_state()
+	if not bool(result.ok):last_layout_error=str(result.error);return
+	var obstacles:Array=[]
+	for item:Dictionary in items:
+		if str(item.kind) in ["rug","painting","meal","plate","puddle"]:continue
+		var source:Dictionary={"kind":str(item.kind),"x":item.node.position.x,"z":item.node.position.z,"rotation":item.node.rotation_degrees.y}
+		var area:Rect2=furnishing_rect(source)
+		obstacles.append({"id":str(item.id),"level":item_level(item),"x":area.get_center().x,"z":area.get_center().y,"w":area.size.x,"d":area.size.y})
+	var built:Dictionary=lot_navigation.rebuild(result.state,obstacles)
+	if not bool(built.ok):last_layout_error=str(built.error)
 
 func nearest_free(p:Vector3) -> Vector2i:
 	var cell=Vector2i(roundi(p.x*4),roundi(p.z*4))
@@ -340,14 +510,45 @@ func nearest_free(p:Vector3) -> Vector2i:
 	return cell
 
 func path_to(from:Vector3,to:Vector3) -> PackedVector3Array:
+	if not construction.building_state.is_empty():
+		var result:Dictionary=route_to(from,to)
+		return result.points if bool(result.ok) else PackedVector3Array()
 	var points:PackedVector3Array=[]
 	var cells=navigation.get_id_path(nearest_free(from),nearest_free(to))
 	for c in cells:points.append(Vector3(c.x*.25,.16,c.y*.25))
 	return points
 
+func route_to(from:Vector3,to:Vector3) -> Dictionary:
+	var from_level:int=point_level(from);var to_level:int=point_level(to)
+	if from_level<0 or to_level<0:return {"ok":false,"error":"A floor route needs explicit supported start and destination levels."}
+	return lot_navigation.route(LotNavigation.floor_location(from_level,from),LotNavigation.floor_location(to_level,to))
+
+func nearest_clear_point(point:Vector3,level:int,radius:int=13) -> Vector3:
+	if level not in [0,1]:return Vector3.INF
+	var origin:=Vector2i(roundi(point.x*4),roundi(point.z*4))
+	var direct:=Vector3(origin.x*.25,Building.level_y(level),origin.y*.25)
+	if lot_navigation.point_clear(level,direct):return direct
+	var options:Array[Vector3]=[]
+	for x:int in range(-radius,radius+1):
+		for z:int in range(-radius,radius+1):
+			var at:=Vector3((origin.x+x)*.25,Building.level_y(level),(origin.y+z)*.25)
+			if lot_navigation.point_clear(level,at):options.append(at)
+	options.sort_custom(func(a:Vector3,b:Vector3)->bool:return a.distance_squared_to(point)<b.distance_squared_to(point))
+	return Vector3.INF if options.is_empty() else options[0]
+
 func approach(item:Dictionary) -> Vector3:
 	var n:Node3D=item.node
+	if bool(item.get("transient_puddle",false)):
+		# The wet footprint may shrink at an edge; the cleaner still needs a
+		# full-size supported standing place within the mop's physical reach.
+		var level:int=item_level(item)
+		for offset:Vector3 in [Vector3(0,0,.8),Vector3(.8,0,0),Vector3(-.8,0,0),Vector3(0,0,-.8)]:
+			var wanted:Vector3=n.global_position+offset
+			var at:Vector3=nearest_clear_point(wanted,level) if not construction.building_state.is_empty() else Vector3(nearest_free(wanted).x*.25,Building.level_y(level),nearest_free(wanted).y*.25)
+			if at.is_finite() and Vector2(at.x-wanted.x,at.z-wanted.z).length()<.24:return at
+		return Vector3.INF
 	var p:Vector3=n.to_global(Vector3(0,0,item.size.y*.5+.55))
+	if not construction.building_state.is_empty():return nearest_clear_point(p,item_level(item))
 	var c=nearest_free(p)
 	return Vector3(c.x*.25,.16,c.y*.25)
 
@@ -367,13 +568,15 @@ func set_actor_away(id:String,away:bool,unavailable:bool) -> bool:
 	actor.set_meta("away",unavailable)
 	actor.visible=not away
 	for child:Node in actor.get_children():
-		if child is CollisionObject3D:child.collision_layer=0 if away else 2
+		if child is CollisionObject3D:child.collision_layer=0 if away else (PICK_UPPER if point_level(actor.position)==1 else PICK_GROUND)
 	if away:actor.clear_speech()
 	return changed
 
 func simulation_targets() -> Array:
 	var a:Array=[{"id":"lot_exit","kind":"lot_exit","position":lot_exit_position()}]
-	for item in items:a.append({"id":item.id,"kind":item.kind,"position":approach(item)})
+	for item in items:
+		var at:Vector3=approach(item)
+		if at.is_finite():a.append({"id":item.id,"kind":item.kind,"position":at,"level":item_level(item)})
 	for id in actors:
 		if bool(actors[id].get_meta("away",false)):continue
 		a.append({"id":id,"kind":"neighbor","position":actors[id].position+Vector3(0,0,.8)})
@@ -409,15 +612,23 @@ func begin_construction(tool:String) -> void:
 	construction.begin(tool)
 
 func can_place(kind:String,p:Vector3,angle:float) -> bool:
+	if not LifeCatalog.ITEMS.has(kind) or not p.is_finite():return false
+	var level:int=point_level(p)
+	if level<0:return false
 	var size:Vector2=LifeCatalog.ITEMS[kind].size
 	if int(roundf(angle/90))%2:size=Vector2(size.y,size.x)
 	var rect=Rect2(Vector2(p.x,p.z)-size/2,size)
+	if not construction.building_state.is_empty():
+		if not Building.footprint_supported(construction.building_state,level,rect):return false
+		if Building.blocked_rect(construction.building_state,level,rect):return false
+		if not construction.building_state.roofs.is_empty() and not RoofRules.obstruction(construction.building_state,furnishing_volume({"kind":kind,"x":p.x,"z":p.z,"rotation":angle,"level":level})).is_empty():return false
 	for corner in [rect.position,rect.end,Vector2(rect.position.x,rect.end.y),Vector2(rect.end.x,rect.position.y)]:
-		if not construction.floor_contains(corner):return false
+		if not construction.floor_contains(corner,level):return false
 	if kind in ["rug","painting"]:return true
 	# Interior walls and doorways stay usable.
-	if construction.rect_blocked(rect):return false
+	if construction.rect_blocked(rect,level):return false
 	for item in items:
+		if item_level(item)!=level:continue
 		if item.kind in ["rug","painting","meal","plate","puddle"]:continue
 		var s:Vector2=item.size
 		if int(roundf(item.node.rotation_degrees.y/90))%2:s=Vector2(s.y,s.x)
@@ -428,7 +639,9 @@ func can_place(kind:String,p:Vector3,angle:float) -> bool:
 func floor_point(screen:Vector2) -> Vector3:
 	var origin=camera.project_ray_origin(screen)
 	var direction=camera.project_ray_normal(screen)
-	var t=(.16-origin.y)/direction.y
+	if absf(direction.y)<.00001:return Vector3.INF
+	var t=(Building.level_y(view_level)-origin.y)/direction.y
+	if t<0:return Vector3.INF
 	return origin+direction*t
 
 func pick(screen:Vector2) -> void:
@@ -441,7 +654,8 @@ func pick(screen:Vector2) -> void:
 		if ghost_valid:placement_requested.emit(placement_kind,ghost_position,placement_angle)
 		return
 	var origin=camera.project_ray_origin(screen)
-	var ray=PhysicsRayQueryParameters3D.create(origin,origin+camera.project_ray_normal(screen)*150,2)
+	refresh_actor_layers()
+	var ray=PhysicsRayQueryParameters3D.create(origin,origin+camera.project_ray_normal(screen)*150,PICK_GROUND if view_level==0 else PICK_UPPER)
 	var hit=get_world_3d().direct_space_state.intersect_ray(ray)
 	if not hit.is_empty():
 		var id:String=str(hit.collider.get_meta("item_id",""))
@@ -469,6 +683,7 @@ func set_cutaway(value:bool) -> void:
 func _process(delta:float) -> void:
 	elapsed+=delta
 	if not live_enabled:return
+	refresh_actor_layers()
 	if build_enabled and construction and not construction.tool.is_empty():construction.update_preview(floor_point(get_viewport().get_mouse_position()))
 	if build_enabled and is_instance_valid(ghost):
 		var p=floor_point(get_viewport().get_mouse_position())
@@ -509,6 +724,7 @@ func _show_desk_booster(chair:Node3D) -> void:
 		chair.add_child(booster)
 		booster.position=Vector3(0,.52,.02)
 		_desk_boosters[id]=booster
+	assign_structure_layer(_desk_boosters[id],clampi(point_level(chair.global_position),0,1))
 	_desk_boosters[id].visible=true
 
 func _desk_surface(node:Node3D) -> Dictionary:
@@ -528,6 +744,7 @@ func supported_homework_plan(item:Dictionary,learner_from:Vector3,helper_from:Ve
 	if str(item.get("kind","")) not in ["desk","computer"]:
 		return {"ok":false,"error":"Choose a desk for homework together."}
 	var node:Node3D=item.node
+	var level:int=item_level(item)
 	var learner_destination:Vector3=approach(item)
 	if path_to(learner_from,learner_destination).is_empty():
 		return {"ok":false,"error":"The learner cannot reach this desk."}
@@ -538,8 +755,10 @@ func supported_homework_plan(item:Dictionary,learner_from:Vector3,helper_from:Ve
 		for forward:float in [.65,.95,1.2]:
 			var desired:Vector3=node.to_global(Vector3(side*1.2,0,forward))
 			var cell:Vector2i=Vector2i(roundi(desired.x*4),roundi(desired.z*4))
-			if not navigation.is_in_boundsv(cell) or navigation.is_point_solid(cell):continue
-			var at:Vector3=Vector3(cell.x*.25,.16,cell.y*.25)
+			var at:Vector3=Vector3(cell.x*.25,Building.level_y(level),cell.y*.25)
+			if construction.building_state.is_empty():
+				if not navigation.is_in_boundsv(cell) or navigation.is_point_solid(cell):continue
+			elif not lot_navigation.point_clear(level,at):continue
 			if not _clear_coaching_space(at) or at.distance_to(seat.node.position)<.85:continue
 			if path_to(helper_from,at).is_empty():continue
 			options.append(at)
@@ -550,9 +769,13 @@ func supported_homework_plan(item:Dictionary,learner_from:Vector3,helper_from:Ve
 
 func _clear_coaching_space(at:Vector3) -> bool:
 	# Check the whole standing footprint, not a distant nearest-free fallback.
+	var level:int=point_level(at)
+	if level<0:return false
+	if not construction.building_state.is_empty() and not lot_navigation.point_clear(level,at,Vector2(.29,.29)):return false
 	for offset:Vector2 in [Vector2.ZERO,Vector2(.29,0),Vector2(-.29,0),Vector2(0,.29),Vector2(0,-.29),Vector2(.21,.21),Vector2(-.21,.21),Vector2(.21,-.21),Vector2(-.21,-.21)]:
-		if construction.point_blocked(Vector2(at.x,at.z)+offset):return false
+		if construction.point_blocked(Vector2(at.x,at.z)+offset,level):return false
 	for other:Dictionary in items:
+		if item_level(other)!=level:continue
 		if str(other.kind) in ["rug","painting","puddle"]:continue
 		var local:Vector3=other.node.to_local(at)
 		var extent:Vector2=other.size*.5+Vector2(.29,.29)
@@ -564,6 +787,11 @@ func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -
 	var local:Vector3=Vector3(0,0,float(item.size.y)*.5+.36)
 	var yaw:float=node.rotation.y+PI
 	var kind:String="standing"
+	if bool(item.get("transient_puddle",false)):
+		var at:Vector3=landmarks.get("standing_position",approach(item))
+		var toward:Vector3=node.global_position-at
+		at.y=node.global_position.y
+		return {"position":at,"yaw":atan2(toward.x,toward.z),"kind":"standing","mop_contact":node.global_position}
 	if str(item.kind)=="stove" and action_id=="cook" and str(landmarks.get("recipe",""))=="harvest_bake":
 		var at:Vector3=landmarks.get("cooking_position",oven_approach(item))
 		at.y=node.global_position.y
@@ -611,7 +839,7 @@ func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -
 
 func oven_approach(item:Dictionary)->Vector3:
 	var at:Vector3=item.node.to_global(Vector3(0,0,1.0))
-	return Vector3(roundf(at.x*4)*.25,.16,roundf(at.z*4)*.25)
+	return Vector3(roundf(at.x*4)*.25,Building.level_y(item_level(item)),roundf(at.z*4)*.25)
 
 func update_oven_presentations(states:Dictionary) -> void:
 	# These views are presentation only: never world items, servings, pickable
@@ -633,6 +861,7 @@ func update_oven_presentations(states:Dictionary) -> void:
 			view=load(LifeMeals.model_path("harvest_bake")).instantiate()
 			view.name="OvenPreparation";appliance.node.add_child(view);oven_food_views[id]=view
 		view.global_transform=Transform3D(appliance.node.global_basis*Basis(Vector3.UP,PI),rack.global_position)
+		assign_structure_layer(view,item_level(appliance))
 		view.show()
 	for id:String in oven_food_views.keys():
 		if not visible_ids.has(id):
@@ -643,6 +872,7 @@ func update_oven_presentations(states:Dictionary) -> void:
 func create_public_venue(place:String,layout:Array) -> void:
 	if house:house.queue_free()
 	actors.clear();items.clear();walls.clear();landscape_trees.clear();ceiling_beams.clear()
+	starter_floor_nodes.clear();view_level=0
 	house=Node3D.new();house.name="Community_"+place;add_child(house)
 	construction=LifeConstruction.new();house.add_child(construction);construction.initialize(self)
 	furniture=Node3D.new();furniture.name="Furniture";house.add_child(furniture)
@@ -691,7 +921,7 @@ func create_public_venue(place:String,layout:Array) -> void:
 	for entry:Dictionary in layout:
 		if str(entry.get("kind",""))=="__construction":construction.restore(entry)
 		else:add_item(entry,false)
-	construction.refresh_decorations();rebuild_navigation();update_camera()
+	construction.refresh_decorations();rebuild_navigation();set_view_level(0)
 
 func flower_clump(at: Vector3, rng: RandomNumberGenerator, petal_color: String) -> void:
 	# A single draw per clump; construction can hide the whole plant under a floor.
@@ -734,8 +964,10 @@ func flower_clump(at: Vector3, rng: RandomNumberGenerator, petal_color: String) 
 	house.add_child(plant)
 
 func create_resident_home(place:String,layout:Array) -> void:
+	last_layout_error=validate_home_layout(layout)
+	if not last_layout_error.is_empty():return
 	if house:house.queue_free()
-	actors.clear();items.clear();walls.clear();landscape_trees.clear();ceiling_beams.clear()
+	actors.clear();items.clear();walls.clear();landscape_trees.clear();ceiling_beams.clear();starter_floor_nodes.clear();view_level=0
 	house=Node3D.new();house.name="ResidentHome_"+place;add_child(house)
 	construction=LifeConstruction.new();house.add_child(construction);construction.initialize(self)
 	furniture=Node3D.new();furniture.name="Furniture";house.add_child(furniture)
@@ -750,14 +982,14 @@ func create_resident_home(place:String,layout:Array) -> void:
 	# The narrow cottage uses long oak boards; the wide bungalow has parquet blocks.
 	if cottage:
 		for row:int in range(33):
-			box(house,Vector3(-4.9+float(row)*.3,.132,0),Vector3(.009,.004,depth),"a98661")
-			for joint:int in range(4):box(house,Vector3(-4.75+float(row)*.3,.133,-3.9+float(joint)*2.2+float(row%2)*.9),Vector3(.29,.004,.009),"a98661")
+			box(house,Vector3(-4.9+float(row)*.3,.162,0),Vector3(.009,.004,depth),"a98661")
+			for joint:int in range(4):box(house,Vector3(-4.75+float(row)*.3,.163,-3.9+float(joint)*2.2+float(row%2)*.9),Vector3(.29,.004,.009),"a98661")
 	else:
 		for x:int in range(-6,6):
 			for z:int in range(-4,4):
-				box(house,Vector3(float(x)+.5,.133,float(z)+.5),Vector3(.985,.004,.985),"c6ad8e" if (x+z)%2 else "cfb899")
+				box(house,Vector3(float(x)+.5,.163,float(z)+.5),Vector3(.985,.004,.985),"c6ad8e" if (x+z)%2 else "cfb899")
 				for seam:int in range(1,4):
-					box(house,Vector3(float(x)+float(seam)*.25,.137,float(z)+.5) if (x+z)%2 else Vector3(float(x)+.5,.137,float(z)+float(seam)*.25),Vector3(.007,.003,.97) if (x+z)%2 else Vector3(.97,.003,.007),"b99e7e")
+					box(house,Vector3(float(x)+float(seam)*.25,.167,float(z)+.5) if (x+z)%2 else Vector3(float(x)+.5,.167,float(z)+float(seam)*.25),Vector3(.007,.003,.97) if (x+z)%2 else Vector3(.97,.003,.007),"b99e7e")
 	wall(Vector3(0,1.4,-depth*.5-.04),Vector3(width+.2,2.6,.16),plaster,false)
 	wall(Vector3(-width*.5-.04,1.4,0),Vector3(.16,2.6,depth+.1),plaster,false)
 	wall(Vector3(width*.5+.04,.4,0),Vector3(.16,.6,depth+.1),plaster,true)
@@ -796,7 +1028,23 @@ func create_resident_home(place:String,layout:Array) -> void:
 	box(house,Vector3(2,.5,7.7),Vector3(.12,1.1,.12),"a08060")
 	box(house,Vector3(2,1.02,7.7),Vector3(.45,.35,.35),"739781" if cottage else "aa705c")
 	grid=Node3D.new();house.add_child(grid);grid.visible=false
+	# Canonical ground records keep friend homes on the same detached-save path.
+	var structure:Dictionary=Building.fresh()
+	structure.floors=[{"id":"resident_ground","level":0,"x":0.0,"z":0.0,"w":width,"d":depth,"material":"bb9a73" if cottage else "c9b299"}]
+	for original:Dictionary in construction.records:
+		var entry:Dictionary=original.duplicate(true)
+		entry["id"]="resident_wall_%d"%structure.walls.size();entry["level"]=0;entry["material"]=str(entry.color);entry.erase("color")
+		structure.walls.append(entry)
 	for entry:Dictionary in layout:
-		if str(entry.get("kind",""))=="__construction":construction.restore(entry)
-		else:add_item(entry,false)
-	construction.refresh_decorations();rebuild_navigation();update_camera()
+		if str(entry.get("kind",""))!="__construction":continue
+		if entry.has("version"):structure=entry
+		else:
+			structure=Building.migrate(entry).state
+			var inherited:Dictionary=Building.find(structure,"legacy_starter_floor")
+			if not inherited.is_empty():
+				inherited.id="resident_ground";inherited.w=width;inherited.d=depth;inherited.material="bb9a73" if cottage else "c9b299"
+	construction.restore(structure)
+	if not construction.last_error.is_empty():last_layout_error=construction.last_error;return
+	for entry:Dictionary in layout:
+		if str(entry.get("kind",""))!="__construction":add_item(entry,false)
+	construction.refresh_decorations();rebuild_navigation();set_view_level(0);update_camera()

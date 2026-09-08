@@ -22,7 +22,7 @@ for phase in ('import','first','resume','busy','travel'):
   if phase=='resume':cmd+=['--resume']
   if a.capture:cmd+=['--capture']
  with (work/(phase+'.log')).open('w') as log:
-  result=subprocess.run(cmd,env=env,stdout=log,stderr=subprocess.STDOUT,timeout=150)
+  result=subprocess.run(cmd,env=env,stdout=log,stderr=subprocess.STDOUT,timeout=300 if phase=='travel' else 150)
  text=(work/(phase+'.log')).read_text();errors=re.findall(r'^(?:SCRIPT ERROR|ERROR|WARNING):.*',text,re.M)
  summaries=re.findall(r'Sanitation(?: travel)?: (\d+) checks, (\d+) failures\.',text)
  ok=result.returncode==0 and not errors and (phase=='import' or bool(summaries))

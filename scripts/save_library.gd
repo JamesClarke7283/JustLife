@@ -207,7 +207,10 @@ static func read_slot(id: String) -> Dictionary:
 	var validation: Dictionary = _validate_household(state)
 	if not bool(validation.ok):
 		return _error(str(validation.get("error", "The selected household is invalid.")))
-	return {"ok":true, "data":state.duplicate(true)}
+	var title:String=""
+	var metadata:Variant=read.data.get("metadata",{})
+	if metadata is Dictionary and metadata.get("name") is String:title=_clean_name(metadata.name)
+	return {"ok":true, "data":state.duplicate(true), "name":title}
 
 
 static func _listing(id: String) -> Dictionary:

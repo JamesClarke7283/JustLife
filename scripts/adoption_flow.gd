@@ -130,7 +130,7 @@ func _blocked_arrival() -> void:
 
 func start_arrival(action:Dictionary) -> void:
 	app._clear_motion();app.pending_action=action
-	app.path=app.world.path_to(app.player.position,action.target_position);app.path_index=0
+	app._set_route(action.target_position)
 	if not app.path.is_empty() and app.path[-1].distance_to(action.target_position)>.001:app.path.clear()
 	if app.path.is_empty() and app.player.position.distance_to(action.target_position)>=.015:_blocked_arrival()
 	else:blocked.erase(app.bound_member_id)

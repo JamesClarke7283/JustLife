@@ -84,7 +84,13 @@ var _activity_anchor: Dictionary = {}
 var meal_presentation: Dictionary = {}
 # Controller-owned recipe identity and normalized progress; visual state only.
 var cooking_presentation: Dictionary = {}
+var stair_presentation:Dictionary={}
+var _reconstructing_stair:bool=false
+var stair_pose_valid:bool=true
+var stair_pose_error:String=""
+var _stair_exit_carry:bool=false
 var _reconstructing_cooking: bool = false
+var _reconstructing_sanitation:bool=false
 var _presented_cooking_recipe: String = "garden_skillet"
 var _recipe_bowl: Node3D
 var _recipe_bowl_food: Node3D
@@ -264,6 +270,7 @@ func configure(new_profile: Dictionary) -> void:
 			_leg_rest[side]={"hip":hip.position,"upper":knee.position,"lower":lower,
 				"foot":_model.to_local(knee.to_global(lower)),"space":_model.global_transform.affine_inverse()*hip.get_parent().global_transform,
 				"shoe":ankle,"shoe_basis":global_basis.inverse()*ankle.global_basis}
+	_cache_stair_sole_offsets()
 	_discover_deformation(_model)
 	for key: String in IDENTITY_KEYS:
 		var value: Variant = profile.get(key, 0.0)
@@ -425,7 +432,7 @@ func set_activity_anchor(world_position: Vector3,world_yaw: float,anchor_kind: S
 
 	if details.get("desk_surface_y") is float or details.get("desk_surface_y") is int:
 		if is_finite(float(details.desk_surface_y)): _activity_anchor["desk_surface_y"] = float(details.desk_surface_y)
-	for key: String in ["desk_front_edge","desk_forward","attention_target","plate_position"]:
+	for key: String in ["desk_front_edge","desk_forward","attention_target","plate_position","mop_contact"]:
 		if details.get(key) is Vector3 and details[key].is_finite(): _activity_anchor[key] = details[key]
 	if is_instance_valid(details.get("oven")):_activity_anchor["oven"]=details.oven
 
@@ -630,9 +637,9 @@ func _update_grips(delta: float, moving: bool, action_id: String) -> void:
 	if bool(meal_presentation.get("carrying",false)):
 		var hold:float=.38 if bool(meal_presentation.get("platter",false)) else .20
 		targets={"L":hold,"R":hold}
-	var blend: float = 1.0 if _reconstructing_cooking or (not moving and action_id=="cook" and _has_oven()) else 1.0-exp(-delta*8.0)
+	var blend: float = 1.0 if _reconstructing_stair or not stair_presentation.is_empty() or _reconstructing_cooking or _reconstructing_sanitation or (not moving and action_id=="cook" and _has_oven()) else 1.0-exp(-delta*8.0)
 	for side: String in ["L","R"]:
-		_grip_amounts[side] = lerpf(float(_grip_amounts[side]),float(targets[side]),blend)
+		_grip_amounts[side] = float(targets[side]) if blend>=1.0 else lerpf(float(_grip_amounts[side]),float(targets[side]),blend)
 		for entry: Dictionary in _grip_shapes[side]:
 			entry.mesh.set_blend_shape_value(int(entry.index),float(_grip_amounts[side]))
 	for entry: Dictionary in _hand_props:
@@ -766,7 +773,7 @@ func _orient_held_prop(prop: Node3D, model_basis: Basis) -> void:
 
 
 func _update_held_props(delta: float, moving: bool, action_id: String) -> void:
-	var blend: float = 1.0 if _reconstructing_cooking or (not moving and action_id=="cook" and _has_oven()) else 1.0-exp(-delta*12.0)
+	var blend: float = 1.0 if _reconstructing_stair or not stair_presentation.is_empty() or _reconstructing_cooking or _reconstructing_sanitation or (not moving and action_id=="cook" and _has_oven()) else 1.0-exp(-delta*12.0)
 	if is_instance_valid(_meal_fork):
 		_meal_fork.visible=not moving and action_id=="eat_meal"
 		if _meal_fork.visible:
@@ -857,6 +864,12 @@ func reconstruct_cooking_pose() -> void:
 	animate(0.0,0.0,false,action)
 	_reconstructing_cooking=false
 
+func reconstruct_sanitation_pose(action_id:String)->void:
+	if action_id not in ["plant_wee","mop_puddle"]:return
+	_reconstructing_sanitation=true
+	animate(0.0,0.0,false,action_id)
+	_reconstructing_sanitation=false
+
 func react_to_accident() -> void:
 	# Animation ownership is checked on the next real Live pose update. An
 	# occupied actor loses this brief gesture rather than playing it much later.
@@ -868,22 +881,23 @@ func _can_react_to_accident(moving:bool,action_id:String) -> bool:
 
 
 func animate(delta: float, speed_factor: float, moving: bool, action_id: String) -> void:
-	if _model == null or (delta <= 0.0 and not _reconstructing_cooking):
+	if _model == null or (delta <= 0.0 and not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation):
 		return
-	if not _reconstructing_cooking:_update_voice(delta, speed_factor, moving, action_id)
+	if not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation:_update_voice(delta, speed_factor, moving, action_id)
 	if is_instance_valid(_mop) and action_id!="mop_puddle":_mop.visible=false
 	var animation_delta: float = delta * clampf(speed_factor, 0.0, 3.0)
 	# Pause freezes the entire presentation, including props and transition clocks.
-	if animation_delta <= 0.0 and not _reconstructing_cooking:
+	if animation_delta <= 0.0 and not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation:
 		return
-	if not _reconstructing_cooking:
+	if not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation:
+		if stair_presentation.is_empty():_stair_exit_carry=false
 		var motion_action: String = "walk" if moving else action_id
 		if motion_action != _motion_action:
 			_motion_action = motion_action
 			_action_time = 0.0
 		_action_time += animation_delta
 	_accident_visible = false
-	if not _reconstructing_cooking and _accident_time >= 0.0:
+	if not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation and _accident_time >= 0.0:
 		if not _can_react_to_accident(moving,action_id):
 			_accident_time = -1.0
 		else:
@@ -894,7 +908,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		_presented_cooking_recipe=_cooking_recipe()
 		_ensure_cooking_recipe_props()
 	_update_grips(animation_delta,moving,action_id)
-	if not _reconstructing_cooking:
+	if not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation:
 		_time += animation_delta
 		_speech_remaining = maxf(0.0, _speech_remaining - delta)
 		_speech.visible = not screen_speech and _speech_remaining > 0.0 and not _speech.text.is_empty()
@@ -903,7 +917,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 	var t: float = _time + _phase_offset
 	# Oven handling already has smooth progress curves. Evaluating its pose
 	# directly makes live and paused reconstruction agree without frame lag.
-	var blend: float = 1.0 if _reconstructing_cooking or (not moving and action_id=="cook" and _has_oven()) else 1.0 - exp(-animation_delta * 8.0)
+	var blend: float = 1.0 if _reconstructing_cooking or _reconstructing_sanitation or (not moving and action_id=="cook" and _has_oven()) else 1.0 - exp(-animation_delta * 8.0)
 	var anchored: bool = not moving and not action_id.is_empty() and not _activity_anchor.is_empty()
 	anchored = anchored and (str(_activity_anchor.get("action","")) in ["",action_id])
 	var anchor_kind: String = str(_activity_anchor.get("kind","")) if anchored else ""
@@ -1119,7 +1133,13 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		if action_id=="mop_puddle":
 			var upright:Basis=Basis(Vector3.UP,float(_activity_anchor.yaw))
 			var hips:Vector3=Vector3(0,_hip_height*_height,0)
-			world_origin=_activity_anchor.position+upright*(hips+Vector3(0,-.09*_height*_proportion,.04+.50*(1.0-_proportion)))-world_orientation*hips
+			# The supported stance can sit farther from a real floor patch than
+			# the legacy prop origin. Transfer the rendered hips toward that
+			# contact, bending the knees while the original feet stay planted.
+			var contact:Vector3=_activity_anchor.get("mop_contact",_activity_anchor.position+upright*Vector3(.035,0,.68))
+			var reach_shift:Vector3=upright.inverse()*(contact-Vector3(_activity_anchor.position))-Vector3(.035,0,.68)
+			reach_shift.y=-Vector2(reach_shift.x,reach_shift.z).length()*.55
+			world_origin=_activity_anchor.position+upright*(hips+Vector3(0,-.09*_height*_proportion,.04+.50*(1.0-_proportion))+reach_shift)-world_orientation*hips
 		offset = to_local(world_origin) + interaction_offset
 		lean = (global_basis.orthonormalized().inverse() * world_orientation).get_euler()
 	var body_blend:float=1.0 if anchored and action_id=="mop_puddle" else blend
@@ -1151,17 +1171,20 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 	_sit_amount = lerpf(_sit_amount, 1.0 if seated else 0.0, blend)
 	for entry: Dictionary in _sit_shapes:
 		entry.mesh.set_blend_shape_value(int(entry.index), _sit_amount)
-	if not _reconstructing_cooking:_update_expression(animation_delta,action_id,blend)
+	if not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation:_update_expression(animation_delta,action_id,blend)
+	if not stair_presentation.is_empty():_apply_stair_pose()
 	_update_held_props(animation_delta,moving,action_id)
 
 
-func _mopping_pose(pose:Dictionary) -> void:
-	# Solve after anchored body transforms, so contacts use the rendered pose.
+func _mopping_pose(pose:Dictionary)->void:
+	# Solve world-space shaft contacts only after the anchored body transform
+	# is installed, including during the first zero-time physical restore.
 	var mop_scale:float=clampf(_proportion,.72,1.10)
 	var orientation:Basis=Basis(Vector3.UP,float(_activity_anchor.get("yaw",rotation.y)))
 	var origin:Vector3=_activity_anchor.get("position",global_position)
 	var sweep:float=sin(_action_time*2.4)*.10
-	_mop.global_transform=Transform3D(orientation.scaled(Vector3.ONE*mop_scale),origin+orientation*Vector3(.035,0,.68+sweep))
+	var contact:Vector3=_activity_anchor.get("mop_contact",origin+orientation*Vector3(.035,0,.68))
+	_mop.global_transform=Transform3D(orientation.scaled(Vector3.ONE*mop_scale),contact+orientation*Vector3(0,0,sweep))
 	_mop.visible=true
 	_reach_hand(pose,"L",_model.to_local(_mop.to_global(Vector3(0,.96,-.287))),Vector3(-.55,-.65,-.20))
 	_reach_hand(pose,"R",_model.to_local(_mop.to_global(Vector3(0,.68,-.198))),Vector3(.55,-.65,-.20))
@@ -1390,6 +1413,10 @@ func _cylinder(parent: Node3D, radius: float, length: float, color: Color) -> Me
 
 
 func _meal_carry_point() -> Vector3:
+	if not stair_presentation.is_empty():
+		var phase:float=float(stair_presentation.phase)*PI
+		return Vector3(sin(phase)*.003,_hip_height+(.22+sin(phase*2)*.003)*_proportion,.29*_proportion)
+	if _reconstructing_stair or _stair_exit_carry:return Vector3(0,_hip_height+.22*_proportion,.29*_proportion)
 	var walking:bool=_motion_action=="walk"
 	var sway:float=sin((_time+_phase_offset)*3.8)*.003 if walking else 0.0
 	var lift:float=sin((_time+_phase_offset)*7.6)*.003 if walking else sin(_time*2.0)*.0015
@@ -1399,6 +1426,8 @@ func _meal_carry_hand(side:String) -> Vector3:
 	var platter:bool=bool(meal_presentation.get("platter",false))
 	var contact:Vector3=Vector3(.2395 if platter else .12,.037 if platter else .005,0)
 	if side=="L":contact.x=-contact.x
+	var grips:Dictionary=meal_presentation.get("grips",{})
+	if grips.get(side) is Vector3 and Vector3(grips[side]).is_finite():contact=grips[side]
 	return _model.to_local(meal_carry_transform()*contact)
 
 func meal_carry_transform() -> Transform3D:
@@ -1628,3 +1657,168 @@ func _ensure_cooking_recipe_props() -> void:
 		if not ResourceLoader.exists(path):path="res://assets/models/meal_serving.glb"
 		if ResourceLoader.exists(path):
 			_baking_tray.add_child(load(path).instantiate());_baking_food=_baking_tray.find_child("Food",true,false)
+
+
+func _cache_stair_sole_offsets()->void:
+	for side:String in _leg_rest:
+		var rest:Dictionary=_leg_rest[side]
+		var shoe:Node3D=rest.shoe
+		var minimum:Vector3=Vector3.INF;var maximum:Vector3=-Vector3.INF
+		for mesh:MeshInstance3D in shoe.find_children("Shoes_Sole*","MeshInstance3D",true,false):
+			for corner:int in range(8):
+				var point:Vector3=_model.to_local(mesh.to_global(mesh.get_aabb().get_endpoint(corner)))
+				minimum=minimum.min(point);maximum=maximum.max(point)
+		if minimum.is_finite():
+			rest["sole_offset"]=Vector3((minimum.x+maximum.x)*.5,minimum.y,(minimum.z+maximum.z)*.5)-Vector3(rest.foot)
+			rest["sole_size"]=maximum-minimum
+			var center:Vector3=Vector3(rest.foot)+Vector3(rest.sole_offset)
+			minimum=Vector3.INF;maximum=-Vector3.INF
+			for mesh:MeshInstance3D in shoe.find_children("*","MeshInstance3D",true,false):
+				for corner:int in range(8):
+					var point:Vector3=_model.to_local(mesh.to_global(mesh.get_aabb().get_endpoint(corner)))-center
+					minimum=minimum.min(point);maximum=maximum.max(point)
+			rest["shoe_min"]=minimum;rest["shoe_max"]=maximum
+
+func present_stair(state:Dictionary,reconstruct:bool=false)->void:
+	stair_presentation=state.duplicate(true)
+	_stair_exit_carry=state.is_empty()
+	if state.is_empty():
+		_reconstructing_stair=true
+		_reset_stair_pose()
+		_reconstructing_stair=false
+		return
+	if reconstruct:
+		_reconstructing_stair=true
+		animate(0,0,true,"")
+		_reconstructing_stair=false
+
+func _apply_stair_pose()->void:
+	# Stair contacts describe a standing body even when reconstruction follows a
+	# seated activity and the animation clock is paused.
+	_sit_amount=0.0
+	for entry:Dictionary in _sit_shapes:entry.mesh.set_blend_shape_value(int(entry.index),0.0)
+	stair_pose_valid=true;stair_pose_error=""
+	var old_visual:Transform3D=visual.transform
+	var state:Dictionary=stair_presentation
+	var orientation:=Basis(Vector3.UP,float(state.yaw))
+	# Navigation remains the actor root. This is a small deterministic pelvis bend.
+	visual.position=Vector3(0,-.035*_proportion,0)
+	visual.rotation=Vector3.ZERO
+	# Intersect both maximum-reach intervals and exclude folded minimum-reach
+	# intervals. Feasibility is not monotonic across the whole crouch range.
+	if not _solve_stair_pelvis(state,orientation):
+		visual.transform=old_visual
+		stair_pose_valid=false;stair_pose_error="The requested stair contacts are outside this Lifelet's leg reach."
+		return
+	var pose:Dictionary={}
+	for side:String in _leg_rest:
+		var rest:Dictionary=_leg_rest[side]
+		var contact:Vector3=state.feet[side]+orientation*Vector3(Vector3(rest.foot).x*visual.scale.x,0,0)
+		var target:Vector3=contact-orientation*(Vector3(rest.sole_offset)*visual.scale)
+		var local:Vector3=Transform3D(rest.space).affine_inverse()*_model.to_local(target)
+		var upper:Vector3=rest.upper;var lower:Vector3=rest.lower
+		var reach:Vector3=local-Vector3(rest.hip)
+		var distance:float=clampf(reach.length(),absf(upper.length()-lower.length())+.005,upper.length()+lower.length()-.005)
+		var forward:Vector3=reach.normalized()
+		var pole:Vector3=Transform3D(rest.space).basis.inverse()*_model.global_basis.inverse()*(orientation*Vector3(0,.2,1))
+		var bend:Vector3=(pole-forward*pole.dot(forward)).normalized()
+		var along:float=(upper.length_squared()-lower.length_squared()+distance*distance)/(2*distance)
+		var away:float=sqrt(maxf(0,upper.length_squared()-along*along))
+		var upper_goal:Vector3=forward*along+bend*away
+		var lower_goal:Vector3=forward*distance-upper_goal
+		var thigh:Quaternion=Quaternion(upper.normalized(),upper_goal.normalized())
+		pose["Leg_"+side]=thigh.get_euler()
+		pose["Shin_"+side]=Quaternion(lower.normalized(),thigh.inverse()*lower_goal.normalized()).get_euler()
+	# Distance-based arm balance; carried-meal arms retain their existing ownership.
+	if not bool(meal_presentation.get("carrying",false)):
+		var swing:float=sin(float(state.phase)*PI)
+		pose["Arm_L"]=Vector3(-.16*swing,0,-.07)
+		pose["Arm_R"]=Vector3(.16*swing,0,.07)
+		pose["Forearm_L"]=Vector3(-.28,0,0);pose["Forearm_R"]=Vector3(-.28,0,0)
+	else:
+		# Re-solve from the FINAL pelvis transform and distance-derived dish pose.
+		_reach_hand(pose,"L",_meal_carry_hand("L"),Vector3(-.25,-1.0,-.35))
+		_reach_hand(pose,"R",_meal_carry_hand("R"),Vector3(.25,-1.0,-.35))
+	pose["Head"]=Vector3(.07,0,0)
+	for name:String in pose:
+		_joints[name].quaternion=Quaternion.from_euler(Vector3(_rest_rotations[name])+Vector3(pose[name]))
+	for entry:Dictionary in _rig_bones:
+		if not pose.has(entry.name):continue
+		var rest:Quaternion=entry.rest
+		entry.skeleton.set_bone_pose_rotation(int(entry.index),rest.inverse()*Quaternion.from_euler(pose[entry.name])*rest)
+	for rest:Dictionary in _leg_rest.values():rest.shoe.global_basis=orientation*Basis(rest.shoe_basis)
+
+
+func _stair_targets_reachable(state:Dictionary,orientation:Basis)->bool:
+	for side:String in _leg_rest:
+		var rest:Dictionary=_leg_rest[side]
+		var contact:Vector3=state.feet[side]+orientation*Vector3(Vector3(rest.foot).x*visual.scale.x,0,0)
+		var target:Vector3=contact-orientation*(Vector3(rest.sole_offset)*visual.scale)
+		var local:Vector3=Transform3D(rest.space).affine_inverse()*_model.to_local(target)
+		var distance:float=local.distance_to(rest.hip)
+		var maximum:float=Vector3(rest.upper).length()+Vector3(rest.lower).length()-.012
+		var minimum:float=absf(Vector3(rest.upper).length()-Vector3(rest.lower).length())+.006
+		if distance>maximum or distance<minimum:return false
+	return true
+
+
+func stair_rear_extent(direction:int)->float:
+	# Clearance toward the next higher riser includes the complete rigid shoe,
+	# not only the sole. Descending shoes present their heel toward that riser.
+	var extent:float=0
+	for rest:Dictionary in _leg_rest.values():
+		extent=maxf(extent,(Vector3(rest.shoe_max).z if direction==1 else -Vector3(rest.shoe_min).z)*visual.scale.z)
+	return extent
+
+
+func _reset_stair_pose()->void:
+	# The controller calls this only after the reserved landing is reached.
+	# Paused exit is deterministic, including carried dishes and finger shapes.
+	visual.position=Vector3.ZERO;visual.rotation=Vector3.ZERO
+	stair_pose_valid=true;stair_pose_error=""
+	_book.visible=false;_brush.visible=false;_watering_can.visible=false
+	var pose:Dictionary={}
+	for name:String in JOINT_NAMES:pose[name]=Vector3.ZERO
+	_update_grips(0,false,"")
+	if bool(meal_presentation.get("carrying",false)):
+		_reach_hand(pose,"L",_meal_carry_hand("L"),Vector3(-.25,-1.0,-.35))
+		_reach_hand(pose,"R",_meal_carry_hand("R"),Vector3(.25,-1.0,-.35))
+	for name:String in _joints:_joints[name].quaternion=Quaternion.from_euler(Vector3(_rest_rotations[name])+Vector3(pose[name]))
+	for entry:Dictionary in _rig_bones:
+		var rest:Quaternion=entry.rest
+		entry.skeleton.set_bone_pose_rotation(int(entry.index),rest.inverse()*Quaternion.from_euler(pose[entry.name])*rest)
+	for rest:Dictionary in _leg_rest.values():rest.shoe.basis=Basis.IDENTITY
+	_sit_amount=0
+	for entry:Dictionary in _sit_shapes:entry.mesh.set_blend_shape_value(int(entry.index),0)
+	_update_held_props(0,false,"")
+
+
+func _solve_stair_pelvis(state:Dictionary,orientation:Basis)->bool:
+	visual.position.y=0
+	var lowest:float=-.40*_proportion
+	var highest:float=-.035*_proportion
+	var exclusions:Array[Vector2]=[]
+	for side:String in _leg_rest:
+		var rest:Dictionary=_leg_rest[side]
+		var contact:Vector3=state.feet[side]+orientation*Vector3(Vector3(rest.foot).x*visual.scale.x,0,0)
+		var target:Vector3=contact-orientation*(Vector3(rest.sole_offset)*visual.scale)
+		var inverse:Transform3D=Transform3D(rest.space).affine_inverse()
+		var reach:Vector3=inverse*_model.to_local(target)-Vector3(rest.hip)
+		var axis:Vector3=inverse.basis*_model.global_basis.inverse()*(global_basis*Vector3.UP)
+		var squared:float=axis.length_squared()
+		var center:float=reach.dot(axis)/squared
+		var perpendicular:float=maxf(0,reach.length_squared()-pow(reach.dot(axis),2)/squared)
+		var maximum:float=Vector3(rest.upper).length()+Vector3(rest.lower).length()-.012
+		var minimum:float=absf(Vector3(rest.upper).length()-Vector3(rest.lower).length())+.006
+		if perpendicular>maximum*maximum:return false
+		var radius:float=sqrt((maximum*maximum-perpendicular)/squared)
+		lowest=maxf(lowest,center-radius+.000001);highest=minf(highest,center+radius-.000001)
+		if perpendicular<minimum*minimum:
+			var inner:float=sqrt((minimum*minimum-perpendicular)/squared)
+			exclusions.append(Vector2(center-inner,center+inner))
+	for iteration:int in range(exclusions.size()+1):
+		for interval:Vector2 in exclusions:
+			if highest>=interval.x and highest<=interval.y:highest=interval.x-.000001
+	if highest<lowest:return false
+	visual.position.y=highest
+	return _stair_targets_reachable(state,orientation)

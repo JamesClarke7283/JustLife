@@ -2,7 +2,9 @@ extends RefCounted
 ## Courtesy movement uses the ordinary walking controller, with no activity rewards.
 var app:Node
 var review_in:float=0.0
-const BODY_GAP:float=.65
+# Yield before occupying a clearance cell that the walking planner excludes.
+# A smaller courtesy radius leaves a blocked walker unable to ask for space.
+const BODY_GAP:float=LifeTraversal.ROUTE_CLEARANCE
 
 func update(delta:float) -> void:
 	if app.household.speed<=0:return
@@ -22,7 +24,7 @@ func update(delta:float) -> void:
 		# Preserve the same movement path semantics as a ground click. Future
 		# player actions can replace this walk through on_action_started.
 		app._clear_motion()
-		app.path=route;app.path_index=0;app.walk_only=true
+		app._set_route(route[-1]);app.walk_only=true
 		app.walk_destination=route[-1]
 		app._store_motion()
 	app._bind_member(previous)
@@ -32,6 +34,7 @@ func _idle(id:String) -> bool:
 	var person:LifeActor=app.world.actors.get(id)
 	if not is_instance_valid(sim) or not is_instance_valid(person) or not person.visible:return false
 	if sim.is_away() or not sim.action_queue.is_empty():return false
+	if app.traversal.active(id):return false
 	var motion:Dictionary=app.motion_states.get(id,app._empty_motion())
 	return not bool(motion.walk) and not bool(motion.waiting) and int(motion.index)>=motion.path.size()
 
@@ -59,7 +62,7 @@ func _needs_space(id:String,person:LifeActor) -> bool:
 
 func _clear_route(id:String,origin:Vector3) -> PackedVector3Array:
 	var candidates:Array[Vector3]=[]
-	var center:Vector3=Vector3(roundf(origin.x*4)*.25,.16,roundf(origin.z*4)*.25)
+	var center:Vector3=Vector3(roundf(origin.x*4)*.25,origin.y,roundf(origin.z*4)*.25)
 	for radius:int in range(1,7):
 		for x:int in range(-radius,radius+1):
 			for z:int in range(-radius,radius+1):
@@ -83,4 +86,5 @@ func _clear_route(id:String,origin:Vector3) -> PackedVector3Array:
 	return PackedVector3Array()
 
 func _distance(a:Vector3,b:Vector3) -> float:
+	if absf(a.y-b.y)>.1:return INF
 	return Vector2(a.x-b.x,a.z-b.z).length()

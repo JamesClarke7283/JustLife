@@ -1,0 +1,547 @@
+{
+  "version": 1,
+  "units": "metres",
+  "axes": "Godot X right, Y up, Z ridge at yaw0; Blender mapping=(x,-z,y)",
+  "origin": "Center of support footprint at wall-top Y0. Place at(x, Building.level_y(level)+2.6,z).",
+  "record_dimensions": "w/d are world support footprint; yaw0 span=w/length=d; yaw90 span=d/length=w, then +90Y yaw.",
+  "pitch": "rise/run; structural ridge H=pitch*span/2, shell underside meets wall top at support eave points.",
+  "eave": 0.28,
+  "shell_thickness_normal": 0.1,
+  "end_trim_offsets": {
+    "deck_behind_rake_outer_face": 0.012,
+    "eave_trim_behind_rake_outer_face": 0.1
+  },
+  "roof_envelope": "Plan bounds support rectangle grown0.28 each side. Structural ridge plus material cap height recorded per fixture.",
+  "formulas": {
+    "sec": "sqrt(1+pitch*pitch)",
+    "X": "span/2+.28",
+    "Z": "length/2+.28",
+    "top_at_x": "H-pitch*abs(x)+.10*sec",
+    "minimum_y": "top_at_x(X)-.205",
+    "maximum_y": "H+.10*sec+.065",
+    "panel_lower_eave_x": "X-.10*pitch/sec",
+    "panel_lower_eave_y": "H-pitch*panel_lower_eave_x"
+  },
+  "parts": [
+    "two closed normal-thickness roof panels",
+    "two closed triangular gable infills at support ends",
+    "cream eave/rake fascia and oak lower lip/tie",
+    "closed segmented ridge cap",
+    "original bevel-edged sage slate tiles, cropped to edge extents"
+  ],
+  "module_contract": {
+    "Tile_036x032": {
+      "size": [
+        0.36,
+        0.02,
+        0.32
+      ],
+      "origin": "base center",
+      "local_axes": "X along ridge, Y outward from roof, Z downslope",
+      "slope_basis": "X=(0,0,-side), Y=(side*pitch/sec,1/sec,0), Z=(side/sec,-pitch/sec,0)",
+      "placement": "(side*xc, top_at_x(xc)+.002, zc)"
+    },
+    "Fascia_100": {
+      "size": [
+        0.06,
+        0.18,
+        1.0
+      ],
+      "origin": "upper edge center",
+      "scale": "Z length only; thickness/height fixed"
+    },
+    "OakLip_100": {
+      "size": [
+        0.017,
+        0.035,
+        1.0
+      ],
+      "origin": "upper edge center",
+      "scale": "Z length only"
+    }
+  },
+  "palette": {
+    "cream": "e4dccb",
+    "oak": "927353",
+    "ridge": "40554e",
+    "tile": [
+      "57736a",
+      "526e64",
+      "5c776e",
+      "506b62"
+    ]
+  },
+  "fixtures": [
+    {
+      "parameters": {
+        "id": "representative",
+        "w": 8.0,
+        "d": 10.0,
+        "pitch": 0.5,
+        "rotation": 0,
+        "material": "57736a"
+      },
+      "root": "Roof_representative",
+      "canonical_span": 8.0,
+      "canonical_length": 10.0,
+      "structural_ridge_height": 2.0,
+      "actual_godot_bounds": [
+        [
+          -4.28000020980835,
+          4.28000020980835
+        ],
+        [
+          -0.23319660127162933,
+          2.1768033504486084
+        ],
+        [
+          -5.28000020980835,
+          5.28000020980835
+        ]
+      ],
+      "expected_godot_bounds": [
+        [
+          -4.28,
+          4.28
+        ],
+        [
+          -0.23319660112501062,
+          2.1768033988749895
+        ],
+        [
+          -5.28,
+          5.28
+        ]
+      ],
+      "rows_per_slope": 15,
+      "columns": 30,
+      "tile_count": 900,
+      "glb": "assets/models/roof_gable_representative.glb",
+      "glb_sha256": "b047ddeb59b0c732750934c782ccc7c94d06e78bdef09e8781044815084030f3"
+    },
+    {
+      "parameters": {
+        "id": "small_rotated",
+        "w": 4.0,
+        "d": 6.0,
+        "pitch": 0.75,
+        "rotation": 90,
+        "material": "57736a"
+      },
+      "root": "Roof_small_rotated",
+      "canonical_span": 6.0,
+      "canonical_length": 4.0,
+      "structural_ridge_height": 2.25,
+      "actual_godot_bounds": [
+        [
+          -2.2800002098083496,
+          2.2800002098083496
+        ],
+        [
+          -0.28999999165534973,
+          2.440000057220459
+        ],
+        [
+          -3.2799999713897705,
+          3.2799999713897705
+        ]
+      ],
+      "expected_godot_bounds": [
+        [
+          -2.2800000000000002,
+          2.2800000000000002
+        ],
+        [
+          -0.2899999999999999,
+          2.44
+        ],
+        [
+          -3.2800000000000002,
+          3.2800000000000002
+        ]
+      ],
+      "rows_per_slope": 13,
+      "columns": 13,
+      "tile_count": 338,
+      "glb": "assets/models/roof_gable_small_rotated.glb",
+      "glb_sha256": "965f766cf0ceb1b004016c3e60b42dc6a613718b43c217e26026c5ef2c027c1f"
+    }
+  ],
+  "modules_glb_sha256": "3ce6595912343bf3bac8171347f216627001b831419e7cb68fcee03ad7c1f22b",
+  "source_sha256": "a4117e9d67b4e69b7b1253788d6853f9d3bb4b45f4d9d3dee948fb1817c9e124",
+  "generator_sha256": "1ad18a870999a8e644e1a2bd6662f63853a644f0e1586b40e4379f50f89454b4",
+  "mesh_audit": [
+    {
+      "name": "RoofDeck_Left_representative",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "EaveFascia_Left_representative",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "EaveOakLip_Left_representative",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RakeFascia_Left_Front_representative",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RakeFascia_Left_Back_representative",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RoofDeck_Right_representative",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "EaveFascia_Right_representative",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "EaveOakLip_Right_representative",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RakeFascia_Right_Front_representative",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RakeFascia_Right_Back_representative",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "GableInfill_Front_representative",
+      "vertices": 6,
+      "triangles": 8,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "GableOakTie_-1_representative",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "GableInfill_Back_representative",
+      "vertices": 6,
+      "triangles": 8,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "GableOakTie_1_representative",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RidgeCap_00_representative",
+      "vertices": 36,
+      "triangles": 68,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RidgeCap_01_representative",
+      "vertices": 36,
+      "triangles": 68,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RidgeCap_02_representative",
+      "vertices": 36,
+      "triangles": 68,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RidgeCap_03_representative",
+      "vertices": 36,
+      "triangles": 68,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RidgeCap_04_representative",
+      "vertices": 36,
+      "triangles": 68,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RidgeCap_05_representative",
+      "vertices": 36,
+      "triangles": 68,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RidgeCap_06_representative",
+      "vertices": 36,
+      "triangles": 68,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RidgeCap_07_representative",
+      "vertices": 36,
+      "triangles": 68,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RidgeCap_08_representative",
+      "vertices": 36,
+      "triangles": 68,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RidgeCap_09_representative",
+      "vertices": 36,
+      "triangles": 68,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RidgeCap_10_representative",
+      "vertices": 36,
+      "triangles": 68,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RidgeCap_11_representative",
+      "vertices": 36,
+      "triangles": 68,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RidgeCap_12_representative",
+      "vertices": 36,
+      "triangles": 68,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RidgeCap_13_representative",
+      "vertices": 36,
+      "triangles": 68,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RoofTiles_representative",
+      "vertices": 22500,
+      "triangles": 41400,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RoofDeck_Left_small_rotated",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "EaveFascia_Left_small_rotated",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "EaveOakLip_Left_small_rotated",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RakeFascia_Left_Front_small_rotated",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RakeFascia_Left_Back_small_rotated",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RoofDeck_Right_small_rotated",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "EaveFascia_Right_small_rotated",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "EaveOakLip_Right_small_rotated",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RakeFascia_Right_Front_small_rotated",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RakeFascia_Right_Back_small_rotated",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "GableInfill_Front_small_rotated",
+      "vertices": 6,
+      "triangles": 8,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "GableOakTie_-1_small_rotated",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "GableInfill_Back_small_rotated",
+      "vertices": 6,
+      "triangles": 8,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "GableOakTie_1_small_rotated",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RidgeCap_00_small_rotated",
+      "vertices": 36,
+      "triangles": 68,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RidgeCap_01_small_rotated",
+      "vertices": 36,
+      "triangles": 68,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RidgeCap_02_small_rotated",
+      "vertices": 36,
+      "triangles": 68,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RidgeCap_03_small_rotated",
+      "vertices": 36,
+      "triangles": 68,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RidgeCap_04_small_rotated",
+      "vertices": 36,
+      "triangles": 68,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RidgeCap_05_small_rotated",
+      "vertices": 36,
+      "triangles": 68,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "RoofTiles_small_rotated",
+      "vertices": 8450,
+      "triangles": 15548,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "Tile_036x032",
+      "vertices": 25,
+      "triangles": 46,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "Fascia_100",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    },
+    {
+      "name": "OakLip_100",
+      "vertices": 8,
+      "triangles": 12,
+      "nonmanifold_edges": 0,
+      "tiny_faces": 0
+    }
+  ],
+  "limitations": "Rectangular gables only. No valleys/dormers/intersecting junctions, weatherproofing or structural-engineering certification. Runtime must validate full eave/headroom envelope independently of current support rectangle schema."
+}

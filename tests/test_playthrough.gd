@@ -18,9 +18,12 @@ var has_previous: bool = false
 var max_step: float = 0.0
 var motion_excess: float = 0.0
 var motion_samples: Array = []
+var pointer_observations: Array = []
 var observing_motion: bool = false
 var screenshot_dir: String = "res://art/playthrough"
 var resume_only: bool = false
+var track_household_completions: bool = false
+var observed_household_ids: Array[int] = []
 
 class MotionObserver extends Node:
 	var harness: SceneTree
@@ -52,17 +55,8 @@ func _run() -> void:
 	motion_observer.harness = self
 	app.add_child(motion_observer)
 	await frames(4)
-	# Household persists when creation/load swaps the selected LifeSim instance.
-	var household: Node = app.get("household")
-	if is_instance_valid(household):
-		household.notice.connect(func(message: String) -> void: notices.append(message))
-		household.member_action_finished.connect(func(member_id: String, action: Dictionary) -> void:
-			completed.append(str(action.id))
-			member_completed.append(member_id + ":" + str(action.id))
-			if bool(action.get("autonomous", false)):autonomous_completed.append(member_id + ":" + str(action.id)))
-	else:
-		app.sim.notice.connect(func(message: String) -> void: notices.append(message))
-		app.sim.action_finished.connect(func(action: Dictionary) -> void: completed.append(str(action.id)))
+	track_household_completions = true
+	_observe_household_completions()
 	app.set_sound(false)
 	if resume_only:
 		await _resume_verification()
@@ -78,6 +72,19 @@ func _run() -> void:
 	await frames(3)
 	print("PLAYTHROUGH_RESULT assertions=%d failures=%d resume=%s" % [assertions, failures.size(), str(resume_only)])
 	quit(0 if failures.is_empty() else 1)
+
+func _observe_household_completions() -> void:
+	if not track_household_completions:return
+	var household: Node = app.get("household")
+	if not is_instance_valid(household):return
+	var identity: int = household.get_instance_id()
+	if identity in observed_household_ids:return
+	observed_household_ids.append(identity)
+	household.notice.connect(func(message: String) -> void: notices.append(message))
+	household.member_action_finished.connect(func(member_id: String, action: Dictionary) -> void:
+		completed.append(str(action.id))
+		member_completed.append(member_id + ":" + str(action.id))
+		if bool(action.get("autonomous", false)):autonomous_completed.append(member_id + ":" + str(action.id)))
 
 func frames(count: int = 2) -> void:
 	for i: int in range(count):
@@ -115,6 +122,9 @@ func _public_load() -> void:
 		await press("Load selected life", true)
 	if is_instance_valid(button_matching("Continue without saving")):
 		await press("Continue without saving")
+	# V2 loading atomically installs a new household node. Reconnect only this
+	# general-flow observer; inherited specialized harnesses retain their own hooks.
+	_observe_household_completions()
 
 func observe_motion(delta: float) -> void:
 	if not observing_motion or not is_instance_valid(app.player):
@@ -250,12 +260,21 @@ func _creator_flow() -> void:
 	await press("Wardrobe")
 	if is_instance_valid(button_matching("Jacket")):await press("Jacket")
 	await press("Coastal")
-	var aspirations: Array[Node] = app.find_children("*", "OptionButton", true, false)
-	check(not aspirations.is_empty(), "Creator exposes aspiration selection.")
-	if not aspirations.is_empty():
-		var choice: OptionButton = aspirations[0]
-		choice.select(1)
-		choice.item_selected.emit(1)
+	var aspiration: OptionButton
+	var aspiration_controls: int = 0
+	for node: Node in app.find_children("*", "OptionButton", true, false):
+		if not node.is_visible_in_tree():continue
+		var labels: Array[String] = []
+		for index: int in node.item_count:labels.append(node.get_item_text(index))
+		if labels == ["Maker", "Connected", "Successful", "Balanced"]:
+			aspiration = node;aspiration_controls += 1
+	check(aspiration_controls == 1 and is_instance_valid(aspiration), "Creator exposes one semantic aspiration control distinct from age.")
+	if is_instance_valid(aspiration):
+		for index: int in aspiration.item_count:
+			if aspiration.get_item_text(index) == "Connected":
+				aspiration.select(index)
+				aspiration.item_selected.emit(index)
+				break
 	await frames(3)
 	check(app.profile.name == "Rowan Playtest" and app.profile.frame == 1 and app.profile.hair == 2, "Name/body/hair button choices update profile.")
 	check(app.profile.traits.has("Bookworm") and not app.profile.traits.has("Creative"), "Personality buttons change selected traits.")
@@ -414,6 +433,7 @@ func _queue_and_activity_flow() -> void:
 		await press_member("Rowan Playtest")
 
 func mouse_move(screen: Vector2) -> void:
+	var before: Vector2 = root.get_mouse_position()
 	# The world previews use Viewport.get_mouse_position(), which reads the OS
 	# pointer. parse_input_event alone does not update it (verified separately).
 	Input.warp_mouse(screen)
@@ -422,7 +442,11 @@ func mouse_move(screen: Vector2) -> void:
 	event.global_position = screen
 	Input.parse_input_event(event)
 	await frames(4)
-	check(root.get_mouse_position().distance_to(screen) < 2.0, "Viewport pointer reaches requested preview coordinates.")
+	var actual: Vector2 = root.get_mouse_position()
+	var sample: Dictionary = {"ticks_ms":Time.get_ticks_msec(),"requested":[screen.x,screen.y],"before":[before.x,before.y],"actual":[actual.x,actual.y],"distance":actual.distance_to(screen),"window_focused":app.get_window().has_focus(),"window_position":[app.get_window().position.x,app.get_window().position.y],"window_size":[app.get_window().size.x,app.get_window().size.y],"viewport_size":[root.get_visible_rect().size.x,root.get_visible_rect().size.y],"ghost_position":vec(app.world.ghost.position) if is_instance_valid(app.world.ghost) else [],"ghost_valid":app.world.ghost_valid,"placement_kind":app.world.placement_kind,"construction_tool":app.world.construction.tool}
+	pointer_observations.append(sample)
+	print("POINTER_OBSERVATION ",JSON.stringify(sample))
+	check(actual.distance_to(screen) < 2.0, "Viewport pointer reaches requested preview coordinates.")
 
 func _full_queue_flow() -> void:
 	app.sim.set_speed(0)
@@ -527,15 +551,25 @@ func _construction_flow() -> void:
 	var first: Vector3 = Vector3(-4.5, 0.16, 5.5)
 	var last: Vector3 = Vector3(-2.5, 0.16, 7.0)
 	var funds_before: int = app.sim.funds
-	var walls_before: int = app.world.construction.records.size()
-	var floors_before: int = app.world.construction.floor_records.size()
+	var canonical_before: Dictionary = app.build_transactions.current()
+	check(bool(canonical_before.ok), "Current home has valid canonical building geometry before room purchase.")
+	if not bool(canonical_before.ok):return
+	var walls_before: int = canonical_before.state.walls.size()
+	var floors_before: int = canonical_before.state.floors.size()
 	await mouse_move(app.world.camera.unproject_position(first))
 	await mouse_click(app.world.camera.unproject_position(first))
 	check(app.world.construction.anchored, "First room corner sets a mouse-driven anchor.")
 	await mouse_move(app.world.camera.unproject_position(last))
 	check(app.world.construction.valid, "Detached room has a valid construction preview.")
 	await mouse_click(app.world.camera.unproject_position(last))
-	check(app.world.construction.records.size() == walls_before + 4 and app.world.construction.floor_records.size() == floors_before + 1, "Second corner creates four room walls and one floor.")
+	var canonical_after: Dictionary = app.build_transactions.current()
+	check(bool(canonical_after.ok) and canonical_after.state.walls.size() == walls_before + 4 and canonical_after.state.floors.size() == floors_before + 1, "Second corner adds four room walls and one floor to the canonical home.")
+	var existing_preserved: bool = bool(canonical_after.ok)
+	if existing_preserved:
+		for group: String in ["walls", "floors"]:
+			for original: Dictionary in canonical_before.state[group]:
+				existing_preserved = existing_preserved and canonical_after.state[group].has(original)
+	check(existing_preserved, "Room purchase retains all preexisting canonical walls and starter-floor geometry.")
 	check(app.sim.funds == funds_before - 421, "A 2 by 1.5 metre room charges the expected geometry cost.")
 	await screenshot("09b_room_constructed")
 	await press("Door")
@@ -699,7 +733,7 @@ func equivalent(actual: Variant, expected: Variant) -> bool:
 	return actual == expected
 
 func _write_report() -> void:
-	var result: Dictionary = {"assertions": assertions, "failures": failures, "resume_only": resume_only, "completed": completed, "member_completed": member_completed, "autonomous_completed": autonomous_completed, "max_observed_movement_step": max_step, "max_motion_excess": motion_excess, "motion_samples": motion_samples, "notices": notices, "evidence": evidence, "method": "Actual renderer and real frame processing; UI button signals, actual mouse placement; no simulated arrival or direct time advancement."}
+	var result: Dictionary = {"assertions": assertions, "failures": failures, "resume_only": resume_only, "completed": completed, "member_completed": member_completed, "autonomous_completed": autonomous_completed, "max_observed_movement_step": max_step, "max_motion_excess": motion_excess, "motion_samples": motion_samples, "pointer_observations": pointer_observations, "notices": notices, "evidence": evidence, "method": "Actual renderer and real frame processing; UI button signals, actual mouse placement; no simulated arrival or direct time advancement."}
 	var file := FileAccess.open(screenshot_dir.path_join("resume_results.json" if resume_only else "playthrough_results.json"), FileAccess.WRITE)
 	file.store_string(JSON.stringify(result, "\t"))
 	file.close()

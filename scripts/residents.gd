@@ -47,8 +47,10 @@ func prepare_social(action:Dictionary) -> void:
  var id:String=str(action.get("target_id",""))
  if PEOPLE.has(id) and present(id) and str(action.get("id","")) in LifeSim.SOCIAL_ACTIONS:
   var at:Vector3=app.world.actors[id].position+Vector3(0,0,.8)
-  var cell:Vector2i=app.world.nearest_free(at)
-  action.target_position=Vector3(cell.x*.25,.16,cell.y*.25)
+  if not app.world.construction.building_state.is_empty():action.target_position=app.world.nearest_clear_point(at,0)
+  else:
+   var cell:Vector2i=app.world.nearest_free(at)
+   action.target_position=Vector3(cell.x*.25,.16,cell.y*.25)
 
 func _speaker(id:String) -> Dictionary:
  if not present(id):return {}
@@ -105,7 +107,16 @@ func tick(delta:float) -> void:
  publish_targets()
 
 func snapshot() -> Dictionary:
- return {"version":1,"locations":locations.duplicate(true)}
+ var captured:Dictionary=locations.duplicate(true)
+ # Detached physical snapshots include actual resident transforms without
+ # modifying this live service, clocks, routes or cached location records.
+ if captured.has(active_place) and is_instance_valid(app.world):
+  for id:String in PEOPLE:
+   var actor:LifeActor=app.world.actors.get(id)
+   if is_instance_valid(actor) and captured[active_place].has(id):
+    captured[active_place][id].position=[actor.position.x,actor.position.y,actor.position.z]
+    captured[active_place][id].rotation=actor.rotation.y
+ return {"version":1,"locations":captured}
 
 func restore(value:Variant) -> void:
  reset()
@@ -141,22 +152,46 @@ func begin_trip(destination:String) -> bool:
  if not trip.is_empty():return false
  for member:Dictionary in app.household.members:
   if member.sim.is_away():app.show_notice("Wait until everyone is home before taking a trip together.");return false
+ var canonical:bool=not app.world.construction.building_state.is_empty()
+ var planner:LifeTraversal=LifeTraversal.new(app) if canonical else null
  var boarding:Dictionary={}
+ var curb_places:Array[Vector3]=[]
+ # Preflight against the existing scene; a refusal changes no queue, body,
+ # stair owner, dish, selection, clock, resident state or saved home layout.
  for index:int in range(app.household.members.size()):
   var member:Dictionary=app.household.members[index]
   var actor:LifeActor=app.world.actors[member.id]
-  var endpoint:Vector3=Vector3(-1.25+float(index%4)*.65,.16,8.5-float(index/4)*.5)
-  var route:PackedVector3Array=app.world.path_to(actor.position,endpoint)
+  if app.traversal.busy(str(member.id)):
+   app.show_notice("Let everyone finish the current stair crossing before leaving.");return false
+  var endpoint:Vector3=_boarding_point(index,str(member.id),curb_places)
+  if not endpoint.is_finite():app.show_notice("Clear the sidewalk so everyone has room beside the car.");return false
+  curb_places.append(endpoint)
+  var route:PackedVector3Array
+  if canonical:
+   var proposed:Dictionary=planner.request(str(member.id),endpoint)
+   if not bool(proposed.ok):app.show_notice("Clear a path to the sidewalk so everyone can reach the car.");return false
+   route=proposed.points
+  else:route=app.world.path_to(actor.position,endpoint)
   if route.is_empty():app.show_notice("Clear a path to the sidewalk so everyone can reach the car.");return false
-  boarding[member.id]={"path":route,"index":0}
+  boarding[member.id]={"path":route,"index":0,"boarded":false,"endpoint":endpoint}
+ var food_error:String=preload("res://scripts/travel_food.gd").departure_error(app)
+ if not food_error.is_empty():app.show_notice(food_error);return false
  app.cancel_placement()
  if app.current_venue=="home":app.home_layout=app.world.serialize_items()
  else:app.venue_layouts[app.current_venue]=app.world.serialize_items()
  var resume:int=app.pause_before_menu if app.overlay_pauses_sim else (app.speed_before_build if app.mode=="build" else app.sim.speed)
- app.close_overlay(false);app._cancel_all_cooperative_actions()
+ app.close_overlay(false)
+ app.loading_game=true # Cancel queued work without starting the following route.
+ app._cancel_all_cooperative_actions()
  for member:Dictionary in app.household.members:
   while not member.sim.action_queue.is_empty():member.sim.cancel_action()
   member.sim.character.erase("world_state")
+  app.motion_states[member.id]=app._empty_motion()
+ app._bind_member(app.household.selected_id())
+ if canonical:app.traversal=planner
+ else:app.traversal.reset()
+ app.loading_game=false
+ app.meal_flow.sync_world()
  app.household.set_speed(0);app.mode="travel";app.world.live_enabled=false
  app.clear_ui();app.overlay_open=true;app.menus.shade()
  # The world remains visible through the light transition shade.
@@ -167,7 +202,7 @@ func begin_trip(destination:String) -> bool:
  caption.name="TripPhase"
  car=_make_car();app.world.house.add_child(car);car.position=Vector3(0,0,10.25);car.rotation.y=PI*.5
  app.world.camera_target=Vector3(0,0,6.5);app.world.update_camera()
- trip={"destination":destination,"resume":resume,"phase":"boarding","time":0.0,"boarding":boarding}
+ trip={"destination":destination,"resume":resume,"phase":"boarding","time":0.0,"boarding":boarding,"canonical":canonical}
  return true
 
 func _make_car() -> Node3D:
@@ -182,17 +217,28 @@ func tick_trip(delta:float) -> void:
   for id:String in trip.boarding:
    var record:Dictionary=trip.boarding[id]
    var actor:LifeActor=app.world.actors[id]
-   var route:PackedVector3Array=record.path
-   var budget:float=delta*2.1
-   while int(record.index)<route.size() and budget>0:
-    var point:Vector3=route[int(record.index)]
-    var distance:float=actor.position.distance_to(point)
-    if distance>.001:
-     var direction:Vector3=point-actor.position;actor.rotation.y=atan2(direction.x,direction.z)
-    var step:float=minf(distance,budget);actor.position=actor.position.move_toward(point,step);budget-=step
-    if distance<=step+.00001:record.index=int(record.index)+1
-   var boarded:bool=int(record.index)>=route.size()
-   actor.animate(delta,1.0,not boarded,"")
+   if bool(record.boarded):continue
+   var boarded:bool=false
+   if bool(trip.canonical):
+    var moved:Dictionary=app.traversal.advance(id,delta,1)
+    boarded=bool(moved.get("finished",false))
+    if moved.has("error") and not str(moved.error).is_empty():
+     _trip_caption("The path to the car is blocked. "+str(moved.error))
+    # LifeTraversal paints the actual stair feet/torso pose while it owns a crossing.
+    if not app.traversal.busy(id):actor.animate(delta,1.0,bool(moved.get("moving",false)),"")
+   else:
+    var route:PackedVector3Array=record.path
+    var budget:float=delta*2.1
+    while int(record.index)<route.size() and budget>0:
+     var point:Vector3=route[int(record.index)]
+     var distance:float=actor.position.distance_to(point)
+     if distance>.001:
+      var direction:Vector3=point-actor.position;actor.rotation.y=atan2(direction.x,direction.z)
+     var step:float=minf(distance,budget);actor.position=actor.position.move_toward(point,step);budget-=step
+     if distance<=step+.00001:record.index=int(record.index)+1
+    boarded=int(record.index)>=route.size()
+    actor.animate(delta,1.0,not boarded,"")
+   record.boarded=boarded
    if boarded:actor.visible=false
    else:all_boarded=false
   if all_boarded:trip.phase="departure";trip.time=0.0;_trip_caption("Driving across Juniper Bay · 15 minutes")
@@ -222,6 +268,7 @@ func _arrive() -> void:
  for member:Dictionary in app.household.members:automatic.append(member.sim.autonomy);member.sim.autonomy=false
  app.household.set_speed(1);app.household.tick(2.5);app.household.set_speed(0)
  for index:int in range(app.household.members.size()):app.household.members[index].sim.autonomy=automatic[index]
+ app.household.journeys.clear() # Old-house floor positions cannot enter the new lot.
  app.current_venue=destination
  var layout:Array=app.home_layout if destination=="home" else app.venue_layouts.get(destination,LifeNeighborhood.layout(destination))
  if destination=="home" and layout.is_empty():layout=LifeCatalog.starter_layout(app.selected_lot)
@@ -229,8 +276,9 @@ func _arrive() -> void:
  for index:int in range(app.household.members.size()):
   var member:Dictionary=app.household.members[index]
   var actor:LifeActor=app.world.actors[member.id]
-  actor.position=Vector3(-1.25+float(index%4)*.65,.16,8.5-float(index/4)*.5);actor.visible=false
+  actor.position=_curb(index);actor.visible=false
   member.sim.remember("A visit across town","Drove to "+str(LifeNeighborhood.PLACES[destination].name)+".")
+ app.world.refresh_actor_layers()
  app.clear_ui();app.mode="travel";app.world.live_enabled=false
  car=_make_car();app.world.house.add_child(car);car.position=Vector3(-19,0,10.25);car.rotation.y=PI*.5
  app.world.camera_target=Vector3(0,0,6.5);app.world.update_camera()
@@ -239,3 +287,21 @@ func _arrive() -> void:
  app.text_label("Arriving at "+str(LifeNeighborhood.PLACES[destination].name),Vector2(463,744),Vector2(515,35),24,app.P.INK,true,app.overlay)
  app.paragraph("Pulling up outside · Saving is available when everyone steps out.",Vector2(464,791),Vector2(515,47),14,app.P.MUTED,app.overlay)
  trip.phase="arrival";trip.time=0.0
+
+func _curb(index:int) -> Vector3:
+ # Quarter-grid aligned places leave more than the 72cm body clearance.
+ return Vector3(-1.5+float(index%4),.16,7.5-float(index/4))
+
+func _boarding_point(index:int,id:String,reserved:Array[Vector3]) -> Vector3:
+ var candidates:Array[Vector3]=[_curb(index)]
+ for z:float in [7.5,8.5,6.5]:
+  for x:float in [-3.5,-2.5,-1.5,-.5,.5,1.5,2.5,3.5]:candidates.append(Vector3(x,.16,z))
+ for point:Vector3 in candidates:
+  if reserved.any(func(other:Vector3):return point.distance_to(other)<LifeTraversal.BODY_GAP):continue
+  if not app.world.construction.building_state.is_empty() and not app.world.lot_navigation.point_clear(0,point):continue
+  var clear:bool=true
+  for other_id:String in app.world.actors:
+   var other:LifeActor=app.world.actors[other_id]
+   if other_id!=id and other.visible and other.position.distance_to(point)<LifeTraversal.BODY_GAP:clear=false;break
+  if clear:return point
+ return Vector3.INF

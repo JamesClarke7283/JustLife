@@ -10,6 +10,7 @@ The repository contains the game and its authoring inputs. Rendered evidence, do
 | `art/furniture.blend`, `art/furniture/`, `art/celebration/` | Original furniture, current hollow oven, child desk booster and birthday cake authoring files. |
 | `art/meals/`, `art/recipes/` | Original editable supper props, generator provenance and export hashes; studio renders remain local. |
 | `art/transport/`, `art/sanitation/` | Original shared car and cleaning mop Blender sources, with their generators in `tools/`. |
+| `art/architecture/` | Original stairs, landing rails and roof-kit Blender sources with geometry contracts and generators. |
 | `art/source/` | Immutable authoring inputs required to reproduce the accepted characters, plus compact provenance. |
 | `art/experiments/` | Clearly marked editable studies and their generators; these are not promoted game assets. |
 | `tools/` | Asset generation and Linux export scripts. |

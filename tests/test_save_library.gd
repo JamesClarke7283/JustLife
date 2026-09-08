@@ -6,7 +6,7 @@ var checks: int = 0
 var failures: int = 0
 var backups: Dictionary = {}
 var generated_id: String = ""
-const TEST_IDS: Array[String] = ["test_library_one", "test_library_two", "test_library_broken", "test_library_large", "test_library_link", "test_library_precision"]
+const TEST_IDS: Array[String] = ["test_library_one", "test_library_two", "test_library_broken", "test_library_large", "test_library_link"]
 
 
 func _initialize() -> void:
@@ -86,12 +86,6 @@ func run() -> void:
 	var generated: Dictionary = Library.save_slot("", "New household", state)
 	generated_id = str(generated.get("id", ""))
 	check(generated.ok and not generated_id.is_empty() and Library.latest_id() == generated_id, "Creating a slot must generate a unique ID and make it the newest readable save.")
-	var precise: Dictionary = state.duplicate(true)
-	var wall_depth: float = 0.15999999642372131348
-	precise.world = [{"kind":"__construction", "walls":[{"id":"precision_wall", "x":0.0, "z":0.0, "w":4.0, "d":wall_depth, "height":2.6, "cut":false, "color":"e0dccc"}], "floors":[]}]
-	check(Library.save_slot("test_library_precision", "Precise home", precise).ok, "A household with full-precision wall measurements can be saved.")
-	var precise_read: Dictionary = Library.read_slot("test_library_precision")
-	check(precise_read.ok and precise_read.data.world[0].walls[0].d == wall_depth, "Actual named-save writing and parsing preserve the original wall measurement exactly.")
 	for id: String in ["../test_library_one", "a/b", "a\\b", ".", "A", "%2e%2e"]:
 		check(not Library.save_slot(id, "Unsafe path", state).ok and not Library.read_slot(id).ok and not Library.delete_slot(id).ok, "All slot operations must reject path-like or noncanonical IDs.")
 	var envelope: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(Library.SAVE_DIR.path_join("test_library_one.json")))

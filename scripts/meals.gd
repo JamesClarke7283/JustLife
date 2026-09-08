@@ -1,5 +1,6 @@
 extends RefCounted
 class_name LifeMeals
+const Building=preload("res://scripts/building_state.gd")
 ## Persistent food ownership. World nodes are views of this state.
 const VERSION := 1
 const MAX_BATCHES := 64
@@ -214,30 +215,86 @@ static func validate(data: Variant, member_ids: Array, now: float) -> String:
 			seats[seat_key]=true
 	return ""
 
+static func _saved_floor_error(value:Dictionary,layout:Array) -> String:
+	var state:Dictionary={}
+	for entry:Variant in layout:
+		if entry is Dictionary and entry.get("kind")=="__construction":
+			if not state.is_empty():return "A saved floor dish has ambiguous building support."
+			var result:Dictionary=Building.migrate(entry)
+			if not bool(result.ok):return "A saved floor dish has invalid building support."
+			state=result.state
+	if state.is_empty():return "A saved floor dish is missing its building layout."
+	var at:=Vector3(float(value.position[0]),float(value.position[1]),float(value.position[2]))
+	var level:int=-1;var terrain:bool=absf(at.y-(-.148))<.012 or absf(at.y-(-.093))<.012
+	if terrain:level=0
+	for candidate:int in [0,1]:
+		if absf(at.y-(Building.level_y(candidate)+.002))<.025:level=candidate
+	# Migrated starter boards retain their authored top instead of a new slab.
+	if level<0 and absf(at.y-.1295)<.012:
+		for floor:Dictionary in state.floors:
+			if str(floor.id)=="legacy_starter_floor" and Building.rect(floor).has_point(Vector2(at.x,at.z)):level=0;break
+	if level<0:return "A saved floor dish is not on a supported floor height."
+	var half:Vector2=PLATE_HALF_SIZE if value.has("batch") else PLATTER_HALF_SIZE
+	var bounds:=Rect2(Vector2(at.x,at.z)-half,half*2)
+	if terrain:
+		if not Building.LOT.encloses(bounds):return "A saved floor dish is outside the lot."
+		for tile:Dictionary in Building.surface_tiles(state,0):
+			if tile.rect.intersects(bounds):return "A saved floor dish is below its visible floor."
+	elif not Building.footprint_supported(state,level,bounds):return "A saved floor dish extends beyond its supporting floor."
+	if Building.blocked_rect(state,level,bounds.grow(.002)):return "A saved floor dish overlaps the building."
+	for entry:Variant in layout:
+		if not entry is Dictionary or not LifeCatalog.ITEMS.has(str(entry.get("kind",""))) or str(entry.kind) in ["rug","painting"]:continue
+		if not _number(entry.get("level",0),0,1,true):return "A saved floor dish has an invalid furniture level."
+		if int(entry.get("level",0))!=level:continue
+		for axis:String in ["x","z","rotation"]:
+			if not _number(entry.get(axis,0),-100000,100000):return "A saved floor dish has an invalid furniture transform."
+		var inverse:=Basis(Vector3.UP,deg_to_rad(float(entry.get("rotation",0)))).inverse()
+		var local:Vector3=inverse*(at-Vector3(float(entry.get("x",0)),Building.level_y(level),float(entry.get("z",0))))
+		var across:Vector3=inverse*Vector3(half.x,0,0);var along:Vector3=inverse*Vector3(0,0,half.y)
+		var extent:=Vector2(absf(across.x)+absf(along.x),absf(across.z)+absf(along.z))
+		var body:Vector2=LifeCatalog.ITEMS[str(entry.kind)].size*.5
+		if absf(local.x)<body.x+extent.x+.002 and absf(local.z)<body.y+extent.y+.002:return "A saved floor dish overlaps furniture on its floor."
+	return ""
+
 static func validate_layout(data:Dictionary,household:Dictionary) -> String:
-	# A full public save supplies furniture. Component-only simulation states
-	# may omit it; they still receive the independent local-position checks.
+	# V1 detached component saves may omit layouts. A journey-aware public V2
+	# must supply the actual venue layout even for held or floor-only food.
+	var strict:bool=_number(household.get("household_version"),2,2,true)
 	var selected:Dictionary=household.members[int(household.get("selected_index",0))].state.character
 	var context:Variant=selected.get("world_state",{})
 	if not context is Dictionary:context={}
 	var layouts:Dictionary={str(context.get("venue","home")):household.get("world",[])}
 	if context.get("home_layout") is Array and str(context.get("venue","home"))!="home":layouts.home=context.home_layout
 	if context.get("venue_layouts") is Dictionary:
-		for venue:String in context.venue_layouts:
-			if not layouts.has(venue) and context.venue_layouts[venue] is Array:layouts[venue]=context.venue_layouts[venue]
+		for venue:Variant in context.venue_layouts:
+			if venue is String and not layouts.has(venue) and context.venue_layouts[venue] is Array:layouts[venue]=context.venue_layouts[venue]
 	for value:Dictionary in data.batches+data.portions:
-		if str(value.host).is_empty() or str(value.storage)=="carried" or not value.has("offset"):continue
 		var layout:Variant=layouts.get(str(value.venue),[])
-		if not layout is Array or layout.is_empty():continue
+		if not layout is Array or layout.is_empty():
+			if strict:return "A saved meal is missing its venue layout."
+			continue
+		if str(value.storage)=="carried" or (str(value.storage)=="table" and str(value.host).is_empty()):continue
+		if str(value.host).is_empty():
+			if strict:
+				var error:String=_saved_floor_error(value,layout)
+				if not error.is_empty():return error
+			continue
+		if not value.has("offset"):
+			if strict:return "A saved meal is missing its supporting offset."
+			continue
 		var host:Dictionary={}
 		for entry:Variant in layout:
-			if entry is Dictionary and entry.get("id")==value.host:host=entry;break
+			if entry is Dictionary and entry.get("id")==value.host:
+				if not host.is_empty():return "A saved meal refers to ambiguous furniture."
+				host=entry
 		if host.is_empty():return "A saved meal refers to missing furniture."
 		for axis:String in ["x","z","rotation"]:
 			if not _number(host.get(axis,0),-100000,100000):return "A saved meal has an invalid furniture transform."
-		var local:Vector3=Vector3(float(value.offset[0]),float(value.offset[1]),float(value.offset[2]))
-		var placed:Vector3=Vector3(float(host.get("x",0)),.16,float(host.get("z",0)))+Basis(Vector3.UP,deg_to_rad(float(host.get("rotation",0))))*local
-		var saved:Vector3=Vector3(float(value.position[0]),float(value.position[1]),float(value.position[2]))
+		if not _number(host.get("level",0),0,1,true):return "A saved meal has an invalid furniture level."
+		var level:int=int(host.get("level",0))
+		var local:=Vector3(float(value.offset[0]),float(value.offset[1]),float(value.offset[2]))
+		var placed:=Vector3(float(host.get("x",0)),Building.level_y(level),float(host.get("z",0)))+Basis(Vector3.UP,deg_to_rad(float(host.get("rotation",0))))*local
+		var saved:=Vector3(float(value.position[0]),float(value.position[1]),float(value.position[2]))
 		if placed.distance_to(saved)>.02:return "A saved meal position does not match its furniture."
 		var kind:String=str(host.get("kind",""))
 		if str(value.storage)=="fridge":
@@ -247,9 +304,14 @@ static func validate_layout(data:Dictionary,household:Dictionary) -> String:
 			var extent:Vector2=SURFACE_HALF_SIZE[kind]
 			var footprint:Vector2=PLATE_HALF_SIZE if value.has("batch") else PLATTER_HALF_SIZE
 			if absf(local.x)+footprint.x+SURFACE_INSET>extent.x+.00001 or absf(local.z)+footprint.y+SURFACE_INSET>extent.y+.00001:return "A saved dish extends beyond its supporting surface."
+		if str(value.get("storage",""))=="table" and not str(value.get("seat","")).is_empty():
+			var chair:Dictionary={}
+			for entry:Variant in layout:
+				if entry is Dictionary and entry.get("id")==value.seat:chair=entry;break
+			if chair.is_empty() or chair.get("kind")!="chair" or not _number(chair.get("level",0),level,level,true):return "A saved diner’s chair is not on the table’s floor."
 	return ""
 
-static func validate_actions(data:Dictionary,members:Array) -> String:
+static func validate_actions(data:Dictionary,members:Array,custody:Dictionary={},venue:String="") -> String:
 	var foods:Dictionary={};var active_owners:Dictionary={}
 	for value:Dictionary in data.batches+data.portions:foods[value.id]=value
 	for member:Dictionary in members:
@@ -293,6 +355,14 @@ static func validate_actions(data:Dictionary,members:Array) -> String:
 			if not owner_id.is_empty():
 				if index!=0 or str(foods[owner_id].owner)!=str(member.id) or active_owners.has(owner_id):return "Food ownership does not match the active Lifelet."
 				active_owners[owner_id]=str(member.id)
+	# Custody is derived by the journey validator from one owned safe-exit
+	# crossing. It is distinct from a later action and expires at the landing.
+	for id:Variant in custody:
+		if not id is String or not foods.has(id) or not custody[id] is String:return "Saved stair custody refers to missing food or Lifelet."
+		var held:Dictionary=foods[id]
+		if str(held.owner)!=str(custody[id]) or str(held.storage)!="carried" or str(held.venue)!=venue:return "Saved stair custody does not match its carried food and venue."
+		if active_owners.has(id):return "Food has both current-action ownership and canceled stair custody."
+		active_owners[id]=str(custody[id])
 	for id:String in foods:
 		if not str(foods[id].owner).is_empty() and not active_owners.has(id):return "A carried or active food has no matching action."
 	return ""

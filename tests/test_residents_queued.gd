@@ -12,7 +12,7 @@ func run()->void:
  app=load("res://scenes/main.tscn").instantiate();root.add_child(app);app.set_process(false);app.set_sound(false)
  if "--consume-absent" in OS.get_cmdline_user_args():await consume()
  else:await produce()
- app.queue_free();await process_frame;await process_frame;await create_timer(.15).timeout
+ app.queue_free();await process_frame;await process_frame
  print("RESIDENTS_QUEUED_RESULT ",assertions,"/",failures);quit(0 if failures==0 else 1)
 func produce()->void:
  app.start_household()

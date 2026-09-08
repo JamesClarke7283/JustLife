@@ -1,0 +1,114 @@
+{
+  "status": "Private architecture candidate, not playable or promoted",
+  "origin": "Lower run front edge; ascent +Z; Y relative to lower walk datum",
+  "width": 1.25,
+  "run": 3.75,
+  "rise": 3,
+  "risers": 15,
+  "going": 0.25,
+  "riser": 0.2,
+  "minimum_rail_clear_width": 1.098,
+  "anchors": {
+    "Tread_01": [
+      0,
+      0.2,
+      0.125
+    ],
+    "Tread_02": [
+      0,
+      0.4,
+      0.375
+    ],
+    "Tread_03": [
+      0,
+      0.6000000000000001,
+      0.625
+    ],
+    "Tread_04": [
+      0,
+      0.8,
+      0.875
+    ],
+    "Tread_05": [
+      0,
+      1.0,
+      1.125
+    ],
+    "Tread_06": [
+      0,
+      1.2000000000000002,
+      1.375
+    ],
+    "Tread_07": [
+      0,
+      1.4000000000000001,
+      1.625
+    ],
+    "Tread_08": [
+      0,
+      1.6,
+      1.875
+    ],
+    "Tread_09": [
+      0,
+      1.8,
+      2.125
+    ],
+    "Tread_10": [
+      0,
+      2.0,
+      2.375
+    ],
+    "Tread_11": [
+      0,
+      2.2,
+      2.625
+    ],
+    "Tread_12": [
+      0,
+      2.4000000000000004,
+      2.875
+    ],
+    "Tread_13": [
+      0,
+      2.6,
+      3.125
+    ],
+    "Tread_14": [
+      0,
+      2.8000000000000003,
+      3.375
+    ],
+    "Tread_15": [
+      0,
+      3.0,
+      3.625
+    ],
+    "LowerLanding": [
+      0,
+      0,
+      -0.5
+    ],
+    "RunBegin": [
+      0,
+      0,
+      0
+    ],
+    "RunEnd": [
+      0,
+      3,
+      3.75
+    ],
+    "UpperLanding": [
+      0,
+      3,
+      4.25
+    ]
+  },
+  "triangles": 12340,
+  "vertices": 6384,
+  "authored_mesh_objects": 107,
+  "exported_mesh_objects": 5,
+  "glb_sha256": "ebbe97283a7231831dcd5c497a2a91d208701ef607da4f9f0241714da08a6f4f",
+  "generator_sha256": "6cfa905fe1c55f983f01e4961d55cbd06b9d876eb3f3dee701dad581449363dc"
+}

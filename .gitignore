@@ -53,9 +53,6 @@ __pycache__/
 !/art/recipes/recipe_variants.blend
 !/art/recipes/README.md
 !/art/recipes/manifest.json
-!/art/transport/
-/art/transport/*
-!/art/transport/juniper_car.blend
 !/art/source/
 !/art/experiments/
 /art/experiments/**/*.png
@@ -65,7 +62,26 @@ __pycache__/
 # Browser reference downloads are research material, not game source/assets.
 /research/
 
-# Original sanitation prop and its editable source.
+# Editable architecture sources and contracts; generated previews stay local.
+!/art/architecture/
+/art/architecture/*
+!/art/architecture/juniper_stair.blend
+!/art/architecture/juniper_guardrails.blend
+!/art/architecture/stair_geometry.json
+!/art/architecture/guardrail_geometry.json
+!/art/architecture/README.md
+!/art/architecture/GUARDRAILS.md
+!/art/architecture/justlife_roof_kit.blend
+!/art/architecture/roof_geometry_contract.json
+!/art/architecture/roof_parameters.json
+!/art/architecture/ROOF_KIT.md
+!/art/architecture/RUNTIME_ROOFS.md
+!/art/architecture/publication_manifest.json
+
+!/art/transport/
+/art/transport/*
+!/art/transport/juniper_car.blend
+
 !/art/sanitation/
 /art/sanitation/*
 !/art/sanitation/juniper_mop.blend

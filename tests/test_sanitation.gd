@@ -1,4 +1,6 @@
 extends SceneTree
+# Load the actual scene before static save-library references in this test graph.
+const MainScene=preload("res://scenes/main.tscn")
 var app:Node
 var checks:int=0
 var failures:Array=[]
@@ -47,7 +49,7 @@ func capture(label:String)->void:
 	await frames(3);await RenderingServer.frame_post_draw
 	get_root().get_texture().get_image().save_png("user://"+label+".png")
 func run()->void:
-	app=load("res://scenes/main.tscn").instantiate();root.add_child(app);current_scene=app
+	app=MainScene.instantiate();root.add_child(app);current_scene=app
 	await frames(4);app.set_process(false);app.set_sound(false)
 	if "--resume" in OS.get_cmdline_user_args():
 		await resume();await finish();return

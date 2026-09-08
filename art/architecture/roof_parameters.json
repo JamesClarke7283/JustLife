@@ -1,0 +1,25 @@
+{
+  "contract_version": 1,
+  "defaults": {
+    "eave": 0.28,
+    "shell_thickness_normal": 0.1
+  },
+  "fixtures": [
+    {
+      "id": "representative",
+      "w": 8.0,
+      "d": 10.0,
+      "pitch": 0.5,
+      "rotation": 0,
+      "material": "57736a"
+    },
+    {
+      "id": "small_rotated",
+      "w": 4.0,
+      "d": 6.0,
+      "pitch": 0.75,
+      "rotation": 90,
+      "material": "57736a"
+    }
+  ]
+}

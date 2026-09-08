@@ -12,31 +12,52 @@ func accident(sim:LifeSim)->bool:
 	var id:String=member_id(sim)
 	var actor:LifeActor=app.world.actors.get(id)
 	if not is_instance_valid(actor) or not actor.visible or bool(actor.get_meta("away",false)):return false
-	# Store the actual root's X/Z and its supported floor, not a chair/bed visual
-	# offset. Both supported levels retain a datum for future physical restores.
+	# A pending accident never steals an owned stair or rounds a tread down
+	# through the floor. It resolves at this actor's actual supported landing.
+	if is_instance_valid(app.traversal) and app.traversal.busy(id):return false
 	var at:Vector3=actor.position
-	var level:int=clampi(floori((at.y-.16+.15)/3.0),0,1)
-	at.y=.16+3.0*level
-	app.household.sanitation.add(id,app.current_venue,at,level,(sim.day-1)*1440.0+sim.minutes)
+	var level:int=app.world.point_level(at)
+	if level<0:return false
+	var scale:float=_supported_scale(at,level)
+	if scale<=0.0:return false
+	app.household.sanitation.add(id,app.current_venue,at,level,(sim.day-1)*1440.0+sim.minutes,scale)
 	actor.speech("Oh no… I couldn't hold on.")
 	actor.react_to_accident()
 	return true
 func action_availability(sim:LifeSim,id:String,target:String)->String:
 	if not app.household.meals.carried_by(member_id(sim)).is_empty():return "Put down the food you are carrying first."
-	var item:Dictionary=app._find_item(target)
-	if id=="plant_wee":
-		if item.is_empty() or str(item.kind)!="plant":return "That plant pot is no longer here."
-		return ""
-	var puddle:Dictionary=app.household.sanitation.find(target)
-	if puddle.is_empty() or str(puddle.venue)!=app.current_venue or item.is_empty():return "That puddle has already been cleaned or is in another place."
+	var error:String=target_error(id,target)
+	if not error.is_empty():return error
+	if id=="plant_wee":return ""
 	for member:Dictionary in app.household.members:
 		if member.sim==sim:continue
 		var action:Dictionary=member.sim.get_current_action()
 		if str(action.get("id",""))=="mop_puddle" and str(action.get("target_id",""))==target and str(action.get("phase",""))=="active":return "Another Lifelet is already mopping this puddle."
 	return ""
+func target_error(id:String,target:String)->String:
+	# Physical restore shares this read-only check with live use. A progressed
+	# pot action may already have relieved bladder above the initial threshold.
+	var item:Dictionary=app._find_item(target)
+	if id=="plant_wee":
+		if item.is_empty() or str(item.kind)!="plant":return "That plant pot is no longer here."
+		return ""
+	var puddle:Dictionary=app.household.sanitation.find(target)
+	if puddle.is_empty() or str(puddle.venue)!=app.current_venue or item.is_empty() or str(item.kind)!="puddle":return "That puddle has already been cleaned or is in another place."
+	return ""
+func restore_action_error(member:String,action:Dictionary)->String:
+	var error:String=target_error(str(action.id),str(action.target_id))
+	if not error.is_empty():return error
+	var destination:Vector3=app.world.approach(app._find_item(str(action.target_id)))
+	# Match the normal controller's target-movement tolerance. A different
+	# genuine pot must not move a restored visual while the actor stays elsewhere.
+	if not destination.is_finite() or destination.distance_to(action.target_position)>.05:return "The saved sanitation position does not match its physical target."
+	if str(action.phase)=="active":
+		var actor:LifeActor=app.world.actors.get(member)
+		if not is_instance_valid(actor) or actor.position.distance_to(action.target_position)>.05:return "The saved Lifelet has not reached the sanitation target."
+	return ""
 func finished(_sim:LifeSim,action:Dictionary)->void:
-	if str(action.id)=="mop_puddle":app.household.sanitation.remove(str(action.target_id))
-func sync_world()->void:
+	if str(action.id)=="mop_puddle" and target_error("mop_puddle",str(action.target_id)).is_empty():app.household.sanitation.remove(str(action.target_id))
+func sync_world(reconcile:bool=true)->void:
 	if not is_instance_valid(app.world.house):return
 	var present:Dictionary={}
 	var changed:bool=false
@@ -50,6 +71,9 @@ func sync_world()->void:
 			app.world.items.append({"id":id,"kind":"puddle","label":"Accident puddle","node":node,"size":Vector2(.9,.5),"transient_puddle":true,"level":int(puddle.level)})
 			changed=true
 		views[id].position=Vector3(float(puddle.position[0]),_display_height(puddle),float(puddle.position[2]))
+		var scale:float=float(puddle.get("scale",1.0));views[id].scale=Vector3(scale,1.0,scale)
+		app.world.assign_structure_layer(views[id],int(puddle.level))
+		views[id].get_node("PuddlePicking").collision_layer=LifeWorld.PICK_GROUND if int(puddle.level)==0 else LifeWorld.PICK_UPPER
 	var removed:bool=false
 	for id:String in views.keys():
 		if not present.has(id) or not is_instance_valid(views[id]):
@@ -57,8 +81,8 @@ func sync_world()->void:
 			views.erase(id)
 			app.world.items=app.world.items.filter(func(item:Dictionary)->bool:return str(item.id)!=id)
 			changed=true;removed=true
-	if changed:app.household.register_targets(app.world.simulation_targets())
-	if removed:
+	if changed and reconcile:app.household.register_targets(app.world.simulation_targets())
+	if removed and reconcile:
 		# A second queued cleaner loses only this obsolete instruction, keeping
 		# later activities. Clearing the old route before cancel matches the main controller.
 		for member:Dictionary in app.household.members:
@@ -70,7 +94,7 @@ func sync_world()->void:
 func _display_height(puddle:Dictionary)->float:
 	var height:float=float(puddle.floor_y)
 	var at:Vector3=Vector3(float(puddle.position[0]),height,float(puddle.position[2]))
-	if int(puddle.level)==0:height=app.meal_flow._floor_height(at)-.002
+	height=app.meal_flow._floor_height(at)-.002
 	for item:Dictionary in app.world.items:
 		if str(item.kind)!="rug" or absf(item.node.position.y-float(puddle.floor_y))>.05:continue
 		var local:Vector3=item.node.to_local(at)
@@ -78,6 +102,37 @@ func _display_height(puddle:Dictionary)->float:
 			# Authored woven rug top: .014 centre + .025/2 thickness.
 			height=maxf(height,item.node.position.y+.0265)
 	return height+.006
+func _supported_scale(at:Vector3,level:int)->float:
+	if not is_finite(app.meal_flow._floor_height(at)):return 0.0
+	var state:Dictionary=app.world.construction.building_state
+	# Preserve exact actor coordinates at narrow edges by shrinking the wet
+	# footprint inside the existing clear standing space, never relocating it.
+	for scale:float in [1.0,.75,.5,LifeSanitation.MIN_SCALE]:
+		var half:Vector2=LifeSanitation.PATCH_HALF*scale
+		var area:=Rect2(Vector2(at.x,at.z)-half,half*2.0)
+		if not state.is_empty() and (not LifeSanitation.Building.footprint_supported(state,level,area,level==0) or LifeSanitation.Building.blocked_rect(state,level,area)):continue
+		var low:float=INF;var high:float=-INF
+		for x:float in [-half.x,0.0,half.x]:
+			for z:float in [-half.y,0.0,half.y]:
+				var height:float=app.meal_flow._floor_height(at+Vector3(x,0,z))
+				if not is_finite(height):return 0.0
+				low=minf(low,height);high=maxf(high,height)
+		if high-low<=.03:return scale
+	return 0.0
+
+func reconstruct_actors()->void:
+	# Candidate restore paints a saved action at zero time; it does not bind
+	# another member, resolve targets, modify the queue or advance a clock.
+	for member:Dictionary in app.household.members:
+		var action:Dictionary=member.sim.get_current_action()
+		if str(action.get("phase",""))!="active" or str(action.get("id","")) not in ["plant_wee","mop_puddle"]:continue
+		var actor:LifeActor=app.world.actors.get(str(member.id));var item:Dictionary=app._find_item(str(action.target_id))
+		if not is_instance_valid(actor) or item.is_empty():continue
+		var landmarks:Dictionary=actor.get_body_landmarks();landmarks["standing_position"]=action.target_position
+		var anchor:Dictionary=app.world.activity_anchor(item,str(action.id),landmarks)
+		actor.set_activity_anchor(anchor.position,anchor.yaw,anchor.kind,str(action.id),anchor)
+		actor.reconstruct_sanitation_pose(str(action.id))
+
 static func make_view(id:String)->Node3D:
 	var node:Node3D=Node3D.new()
 	var vertices:PackedVector3Array=PackedVector3Array([Vector3.ZERO])

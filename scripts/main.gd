@@ -53,6 +53,7 @@ var overlay_pauses_sim: bool = false
 var overlay_open: bool = false
 var selected_item: Dictionary = {}
 var build_undo: Array = []
+var build_transactions:LifeBuildTransactions
 var audio_player: AudioStreamPlayer
 var ambience_player: AudioStreamPlayer
 var sound_enabled: bool = true
@@ -61,6 +62,7 @@ var loading_game: bool = false
 var floor_color: String = "cfa97e"
 var reconciling_targets: bool = false
 var route_generation: int = 0
+var load_epoch: int = 0
 var walk_destination: Vector3 = Vector3.ZERO
 var waiting_for_target: bool = false
 var wait_started: float = -1.0
@@ -78,6 +80,7 @@ var home_layout: Array = []
 var venue_layouts: Dictionary = {}
 var stories_button: Button
 var speed_buttons: Dictionary = {}
+var live_floor_buttons: Dictionary = {}
 var menus:LifeMenus
 var has_active_game:bool=false
 var active_save_id:String=""
@@ -87,14 +90,16 @@ var menu_game_mode:String="live"
 var save_preview:Image
 var build_quote:Label
 var build_quote_card:Panel
+var roof_visibility_button:Button
 var release_probe:RefCounted
 var creator_family_links:Array=[]
 var activity_bubbles:Control
-var meal_flow:LifeMealFlow
 var sanitation_flow:LifeSanitationFlow
+var meal_flow:LifeMealFlow
 var idle_space:RefCounted
 var residents:LifeResidents
 var adoption_flow:LifeAdoptionFlow
+var traversal:LifeTraversal
 
 func _ready() -> void:
 	# Check before opening the menu: its save listing can initialize storage.
@@ -112,20 +117,15 @@ func _ready() -> void:
 	idle_space=preload("res://scripts/idle_space.gd").new();idle_space.app=self
 	adoption_flow=LifeAdoptionFlow.new(self)
 	residents=LifeResidents.new(self)
+	traversal=LifeTraversal.new(self)
 	household_profiles=[profile]
 	household=LifeHousehold.new()
 	household.name="Household"
 	add_child(household)
 	household.new_household(household_profiles)
 	sim=household.selected()
-	household.notice.connect(show_notice)
-	household.member_action_started.connect(_member_action_started)
-	household.member_action_finished.connect(_member_action_finished)
-	household.member_age_changed.connect(func(id: String, _previous: String, _current: String): _refresh_aged_member.call_deferred(id))
-	world.object_clicked.connect(on_object_clicked)
-	world.ground_clicked.connect(on_ground_clicked)
-	world.placement_requested.connect(on_placement)
-	world.construction_requested.connect(on_construction)
+	build_transactions=LifeBuildTransactions.new(self)
+	_connect_live_nodes()
 	var canvas=CanvasLayer.new()
 	canvas.name="Interface"
 	add_child(canvas)
@@ -154,6 +154,18 @@ func _ready() -> void:
 		release_probe.run.call_deferred(self)
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--capture="):capture_milestone.call_deferred(argument.get_slice("=",1))
+
+func _connect_live_nodes() -> void:
+	household.physical_snapshot_provider=_physical_snapshot_context
+	var sender:LifeHousehold=household
+	household.notice.connect(show_notice)
+	household.member_action_started.connect(_member_action_started)
+	household.member_action_finished.connect(_member_action_finished)
+	household.member_age_changed.connect(func(id: String, _previous: String, _current: String): _refresh_aged_member.call_deferred(id,load_epoch,sender))
+	world.object_clicked.connect(on_object_clicked)
+	world.ground_clicked.connect(on_ground_clicked)
+	world.placement_requested.connect(on_placement)
+	world.construction_requested.connect(on_construction)
 
 func capture_milestone(which:String) -> void:
 	if which=="creator":show_creator()
@@ -231,11 +243,11 @@ func clear_ui() -> void:
 	for child in ui.get_children():
 		ui.remove_child(child)
 		child.queue_free()
-	need_bars.clear();need_values.clear();speed_buttons.clear()
+	need_bars.clear();need_values.clear();speed_buttons.clear();live_floor_buttons.clear()
 	household_chips.clear();cancel_action_button=null
 	skill_labels.clear();skill_bars.clear();skill_progress_labels.clear();relationship_labels.clear();career_labels.clear();goal_labels.clear()
 	queue_box=null;time_label=null;funds_label=null;mood_label=null;action_label=null;action_context=null;action_bar=null
-	build_quote=null;build_quote_card=null
+	build_quote=null;build_quote_card=null;roof_visibility_button=null
 	last_queue=""
 	close_overlay()
 
@@ -541,6 +553,7 @@ func remove_creator_member() -> void:
 
 func start_household() -> void:
 	residents.reset()
+	load_epoch+=1
 	has_active_game=true
 	active_save_id="";active_save_name=""
 	for person:Dictionary in household_profiles:person.erase("world_state")
@@ -580,6 +593,7 @@ func setup_live(layout:Array) -> void:
 	world.sun.rotation_degrees=Vector3(-52,-35,0)
 	world.environment.background_color=Color("cddfd6")
 	motion_states.clear()
+	traversal.reset()
 	away_phases.clear()
 	for i in range(household.members.size()):
 		var member:Dictionary=household.members[i]
@@ -595,12 +609,12 @@ func setup_live(layout:Array) -> void:
 	for member:Dictionary in household.members:
 		var away:Dictionary=member.sim.get_away_state()
 		world.set_actor_away(str(member.id),str(away.get("phase",""))=="away",not away.is_empty())
-	sanitation_flow.sync_world()
-	household.register_targets(world.simulation_targets())
+	sanitation_flow.sync_world(household.journeys.is_empty())
+	household.register_targets(world.simulation_targets(),household.journeys.is_empty())
 	for member:Dictionary in household.members:
 		var member_actor:LifeActor=world.actors[member.id]
 		var saved:Variant=member.sim.character.get("world_state",{})
-		if member.id!=household.selected_id() and saved is Dictionary:
+		if member.id!=household.selected_id() and saved is Dictionary and household.journeys.is_empty():
 			var at:Vector3=_saved_vector(saved.get("player"),member_actor.position)
 			var cell:Vector2i=Vector2i(roundi(at.x*4),roundi(at.z*4))
 			if not world.navigation.region.has_point(cell) or world.navigation.is_point_solid(cell):
@@ -608,6 +622,11 @@ func setup_live(layout:Array) -> void:
 				at=Vector3(cell.x*.25,.16,cell.y*.25)
 			member_actor.position=Vector3(at.x,.16,at.z)
 			member_actor.rotation.y=_saved_number(saved.get("player_rotation"),0,-1000,1000)
+	if not household.journeys.is_empty():
+		for id:String in household.journeys.members:
+			var record:Dictionary=household.journeys.members[id]
+			world.actors[id].position=LifeJourneyState.vector(record.position)
+			world.actors[id].rotation.y=float(record.yaw)
 	build_undo.clear()
 	_sync_actor_sound()
 	draw_live()
@@ -655,6 +674,14 @@ func draw_live() -> void:
 	card(Vector2(1125,18),Vector2(293,62),P.WHITE,14)
 	funds_label=text_label("§ 2,500",Vector2(1145,29),Vector2(170,38),25,P.TEAL)
 	button("☰",Vector2(1357,27),Vector2(48,42),show_menu)
+	# Live floor viewing changes only visibility and camera height.
+	if mode=="live" and current_venue=="home":
+		for level:int in [0,1]:
+			var floor_button:=button("Ground" if level==0 else "Upper",Vector2(1306,383+49*level),Vector2(99,42),func():set_live_view_level(level),world.view_level==level)
+			floor_button.name="LiveGroundView" if level==0 else "LiveUpperView"
+			floor_button.disabled=not _live_floor_available(level)
+			floor_button.tooltip_text="View ground floor (Page Down)" if level==0 else ("View upper floor (Page Up)" if not floor_button.disabled else "Build an upper floor to view it (Page Up)")
+			live_floor_buttons[level]=floor_button
 	# Camera affordances remain visible above the household controls.
 	button("−",Vector2(1359,530),Vector2(46,42),func():world.camera.size=minf(world.camera.size+1.5,30))
 	button("+",Vector2(1359,481),Vector2(46,42),func():world.camera.size=maxf(world.camera.size-1.5,7))
@@ -667,6 +694,34 @@ func draw_live() -> void:
 		draw_household_bar()
 		draw_queue()
 	refresh_hud()
+
+func _live_floor_available(level:int) -> bool:
+	if level==0:return true
+	if level!=1 or world.construction.building_state.is_empty():return false
+	for floor:Dictionary in world.construction.building_state.floors:
+		if int(floor.level)==1:return true
+	return false
+
+func set_live_view_level(level:int) -> void:
+	if mode!="live" or current_venue!="home" or overlay_open or not _live_floor_available(level):return
+	if get_viewport().gui_get_focus_owner() is LineEdit or get_viewport().gui_get_focus_owner() is TextEdit:return
+	if world.set_view_level(level):draw_live()
+
+func center_lifelet() -> void:
+	if mode!="live" or overlay_open:return
+	if get_viewport().gui_get_focus_owner() is LineEdit or get_viewport().gui_get_focus_owner() is TextEdit:return
+	var selected_id:String=household.selected_id()
+	var actor:LifeActor=world.actors.get(selected_id)
+	if not is_instance_valid(actor):return
+	if current_venue=="home":
+		var level:int=world.point_level(actor.position)
+		var route:Dictionary=traversal.routes.get(selected_id,{})
+		var supported:bool=level==0 or (level==1 and world.construction.floor_contains(Vector2(actor.position.x,actor.position.z),1))
+		if str(route.get("phase",""))!="transit" and supported and _live_floor_available(level):
+			world.set_view_level(level)
+	world.camera_target=actor.position
+	world.update_camera()
+	draw_live()
 
 func draw_goal_card() -> void:
 	card(Vector2(24,104),Vector2(262,157),Color("f8faf2"),14)
@@ -740,7 +795,9 @@ func draw_household_bar() -> void:
 	mood_label=text_label("Feeling inspired",Vector2(124,778),Vector2(165,26),14,P.TEAL)
 	age_label=text_label(str(LifeLifecycle.LABELS[str(sim.character.age_stage)]),Vector2(124,810),Vector2(160,25),12,P.MUTED)
 	age_label.mouse_filter=Control.MOUSE_FILTER_PASS
-	button("Center",Vector2(42,841),Vector2(111,27),func():world.camera_target=player.position;world.update_camera())
+	var center_button:=button("Center",Vector2(42,841),Vector2(111,27),center_lifelet)
+	center_button.name="CenterLifelet"
+	center_button.tooltip_text="Show this Lifelet and their floor; keep the current floor during stair transit"
 	button("Wishes",Vector2(165,841),Vector2(111,27),show_wishes)
 	action_context=text_label("TODAY IS YOURS",Vector2(327,738),Vector2(286,23),11,P.MUTED)
 	action_context.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -872,6 +929,15 @@ func refresh_hud() -> void:
 			else:action_label.text="Meeting at the desk"
 		var meal_title:String=meal_flow.action_title(action)
 		if not meal_title.is_empty():action_label.text=meal_title
+		if traversal.active(bound_member_id):
+			var route:Dictionary=traversal.routes[bound_member_id]
+			if bool(route.safety):action_label.text="Reaching the landing"
+			elif str(route.phase)=="waiting":action_label.text="Waiting for the stairs"
+			elif str(route.phase)=="transit":
+				var leg:Dictionary=route.legs[int(route.cursor)]
+				action_label.text="Going upstairs" if int(leg.direction)==1 else "Going downstairs"
+			elif action.is_empty():action_label.text="Walking"
+		elif walk_only and action.is_empty():action_label.text="Walking"
 		action_label.tooltip_text=action_label.text+(" · With "+str(partner.character.name)+". Canceling ends the activity for both Lifelets." if partner else "")
 		action_label.mouse_filter=Control.MOUSE_FILTER_PASS
 		action_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -965,9 +1031,11 @@ func set_build_mode(value:bool) -> void:
 	else:
 		cancel_placement()
 		build_undo.clear()
+		build_transactions.clear_history()
 		mode="live"
 		sim.set_speed(speed_before_build)
 	world.set_build(value)
+	if value:world.construction.quote_provider=build_transactions.prepare
 	_sync_actor_sound()
 	_refresh_sim_targets()
 	draw_live()
@@ -984,6 +1052,8 @@ func draw_build_catalog() -> void:
 	build_quote_card.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	build_quote_card.visible=false
 	build_quote=text_label("",Vector2(14,6),Vector2(408,41),16,P.INK,false,build_quote_card)
+	build_quote.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	build_quote.custom_maximum_size=Vector2(408,-1)
 	build_quote.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	card(Vector2(20,643),Vector2(1400,239),P.WHITE,18)
 	small_caps("Make yourself at home",Vector2(40,657))
@@ -992,17 +1062,30 @@ func draw_build_catalog() -> void:
 		var category:String=["All","Comfort","Kitchen","Bathroom","Activities","Decor","Structure"][i]
 		button(category,Vector2(296+i*132,663),Vector2(123,35),func():catalog_category=category;draw_live(),catalog_category==category)
 	button("Undo",Vector2(1250,663),Vector2(144,35),undo_build)
-	paragraph("Click to place\nR  rotate   ·   Esc  cancel",Vector2(41,754),Vector2(230,61),14)
+	button("Ground",Vector2(40,745),Vector2(105,37),func():set_build_level(0),world.view_level==0)
+	button("Upper",Vector2(153,745),Vector2(105,37),func():set_build_level(1),world.view_level==1)
+	paragraph("Click to place\nR  rotate   ·   Esc  cancel",Vector2(41,803),Vector2(230,54),14)
 	if catalog_category=="Structure":
 		button("Wall",Vector2(305,725),Vector2(146,46),func():begin_construction("wall"))
 		button("Room",Vector2(461,725),Vector2(146,46),func():begin_construction("room"))
 		button("Door",Vector2(617,725),Vector2(146,46),func():begin_construction("door"))
-		button("Remove wall",Vector2(773,725),Vector2(173,46),func():begin_construction("erase"))
-		text_label("Wall / room: click two corners",Vector2(962,726),Vector2(409,43),13,P.MUTED)
+		button("Floor",Vector2(773,725),Vector2(146,46),func():begin_construction("floor"))
+		button("Stairs",Vector2(929,725),Vector2(146,46),func():begin_construction("stairs"))
+		button("Remove floor / stairs",Vector2(1085,725),Vector2(294,46),func():begin_construction("remove_structure"))
 		button("Warm oak",Vector2(305,784),Vector2(200,47),func():change_floor("cfa97e"))
 		button("Pale stone",Vector2(520,784),Vector2(200,47),func():change_floor("dcd6c6"))
 		button("Walnut",Vector2(735,784),Vector2(200,47),func():change_floor("896953"))
 		button("Toggle wall view",Vector2(950,784),Vector2(200,47),func():world.set_cutaway(not world.cutaway))
+		button("Remove wall",Vector2(1160,784),Vector2(219,47),func():begin_construction("erase"))
+		button("New roof",Vector2(305,841),Vector2(146,31),func():begin_construction("roof"))
+		button("Edit roof",Vector2(461,841),Vector2(146,31),func():begin_construction("roof_edit"))
+		button("Remove roof",Vector2(617,841),Vector2(146,31),func():begin_construction("roof_remove"))
+		button("Low",Vector2(773,841),Vector2(85,31),func():set_roof_pitch(.25),is_equal_approx(world.construction.roof_pitch,.25))
+		button("Medium",Vector2(868,841),Vector2(85,31),func():set_roof_pitch(.5),is_equal_approx(world.construction.roof_pitch,.5))
+		button("Steep",Vector2(963,841),Vector2(85,31),func():set_roof_pitch(.75),is_equal_approx(world.construction.roof_pitch,.75))
+		roof_visibility_button=button("Hide roofs" if world.construction.roofs_visible else "Show roofs",Vector2(1058,841),Vector2(144,31),func():world.construction.set_roof_visibility(not world.construction.roofs_visible);draw_live())
+		button("Sage",Vector2(1212,841),Vector2(78,31),func():set_roof_finish("57736a"),world.construction.roof_material=="57736a")
+		button("Slate",Vector2(1300,841),Vector2(79,31),func():set_roof_finish("56606b"),world.construction.roof_material=="56606b")
 		return
 	var scroll=ScrollContainer.new()
 	scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
@@ -1019,40 +1102,88 @@ func draw_build_catalog() -> void:
 		text_label("§ %d" % data.price,Vector2(10,112),Vector2(130,20),13,P.TEAL,false,cell)
 
 func change_floor(color:String) -> void:
-	if color==floor_color:return
-	if mode=="build":build_undo.append(_build_snapshot())
+	if mode=="build":
+		var quote:Dictionary=build_transactions.prepare({"op":"structure","tool":"finish","level":world.view_level,"material":color})
+		if not bool(quote.ok):show_notice(str(quote.error));return
+		var result:Dictionary=build_transactions.commit(quote)
+		if not bool(result.ok):show_notice(str(result.error));return
+		build_undo.append({"architecture":result.receipt,"level":world.view_level})
+		if world.view_level==0:floor_color=color
+		refresh_hud();show_notice("A fresh finish for your home.");return
+	if world.construction.building_state.is_empty() and color==floor_color:return
 	_apply_floor_color(color)
 	show_notice("A fresh finish for your home.")
 
 func _apply_floor_color(color:String) -> void:
-	floor_color=color
+	if world.view_level==0:floor_color=color
 	if current_venue!="home" or not is_instance_valid(world.house):return
+	if not world.construction.building_state.is_empty():
+		var state:Dictionary=world.construction.snapshot()
+		for floor:Dictionary in state.floors:
+			if int(floor.level)==world.view_level:floor.material=color
+		world.construction.restore(state)
+		return
 	for node in world.house.get_children():
 		if node is MeshInstance3D and node.mesh is BoxMesh and node.mesh.size.x==12 and node.mesh.size.z==10:
 			node.material_override=world.material(color)
 
+func build_protection_context() -> Dictionary:
+	return LifeBuildProtection.snapshot(self)
+
 func _build_snapshot(funds_delta:int=0) -> Dictionary:
-	return {"layout":world.serialize_items(),"funds_delta":funds_delta,"floor":floor_color}
+	return {"layout":world.serialize_items(),"funds_delta":funds_delta,"floor":floor_color,"level":world.view_level}
+
+func set_build_level(level:int) -> void:
+	if mode!="build" or level not in [0,1]:return
+	cancel_placement()
+	if world.construction.building_state.is_empty():
+		var migrated:Dictionary=build_transactions.current()
+		if not bool(migrated.ok):show_notice(str(migrated.error));return
+		world.construction.restore(migrated.state);world.rebuild_navigation()
+	world.set_view_level(level)
+	world.construction.quote_provider=build_transactions.prepare
+	draw_live()
+
+func set_roof_pitch(value:float)->void:
+	if mode!="build":return
+	world.construction.roof_pitch=value;draw_live()
+
+func set_roof_finish(value:String)->void:
+	if mode!="build":return
+	world.construction.roof_material=value;draw_live()
 
 func begin_construction(tool:String) -> void:
 	if mode!="build":return
 	cancel_placement()
+	world.construction.quote_provider=build_transactions.prepare
 	world.begin_construction(tool)
-	show_notice("Click two corners to create a %s. Esc cancels." % tool if tool in ["wall","room"] else "Click a wall to %s. Esc cancels." % ("add a doorway" if tool=="door" else "remove it"))
+	if tool in ["roof","roof_edit","roof_remove"]:
+		world.set_cutaway(false);world.construction.set_roof_visibility(tool!="roof")
+		if tool=="roof":world.placement_angle=0;show_notice("Choose two roof corners. R rotates the ridge; select a pitch and finish before confirming.")
+		elif tool=="roof_edit":show_notice("Select a roof, then its two new corners. R rotates; pitch and finish changes are free.")
+		else:show_notice("Point at a roof to review its removal. Esc cancels.")
+	elif tool=="stairs":world.placement_angle=0;show_notice("Point at the stair's lower end. R rotates. The upper opening and guard are included.")
+	elif tool=="remove_structure":show_notice("Point at a floor or staircase to review its removal. Esc cancels.")
+	else:show_notice("Click two corners to create a %s. Esc cancels." % tool if tool in ["wall","room","floor"] else "Click a wall to %s. Esc cancels." % ("add a doorway" if tool=="door" else "remove it"))
 
 func on_construction(data:Dictionary) -> void:
 	if mode!="build":return
 	if data.has("error"):show_notice(str(data.error));return
 	if not bool(data.get("valid",false)):return
-	var cost:int=int(data.get("cost",0))
-	if sim.funds<cost:show_notice("You need §%d for this construction." % cost);return
-	build_undo.append(_build_snapshot(cost))
-	_cancel_all_cooperative_actions()
-	world.construction.commit(data)
-	sim.funds-=cost
-	_refresh_sim_targets()
-	refresh_hud()
-	show_notice("Your home is taking shape. %s§%d." % ["−" if cost>=0 else "+",absi(cost)])
+	if data.get("build_quote") is Dictionary:
+		var result:Dictionary=build_transactions.commit(data.build_quote)
+		if not bool(result.ok):show_notice(str(result.error));return
+		build_undo.append({"architecture":result.receipt,"level":world.view_level})
+		world.construction.anchored=false;world.construction.proposal.clear()
+		if world.construction.tool in ["roof","roof_edit","roof_remove"]:world.construction.roof_edit_id="";world.construction.set_roof_visibility(true)
+		# A staircase is a complete single placement. Clear its ghost before
+		# the unchanged pointer can preview another stair in that occupied spot.
+		if world.construction.tool=="stairs":world.construction.cancel()
+		world.construction.refresh_decorations()
+		_refresh_sim_targets(false);refresh_hud()
+		show_notice("Your structure is in place. %s§%d."%["−" if int(result.cost)>=0 else "+",absi(int(result.cost))])
+		return
+	show_notice("Preview this structure again before confirming it.")
 
 func on_placement(kind:String,p:Vector3,angle:float) -> void:
 	if mode!="build" or not LifeCatalog.ITEMS.has(kind):return
@@ -1064,11 +1195,17 @@ func on_placement(kind:String,p:Vector3,angle:float) -> void:
 	if sim.funds<price:show_notice("You need §%d for this furnishing." % price);return
 	var snapshot:Dictionary=pending_move.snapshot if moving else _build_snapshot(price)
 	var entry:Dictionary={"id":str(pending_move.entry.id) if moving else "placed_%d" % Time.get_ticks_usec(),"kind":kind,"x":p.x,"z":p.z,"rotation":angle}
+	if world.view_level==1:entry["level"]=1
+	var proposed:Array=world.serialize_items();proposed.append(entry)
+	var problem:String=build_transactions.furnishing_error(proposed)
+	if not problem.is_empty():show_notice(problem);return
+	var protection:Dictionary=build_protection_context()
 	_cancel_all_cooperative_actions()
 	world.add_item(entry)
 	if _find_item(str(entry.id)).is_empty():return
 	build_undo.append(snapshot)
-	sim.funds-=price
+	household.set_funds(sim.funds-price)
+	build_transactions.furnishing_rebuilt(protection)
 	if moving:
 		pending_move.clear()
 		world.clear_placement()
@@ -1082,30 +1219,50 @@ func undo_build() -> void:
 	cancel_placement()
 	if build_undo.is_empty():show_notice("There are no furnishing changes to undo yet.");return
 	var data:Dictionary=build_undo.back()
+	if data.get("architecture") is Dictionary:
+		var result:Dictionary=build_transactions.undo(data.architecture)
+		if not bool(result.ok):show_notice(str(result.error));return
+		build_undo.pop_back();world.set_view_level(int(data.get("level",0)))
+		for floor:Dictionary in world.construction.building_state.floors:
+			if int(floor.level)==0:floor_color=str(floor.material);break
+		world.construction.refresh_decorations();_refresh_sim_targets(false);refresh_hud()
+		show_notice("Your last structure change was undone.");return
 	var funds_delta:int=int(data.get("funds_delta",0))
 	if sim.funds+funds_delta<0:
 		show_notice("You need §%d to restore that furnishing." % -funds_delta);return
+	var historical_structure:Dictionary={}
+	for entry:Dictionary in data.layout:
+		if str(entry.get("kind",""))=="__construction":historical_structure=entry;break
+	if not build_transactions.matches_history_structure(historical_structure,str(data.get("floor",floor_color))):
+		show_notice("Undo the later structure change before restoring this furnishing.");return
+	var furnishing_layout:Array=data.layout.filter(func(entry:Dictionary)->bool:return str(entry.get("kind",""))!="__construction")
+	var checked_layout:Array=furnishing_layout.duplicate(true);checked_layout.append(world.construction.snapshot())
+	var layout_error:String=build_transactions.furnishing_error(checked_layout)
+	if not layout_error.is_empty():show_notice(layout_error);return
+	var protection:Dictionary=build_protection_context()
 	build_undo.pop_back()
 	_cancel_all_cooperative_actions()
 	world.clear_placement()
 	for item in world.items:item.node.queue_free()
 	world.items.clear()
-	for entry:Dictionary in data.layout:
-		if str(entry.get("kind",""))=="__construction":world.construction.restore(entry)
-		else:world.add_item(entry,false)
+	# A furnishing undo restores only furnishings. The identical live structure
+	# retains its current revision and authenticated architectural history.
+	for entry:Dictionary in furnishing_layout:world.add_item(entry,false)
 	world.construction.refresh_decorations()
 	world.rebuild_navigation()
-	sim.funds+=funds_delta
-	_apply_floor_color(str(data.get("floor",floor_color)))
+	build_transactions.furnishing_rebuilt(protection)
+	household.set_funds(sim.funds+funds_delta)
+	world.set_view_level(int(data.get("level",0)))
+	if world.construction.building_state.is_empty():_apply_floor_color(str(data.get("floor",floor_color)))
+	else:floor_color=str(data.get("floor",floor_color))
 	_refresh_sim_targets()
 	refresh_hud()
 	show_notice("Your last furnishing change was undone.")
 
 func on_object_clicked(item:Dictionary,screen:Vector2) -> void:
+	if bool(item.get("transient_puddle",false)) and mode=="build":show_notice("Return to Live mode to mop this puddle.");return
 	selected_item=item
 	if mode=="build":
-		if bool(item.get("transient_puddle",false)):
-			close_overlay();show_notice("Mop this puddle in Live mode.");return
 		if bool(item.get("transient_food",false)):
 			close_overlay();show_notice("Food and dishes can be handled in Live mode.");return
 		if not LifeCatalog.ITEMS.has(str(item.kind)):
@@ -1247,11 +1404,16 @@ func sell_item(item:Dictionary) -> void:
 	var existing:Dictionary=_find_item(str(item.get("id","")))
 	if existing.is_empty() or bool(existing.get("transient_food",false)) or not LifeCatalog.ITEMS.has(str(existing.get("kind",""))):return
 	cancel_placement()
+	var proposed:Array=world.serialize_items().filter(func(entry:Dictionary)->bool:return str(entry.get("id",""))!=str(existing.id))
+	var problem:String=build_transactions.furnishing_error(proposed)
+	if not problem.is_empty():show_notice(problem);return
+	var protection:Dictionary=build_protection_context()
 	var credit:int=int(LifeCatalog.ITEMS[existing.kind].price*.7)
 	build_undo.append(_build_snapshot(-credit))
 	_cancel_all_cooperative_actions()
 	world.remove_item(existing.id)
-	sim.funds+=credit
+	build_transactions.furnishing_rebuilt(protection)
+	household.set_funds(sim.funds+credit)
 	_refresh_sim_targets()
 	refresh_hud()
 
@@ -1263,9 +1425,14 @@ func move_item(item:Dictionary) -> void:
 	for entry:Dictionary in snapshot.layout:
 		if str(entry.get("id",""))==str(item.get("id","")) and entry.has("id"):original=entry.duplicate(true)
 	if original.is_empty():return
+	var proposed:Array=world.serialize_items().filter(func(entry:Dictionary)->bool:return str(entry.get("id",""))!=str(original.id))
+	var problem:String=build_transactions.furnishing_error(proposed)
+	if not problem.is_empty():show_notice(problem);return
+	var protection:Dictionary=build_protection_context()
 	_cancel_all_cooperative_actions()
 	pending_move={"entry":original,"snapshot":snapshot}
 	world.remove_item(str(original.id))
+	build_transactions.furnishing_rebuilt(protection)
 	world.begin_placement(str(original.kind))
 	world.placement_angle=float(original.get("rotation",0))
 	# Keep actions attached to this ID until the move is committed or canceled.
@@ -1346,16 +1513,17 @@ func _refresh_member_targets(replan:bool=true) -> void:
 		action.target_position=destination
 	reconciling_targets=false
 	if not replan or loading_game:return
+	if traversal.busy(bound_member_id):return
 	var current:Dictionary=sim.get_current_action()
 	if current.is_empty():
 		if walk_only:
-			path=world.path_to(player.position,walk_destination)
-			path_index=0
+			_set_route(walk_destination)
 			if path.is_empty():walk_only=false
 		else:_clear_motion()
 	elif str(current.phase)=="approach":on_action_started(current)
 
-func _clear_motion() -> void:
+func _clear_motion(keep_route:bool=false) -> void:
+	if traversal and not keep_route:traversal.cancel(bound_member_id)
 	waiting_for_target=false
 	wait_started=-1.0
 	wait_review=-1.0
@@ -1412,6 +1580,7 @@ func _empty_motion() -> Dictionary:
 func _store_motion() -> void:
 	if bound_member_id.is_empty():return
 	motion_states[bound_member_id]={"path":path,"index":path_index,"walk":walk_only,"pending":pending_action,"generation":route_generation,"destination":walk_destination,"waiting":waiting_for_target,"wait_started":wait_started,"wait_review":wait_review,"wait_destination":wait_destination,"resume_active":resume_activity}
+	if traversal:motion_states[bound_member_id]["traversal"]=traversal.routes.get(bound_member_id,{})
 
 func _bind_member(id:String) -> void:
 	var member:LifeSim=household.member_sim(id)
@@ -1467,19 +1636,23 @@ func on_ground_clicked(p:Vector3) -> void:
 	if not sim.action_queue.is_empty():
 		show_notice("Cancel the current activity before walking somewhere else.");return
 	walk_destination=p
-	path=world.path_to(player.position,p)
-	path_index=0
+	if traversal.busy(bound_member_id):
+		traversal.cancel(bound_member_id);walk_only=true;return
+	_set_route(p)
 	walk_only=not path.is_empty()
 	if path.is_empty():show_notice("That spot is out of reach.")
 
 func on_action_started(action:Dictionary) -> void:
 	if loading_game or reconciling_targets or not is_instance_valid(player) or sim.is_away():return
+	if traversal.busy(bound_member_id):
+		traversal.cancel(bound_member_id);pending_action=action;return
 	if str(action.id)=="arrive_home":adoption_flow.start_arrival(action);return
-	_clear_motion()
+	var arrived_waiter:bool=traversal.active(bound_member_id) and str(traversal.routes[bound_member_id].phase)=="waiting" and is_same(action,pending_action)
+	_clear_motion(arrived_waiter)
 	var resident_id:String=str(action.get("target_id",""))
 	if str(action.get("id","")) in LifeSim.SOCIAL_ACTIONS and LifeResidents.PEOPLE.has(resident_id) and not residents.present(resident_id):
 		show_notice(str(LifeResidents.PEOPLE[resident_id].name)+" has gone home. Catch them on their next walk, or arrange a visit.")
-		_cancel_blocked_action.call_deferred(route_generation,action,bound_member_id)
+		_cancel_blocked_action.call_deferred(route_generation,action,bound_member_id,load_epoch)
 		return
 	player.clear_speech()
 	if str(action.id) in LifeSim.SOCIAL_ACTIONS and world.actors.get(str(action.target_id)) is LifeActor:
@@ -1490,14 +1663,14 @@ func on_action_started(action:Dictionary) -> void:
 	if not is_same(sim.get_current_action(),action):return
 	pending_action=action
 	if not pending_move.is_empty() and str(action.target_id)==str(pending_move.entry.id):return
-	path=world.path_to(player.position,action.target_position)
+	_set_route(action.target_position)
 	if path.is_empty():
 		show_notice("The way is blocked. Try moving a furnishing.")
-		_cancel_blocked_action.call_deferred(route_generation,action,bound_member_id)
+		_cancel_blocked_action.call_deferred(route_generation,action,bound_member_id,load_epoch)
 	refresh_hud()
 
-func _cancel_blocked_action(generation:int,action:Dictionary,member_id:String="") -> void:
-	if loading_game:return
+func _cancel_blocked_action(generation:int,action:Dictionary,member_id:String="",epoch:int=-1) -> void:
+	if loading_game or (epoch>=0 and epoch!=load_epoch):return
 	if member_id.is_empty():member_id=bound_member_id
 	var prior:String=bound_member_id
 	_store_motion()
@@ -1615,6 +1788,9 @@ func show_wishes() -> void:
 		line(Vector2(500,y+91),Vector2(440,1),overlay)
 	button("Back to life",Vector2(500,695),Vector2(440,45),close_overlay,true,overlay)
 
+func _physical_snapshot_context() -> Dictionary:
+	return LifePhysicalSnapshot.capture(self)
+
 func save_game(slot_id:String="",title:String="") -> bool:
 	if mode not in ["live","build"]:show_notice("Move into a home to save your life.");return false
 	if title.is_empty():
@@ -1623,7 +1799,9 @@ func save_game(slot_id:String="",title:String="") -> bool:
 	if not overlay_open:capture_save_preview()
 	cancel_placement()
 	_store_motion()
-	sim.character["world_state"]={"player":[player.position.x,player.position.y,player.position.z],"player_rotation":player.rotation.y,"camera":[world.camera_target.x,world.camera_target.y,world.camera_target.z],"angle":world.camera_angle,"elevation":world.camera_elevation,"zoom":world.camera.size,"floor":floor_color,"lot":selected_lot,"cutaway":world.cutaway,"sound":sound_enabled,"venue":current_venue,"home_layout":home_layout,"venue_layouts":venue_layouts,"residents":residents.snapshot()}
+	if current_venue=="home":home_layout=world.serialize_items()
+	else:venue_layouts[current_venue]=world.serialize_items()
+	sim.character["world_state"]={"player":[player.position.x,player.position.y,player.position.z],"player_rotation":player.rotation.y,"camera":[world.camera_target.x,world.camera_target.y,world.camera_target.z],"angle":world.camera_angle,"elevation":world.camera_elevation,"zoom":world.camera.size,"floor":floor_color,"lot":selected_lot,"cutaway":world.cutaway,"view_level":world.view_level,"sound":sound_enabled,"venue":current_venue,"home_layout":home_layout,"venue_layouts":venue_layouts,"residents":residents.snapshot()}
 	# Store the user's live speed, not a temporary menu/build pause.
 	var current_speed:int=sim.speed
 	sim.speed=speed_before_build if mode=="build" else (pause_before_menu if overlay_pauses_sim else current_speed)
@@ -1639,6 +1817,7 @@ func save_game(slot_id:String="",title:String="") -> bool:
 		member.sim.character.world_state["waiting_action_id"]=str(action.get("id",""))
 		member.sim.character.world_state["waiting_target_id"]=str(action.get("target_id",""))
 	household.adopt_selected_changes()
+	household.journeys=traversal.snapshot() if not world.construction.building_state.is_empty() else {}
 	var result:Dictionary=LifeSaveLibrary.save_slot(slot_id,title,household.get_state(world.serialize_items()),save_preview)
 	var saved:bool=bool(result.ok)
 	if saved:active_save_id=str(result.id);active_save_name=title
@@ -1651,11 +1830,13 @@ func _restore_world_state(value:Variant) -> void:
 	if not value is Dictionary:return
 	var state:Dictionary=value
 	var position:Vector3=_saved_vector(state.get("player"),player.position)
-	var cell:Vector2i=Vector2i(roundi(position.x*4),roundi(position.z*4))
-	if not world.navigation.region.has_point(cell) or world.navigation.is_point_solid(cell):
-		cell=world.nearest_free(position)
-		position=Vector3(cell.x*.25,.16,cell.y*.25)
-	player.position=Vector3(position.x,.16,position.z)
+	if household.journeys.is_empty():
+		var cell:Vector2i=Vector2i(roundi(position.x*4),roundi(position.z*4))
+		if not world.navigation.region.has_point(cell) or world.navigation.is_point_solid(cell):
+			cell=world.nearest_free(position)
+			position=Vector3(cell.x*.25,.16,cell.y*.25)
+		position.y=.16
+	player.position=position
 	player.rotation.y=_saved_number(state.get("player_rotation"),0.0,-1000.0,1000.0)
 	var target:Vector3=_saved_vector(state.get("camera"),world.camera_target)
 	world.camera_target=Vector3(clampf(target.x,-16,16),clampf(target.y,-2,5),clampf(target.z,-12,12))
@@ -1664,9 +1845,15 @@ func _restore_world_state(value:Variant) -> void:
 	world.camera.size=_saved_number(state.get("zoom"),world.camera.size,6.0,31.0)
 	selected_lot=int(_saved_number(state.get("lot"),float(selected_lot),0.0,2.0))
 	var saved_floor:Variant=state.get("floor",floor_color)
-	if saved_floor is String and _valid_hex_color(saved_floor):_apply_floor_color(saved_floor)
-	else:_apply_floor_color(floor_color)
+	if world.construction.building_state.is_empty():
+		if saved_floor is String and _valid_hex_color(saved_floor):_apply_floor_color(saved_floor)
+		else:_apply_floor_color(floor_color)
+	elif saved_floor is String and _valid_hex_color(saved_floor):
+		# Canonical slabs already carry their own finishes; restore only the
+		# remembered ground-floor choice used by Build and the next save.
+		floor_color=saved_floor
 	if state.get("cutaway") is bool:world.set_cutaway(state.cutaway)
+	if not household.journeys.is_empty():world.set_view_level(int(state.get("view_level",maxi(0,world.point_level(player.position)))))
 	if state.get("sound") is bool:set_sound(state.sound)
 	world.update_camera()
 
@@ -1691,7 +1878,13 @@ func load_game(slot_id:String="") -> void:
 	if slot_id.is_empty():slot_id=active_save_id if not active_save_id.is_empty() else LifeSaveLibrary.latest_id()
 	var read_result:Dictionary=LifeSaveLibrary.read_slot(slot_id)
 	if not read_result.ok:show_notice(str(read_result.get("error","No saved life yet.")));return
+	if read_result.data.has("journeys"):
+		var prepared:Dictionary=_prepare_loaded_world(read_result.data)
+		if not bool(prepared.ok):show_notice(str(prepared.error));return
+		_adopt_loaded_world(prepared,slot_id,str(read_result.get("name","")))
+		return
 	loading_game=true
+	load_epoch+=1
 	route_generation+=1
 	var result:Dictionary=household.restore_state(read_result.data)
 	if not result.ok:
@@ -1721,13 +1914,133 @@ func load_game(slot_id:String="") -> void:
 	profile=household_profiles[creator_index]
 	floor_color="cfa97e"
 	setup_live(result.world)
+	if not household.journeys.is_empty():
+		_restore_journeys()
+	else:
+		loading_game=false
+		_refresh_sim_targets()
+		_restore_resource_waits()
 	loading_game=false
-	_refresh_sim_targets()
-	_restore_resource_waits()
 	meal_flow.sync_oven_presentations()
 	_reconstruct_paused_cooking()
 	_sync_actor_sound()
 	show_notice("Welcome back, %s." % sim.character.name)
+
+func _prepare_loaded_world(data:Dictionary) -> Dictionary:
+	# Use the same controller/service implementation against an isolated world.
+	# Its root remains off-tree so _ready cannot create menus or start a game.
+	# Only the viewport/world enter the tree to provide real skeleton transforms.
+	var candidate=get_script().new()
+	candidate.loading_game=true;candidate.mode="live";candidate.sound_enabled=false
+	candidate.household=LifeHousehold.new()
+	candidate.add_child(candidate.household)
+	var checked:Dictionary=candidate.household.restore_state(data)
+	if not bool(checked.ok):candidate.free();return checked
+	candidate.sim=candidate.household.selected();candidate.bound_member_id=candidate.household.selected_id()
+	var context:Dictionary=candidate.sim.character.world_state
+	candidate.current_venue=str(context.get("venue","home"))
+	candidate.home_layout=context.get("home_layout",[]).duplicate(true)
+	candidate.venue_layouts=context.get("venue_layouts",{}).duplicate(true)
+	var viewport:=SubViewport.new();viewport.own_world_3d=true;viewport.size=Vector2i(2,2)
+	viewport.render_target_update_mode=SubViewport.UPDATE_DISABLED
+	add_child(viewport)
+	candidate.world=LifeWorld.new();viewport.add_child(candidate.world)
+	candidate.world.set_process(false);candidate.world.set_process_unhandled_input(false)
+	if candidate.current_venue=="home":candidate.world.create_home(checked.world)
+	elif candidate.current_venue in ["maya_home","leo_home"]:candidate.world.create_resident_home(candidate.current_venue,checked.world)
+	else:candidate.world.create_public_venue(candidate.current_venue,checked.world)
+	if not candidate.world.last_layout_error.is_empty():
+		var error:String=candidate.world.last_layout_error
+		viewport.free();candidate.free();return {"ok":false,"error":error}
+	candidate.residents=LifeResidents.new(candidate)
+	candidate.residents.restore(context.get("residents",{}))
+	candidate.traversal=LifeTraversal.new(candidate)
+	candidate.meal_flow=LifeMealFlow.new();candidate.meal_flow.app=candidate;candidate.add_child(candidate.meal_flow)
+	candidate.sanitation_flow=LifeSanitationFlow.new();candidate.sanitation_flow.app=candidate;candidate.add_child(candidate.sanitation_flow)
+	for member:Dictionary in candidate.household.members:
+		var id:String=str(member.id)
+		candidate.spawn_actor(id,member.sim.character,LifeJourneyState.vector(data.journeys.members[id].position))
+		candidate.motion_states[id]=candidate._empty_motion()
+		var away:Dictionary=member.sim.get_away_state()
+		candidate.world.set_actor_away(id,str(away.get("phase",""))=="away",not away.is_empty())
+	candidate.residents.attach(candidate.current_venue)
+	candidate._bind_member(candidate.household.selected_id())
+	var restored:Dictionary=candidate._restore_journeys()
+	if not bool(restored.ok):viewport.free();candidate.free();return restored
+	candidate._reconstruct_paused_cooking()
+	return {"ok":true,"candidate":candidate,"viewport":viewport}
+
+func _adopt_loaded_world(prepared:Dictionary,slot_id:String,title:String="") -> void:
+	var candidate:Node=prepared.candidate
+	var old_world:LifeWorld=world;var old_household:LifeHousehold=household;var old_meal_flow:LifeMealFlow=meal_flow;var old_sanitation_flow:LifeSanitationFlow=sanitation_flow
+	# Every fallible layout, route and actual pose operation finished above.
+	# Commit the prepared nodes/services together, then retire the old world.
+	loading_game=true;load_epoch+=1
+	world=candidate.world;household=candidate.household
+	world.reparent(self,false);household.reparent(self,false)
+	traversal=candidate.traversal;traversal.app=self
+	residents=candidate.residents;residents.app=self
+	meal_flow=candidate.meal_flow;meal_flow.app=self;meal_flow.reparent(self,false)
+	sanitation_flow=candidate.sanitation_flow;sanitation_flow.app=self;sanitation_flow.reparent(self,false)
+	motion_states=candidate.motion_states
+	current_venue=candidate.current_venue;home_layout=candidate.home_layout;venue_layouts=candidate.venue_layouts
+	_connect_live_nodes()
+	sim=household.selected();bound_member_id=household.selected_id();_bind_member(bound_member_id)
+	has_active_game=true;active_save_id=slot_id;active_save_name=title
+	household_profiles=[]
+	for member:Dictionary in household.members:household_profiles.append(member.sim.character.duplicate(true))
+	creator_index=household.selected_index;profile=household_profiles[creator_index]
+	close_overlay(false);pending_move.clear();build_undo.clear();away_phases.clear();mode="live"
+	if is_instance_valid(stage):stage.visible=false
+	world.live_enabled=true;world.set_build(false);world.set_process(true);world.set_process_unhandled_input(true)
+	world.camera.current=true
+	_restore_world_state(sim.character.world_state)
+	player.set_selected(true)
+	prepared.viewport.free();candidate.free()
+	stage=null;preview=null
+	old_world.visible=false;old_world.queue_free();old_household.queue_free();old_meal_flow.queue_free();old_sanitation_flow.queue_free()
+	loading_game=false;_sync_actor_sound();draw_live()
+	show_notice("Welcome back, %s." % sim.character.name)
+
+func _restore_journeys() -> Dictionary:
+	var restored:Dictionary=traversal.restore(household.journeys)
+	if not bool(restored.ok):return restored
+	# Build food picking/presentation without repairing the ledger or beginning
+	# an action. All body positions and stair owners are already installed.
+	meal_flow.sync_world(false)
+	sanitation_flow.sync_world(false)
+	household.register_targets(world.simulation_targets(),false)
+	for member:Dictionary in household.members:
+		var id:String=str(member.id);var motion:Dictionary=motion_states[id]
+		var current:Dictionary=member.sim.get_current_action()
+		var resident_id:String=str(current.get("target_id",""))
+		if str(current.get("id","")) in LifeSim.SOCIAL_ACTIONS and LifeResidents.PEOPLE.has(resident_id) and str(current.get("phase","")) in ["approach","active"] and not residents.present(resident_id):
+			return {"ok":false,"error":"A saved conversation refers to a neighbor who has already gone home."}
+		var saved:Dictionary=member.sim.character.world_state
+		motion.pending=current
+		motion.wait_started=float(saved.get("resource_wait_started",-1.0))
+		motion.waiting=motion.wait_started>=0 and str(current.get("phase",""))=="approach"
+		motion.wait_review=motion.wait_started
+		motion.resume_active=bool(saved.get("resource_action_active",false)) and str(current.get("phase",""))=="approach"
+		member.sim.meal_service=meal_flow
+		member.sim.sanitation_service=sanitation_flow
+		if str(current.get("phase","")) in ["approach","active"] and str(current.get("id","")) in ["plant_wee","mop_puddle"]:
+			var target_error:String=sanitation_flow.restore_action_error(id,current)
+			if not target_error.is_empty():return {"ok":false,"error":"The saved sanitation activity cannot resume: "+target_error}
+		if not current.is_empty() and str(current.phase)=="approach" and not traversal.active(id) and not member.sim.is_away():
+			var built:Dictionary=traversal.request(id,current.target_position)
+			if not bool(built.ok):return built
+			motion.path=built.points;motion.index=0;motion.traversal=traversal.routes[id]
+		meal_flow.present_actor(id)
+	var occupied:Dictionary=traversal.validate_occupancy()
+	if not bool(occupied.ok):return occupied
+	var painted:Dictionary=traversal.reconstruct()
+	if not bool(painted.ok):return painted
+	_bind_member(household.selected_id())
+	meal_flow.sync_world(false)
+	sanitation_flow.sync_world(false)
+	sanitation_flow.reconstruct_actors()
+	return {"ok":true}
 
 func _reconstruct_paused_cooking() -> void:
 	if mode!="build" and sim.speed>0:return
@@ -1825,7 +2138,7 @@ func _process(delta:float) -> void:
 		var autonomy_values:Dictionary={}
 		for member:Dictionary in household.members:
 			autonomy_values[member.id]=member.sim.autonomy
-			if bool(motion_states.get(member.id,_empty_motion()).walk):member.sim.autonomy=false
+			if bool(motion_states.get(member.id,_empty_motion()).walk) or traversal.busy(str(member.id)):member.sim.autonomy=false
 		household.tick(delta)
 		sanitation_flow.sync_world()
 		for member:Dictionary in household.members:member.sim.autonomy=autonomy_values[member.id]
@@ -1868,6 +2181,14 @@ func _process(delta:float) -> void:
 
 func _advance_movement(delta:float) -> bool:
 	if not is_instance_valid(player) or sim.speed<=0:return false
+	if traversal.safety(bound_member_id):
+		var moved:bool=_advance_path(delta)
+		if not traversal.active(bound_member_id):
+			var next:Dictionary=sim.get_current_action()
+			if not next.is_empty():on_action_started(next)
+			elif walk_only:_set_route(walk_destination)
+			else:_clear_motion()
+		return moved
 	var current_arrival:Dictionary=sim.get_current_action()
 	if str(current_arrival.get("id",""))=="arrive_home":return adoption_flow.advance_arrival(delta,current_arrival)
 	if not walk_only and sim.action_queue.is_empty():
@@ -1877,8 +2198,10 @@ func _advance_movement(delta:float) -> bool:
 		if _activity_available(action):
 			# Keep the arrived reservation until the Lifelet has walked back
 			# from their queue position. New arrivals cannot steal this turn.
-			var cell:Vector2i=world.nearest_free(action.target_position)
-			var destination:Vector3=Vector3(cell.x*.25,.16,cell.y*.25)
+			var destination:Vector3=action.target_position
+			if world.construction.building_state.is_empty():
+				var cell:Vector2i=world.nearest_free(destination)
+				destination=Vector3(cell.x*.25,.16,cell.y*.25)
 			if player.position.distance_to(destination)<.01:
 				waiting_for_target=false
 				wait_started=-1.0
@@ -1888,7 +2211,7 @@ func _advance_movement(delta:float) -> bool:
 				household.begin_action(bound_member_id)
 				return false
 			if wait_destination!=destination:
-				path=world.path_to(player.position,destination);path_index=0
+				_set_route(destination)
 				wait_destination=destination
 		else:
 			_reconsider_waiting_activity()
@@ -1911,7 +2234,21 @@ func _advance_movement(delta:float) -> bool:
 				_route_to_wait_position(sim.get_current_action())
 	return was_moving
 
+func _set_route(destination:Vector3) -> bool:
+	path_index=0
+	if not world.construction.building_state.is_empty():
+		var result:Dictionary=traversal.request(bound_member_id,destination)
+		path=result.points if bool(result.ok) else PackedVector3Array()
+		return bool(result.ok)
+	path=world.path_to(player.position,destination)
+	return not path.is_empty()
+
 func _advance_path(delta:float) -> bool:
+	if traversal.active(bound_member_id):
+		var result:Dictionary=traversal.advance(bound_member_id,delta,sim.speed)
+		if bool(result.finished):path_index=path.size()
+		if not str(result.error).is_empty():show_notice(str(result.error))
+		return bool(result.moving) or bool(result.finished)
 	var was_moving:bool=path_index<path.size()
 	var distance_left:float=maxf(0.0,delta)*1.6*float(sim.speed)
 	while path_index<path.size() and distance_left>0.00001:
@@ -1938,7 +2275,7 @@ func _route_to_wait_position(action:Dictionary) -> void:
 				var route:PackedVector3Array=world.path_to(player.position,destination)
 				if route.is_empty() or route[-1].distance_to(destination)>.1:continue
 				wait_destination=destination
-				path=route;path_index=0
+				_set_route(destination)
 				return
 	# A completely packed room keeps its existing position and reservation;
 	# autonomy can still reconsider another activity after the bounded wait.
@@ -1946,7 +2283,12 @@ func _route_to_wait_position(action:Dictionary) -> void:
 	path.clear();path_index=0
 
 func _wait_position_clear(destination:Vector3) -> bool:
+	if not world.construction.building_state.is_empty():
+		if not traversal._free(bound_member_id,destination):return false
 	for offset:Vector2 in [Vector2.ZERO,Vector2(.25,0),Vector2(-.25,0),Vector2(0,.25),Vector2(0,-.25)]:
+		if not world.construction.building_state.is_empty():
+			if not world.lot_navigation.point_clear(world.point_level(destination),destination+Vector3(offset.x,0,offset.y)):return false
+			continue
 		var cell:Vector2i=Vector2i(roundi((destination.x+offset.x)*4),roundi((destination.z+offset.y)*4))
 		if not world.navigation.region.has_point(cell) or world.navigation.is_point_solid(cell):return false
 	for id:String in world.actors:
@@ -1973,7 +2315,6 @@ func _reconsider_waiting_activity() -> void:
 		if not _activity_available({"target_id":str(target.id),"target_position":target.position}):blocked.append(str(target.id))
 	_store_motion()
 	var prior:Dictionary=motion_states[bound_member_id].duplicate()
-	_clear_motion()
 	if not sim.reconsider_waiting_autonomy(blocked,waited):
 		motion_states[bound_member_id]=prior
 		_bind_member(bound_member_id)
@@ -2029,6 +2370,10 @@ func _unhandled_input(event:InputEvent) -> void:
 		if overlay_open:return
 		if mode in ["live","build"]:
 			match event.keycode:
+				KEY_PAGEUP:
+					if mode=="live" and current_venue=="home":set_live_view_level(1);get_viewport().set_input_as_handled()
+				KEY_PAGEDOWN:
+					if mode=="live" and current_venue=="home":set_live_view_level(0);get_viewport().set_input_as_handled()
 				KEY_B:set_build_mode(mode!="build")
 				KEY_SPACE:set_game_speed(1 if sim.speed==0 else 0)
 				KEY_1:set_game_speed(1)
@@ -2092,6 +2437,7 @@ func _update_activity_facing(delta:float,action:Dictionary,action_id:String) -> 
 			return
 		var landmarks:Dictionary=player.get_body_landmarks() if player.has_method("get_body_landmarks") else {}
 		if action_id=="cook":landmarks.merge({"recipe":str(action.get("recipe","")),"cooking_position":action.target_position})
+		if action_id=="mop_puddle":landmarks["standing_position"]=action.target_position
 		var anchor:Dictionary=world.activity_anchor(item,action_id,landmarks)
 		if attention is Vector3:anchor["attention_target"]=attention
 		if player.has_method("set_activity_anchor"):
@@ -2157,10 +2503,10 @@ func _activity_resources(action:Dictionary) -> Array[String]:
 	if action.has("target_position"):
 		var at:Vector3=action.target_position
 		var cell:Vector2i=Vector2i(roundi(at.x*2),roundi(at.z*2))
-		resources.append("standing:%d:%d" % [cell.x,cell.y])
+		resources.append("standing:%d:%d:%d" % [world.point_level(at),cell.x,cell.y])
 		if str(action.get("cooperation_role",""))=="helper":
 			for offset:Vector2i in [Vector2i(1,0),Vector2i(-1,0),Vector2i(0,1),Vector2i(0,-1)]:
-				resources.append("standing:%d:%d" % [cell.x+offset.x,cell.y+offset.y])
+				resources.append("standing:%d:%d:%d" % [world.point_level(at),cell.x+offset.x,cell.y+offset.y])
 	return resources
 
 func show_relationships() -> void:
@@ -2191,6 +2537,11 @@ func compact_button(b:Button) -> void:
 		b.add_theme_stylebox_override(style_name,style)
 
 func _safe_layout(value:Variant) -> Array:
+	# A legacy public venue can retain a canonical two-floor home. Its current
+	# journeys are empty; preserve the nested home's complete validated records.
+	if value is Array and value.any(func(entry:Variant):return entry is Dictionary and str(entry.get("kind",""))=="__construction" and entry.has("version")):
+		return value.duplicate(true) if world.validate_home_layout(value).is_empty() else []
+	if not household.journeys.is_empty():return value.duplicate(true) if value is Array else []
 	var result:Array=[]
 	if not value is Array:return result
 	for entry:Variant in value:
@@ -2357,19 +2708,22 @@ func capture_save_preview() -> void:
 	save_preview.resize(640,380,Image.INTERPOLATE_LANCZOS)
 
 func refresh_build_quote() -> void:
+	if is_instance_valid(roof_visibility_button):roof_visibility_button.text="Hide roofs" if world.construction.roofs_visible else "Show roofs"
 	if not is_instance_valid(build_quote_card) or not is_instance_valid(world.construction):return
 	var structure:LifeConstruction=world.construction
 	build_quote_card.visible=not structure.tool.is_empty()
 	if not build_quote_card.visible:return
-	if not structure.anchored and structure.tool in ["wall","room"]:
+	if structure.tool=="roof_edit" and structure.roof_edit_id.is_empty():
+		build_quote.text="Select a roof to edit · Esc to cancel";build_quote.add_theme_color_override("font_color",P.INK);return
+	if not structure.anchored and structure.tool in ["wall","room","floor","roof","roof_edit"]:
 		build_quote.text="Click the first corner · Esc to cancel"
 		build_quote.add_theme_color_override("font_color",P.INK)
 		return
 	var proposal:Dictionary=structure.proposal
-	if proposal.is_empty():build_quote.text="Point at a wall · Esc to cancel";return
+	if proposal.is_empty():build_quote.text="Point at the structure · Esc to cancel";return
 	var cost:int=int(proposal.get("cost",0))
 	if not bool(proposal.get("valid",false)):
-		build_quote.text="That space overlaps or is outside your lot"
+		build_quote.text=str(proposal.get("error","That space overlaps or is outside your lot"))
 		build_quote.add_theme_color_override("font_color",Color("a84f43"))
 	elif cost>sim.funds:
 		build_quote.text="§%d · You need §%d more" % [cost,cost-sim.funds]
@@ -2471,7 +2825,8 @@ func _minimal_sibling_links(links:Array) -> Array:
 		if a!=b:groups[b]=a;result.append(link)
 	return result
 
-func _refresh_aged_member(id: String) -> void:
+func _refresh_aged_member(id: String,epoch:int=-1,sender:LifeHousehold=null) -> void:
+	if (epoch>=0 and epoch!=load_epoch) or (sender!=null and sender!=household):return
 	var member: LifeSim = household.member_sim(id)
 	if member == null: return
 	var actor: LifeActor = world.actors.get(id) as LifeActor
@@ -2714,7 +3069,7 @@ func _sync_away_presence() -> bool:
 			# retain their actual position; saved away members reappear at exit.
 			if previous=="away" or not player.visible:player.position=_saved_vector(state.get("exit_position"),world.lot_exit_position(_member_index(bound_member_id)))
 			var destination:Vector3=world.lot_return_position(_member_index(bound_member_id))
-			path=world.path_to(player.position,destination);path_index=0
+			_set_route(destination)
 			if path.is_empty():show_notice("The return path is blocked. Clear the front garden to let this Lifelet come home.")
 	return changed
 

@@ -7,6 +7,11 @@ var home_puddle:String=""
 var maya_retained:String=""
 var maya_cleaned:String=""
 var leo_puddle:String=""
+func record_cleanup(_member:String,action:Dictionary)->void:
+	if str(action.id)=="mop_puddle":cleaning[str(action.target_id)]=int(cleaning.get(str(action.target_id),0))+1
+func watch_cleanup()->void:
+	# V2 named reload atomically replaces the household node and its signals.
+	if not app.household.member_action_finished.is_connected(record_cleanup):app.household.member_action_finished.connect(record_cleanup)
 func clock_minutes()->float:return (app.household.day-1)*1440.0+app.household.minutes
 func urgency()->Dictionary:
 	var data:Dictionary={}
@@ -38,6 +43,10 @@ func car_trip(destination:String,allow_pending:bool=true)->void:
 	var parked_simulation:bool=true
 	app.travel_to(destination)
 	check(app.mode=="travel" and not app.residents.trip.is_empty(),"Actual car travel begins from "+origin+" to "+destination+".")
+	var boarding:Dictionary=app.residents.trip.boarding.player
+	var endpoint:Vector3=boarding.get("endpoint",boarding.path[-1])
+	trace["boarding_distance"]=app.world.actors.player.position.distance_to(endpoint)
+	print("CAR_GATE begin ",origin," -> ",destination," boarding_distance=",trace.boarding_distance)
 	for index:int in 1500:
 		if app.mode!="travel":break
 		var phase:String=str(app.residents.trip.phase)
@@ -64,7 +73,7 @@ func car_trip(destination:String,allow_pending:bool=true)->void:
 		if phase!=after_phase:trace.events.append({"from":phase,"to":after_phase,"clock":clock_minutes(),"urgency":urgency(),"place":app.current_venue,"puddles":app.household.sanitation.puddles.size()})
 		if index%20==0:await process_frame
 	check(app.mode=="live" and app.current_venue==destination,"Actual car travel arrives at "+destination+".")
-	check(bool(trace.visible_boarding_motion) and bool(trace.car_motion),"The "+destination+" journey physically walks to the car and drives it.")
+	check((float(trace.boarding_distance)<=.001 or bool(trace.visible_boarding_motion)) and bool(trace.car_motion),"The "+destination+" journey physically drives, with boarding motion whenever the actual initial position requires it.")
 	check(static_clock and static_urgency and parked_simulation,"Boarding/driving animation for "+destination+" advances neither simulation nor bladder urgency continuously.")
 	check(trace.charge_events==1 and absf(clock_minutes()-initial_clock-15.0)<.00000001,"The complete "+destination+" trip charges exactly fifteen game minutes once.")
 	check(no_accidents,"No trip phase or hidden arrival creates a puddle at stale coordinates for "+destination+".")
@@ -72,7 +81,9 @@ func car_trip(destination:String,allow_pending:bool=true)->void:
 	trace["arrival_clock"]=clock_minutes();trace["arrival_urgency"]=urgency();trips.append(trace)
 	if not allow_pending:check(app.household.sanitation.get_state()==initial,"Healthy travel preserves the exact live sanitation ledger.")
 	check_place(destination,"Arrival at "+destination)
+	print("CAR_GATE arrived ",destination)
 func save_and_reload(title:String)->Dictionary:
+	print("CAR_GATE named save/load ",title)
 	check(app.save_game("",title),"A named save is written at "+app.current_venue+".")
 	var slot:String=app.active_save_id
 	var read:Dictionary=LifeSaveLibrary.read_slot(slot)
@@ -80,7 +91,7 @@ func save_and_reload(title:String)->Dictionary:
 	var expected:Dictionary=read.data.sanitation.duplicate(true)
 	var place:String=app.current_venue
 	var old_house:Node3D=app.world.house
-	app.load_game(slot)
+	app.load_game(slot);watch_cleanup()
 	check(app.current_venue==place and app.world.house!=old_house,"Same-process loading rebuilds the correct house at "+place+".")
 	check(app.household.sanitation.puddles==expected.puddles and app.household.sanitation.serial==int(expected.serial),"Same-process loading at "+place+" preserves exact decoded puddle data and integer identity.")
 	check_place(place,"Reload at "+place)
@@ -100,13 +111,24 @@ func create_arrival_accidents(place:String,expected_members:Array)->Array:
 	var count:int=app.household.sanitation.puddles.size();step(2.0)
 	check(app.household.sanitation.puddles.size()==count,"Pending arrival events reset once and do not spam new puddles.")
 	return added
-func clean(id:String,save_partly:bool=false)->void:
+func clean(id:String,save_partly:bool=false,yielding_id:String="")->void:
 	app.select_household_member(0);app.household.set_speed(1)
 	var item:Dictionary=app._find_item(id)
 	check(not item.is_empty(),"Cleanup target "+id+" exists in the current house.")
 	if item.is_empty():return
+	var idle_origin:Vector3=Vector3.INF
+	if not yielding_id.is_empty():
+		idle_origin=app.world.actors[yielding_id].position
+		var saved:Dictionary=app.household.sanitation.find(id)
+		var accident_origin:=Vector3(saved.position[0],saved.position[1],saved.position[2])
+		check(idle_origin.distance_to(accident_origin)<.001,"The legitimate idle housemate still stands at their retained arrival puddle before cleanup.")
+		check(app.world.approach(item).distance_to(idle_origin)<LifeTraversal.ROUTE_CLEARANCE,"The real cleanup destination falls inside the idle housemate's reserved route clearance.")
 	app.queue_interaction(item,"mop_puddle")
 	check(until(func()->bool:return str(app.sim.get_current_action().get("phase",""))=="active",180.0),"The Lifelet reaches "+id+" through actual cleanup navigation.")
+	if not yielding_id.is_empty():
+		check(app.world.actors[yielding_id].position.distance_to(idle_origin)>.1,"The idle housemate makes room using actual courtesy movement.")
+		check(app.world.actors[yielding_id].position.distance_to(app.world.actors.player.position)>=LifeTraversal.BODY_GAP-.00001,"The cleaner reaches the wet patch while respecting physical body clearance.")
+		check(app.household.member_sim(yielding_id).action_queue.is_empty(),"Courtesy walking creates no activity or cleanup reward for the idle housemate.")
 	step(2.0)
 	if save_partly:
 		var saved:Dictionary=await save_and_reload("Juniper Bay - partial cleanup at "+app.current_venue)
@@ -117,14 +139,13 @@ func clean(id:String,save_partly:bool=false)->void:
 	check(int(cleaning.get(id,0))==1 and app._find_item(id).is_empty(),"Cleanup removes "+id+" and its current-world target exactly once.")
 	check(not app.sim.queue_action("mop_puddle",id),"A stale cleanup request cannot recreate or clear "+id+" twice.")
 func run()->void:
-	app=load("res://scenes/main.tscn").instantiate();root.add_child(app);current_scene=app
+	app=MainScene.instantiate();root.add_child(app);current_scene=app
 	await frames(4);app.set_process(false);app.set_sound(false)
 	app.household_profiles=[{"name":"Alex Rivera","frame":0},{"name":"Jamie Rowan","frame":1}]
 	app.start_household();await frames(3);reset_needs()
 	for member:Dictionary in app.household.members:
 		member.sim.relationships.maya.friendship=30.0;member.sim.relationships.leo.friendship=30.0
-	app.household.member_action_finished.connect(func(_member:String,action:Dictionary):
-		if str(action.id)=="mop_puddle":cleaning[str(action.target_id)]=int(cleaning.get(str(action.target_id),0))+1)
+	watch_cleanup()
 	check(FileAccess.get_file_as_string("res://scripts/save_library.gd").contains('JSON.stringify(_json_safe(data), "\\t", true, true)'),"Combined root uses the full-precision production save writer.")
 	app.sim.needs.bladder=0.0;step(10.01)
 	check(place_puddles("home").size()==1,"The household begins with one real home accident.")
@@ -150,13 +171,14 @@ func run()->void:
 	await clean(home_puddle,true)
 	await car_trip("maya_home",false)
 	check(app._find_item(maya_cleaned).is_empty() and not app._find_item(maya_retained).is_empty(),"Returning to Maya keeps the cleaned puddle deleted and the uncleaned one present.")
-	await clean(maya_retained)
+	await clean(maya_retained,false,"housemate_1")
 	await car_trip("leo_home",false)
 	check(not app._find_item(leo_puddle).is_empty() and app.household.sanitation.puddles.size()==1,"Leo’s original puddle survives all other homes’ cleanup and returns.")
 	await clean(leo_puddle)
 	check(app.household.sanitation.puddles.is_empty() and visible_puddles().is_empty() and cleaning.size()==4 and cleaning.values().all(func(n:Variant)->bool:return int(n)==1),"All four real accidents clean exactly once across three independent homes.")
 	await save_and_reload("Juniper Bay - clean floors")
 	check(app.household.sanitation.puddles.is_empty(),"A same-process named reload does not resurrect cleaned location records.")
+	check(trips.any(func(trip:Dictionary)->bool:return float(trip.boarding_distance)>.1 and bool(trip.visible_boarding_motion)),"The complete car gate includes actual required boarding movement.")
 	var report:Dictionary={"checks":checks,"failures":failures,"trips":trips,"saves":saves,"cleaning":cleaning}
 	var file:=FileAccess.open("user://sanitation_travel.json",FileAccess.WRITE);file.store_string(JSON.stringify(report,"  ",true,true));file.close()
 	print("Sanitation travel: %d checks, %d failures." % [checks,failures.size()])

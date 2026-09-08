@@ -1,7 +1,7 @@
 extends "res://tests/test_sanitation.gd"
 ## Cross-system accident controls use actual paid cooking and carried food.
 func run()->void:
-	app=load("res://scenes/main.tscn").instantiate();root.add_child(app);current_scene=app
+	app=MainScene.instantiate();root.add_child(app);current_scene=app
 	await frames(4);app.set_process(false);app.set_sound(false);app.start_household();await frames(3);reset_needs()
 	var stove:Dictionary=first("stove")
 	app.queue_interaction(stove,"cook")
