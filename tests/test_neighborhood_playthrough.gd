@@ -51,7 +51,7 @@ func _create_eight() -> void:
 		edit.text = TEST_NAMES[i]
 		edit.text_changed.emit(edit.text)
 		await press("Look")
-		await press("Soft" if i % 2 == 0 else "Broad")
+		await press("Female" if i % 2 == 0 else "Male")
 		await press(["Crop", "Bob", "Curls"][i % 3])
 		await press("Wardrobe")
 		if is_instance_valid(button_matching("Casual")):

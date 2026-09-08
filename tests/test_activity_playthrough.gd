@@ -13,7 +13,7 @@ func _run() -> void:
 	app.household.member_action_finished.connect(func(_id: String, action: Dictionary) -> void:completed.append(str(action.id)))
 	await _enter_new_game()
 	await press("Look")
-	await press("Soft")
+	await press("Female")
 	await press("Crop")
 	await press("Wardrobe")
 	await press("Casual")

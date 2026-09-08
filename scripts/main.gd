@@ -329,9 +329,18 @@ func draw_creator() -> void:
 		var tab_button=button(tab_name,Vector2(1100+i*97,144),Vector2(89,40),func():set_creator_tab(tab_name),creator_tab==tab_name)
 		compact_button(tab_button);tab_button.size=Vector2(89,40)
 	if creator_tab=="Look":
-		small_caps("Body frame",Vector2(1102,202))
-		button("Soft",Vector2(1100,232),Vector2(137,39),func():profile.frame=0;refresh_preview(),profile.frame==0)
-		button("Broad",Vector2(1246,232),Vector2(137,39),func():profile.frame=1;refresh_preview(),profile.frame==1)
+		small_caps("Gender",Vector2(1102,202))
+		var gender_group := ButtonGroup.new()
+		# Keep the existing saved model choice: 0 = female, 1 = male.
+		for i in range(2):
+			var gender_name:String=["Female","Male"][i]
+			var selected:bool=int(profile.get("frame",0))==i
+			var choice=button(gender_name,Vector2(1100+i*146,232),Vector2(137,39),func():profile.frame=i;refresh_preview(),selected)
+			choice.name="Creator"+gender_name
+			choice.toggle_mode=true
+			choice.button_group=gender_group
+			choice.set_pressed_no_signal(selected)
+			choice.tooltip_text="Create a %s Lifelet" % gender_name.to_lower()
 		small_caps("Skin tone",Vector2(1102,292))
 		swatches(["f2d1b1","e7b98f","d9a17d","b77e58","925c40","613e30"],"skin_color",Vector2(1100,326),40,7)
 		small_caps("Hairstyle",Vector2(1102,385))

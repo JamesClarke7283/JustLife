@@ -241,7 +241,7 @@ func _creator_flow() -> void:
 		var edit: LineEdit = edits[0]
 		edit.text = "Rowan Playtest"
 		edit.text_changed.emit(edit.text)
-	await press("Broad")
+	await press("Male")
 	await press("Curls")
 	await press("Creative")
 	await press("Bookworm")
@@ -267,7 +267,7 @@ func _creator_flow() -> void:
 		second_name.text = "Ellis Playtest"
 		second_name.text_changed.emit(second_name.text)
 		await press("Look")
-		await press("Soft")
+		await press("Female")
 		await press("Bob")
 		if app.preview.has_method("set_face_feature"):
 			await _creator_face([0.15, 0.10, 0.25, 0.20], false, "Ellis")

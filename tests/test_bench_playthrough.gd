@@ -13,7 +13,7 @@ func _run() -> void:
 	app.set_sound(false)
 	await _enter_new_game()
 	await press("Look")
-	await press("Soft")
+	await press("Female")
 	await press("Crop")
 	await press("Wardrobe")
 	await press("Casual")
