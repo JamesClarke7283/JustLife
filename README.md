@@ -20,7 +20,7 @@ At a desk, **Do homework together…** lets a child or teen learn with a trusted
 
 **Explore** opens Juniper Gardens, The Reading Room and Common Ground Studio. Travel takes 15 in-game minutes and brings the household together. **Stories** presents opportunities and personal memories as the days pass. Adult relationships can become partnerships and commitments once mutual friendship and romance requirements are met; breakups have lasting relationship effects. **Build & buy** at home places, rotates, moves and sells furnishings, builds rooms/walls, opens doorways and changes floors.
 
-- Right-drag or Q/E: orbit. Mouse wheel: zoom. WASD/arrows: pan.
+- Right-drag or Q/E: orbit. Mouse wheel: zoom. Shift-drag, middle-drag or WASD/arrows: pan.
 - Space: pause. 1/2/3: normal/fast/very fast time.
 - B: Build & buy. R: rotate a furnishing. Escape: cancel placement or close a panel/pause.
 - F5: quick-save the current named life; creates its first named save when needed.

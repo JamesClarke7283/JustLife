@@ -44,6 +44,7 @@ var hud_refresh: float = 0
 var elapsed: float = 0
 var creator_spin: float = -.16
 var camera_drag: bool = false
+var camera_pan_button: int = MOUSE_BUTTON_NONE
 var creator_drag: bool = false
 var last_mouse: Vector2
 var pause_before_menu: int = 1
@@ -216,6 +217,7 @@ func small_caps(value:String,p:Vector2,s:Vector2=Vector2(260,24),parent:Node=ui)
 	return text_label(value.to_upper(),p,s,11,P.MUTED,false,parent)
 
 func clear_ui() -> void:
+	_clear_pointer_drags()
 	for child in ui.get_children():
 		ui.remove_child(child)
 		child.queue_free()
@@ -1519,7 +1521,7 @@ func show_help() -> void:
 	text_label("Make yourself at home.",Vector2(454,175),Vector2(526,63),36,P.INK,true,overlay)
 	paragraph("Click a furnishing or a neighbor to choose an activity. Your Lifelet walks there, then gets started. Queue activities and cancel them by clicking their ×. Needs change throughout the day; different activities restore them.",Vector2(458,257),Vector2(514,108),17,P.INK,overlay)
 	paragraph("Build friendships, practice skills, sell paintings, or do a paid shift at your desk. Your traits and aspirations shape what feels rewarding.",Vector2(458,377),Vector2(514,76),17,P.INK,overlay)
-	paragraph("CAMERA   Mouse wheel to zoom · right-drag to orbit\n                  WASD / arrows to pan · Q / E to rotate\nTIME          Space to pause · 1 / 2 / 3 for speed\nHOME       B for Build & buy · R to rotate furniture\nSAVE         F5 to save · F9 to continue your save\nMENU       Esc to close a panel or pause",Vector2(458,473),Vector2(514,164),15,P.MUTED,overlay)
+	paragraph("CAMERA   Mouse wheel to zoom · right-drag to orbit\n                  Shift-drag / WASD to pan · Q / E to rotate\nTIME          Space to pause · 1 / 2 / 3 for speed\nHOME       B for Build & buy · R to rotate furniture\nSAVE         F5 to save · F9 to continue your save\nMENU       Esc to close a panel or pause",Vector2(458,473),Vector2(514,164),15,P.MUTED,overlay)
 	button("Let's live",Vector2(458,659),Vector2(522,48),close_overlay,true,overlay)
 
 func show_person() -> void:
@@ -1956,6 +1958,44 @@ func _reconsider_waiting_activity() -> void:
 		_bind_member(bound_member_id)
 		wait_review=now+15.0
 
+func _clear_pointer_drags() -> void:
+	camera_pan_button=MOUSE_BUTTON_NONE
+	camera_drag=false
+	creator_drag=false
+
+func _notification(what:int) -> void:
+	if what==NOTIFICATION_WM_WINDOW_FOCUS_OUT:_clear_pointer_drags()
+
+func _camera_input_allowed() -> bool:
+	var focus=get_viewport().gui_get_focus_owner()
+	return mode in ["live","build"] and not overlay_open and not (focus is LineEdit or focus is TextEdit)
+
+func _pan_camera_drag(position:Vector2,relative:Vector2) -> void:
+	var plane=Plane(Vector3.UP,world.camera_target.y)
+	var previous:Variant=plane.intersects_ray(world.camera.project_ray_origin(position-relative),world.camera.project_ray_normal(position-relative))
+	var current:Variant=plane.intersects_ray(world.camera.project_ray_origin(position),world.camera.project_ray_normal(position))
+	if not previous is Vector3 or not current is Vector3:return
+	var movement:Vector3=previous-current
+	world.camera_target.x=clampf(world.camera_target.x+movement.x,-16,16)
+	world.camera_target.z=clampf(world.camera_target.z+movement.z,-12,12)
+	world.update_camera()
+
+func _input(event:InputEvent) -> void:
+	# A drag that starts in the world keeps its release even over a HUD control.
+	if event is InputEventMouseButton and not event.pressed:
+		if event.button_index==camera_pan_button:
+			camera_pan_button=MOUSE_BUTTON_NONE
+			get_viewport().set_input_as_handled()
+		if event.button_index==MOUSE_BUTTON_RIGHT:camera_drag=false
+		if event.button_index==MOUSE_BUTTON_LEFT:creator_drag=false
+	if event is InputEventMouseMotion and camera_pan_button!=MOUSE_BUTTON_NONE:
+		var held_mask:int=1 << (camera_pan_button-1)
+		if not _camera_input_allowed() or not (event.button_mask & held_mask):
+			_clear_pointer_drags()
+			return
+		_pan_camera_drag(event.position,event.relative)
+		get_viewport().set_input_as_handled()
+
 func _unhandled_input(event:InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode==KEY_ESCAPE:
@@ -1981,6 +2021,12 @@ func _unhandled_input(event:InputEvent) -> void:
 				KEY_F9:menus.show_picker("load")
 	if overlay_open:return
 	if event is InputEventMouseButton:
+		if event.pressed and _camera_input_allowed():
+			if event.button_index==MOUSE_BUTTON_MIDDLE or (event.shift_pressed and event.button_index in [MOUSE_BUTTON_LEFT,MOUSE_BUTTON_RIGHT]):
+				camera_pan_button=event.button_index
+				camera_drag=false
+				get_viewport().set_input_as_handled()
+				return
 		if event.button_index==MOUSE_BUTTON_RIGHT:camera_drag=event.pressed;last_mouse=event.position
 		if mode=="creator" and event.button_index==MOUSE_BUTTON_LEFT:
 			creator_drag=event.pressed;last_mouse=event.position
@@ -1992,6 +2038,9 @@ func _unhandled_input(event:InputEvent) -> void:
 		if mode=="creator" and creator_drag:
 			creator_spin+=event.relative.x*.012;preview.rotation.y=creator_spin
 		elif camera_drag and mode in ["live","build"]:
+			if not (event.button_mask & MOUSE_BUTTON_MASK_RIGHT):
+				camera_drag=false
+				return
 			world.camera_angle-=event.relative.x*.008
 			world.camera_elevation=clampf(world.camera_elevation+event.relative.y*.004,.35,1.30)
 			world.update_camera()
