@@ -1,6 +1,8 @@
 # Lifelet actor contract
 
-`LifeActor` owns appearance, procedural poses, expressions, props, the selection sprout, speech bubbles, and original vocal chatter. The controller owns the actor's navigation root position and facing. Call `configure(profile)` after adding the actor to the tree, then `animate(delta, simulation_speed, moving, active_action_id)` each frame. Speed zero freezes poses and stops the voice. `voice_enabled = false` also stops any currently playing voice immediately.
+`LifeActor` owns appearance, procedural poses, expressions, props, the selection sprout, speech state, and original vocal chatter. The controller owns the actor's navigation root position and facing. Call `configure(profile)` after adding the actor to the tree, then `animate(delta, simulation_speed, moving, active_action_id)` each frame. Speed zero freezes poses and stops the voice. `voice_enabled = false` also stops any currently playing voice immediately.
+
+`speech_presentation()` returns transient text and remaining lifetime, or an empty dictionary. The live interface sets `screen_speech` and arranges readable cards above animated heads; standalone actors retain the Label3D fallback. See [ACTIVITY_BUBBLES.md](ACTIVITY_BUBBLES.md) for projection, crowd priorities and reviewed limits.
 
 Profile fields: `frame` 0/1, `hair` 0 crop / 1 bob / 2 curls, `outfit` 0 casual / 1 jacket / 2 cardigan, `body_scale` .85–1.15, `height_scale` .93–1.08, and hexadecimal `skin_color`, `hair_color`, `top_color`, `bottom_color`, `eye_color`, `shoe_color`. `low_detail: true` selects the live-play LOD. During asset review, `rig_preview: true` loads the staged `character_rig` assets. Outfit selection also works through `set_outfit(index)` without reloading the actor. It requires the newer wardrobe assets.
 

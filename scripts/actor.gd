@@ -31,6 +31,7 @@ var _rest_rotations: Dictionary = {}
 var _ring: MeshInstance3D
 var _marker: Node3D
 var _speech: Label3D
+var screen_speech: bool = false
 var _book: Node3D
 var _brush: Node3D
 var _snack: Node3D
@@ -745,11 +746,16 @@ func clear_speech() -> void:
 	if is_instance_valid(_speech):_speech.text="";_speech.visible=false
 
 
+func speech_presentation() -> Dictionary:
+	if _speech_remaining <= 0.0 or not is_instance_valid(_speech) or _speech.text.is_empty(): return {}
+	return {"text": _speech.text, "remaining": _speech_remaining}
+
+
 func speech(text: String) -> void:
 	_ensure_nodes()
 	_speech.text = text.strip_edges().left(96)
 	_speech_remaining = clampf(2.5 + float(text.length()) * 0.04, 3.0, 7.0)
-	_speech.visible = not _speech.text.is_empty()
+	_speech.visible = not screen_speech and not _speech.text.is_empty()
 	# Queue sound until animate supplies the current game speed; pause stays silent.
 	var lower: String = text.to_lower()
 	_pending_voice = "reaction"
@@ -777,7 +783,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 	_update_grips(animation_delta,moving,action_id)
 	_time += animation_delta
 	_speech_remaining = maxf(0.0, _speech_remaining - delta)
-	_speech.visible = _speech_remaining > 0.0 and not _speech.text.is_empty()
+	_speech.visible = not screen_speech and _speech_remaining > 0.0 and not _speech.text.is_empty()
 	_marker.position.y = (_authored_height+.21) * _height + sin(_time * 2.0 + _phase_offset) * 0.026
 	_marker.rotation.y = sin(_time * 0.8) * 0.20
 	var t: float = _time + _phase_offset

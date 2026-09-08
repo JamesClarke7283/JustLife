@@ -136,6 +136,64 @@ func _resume_pair() -> void:
 		if node.is_visible_in_tree() and node.text=="Do homework together…":found=node.disabled and not node.tooltip_text.is_empty()
 	check(found,"A completed daily assignment disables another shared session with a reason.")
 	app.close_overlay()
+	await _review_speech()
+
+func _review_speech() -> void:
+	await frames(3)
+	var bubbles: Control = app.activity_bubbles
+	check(bubbles.visible and bubbles.cards.size()==2,"Completed shared homework shows both speakers in the live overlay.")
+	var remaining:float=app.player.speech_presentation().remaining
+	await create_timer(.4).timeout
+	check(is_equal_approx(app.player.speech_presentation().remaining,remaining),"Pause holds readable speech for inspection.")
+	for zoom:float in [18.0,30.0,7.0]:
+		if zoom==7.0:app.world.camera_target=(app.world.actors.player.position+app.world.actors.housemate_1.position)*.5+Vector3(0,.7,0)
+		app.world.camera.size=zoom;app.world.update_camera();await frames(4)
+		_check_bubble_layout("camera zoom %d"%zoom)
+		await screenshot("06_speech_zoom_%d"%zoom,false,false)
+	root.size=Vector2i(960,600);await frames(10)
+	check(root.size==Vector2i(960,600) and DisplayServer.window_get_size()==Vector2i(960,600),"The rendered window actually resized to 960 by 600.")
+	app.world.camera_target=Vector3.ZERO
+	app.world.camera.size=18;app.world.update_camera();await frames(4)
+	_check_bubble_layout("960 by 600 window")
+	await screenshot("07_speech_small_window",false,false)
+	await press("☰");await frames(3)
+	check(not bubbles.visible,"Opening a modal hides in-world bubbles.")
+	await press("Resume");await frames(3)
+	check(bubbles.visible,"Closing the modal restores paused speech.")
+	# Controlled presentation stress: these are existing actors at their real
+	# positions. Supplying text tests wrapping/placement, not simulated activity.
+	for actor:LifeActor in app.world.actors.values():
+		actor.speech("Let's spend a little time together and make something to remember.")
+	await frames(4);_check_bubble_layout("four simultaneous presentation messages",false)
+	await screenshot("08_speech_four_actors",false,false)
+	app.world.camera_target=Vector3(100,0,100);app.world.update_camera();await frames(3)
+	check(bubbles.cards.is_empty(),"Speakers outside the camera do not leave detached captions behind.")
+	for actor:LifeActor in app.world.actors.values():actor.clear_speech()
+	app.world.camera_target=Vector3.ZERO;app.world.update_camera();await frames(3)
+	check(bubbles.cards.is_empty(),"Clearing speech removes all presentation cards.")
+	root.size=Vector2i(1440,900);await frames(3)
+
+func _check_bubble_layout(context:String,require_homework_pair:bool=true) -> void:
+	var shown:Array[Rect2]=[]
+	var speakers:Array[String]=[]
+	var bounds:Rect2=Rect2(Vector2(18,96),Vector2(app.get_viewport().get_visible_rect().size.x-36,594))
+	for id:String in app.activity_bubbles.cards:
+		var card:Panel=app.activity_bubbles.cards[id]
+		if not card.is_visible_in_tree():continue
+		var area:Rect2=card.get_global_rect()
+		check(bounds.encloses(area),"Speech stays inside the live viewport: "+context+" / "+id)
+		for prior:Rect2 in shown:check(not area.intersects(prior),"Simultaneous speech cards remain separate: "+context)
+		shown.append(area)
+		speakers.append(id)
+		var text:Label=card.get_node("Words")
+		var physical:float=text.get_theme_font_size("font_size")*app.get_viewport().get_screen_transform().get_scale().x
+		check(physical>=15.5,"Speech text stays at least fifteen physical pixels: "+context+" / "+id)
+		check(text.size.y>=text.get_minimum_size().y,"Speech wraps without vertical truncation: "+context+" / "+id)
+		check(not app.world.actors[id]._speech.visible,"No duplicate tiny world label behind the overlay: "+id)
+	if require_homework_pair:
+		check("player" in speakers and "housemate_1" in speakers,"Both nearby homework speakers remain readable: "+context)
+	else:
+		check("player" in speakers and shown.size()>=2,"Crowded speech preserves the selected speaker and separate nearby conversation: "+context)
 
 func _pair_view(label_text:String) -> void:
 	var before:Transform3D=app.world.camera.transform

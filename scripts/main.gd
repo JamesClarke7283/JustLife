@@ -85,6 +85,7 @@ var build_quote:Label
 var build_quote_card:Panel
 var release_probe:RefCounted
 var creator_family_links:Array=[]
+var activity_bubbles:Control
 
 func _ready() -> void:
 	DisplayServer.window_set_title("JustLife — make room for your story")
@@ -108,6 +109,10 @@ func _ready() -> void:
 	var canvas=CanvasLayer.new()
 	canvas.name="Interface"
 	add_child(canvas)
+	activity_bubbles=preload("res://scripts/activity_bubbles.gd").new()
+	activity_bubbles.name="ActivityBubbles"
+	activity_bubbles.app=self
+	canvas.add_child(activity_bubbles)
 	ui=Control.new()
 	ui.name="UI"
 	ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -1382,7 +1387,7 @@ func _cancel_blocked_action(generation:int,action:Dictionary,member_id:String=""
 
 func on_action_finished(action:Dictionary) -> void:
 	if is_instance_valid(player):
-		player.speech({"cook":"Delicious!","read":"One more chapter…","paint":"Made something lovely.","friendly":"Good to talk with you!","joke":"Ha!","deep_talk":"I understand.","water":"Looking greener.","work":"All done!"}.get(action.id,"That feels better."))
+		player.speech({"cook":"Delicious!","read":"One more chapter…","paint":"Made something lovely.","friendly":"Good to talk with you!","joke":"Ha!","deep_talk":"I understand.","water":"Looking greener.","work":"All done!","homework":"Ready for tomorrow.","help_homework":"We worked it out."}.get(action.id,"That feels better."))
 	refresh_hud()
 
 func show_notice(message:String) -> void:
