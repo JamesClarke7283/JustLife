@@ -1,2 +1,18 @@
 # Normalize EOL for all files that Git considers text files.
 * text=auto eol=lf
+
+# Authored assets are binary; source scripts and scene/import settings stay text.
+*.blend binary
+*.glb binary
+*.png binary
+*.jpg binary
+*.webp binary
+*.wav binary
+*.ttf binary
+*.otf binary
+
+# Keep GitHub's code statistics focused on maintained game code.
+addons/** linguist-vendored
+licenses/** linguist-vendored
+*.import linguist-generated
+*.uid linguist-generated

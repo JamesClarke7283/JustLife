@@ -1,0 +1,9 @@
+{
+  "status": "Unpromoted hair study, hair revision 19 / study revision 3; no final critic acceptance.",
+  "origin": "Copied from local art/iterations/character_hair_v19 during source-tree cleanup. Generator changed only to use portable maintained source paths and validate its baseline.",
+  "files": {
+    "characters_adult_hair_v19.blend": "be51e04c03d69abc8bcf1656efde88bd3860187918d74e9fb6465b1db4832242",
+    "characters_child_hair_v19.blend": "507962d3b333910015b2003184d19556a9e4e58f5e0d7ea8062339c0eb69b3eb"
+  },
+  "baseline_hashes": "art/source/character_v18_production_hashes.json"
+}

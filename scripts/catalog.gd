@@ -2,6 +2,7 @@ extends RefCounted
 class_name LifeCatalog
 
 const ITEMS = {
+	"bench": {"label":"Garden conversation bench", "category":"Comfort", "price":140, "size":Vector2(2,.72), "height":1.05, "color":"bb946c"},
 	"sofa": {"label":"Sunday sofa", "category":"Comfort", "price":620, "size":Vector2(2.6,1.0), "height":1.1, "color":"78a599"},
 	"bed": {"label":"Slow morning bed", "category":"Comfort", "price":840, "size":Vector2(1.95,2.3), "height":1.4, "color":"c58a73"},
 	"fridge": {"label":"Fresh start fridge", "category":"Kitchen", "price":520, "size":Vector2(.9,.85), "height":1.9, "color":"86ada0"},

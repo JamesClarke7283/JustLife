@@ -1,0 +1,7 @@
+# JustLife application icon
+
+Generated with the built-in image generation tool, 8 September 2026. Final asset: assets/ui/justlife-icon.png. The image is copied into the project and used as its Godot application icon and UI wordmark emblem.
+
+Final prompt:
+
+Use case: logo-brand. Create one finished original application icon for JustLife, a warm and thoughtful life simulation game about creating people, building their home and growing relationships. Square 1024 by 1024 icon. A single bold, elegant emblem: a softly rounded ivory house silhouette encloses a small warm coral heart; the roof line flows naturally into a pair of fresh sage sprout leaves, symbolizing a life being nurtured. Make the home, heart and growth read as one carefully designed cohesive mark, not a pile of separate symbols. Deep muted teal rounded-square tile, soft satin ceramic dimensionality, gentle warm directional light, precise smooth beveled edges, restrained depth. Palette matches the game's existing cream #fffdf7, teal #397e70, sage #a7c39b and coral #cd8069. Centered strong silhouette, generous but not excessive safe margin, legible at 32 px. Refined premium indie life-simulation game art direction, inviting and memorable. The artwork must fill the square as a ready-to-use app icon, with genuinely transparent pixels only outside the rounded-square corners. No text, no lettering, no borders outside the tile, no scenery, no diamonds or plumbobs, no Sims logo or existing franchise imagery, no stock icon sheet, no mockup, no watermark.

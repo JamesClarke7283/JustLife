@@ -1,0 +1,10 @@
+{
+  "purpose": "Immutable original Blender mesh inputs for the accepted v3 hand geometry, weights and grip morphs used by the surface-repair generator.",
+  "origin": "Local approved grip_v3_frozen archive; copied without modification.",
+  "files": {
+    "characters_child_grip.blend": "de27bc10963be4f71c431ca40cfb927f82d5fc58da97e92acf8eb1512e231531",
+    "characters_elder_grip.blend": "b8124b5641d420aef5d3c1c82827a2395e427b9a6ebda4002a5a45555e0d4e7c",
+    "characters_grip.blend": "b0ad7956f8a38638d2c202fe57638a49284363f6d6eda844fcea55212fcef205",
+    "characters_teen_grip.blend": "d919110a67092f2e95e0905c1427dcacf28c0672a5918832d5f8bf0f993e19de"
+  }
+}

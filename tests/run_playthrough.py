@@ -20,11 +20,19 @@ def run():
     parser.add_argument("--source",type=Path,default=Path(__file__).resolve().parents[1])
     parser.add_argument("--godot",default=shutil.which("godot") or "godot")
     parser.add_argument("--timeout",type=int,default=240)
+    parser.add_argument("--suite",choices=("home","neighborhood","menus","bench","creator","family","activity","lifecycle","school","school_presentation","desk","chair","grip","genealogy","grip_birthday","family_rewards","surface","autonomy_week","supported_homework"),default="home")
     args=parser.parse_args()
     root=Path(tempfile.mkdtemp(prefix="justlife-playthrough-"))
+    script={"home":"test_playthrough.gd","neighborhood":"test_neighborhood_playthrough.gd","menus":"test_menu_edges.gd","bench":"test_bench_playthrough.gd","creator":"test_creator_playthrough.gd","family":"test_family_playthrough.gd","activity":"test_activity_playthrough.gd","lifecycle":"test_lifecycle_playthrough.gd","school":"test_school_playthrough.gd","school_presentation":"test_school_presentation.gd","desk":"test_desk_clearance.gd","chair":"test_shared_chair.gd","grip":"test_grip_playthrough.gd","genealogy":"test_genealogy_playthrough.gd","grip_birthday":"test_grip_birthday.gd","family_rewards":"test_family_rewards_playthrough.gd","surface":"test_surface_playthrough.gd","autonomy_week":"test_autonomy_week.gd","supported_homework":"test_supported_homework_ui.gd"}[args.suite]
+    evidence_folder={"home":"playthrough","neighborhood":"neighborhood_playthrough","menus":"menu_edges","bench":"bench_playthrough","creator":"creator_playthrough","family":"family_playthrough","activity":"activity_playthrough","lifecycle":"lifecycle_playthrough","school":"school_playthrough","school_presentation":"school_presentation","desk":"desk_clearance","chair":"shared_chair","grip":"activity_playthrough","genealogy":"genealogy_playthrough","grip_birthday":"grip_birthday","family_rewards":"family_rewards","surface":"activity_playthrough","autonomy_week":"autonomy_week","supported_homework":"supported_homework"}[args.suite]
+    expected_file={"home":"playthrough_expected.json","neighborhood":"neighborhood_expected.json","menus":"menu_edges_no_resume.json","bench":"bench_no_resume.json","creator":"creator_no_resume.json","family":"family_expected.json","activity":"activity_no_resume.json","lifecycle":"lifecycle_expected.json","school":"school_expected.json","school_presentation":"school_presentation_no_resume.json","desk":"desk_no_resume.json","chair":"chair_no_resume.json","grip":"grip_no_resume.json","genealogy":"genealogy_expected.json","grip_birthday":"grip_birthday_no_resume.json","family_rewards":"family_rewards_no_resume.json","surface":"surface_no_resume.json","autonomy_week":"autonomy_expected.json","supported_homework":"supported_homework_expected.json"}[args.suite]
     source=args.source.resolve()
     for folder in ("assets","scripts","scenes","tests"):
         shutil.copytree(source/folder,root/folder)
+    # Allows rerunning a frozen production snapshot with a corrected harness.
+    for harness in ("test_playthrough.gd", "test_neighborhood_playthrough.gd", "test_menu_edges.gd", "test_bench_playthrough.gd", "test_creator_playthrough.gd", "test_family_playthrough.gd", "test_activity_playthrough.gd", "test_lifecycle_playthrough.gd", "test_school_playthrough.gd", "test_school_presentation.gd", "test_desk_clearance.gd", "test_shared_chair.gd", "test_grip_playthrough.gd", "test_genealogy_playthrough.gd", "test_grip_birthday.gd", "test_family_rewards_playthrough.gd", "test_surface_playthrough.gd", "test_autonomy_week.gd", "test_supported_homework_ui.gd"):
+        if Path(__file__).with_name(harness).is_file():
+            shutil.copy2(Path(__file__).with_name(harness),root/"tests"/harness)
     if (source/".godot/imported").is_dir():
         shutil.copytree(source/".godot/imported",root/".godot/imported")
     for metadata in ("uid_cache.bin",):
@@ -44,8 +52,10 @@ def run():
     env["XDG_DATA_HOME"]=str(root/"userdata")
     env["XDG_CONFIG_HOME"]=str(root/"config")
     env["XDG_CACHE_HOME"]=str(root/"cache")
-    manifests={str(p.relative_to(source)):hashlib.sha256(p.read_bytes()).hexdigest()
-               for folder in ("scripts","tests","scenes") for p in (source/folder).glob("*") if p.is_file()}
+    manifests={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest()
+               for folder in ("scripts","tests","scenes") for p in (root/folder).glob("*") if p.is_file()}
+    for p in (root/"assets").rglob("*.glb"):
+        manifests[str(p.relative_to(root))]=hashlib.sha256(p.read_bytes()).hexdigest()
     (root/"source_snapshot.json").write_text(json.dumps({"source":str(source),"time":time.time(),"hashes":manifests},indent=2))
     print("ISOLATED_PLAYTHROUGH="+str(root),flush=True)
     # Headless is used only for import. Gameplay runs below have an actual window.
@@ -55,7 +65,7 @@ def run():
         raise SystemExit("Import failed; inspect "+str(root/"import.log"))
     results=[]
     for stage,extras in (("playthrough",[]),("resume",["--","--resume-only"])):
-        command=[args.godot,"--path",str(root),"--resolution","1440x900","--audio-driver","Dummy","--script","res://tests/test_playthrough.gd",*extras]
+        command=[args.godot,"--path",str(root),"--resolution","1440x900","--audio-driver","Dummy","--script","res://tests/"+script,*extras]
         with (root/f"{stage}.log").open("w") as log:
             try:
                 result=subprocess.run(command,env=env,stdout=log,stderr=subprocess.STDOUT,timeout=args.timeout)
@@ -64,17 +74,17 @@ def run():
                 code=124
         log_text=(root/f"{stage}.log").read_text()
         runtime_errors=re.findall(r"^(?:SCRIPT ERROR|ERROR):.*",log_text,re.M)
-        result_path=root/"art/playthrough"/("resume_results.json" if stage=="resume" else "playthrough_results.json")
+        result_path=root/"art"/evidence_folder/("resume_results.json" if stage=="resume" else "playthrough_results.json")
         if runtime_errors or not result_path.is_file():
             code=code or 1
         print(stage+" exit="+str(code)+" runtime_errors="+str(len(runtime_errors))+" log="+str(root/f"{stage}.log"),flush=True)
         results.append({"stage":stage,"exit_code":code,"runtime_errors":runtime_errors,"report_exists":result_path.is_file()})
         # Resume requires the first stage to have written a save, but failures in
         # other assertions should not hide a useful persistence verification.
-        if stage=="playthrough" and not list((root/"userdata").rglob("playthrough_expected.json")):
+        if stage=="playthrough" and not list((root/"userdata").rglob(expected_file)):
             break
     (root/"run_results.json").write_text(json.dumps(results,indent=2))
-    print("EVIDENCE="+str(root/"art/playthrough"),flush=True)
+    print("EVIDENCE="+str(root/"art"/evidence_folder),flush=True)
     raise SystemExit(0 if all(r["exit_code"]==0 for r in results) else 1)
 
 if __name__=="__main__":

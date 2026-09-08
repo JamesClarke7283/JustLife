@@ -222,3 +222,7 @@ func refresh_decorations() -> void:
 			for e in records:
 				if wall_rect(e).grow(.25).has_point(Vector2(n.position.x,n.position.z)):supported=true;break
 			n.visible=supported
+		elif n.has_meta("garden_decoration"):
+			n.visible=true
+			for floor:Dictionary in floor_records:
+				if wall_rect(floor).grow(.15).has_point(Vector2(n.position.x,n.position.z)):n.visible=false;break

@@ -1,0 +1,33 @@
+# Independent review — repaired characters and connected families
+
+8 September 2026. **Full-request score: 7.2/10.** The reviewed combined source is accepted for promotion; this does not independently certify a subsequently packaged binary. The user's 10/10 objective remains unmet.
+
+| Dimension | Weight | Score | Reason |
+|---|---:|---:|---|
+| Visual and character quality | 20% | 6.8 | Facial features now remain attached in profile and expression extremes; cooking/eating grips and child cake support work in the actual world. Hair still looks coarse/repetitive, anatomy and facial expressions are strongly procedural, and animation variety remains limited. |
+| Usability and flow | 15% | 7.7 | Creation, move-in, menus, saves, queues, household selection, settings and the family tree form a coherent flow. The newly focused tree card stays visible; fresh friendship goals describe an earned interaction. |
+| Simulation and interaction depth | 25% | 7.3 | Grounded actions, needs, progression, stories, schooling, aging and persistent kinship now interact. Genealogy survives a child becoming an adult; romance restrictions remain consistent. Family-specific everyday behavior is still shallow. |
+| Creative breadth and sustained play | 25% | 7.1 | Multiple Lifelets, age models, face controls, three outfit silhouettes, editable homes, public destinations, stories and three-generation genealogy provide meaningful scope. Build/CAS content and long-term household possibilities remain much narrower than the requested reference experience. |
+| Reliability and delivery | 15% | 7.5 | Extensive isolated stateful and rendered checks cover consequential saves, invalid actions and the reviewed fixes. The final source passes these focused checks; broad hardware/resolution testing and the new packaged artifact are not independently established here. |
+
+Weighted mean: **7.24**, rounded to **7.2**. This score uses the original full-request rubric, not a reduced “starter demo” target. No score was awarded for merely stopping iteration.
+
+## Final evidence
+
+The exact combined snapshot is `/tmp/justlife-playthrough-surface-final-r4sidh_q`. It contains all 16 v18 surface-revision-2 GLBs from the model agent's frozen overlay, the actor candidate SHA-256 `ef20e62accd5fdf8fc1c493985bdd1d8d6c2249bfd079ff5a45f4a16f9f7defb`, and root's current family/reward/menu/world source. Exact source/model and overlay hashes are preserved in `art/screenshots/surface_iteration_08/`.
+
+- **78 adult rendered checks, zero runtime errors.** The actual creator and live actor report v18/revision-2 metadata. Both strict creator profiles show connected facial features. Normal routed cooking and eating preserve real costs, completion effects, pause and cancellation. Fingers surround the spoon; the left palm supports the bowl from underneath. The repaired mouth remains connected in the eating close view.
+- **66 child rendered checks, zero runtime errors.** Public Child+Adult creation leads to a real birthday, candle blow-out, applause, exact §30 charge and transition into Teen. The active birthday turns toward the room without changing its reached world position. Across **423 visible-cake frame samples**, no sampled cake vertex enters the fridge volume, including the initial turn. Early-turn screenshots and the clear room-side close view corroborate this; the camera on the appliance side is occluded and is not counted as usable visual evidence.
+- **Genealogy:** 210 first-process and 135 fresh-process checks passed on the preceding frozen family checkpoint. Eight members, both parents, grandparent/grandchild reciprocity, shared-parent siblings, invalid creator edits, removal remapping, three real birthdays and named restart were verified. A separate 138-check fresh-load follow-up verifies the focused-card scrolling fix. A 37-check public fresh-family flow verifies no reward at move-in or partial/canceled chat, exactly one reward for each participant after a completed conversation, and no repeat payment. These overlapping follow-up counts are not summed as unique coverage. See `iteration_08_genealogy.md`.
+
+Static inspection covered neutral/profile/identity/expression samples from all four authored age families, plus Bob and Curls side/three-quarter views. The detached lips, brows, nostril pieces and crop roots found earlier are repaired in the viewed samples. Directly inspected static images are archived alongside the runtime evidence; the critic does not claim to have individually inspected all 90 generated gallery images.
+
+The earlier adult bowl-hand penetration and child cake/fridge overlap were rejected, corrected, and rechecked. Their evidence remains in `iteration_08_grip.md`; the profile defect and staged repair history remain in `iteration_08_profile.md`. Original score reductions and failed/abandoned harness attempts have not been erased.
+
+## Three highest-impact next priorities
+
+1. **More natural character art and animation.** Bob's near-identical heavy side locks and the Curls bead-like surface still look assembled; broad face extremes produce angular cheek/jaw transitions, and expressions/action gestures are limited. Improve coherent hair masses, skin/eye treatment and expressive movement. Acceptance should include both profiles, identity extremes, different ages/frames, and actual social/food/furniture interaction transitions at normal speed.
+2. **Family gameplay that produces sustained stories.** The new tree records existing household ancestry; it does not establish birth/adoption, absent/deceased relatives, parenting, shared family meals/celebrations, independent households or inheritance. Add a coherent playable family loop with visible relationship and need consequences, then verify several unscripted game days and a restart across its major transitions.
+3. **A broader character and home-building catalogue.** Three clothing silhouettes, a small furnishing catalogue and simple home construction leave the user's requested freedom substantially underfilled. Expand meaningful wardrobe identities and usable room/build options, including architectural completion and multilevel possibilities where supported. Verify costs, invalid placement, routing, camera cutaway and saved restoration for the added content.
+
+This review used actual Godot Forward+ rendering at 1440×900 on the available desktop. It does not establish broad performance targets, smaller-window accessibility, perceived audio quality or complete parity with the reference game's mechanics/content. The final distribution probe and installation/startup verification remain the packaging owner's responsibility.

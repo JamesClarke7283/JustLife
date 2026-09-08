@@ -5,6 +5,8 @@ class_name LifeActor
 const JOINT_NAMES: Array[String] = ["Head", "Arm_L", "Arm_R", "Forearm_L", "Forearm_R", "Leg_L", "Leg_R", "Shin_L", "Shin_R"]
 const HAIR_NAMES: Array[String] = ["Hair_Crop", "Hair_Bob", "Hair_Curls"]
 const OUTFIT_NAMES: Array[String] = ["Outfit_Casual", "Outfit_Jacket", "Outfit_Cardigan"]
+const VERIFIED_AGE_ASSETS: Array[String] = ["child","teen","elder"]
+const IDENTITY_KEYS: Array[String] = ["face_round", "jaw_strong", "nose_wide", "eye_spacing"]
 
 var profile: Dictionary = {}
 var visual: Node3D
@@ -33,16 +35,46 @@ var _book: Node3D
 var _brush: Node3D
 var _snack: Node3D
 var _watering_can: Node3D
+var _birthday_cake: Node3D
+var _cake_center: Node3D
+var _cake_flames: Array[Node3D] = []
+var _birthday_weight: float = 0.0
+var _cooking_bowl: Node3D
+var _cooking_spoon: Node3D
+var _bowl_center: Node3D
+var _spoon_tip: Node3D
+var _arm_rest: Dictionary = {}
+var _motion_action: String = ""
+var _action_time: float = 0.0
+var _cook_weight: float = 0.0
+var _snack_weight: float = 0.0
 var _time: float = 0.0
 var _speech_remaining: float = 0.0
 var _height: float = 1.0
+var _authored_height: float = 1.76
+var _hip_height: float = .90
+var _knee_height: float = .548
+var _proportion: float = 1.0
+var _mouth_anchor: Vector3 = Vector3(0,.054,.114)
+var _palm_anchors: Dictionary = {}
+var _model_age: String = "young_adult"
 var _phase_offset: float = 0.0
 var _rig_bones: Array = []
 var _blink_shapes: Array = []
 var _smile_shapes: Array = []
+var _sit_shapes: Array = []
+var _identity_shapes: Dictionary = {}
+var _grip_shapes: Dictionary = {"L":[],"R":[]}
+var _grip_amounts: Dictionary = {"L":0.0,"R":0.0}
+var _grip_anchors: Dictionary = {}
+var _hand_props: Array = []
+var _sit_amount: float = 0.0
+var _hair_bob: Node3D
+var _hair_bob_rest_scale: Vector3 = Vector3.ONE
 var _blink_wait: float = 2.5
 var _blink_elapsed: float = -1.0
 var _smile: float = 0.0
+var _activity_anchor: Dictionary = {}
 
 
 func _ready() -> void:
@@ -105,8 +137,8 @@ func _ensure_nodes() -> void:
 	add_child(_voice)
 	for category: String in ["greeting", "happy", "thoughtful", "argument", "reaction"]:
 		var audio_path: String = "res://assets/audio/voice_%s.wav" % category
-		if FileAccess.file_exists(audio_path):
-			var stream: AudioStreamWAV = AudioStreamWAV.load_from_file(audio_path)
+		if ResourceLoader.exists(audio_path):
+			var stream: AudioStreamWAV = load(audio_path) as AudioStreamWAV
 			if stream != null:
 				_voice_streams[category] = stream
 	set_selected(selected)
@@ -124,14 +156,33 @@ func configure(new_profile: Dictionary) -> void:
 	_rig_bones.clear()
 	_blink_shapes.clear()
 	_smile_shapes.clear()
+	_sit_shapes.clear()
+	_identity_shapes.clear()
+	_grip_shapes = {"L":[],"R":[]}
+	_grip_amounts = {"L":0.0,"R":0.0}
+	_hand_props.clear()
+	_hair_bob = null
+	_sit_amount = 0.0
+	_cook_weight = 0.0
+	_birthday_weight = 0.0
+	_cake_flames.clear()
+	_snack_weight = 0.0
+	_motion_action = ""
+	_action_time = 0.0
+	_arm_rest.clear()
+	_smile = 0.0
+	_activity_anchor = {}
 	var frame: int = clampi(int(profile.get("frame", 0)), 0, 1)
 	var path: String = "res://assets/models/character_broad.glb" if frame == 1 else "res://assets/models/character.glb"
 	if bool(profile.get("low_detail", false)):
 		var lod_path: String = "res://assets/models/character_broad_lod.glb" if frame == 1 else "res://assets/models/character_lod.glb"
 		if ResourceLoader.exists(lod_path):
 			path = lod_path
+	var stage: String = str(profile.get("age_stage","young_adult"))
+	if stage in ["child","teen","elder"]:
+		path = _age_model_path(stage,frame,bool(profile.get("low_detail",false)))
 	# Staged rigs can be reviewed without replacing the released articulated assets.
-	if bool(profile.get("rig_preview", false)):
+	if bool(profile.get("rig_preview", false)) and stage not in ["child","teen","elder"]:
 		var rig_path: String = "res://assets/models/character_broad_rig" if frame == 1 else "res://assets/models/character_rig"
 		rig_path += "_lod.glb" if bool(profile.get("low_detail", false)) else ".glb"
 		if ResourceLoader.exists(rig_path):
@@ -142,6 +193,7 @@ func configure(new_profile: Dictionary) -> void:
 	var scene: PackedScene = load(path)
 	_model = scene.instantiate()
 	visual.add_child(_model)
+	_read_age_landmarks(stage)
 	var body_scale: float = clampf(float(profile.get("body_scale", 1.0)), 0.85, 1.15)
 	_height = clampf(float(profile.get("height_scale", 1.0)), 0.93, 1.08)
 	visual.scale = Vector3(body_scale, _height, body_scale)
@@ -153,29 +205,128 @@ func configure(new_profile: Dictionary) -> void:
 	_voice_cooldown = _voice_rng.randf_range(0.2, 1.0)
 	_blink_wait = 1.5 + _phase_offset * 0.45
 	_blink_elapsed = -1.0
-	_voice.position.y = 1.5 * _height
+	_voice.position.y = (_authored_height-.26) * _height
 	var hair_index: int = clampi(int(profile.get("hair", 0)), 0, 2)
 	for index: int in range(HAIR_NAMES.size()):
 		var group: Node3D = _model.find_child(HAIR_NAMES[index], true, false) as Node3D
 		if group != null:
 			group.visible = index == hair_index
+			if HAIR_NAMES[index] == "Hair_Bob":
+				_hair_bob = group
+				_hair_bob_rest_scale = group.scale
 	for joint_name: String in JOINT_NAMES:
 		var joint: Node3D = _model.find_child(joint_name, true, false) as Node3D
 		if joint != null:
 			_joints[joint_name] = joint
 			_rest_rotations[joint_name] = joint.rotation
+	for side: String in ["L", "R"]:
+		if _joints.has("Arm_" + side) and _joints.has("Forearm_" + side):
+			var shoulder: Node3D = _joints["Arm_" + side]
+			var elbow: Node3D = _joints["Forearm_" + side]
+			_arm_rest[side] = {"shoulder": _model.to_local(shoulder.global_position),
+				"upper": elbow.position, "lower": _palm_offset(side), "local_shoulder":shoulder.position,
+				"space":_model.global_transform.affine_inverse()*shoulder.get_parent().global_transform}
 	_discover_deformation(_model)
+	for key: String in IDENTITY_KEYS:
+		var value: Variant = profile.get(key, 0.0)
+		set_face_feature(key, float(value) if value is float or value is int else 0.0)
 	set_outfit(clampi(int(profile.get("outfit",0)),0,2))
 	_recolor(_model)
 	_create_props()
-	_marker.position.y = 1.97 * _height
-	_speech.position.y = 2.30 * _height
+	_marker.position.y = (_authored_height+.21) * _height
+	_speech.position.y = (_authored_height+.54) * _height
+
+
+static func _age_model_path(stage: String, frame: int, low_detail: bool) -> String:
+	return "res://assets/models/character_%s%s%s.glb" % [stage,"_broad" if frame == 1 else "","_lod" if low_detail else ""]
+
+
+static func available_age_stages() -> Array[String]:
+	var result: Array[String] = []
+	for stage: String in ["child","teen","young_adult","adult","elder"]:
+		var ready: bool = true
+		if stage in ["child","teen","elder"]:
+			ready = stage in VERIFIED_AGE_ASSETS
+			for frame: int in range(2):
+				for lod: bool in [false,true]:
+					if not ResourceLoader.exists(_age_model_path(stage,frame,lod)): ready = false
+		if ready: result.append(stage)
+	return result
+
+
+func supports_age(stage: String) -> bool:
+	return stage in available_age_stages()
+
+
+func get_display_height() -> float:
+	return _authored_height * _height
+
+
+func get_portrait_center() -> Vector3:
+	var head: Node3D = _joints.get("Head")
+	if head != null:
+		return to_local(head.to_global(Vector3(0,_mouth_anchor.y+.03,.015)))
+	return Vector3(0,get_display_height()*.86,0)
+
+
+func get_body_landmarks() -> Dictionary:
+	return {"age_stage":_model_age,"height":get_display_height(),"authored_height":_authored_height,
+		"hip_height":_hip_height*_height,"knee_height":_knee_height*_height,
+		"mouth_anchor":_mouth_anchor,"palm_anchor_l":_palm_offset("L"),"palm_anchor_r":_palm_offset("R")}
+
+
+func _find_model_extras(node: Node) -> Dictionary:
+	var extras: Variant = node.get_meta("extras",{})
+	if extras is Dictionary and extras.has("height_m"): return extras
+	for child: Node in node.get_children():
+		var found: Dictionary = _find_model_extras(child)
+		if not found.is_empty(): return found
+	return {}
+
+
+func _read_age_landmarks(stage: String) -> void:
+	var extras: Dictionary = _find_model_extras(_model)
+	_model_age = str(extras.get("age_stage",stage))
+	_authored_height = _landmark_number(extras,"height_m",1.76,.75,2.3)
+	_hip_height = _landmark_number(extras,"hip_height",.90,.3,1.2)
+	_knee_height = _landmark_number(extras,"knee_height",.548,.15,.8)
+	_proportion = _authored_height/1.76
+	_mouth_anchor = _landmark_vector(extras.get("mouth_anchor"),Vector3(0,.054,.114))
+	_palm_anchors = {"L":_landmark_vector(extras.get("palm_anchor_l"),Vector3(-.024,-.274,.026)),
+		"R":_landmark_vector(extras.get("palm_anchor_r"),Vector3(.024,-.274,.026))}
+	_grip_anchors = {"L":_landmark_vector(extras.get("grip_anchor_l"),_palm_anchors.L),
+		"R":_landmark_vector(extras.get("grip_anchor_r"),_palm_anchors.R)}
+
+
+func _landmark_number(extras: Dictionary, key: String, fallback: float, minimum: float, maximum: float) -> float:
+	var value: Variant = extras.get(key,fallback)
+	return float(value) if (value is float or value is int) and is_finite(float(value)) and float(value) >= minimum and float(value) <= maximum else fallback
+
+
+func _landmark_vector(value: Variant, fallback: Vector3) -> Vector3:
+	if not value is Array or value.size() != 3: return fallback
+	for axis: Variant in value:
+		if not (axis is float or axis is int) or not is_finite(float(axis)) or absf(float(axis)) > 1.0: return fallback
+	return Vector3(float(value[0]),float(value[1]),float(value[2]))
 
 
 func set_outfit(index: int) -> void:
 	profile["outfit"] = clampi(index,0,2)
 	if _model != null:
 		_apply_outfit_visibility(_model,OUTFIT_NAMES[int(profile["outfit"])])
+
+
+func set_face_feature(feature: String, value: float) -> void:
+	var key: String = feature.to_lower()
+	if key not in IDENTITY_KEYS:
+		return
+	var amount: float = clampf(value, 0.0, 1.0) if is_finite(value) else 0.0
+	profile[key] = amount
+	for entry: Dictionary in _identity_shapes.get(key, []):
+		entry.mesh.set_blend_shape_value(int(entry.index), amount)
+	if _hair_bob != null:
+		var expansion: float = 1.0 + .04 * float(profile.get("face_round", 0.0)) + .03 * float(profile.get("jaw_strong", 0.0))
+		_hair_bob.scale = _hair_bob_rest_scale * Vector3(expansion, 1.0, 1.0)
 
 
 func _apply_outfit_visibility(node: Node,selected_outfit: String) -> void:
@@ -190,6 +341,14 @@ func _discover_deformation(node: Node) -> void:
 		var skeleton: Skeleton3D = node
 		for joint_name: String in JOINT_NAMES:
 			var bone_index: int = skeleton.find_bone(joint_name)
+			# Imported glTF bones share names with the retained accessory pivots.
+			# Godot disambiguates those bone names as Arm_L_2, Head_2, and so on.
+			if bone_index < 0:
+				for candidate: int in range(skeleton.get_bone_count()):
+					var imported_name: String = str(skeleton.get_bone_name(candidate))
+					if imported_name.begins_with(joint_name + "_") and imported_name.trim_prefix(joint_name + "_").is_valid_int():
+						bone_index = candidate
+						break
 			if bone_index >= 0:
 				_rig_bones.append({"skeleton":skeleton,"index":bone_index,"name":joint_name,"rest":skeleton.get_bone_rest(bone_index).basis.get_rotation_quaternion()})
 	if node is MeshInstance3D and node.mesh != null:
@@ -198,10 +357,43 @@ func _discover_deformation(node: Node) -> void:
 			var shape_name: String = str(mesh_node.mesh.get_blend_shape_name(shape_index)).to_lower()
 			if shape_name == "blink":
 				_blink_shapes.append({"mesh":mesh_node,"index":shape_index})
+				mesh_node.set_blend_shape_value(shape_index,0.0)
 			elif shape_name == "smile":
 				_smile_shapes.append({"mesh":mesh_node,"index":shape_index})
+				mesh_node.set_blend_shape_value(shape_index,0.0)
+			elif shape_name == "sit":
+				_sit_shapes.append({"mesh":mesh_node,"index":shape_index})
+				mesh_node.set_blend_shape_value(shape_index,0.0)
+			elif shape_name in ["hand_grip_l","hand_grip_r"]:
+				var side: String = "L" if shape_name.ends_with("_l") else "R"
+				_grip_shapes[side].append({"mesh":mesh_node,"index":shape_index})
+				mesh_node.set_blend_shape_value(shape_index,0.0)
+			elif shape_name in IDENTITY_KEYS:
+				if not _identity_shapes.has(shape_name):
+					_identity_shapes[shape_name] = []
+				_identity_shapes[shape_name].append({"mesh":mesh_node,"index":shape_index})
+				mesh_node.set_blend_shape_value(shape_index,0.0)
 	for child: Node in node.get_children():
 		_discover_deformation(child)
+
+
+func set_activity_anchor(world_position: Vector3,world_yaw: float,anchor_kind: String = "standing",action_id: String = "",details: Dictionary = {}) -> void:
+	## seat: cushion top center; bed: mattress top center; standing: foot position.
+	## The anchor's +Z faces forward; a lying Lifelet's head points toward its -Z.
+	_activity_anchor = {"position":world_position,"yaw":world_yaw,"kind":anchor_kind,"action":action_id}
+	if details.get("hand_center") is Vector3 and details.hand_center.is_finite(): _activity_anchor["hand_center"] = details.hand_center
+	if details.get("hand_spread") is float or details.get("hand_spread") is int:
+		_activity_anchor["hand_spread"] = clampf(float(details.hand_spread),.04,.2)
+
+	if details.get("desk_surface_y") is float or details.get("desk_surface_y") is int:
+		if is_finite(float(details.desk_surface_y)): _activity_anchor["desk_surface_y"] = float(details.desk_surface_y)
+	for key: String in ["desk_front_edge","desk_forward"]:
+		if details.get(key) is Vector3 and details[key].is_finite(): _activity_anchor[key] = details[key]
+
+
+func clear_activity_anchor() -> void:
+	_activity_anchor = {}
+	interaction_offset = Vector3.ZERO
 
 
 func _profile_color(key: String, fallback: String) -> Color:
@@ -250,6 +442,8 @@ func _create_props() -> void:
 	_book.name = "ReadingBook"
 	_model.add_child(_book)
 	_book.position = Vector3(0.0, 1.10, 0.32)
+	_book.position *= _proportion
+	_book.scale = Vector3.ONE * _proportion
 	_book.rotation.x = 0.35
 	var cover: MeshInstance3D = _box(_book, Vector3(0.26, 0.019, 0.18), Color("ba735c"))
 	cover.position.y = -0.009
@@ -267,17 +461,82 @@ func _create_props() -> void:
 	ferrule.position.z = 0.192
 	var bristles: MeshInstance3D = _sphere(_brush, Vector3(0.009, 0.010, 0.028), Color("5b8d8c"))
 	bristles.position.z = 0.22
+	_brush.scale = Vector3.ONE * _proportion
 	_brush.visible = false
 	_snack = _hand_anchor("Snack", "R")
-	var food: MeshInstance3D = _box(_snack, Vector3(0.049, 0.023, 0.065), Color("d7b479"))
-	food.position.z = 0.027
+	# A small vegetable roll, with separate bread, filling and lettuce silhouettes.
+	var bread_bottom: MeshInstance3D = _sphere(_snack, Vector3(.044,.013,.035), Color("b87f43"))
+	bread_bottom.position = Vector3(0,.011,.025)
+	var filling: MeshInstance3D = _sphere(_snack, Vector3(.040,.008,.032), Color("be674e"))
+	filling.position = Vector3(0,.024,.025)
+	for index: int in range(5):
+		var leaf: MeshInstance3D = _sphere(_snack, Vector3(.026,.005,.021), Color("6c8b47"))
+		var angle: float = float(index) * TAU / 5.0
+		leaf.position = Vector3(sin(angle)*.023,.029,.025+cos(angle)*.019)
+		leaf.rotation.y = angle
+	var bread_top: MeshInstance3D = _sphere(_snack, Vector3(.045,.019,.036), Color("d3a56b"))
+	bread_top.position = Vector3(0,.046,.025)
+	for index: int in range(6):
+		var seed: MeshInstance3D = _sphere(_snack, Vector3(.0025,.0015,.005), Color("f0dbaf"))
+		seed.position = Vector3(float(index%3-1)*.015,.064-absf(float(index%3-1))*.003,.013+float(index/3)*.025)
+		seed.rotation.y = float(index)*.8
 	_snack.visible = false
+	_cooking_bowl = _hand_anchor("CookingBowlGrip", "L")
+	_bowl_center = Node3D.new()
+	_bowl_center.name = "BowlCenter"
+	_bowl_center.position = Vector3(.035,.105,.025)
+	_cooking_bowl.add_child(_bowl_center)
+	# The support palm lies under the rounded base; the old side attachment
+	# intersected the wall when the fingers curled.
+	# A shallow glazed bowl: layered exterior, open rim and visible ingredients.
+	var bowl_body: MeshInstance3D = _sphere(_bowl_center, Vector3(.147,.070,.147), Color("638c86"))
+	bowl_body.position.y = -.028
+	var bowl_inside: MeshInstance3D = _cylinder(_bowl_center, .133, .014, Color("e2cfac"))
+	bowl_inside.position.y = .031
+	var rim: MeshInstance3D = MeshInstance3D.new()
+	var rim_mesh: TorusMesh = TorusMesh.new()
+	rim_mesh.inner_radius = .130
+	rim_mesh.outer_radius = .147
+	rim_mesh.rings = 40
+	rim_mesh.ring_segments = 8
+	rim.mesh = rim_mesh
+	rim.material_override = _material(Color("b1cac0"))
+	rim.position.y = .044
+	_bowl_center.add_child(rim)
+	for index: int in range(9):
+		var ingredient: MeshInstance3D = _sphere(_bowl_center, Vector3(.014,.008,.011), Color("be754c") if index%2 == 0 else Color("719149"))
+		var angle: float = float(index)*2.4
+		ingredient.position = Vector3(sin(angle)*.08,.043,cos(angle)*.08)
+	_cooking_spoon = _hand_anchor("CookingSpoonGrip", "R")
+	var spoon_handle: MeshInstance3D = _cylinder(_cooking_spoon,.009,.21,Color("ae7844"))
+	spoon_handle.position.y = -.049
+	var spoon_end: MeshInstance3D = _sphere(_cooking_spoon,Vector3(.023,.039,.011),Color("c6975d"))
+	spoon_end.position.y = -.18
+	_spoon_tip = Node3D.new()
+	_spoon_tip.name = "SpoonContact"
+	_spoon_tip.position.y = -.19
+	_cooking_spoon.add_child(_spoon_tip)
+	_cooking_bowl.visible = false
+	_cooking_spoon.visible = false
+	_birthday_cake = _hand_anchor("BirthdayCakeGrip","L")
+	_cake_center = Node3D.new()
+	_cake_center.name = "CakeCenter"
+	_cake_center.position = Vector3(.12,-.006,0)
+	_birthday_cake.add_child(_cake_center)
+	if ResourceLoader.exists("res://assets/models/birthday_cake.glb"):
+		var cake_scene: PackedScene = load("res://assets/models/birthday_cake.glb")
+		var cake: Node3D = cake_scene.instantiate()
+		_cake_center.add_child(cake)
+		for flame: Node in cake.find_children("Flame_*","Node3D",true,false):
+			_cake_flames.append(flame as Node3D)
+	_birthday_cake.visible = false
 	_watering_can = _hand_anchor("WateringCan", "R")
 	var can: MeshInstance3D = _cylinder(_watering_can, 0.072, 0.14, Color("97b5a3"))
 	can.position = Vector3(0.03, -0.08, 0.0)
 	var spout: MeshInstance3D = _cylinder(_watering_can, 0.017, 0.18, Color("7a9b89"))
 	spout.rotation.x = 0.95
 	spout.position = Vector3(0.03, -0.043, 0.12)
+	_watering_can.scale = Vector3.ONE * _proportion
 	_watering_can.visible = false
 
 
@@ -286,8 +545,189 @@ func _hand_anchor(anchor_name: String, side: String) -> Node3D:
 	anchor.name = anchor_name
 	var parent_joint: Node3D = _joints.get("Forearm_" + side, _model)
 	parent_joint.add_child(anchor)
-	anchor.position = Vector3(0.023 if side == "R" else -0.023, -0.262, 0.026)
+	anchor.position = _palm_offset(side)
+	_hand_props.append({"node":anchor,"side":side})
 	return anchor
+
+
+func _palm_offset(side: String) -> Vector3:
+	return _palm_anchors.get(side,Vector3(.024 if side == "R" else -.024,-.274,.026))
+
+
+func _grip_offset(side: String) -> Vector3:
+	if _grip_shapes.get(side,[]).is_empty(): return _palm_offset(side)
+	return _palm_offset(side).lerp(_grip_anchors.get(side,_palm_offset(side)),float(_grip_amounts.get(side,0.0)))
+
+
+func _update_grips(delta: float, moving: bool, action_id: String) -> void:
+	var targets: Dictionary = {"L":0.0,"R":0.0}
+	if not moving:
+		match action_id:
+			"cook": targets = {"L":.25,"R":.95}
+			"snack": targets.R = .45
+			"paint": targets.R = .80
+			"water": targets.R = .55
+			"read": targets = {"L":.20,"R":.20}
+			"study","homework":
+				if str(_activity_anchor.get("kind","")) == "standing": targets = {"L":.20,"R":.20}
+			"birthday":
+				if _action_time < 3.85: targets = {"L":.30,"R":.30}
+	var blend: float = 1.0-exp(-delta*8.0)
+	for side: String in ["L","R"]:
+		_grip_amounts[side] = lerpf(float(_grip_amounts[side]),float(targets[side]),blend)
+		for entry: Dictionary in _grip_shapes[side]:
+			entry.mesh.set_blend_shape_value(int(entry.index),float(_grip_amounts[side]))
+	for entry: Dictionary in _hand_props:
+		entry.node.position = _grip_offset(str(entry.side))
+
+
+func _reach_hand(pose: Dictionary, side: String, target: Vector3, elbow_direction: Vector3, handle_axis: Vector3 = Vector3.ZERO, contact_axis: Vector3 = Vector3.RIGHT) -> void:
+	if not _arm_rest.has(side):
+		return
+	var solution: Dictionary = _arm_solution(side,target,elbow_direction,handle_axis,contact_axis)
+	pose["Arm_"+side] = Quaternion(solution.arm).get_euler()
+	pose["Forearm_"+side] = Quaternion(solution.forearm).get_euler()
+
+
+func _arm_solution(side: String, target: Vector3, elbow_direction: Vector3, handle_axis: Vector3 = Vector3.ZERO, contact_axis: Vector3 = Vector3.RIGHT) -> Dictionary:
+	var rest: Dictionary = _arm_rest[side]
+	# Solve before the authored broad-frame scale, then report model-space landmarks.
+	var space: Transform3D = rest.space
+	target = space.affine_inverse()*target
+	elbow_direction = space.basis.inverse()*elbow_direction
+	handle_axis = space.basis.inverse()*handle_axis
+	var shoulder: Vector3 = rest.local_shoulder
+	var upper: Vector3 = rest.upper
+	var lower: Vector3 = _grip_offset(side)
+	var reach: Vector3 = target-shoulder
+	var distance: float = clampf(reach.length(),absf(upper.length()-lower.length())+.005,upper.length()+lower.length()-.005)
+	var forward: Vector3 = reach.normalized()
+	var bend: Vector3 = (elbow_direction-forward*elbow_direction.dot(forward)).normalized()
+	var along: float = (upper.length_squared()-lower.length_squared()+distance*distance)/(2.0*distance)
+	var away: float = sqrt(maxf(0.0,upper.length_squared()-along*along))
+	var desired_axis: Vector3 = Vector3.ZERO
+	# The hand encloses a shaft along local X. Choose the elbow on its reach circle
+	# so that axis can follow the shaft without displacing the palm target.
+	if not handle_axis.is_zero_approx():
+		desired_axis = -handle_axis.normalized() if side == "R" else handle_axis.normalized()
+		var flat: Vector3 = desired_axis-forward*desired_axis.dot(forward)
+		if away > .0001 and flat.length() > .0001:
+			var tangent: Vector3 = forward.cross(flat).normalized()
+			var coefficient: float = clampf(((distance-along)*forward.dot(desired_axis)-lower.dot(contact_axis))/(away*flat.length()),-1.0,1.0)
+			var remainder: float = sqrt(maxf(0.0,1.0-coefficient*coefficient))
+			if tangent.dot(bend) < 0.0: tangent = -tangent
+			bend = flat.normalized()*coefficient+tangent*remainder
+	var upper_goal: Vector3 = forward*along+bend*away
+	var lower_goal: Vector3 = forward*distance-upper_goal
+	var arm: Quaternion = Quaternion(upper.normalized(),upper_goal.normalized())
+	var forearm: Quaternion = Quaternion(lower.normalized(),arm.inverse()*lower_goal.normalized())
+	if not handle_axis.is_zero_approx():
+		var pivot_axis: Vector3 = lower_goal.normalized()
+		var current_axis: Vector3 = arm*forearm*contact_axis
+		var current_plane: Vector3 = (current_axis-pivot_axis*current_axis.dot(pivot_axis)).normalized()
+		var desired_plane: Vector3 = (desired_axis-pivot_axis*desired_axis.dot(pivot_axis)).normalized()
+		var twist: float = atan2(pivot_axis.dot(current_plane.cross(desired_plane)),current_plane.dot(desired_plane))
+		forearm = arm.inverse()*Quaternion(pivot_axis,twist)*arm*forearm
+	return {"arm":arm,"forearm":forearm,"shoulder":space*shoulder,"elbow":space*(shoulder+upper_goal),"hand":space*(shoulder+forward*distance)}
+
+
+func _typing_elbow(side: String, model_basis: Basis) -> Vector3:
+	var outward: Vector3 = Basis(Vector3.UP,float(_activity_anchor.get("yaw",0.0)))*Vector3(-.45 if side == "L" else .45,0,-.10)
+	return model_basis.inverse()*(Vector3.UP+outward)
+
+
+func _desk_segment_clearance(start: Vector3, end: Vector3, radius: float) -> float:
+	# Clip the whole padded limb segment to the desk's front plane. Endpoints alone
+	# can reach the keyboard while a bent elbow passes through the desktop.
+	if not _activity_anchor.has("desk_surface_y") or not _activity_anchor.has("desk_front_edge") or not _activity_anchor.has("desk_forward"): return INF
+	var forward: Vector3 = Vector3(_activity_anchor.desk_forward).normalized()
+	var edge: Vector3 = _activity_anchor.desk_front_edge
+	var a: float = (start-edge).dot(forward)+radius
+	var b: float = (end-edge).dot(forward)+radius
+	if a < 0.0 and b < 0.0: return INF
+	var first: Vector3 = start
+	var last: Vector3 = end
+	if a < 0.0: first = start.lerp(end,-a/(b-a))
+	if b < 0.0: last = start.lerp(end,a/(a-b))
+	return minf(first.y,last.y)-float(_activity_anchor.desk_surface_y)-radius
+
+
+func _desk_lean() -> float:
+	var best: float = .15
+	var least_cost: float = INF
+	var yaw: float = float(_activity_anchor.yaw)
+	var anchor: Vector3 = _activity_anchor.position
+	var keyboard: Vector3 = _activity_anchor.hand_center
+	var spread: float = float(_activity_anchor.get("hand_spread",.105))
+	for step: int in range(33):
+		var angle: float = .15+float(step)*.025
+		var orientation: Basis = Basis(Vector3.UP,yaw)*Basis.from_euler(Vector3(angle,0,0))
+		var origin: Vector3 = anchor-orientation*Vector3(0,_hip_height*_height,0)
+		var model_pose: Transform3D = Transform3D(orientation*Basis.IDENTITY.scaled(visual.scale),origin)*_model.transform
+		var inverse: Transform3D = model_pose.affine_inverse()
+		var excess: float = 0.0
+		var clearance: float = INF
+		for side: String in ["L","R"]:
+			if not _arm_rest.has(side): continue
+			var hand: Vector3 = keyboard+Basis(Vector3.UP,yaw)*Vector3(-spread if side == "L" else spread,0,0)
+			var arm_length: float = Vector3(_arm_rest[side].upper).length()+_grip_offset(side).length()-.010
+			var arm_space: Transform3D = _arm_rest[side].space
+			excess = maxf(excess,(arm_space.affine_inverse()*(inverse*hand)-Vector3(_arm_rest[side].local_shoulder)).length()-arm_length)
+			var solution: Dictionary = _arm_solution(side,inverse*hand,_typing_elbow(side,model_pose.basis))
+			var shoulder_world: Vector3 = model_pose*Vector3(solution.shoulder)
+			var elbow_world: Vector3 = model_pose*Vector3(solution.elbow)
+			var palm_world: Vector3 = model_pose*Vector3(solution.hand)
+			var limb_scale: float = maxf(visual.scale.x,visual.scale.y)*_proportion
+			clearance = minf(clearance,_desk_segment_clearance(shoulder_world,elbow_world,.047*limb_scale))
+			clearance = minf(clearance,_desk_segment_clearance(elbow_world,palm_world,.032*limb_scale))
+		var cost: float = maxf(0.0,excess)*4.0+maxf(0.0,-clearance)*8.0+angle*.0005
+		if cost < least_cost:
+			best = angle
+			least_cost = cost
+		if excess <= 0.0 and clearance >= .002: break
+	return best
+
+
+func _typing_pose(pose: Dictionary, t: float, anchor_kind: String) -> void:
+	var center: Vector3 = Vector3(0,_hip_height+.285,.29 if _model_age == "child" else .36)
+	if anchor_kind == "standing": center.y = _authored_height*.66
+	var side: Vector3 = Vector3(float(_activity_anchor.get("hand_spread",.075 if _model_age == "child" else .105)),0,0)
+	if _activity_anchor.has("hand_center"):
+		center = _model.to_local(_activity_anchor.hand_center)
+		var world_side: Vector3 = Basis(Vector3.UP,float(_activity_anchor.yaw))*side
+		side = _model.global_basis.inverse()*world_side
+	_reach_hand(pose,"L",center-side+Vector3(0,sin(t*8.0)*.006,0),_typing_elbow("L",_model.global_basis))
+	_reach_hand(pose,"R",center+side+Vector3(0,cos(t*8.0)*.006,0),_typing_elbow("R",_model.global_basis))
+
+
+func _orient_held_prop(prop: Node3D, model_basis: Basis) -> void:
+	var parent: Node3D = prop.get_parent() as Node3D
+	var parent_basis: Basis = _model.global_basis.inverse()*parent.global_basis
+	prop.basis = parent_basis.inverse()*model_basis
+
+
+func _update_held_props(delta: float, moving: bool, action_id: String) -> void:
+	var blend: float = 1.0-exp(-delta*12.0)
+	var show_cake: bool = not moving and action_id == "birthday" and _action_time < 3.85
+	_birthday_weight = lerpf(_birthday_weight,1.0 if show_cake else 0.0,blend)
+	_birthday_cake.visible = _birthday_weight > .015
+	var cake_scale: float = clampf(_proportion,.8,1.0)
+	_orient_held_prop(_birthday_cake,Basis.IDENTITY.scaled(Vector3.ONE*maxf(.001,_birthday_weight)*cake_scale))
+	for flame: Node3D in _cake_flames: flame.visible = action_id == "birthday" and _action_time < 3.12
+	_cook_weight = lerpf(_cook_weight,1.0 if not moving and action_id == "cook" else 0.0,blend)
+	_snack_weight = lerpf(_snack_weight,1.0 if not moving and action_id == "snack" else 0.0,blend)
+	_cooking_bowl.visible = _cook_weight > .015
+	_cooking_spoon.visible = _cook_weight > .015
+	_snack.visible = _snack_weight > .015
+	# Counter-rotate each grip so the ceramic stays level while its palm moves.
+	_orient_held_prop(_cooking_bowl,Basis.IDENTITY.scaled(Vector3.ONE*maxf(.001,_cook_weight)*_proportion))
+	_orient_held_prop(_snack,Basis.IDENTITY.scaled(Vector3.ONE*maxf(.001,_snack_weight)*_proportion))
+	if _cooking_spoon.visible:
+		var grip: Vector3 = _model.to_local(_cooking_spoon.global_position)
+		var center: Vector3 = _model.to_local(_bowl_center.global_position)
+		var tip_target: Vector3 = center+Vector3(sin(_action_time*2.3)*.048,.027,cos(_action_time*2.3)*.042)*_proportion
+		var direction: Vector3 = (tip_target-grip).normalized()
+		_orient_held_prop(_cooking_spoon,Basis(Quaternion(Vector3.DOWN,direction)).scaled(Vector3.ONE*maxf(.001,_cook_weight)*_proportion))
 
 
 func set_selected(value: bool) -> void:
@@ -296,6 +736,12 @@ func set_selected(value: bool) -> void:
 		_ring.visible = value
 	if _marker != null:
 		_marker.visible = value
+
+
+func clear_speech() -> void:
+	_speech_remaining=0.0
+	_pending_voice=""
+	if is_instance_valid(_speech):_speech.text="";_speech.visible=false
 
 
 func speech(text: String) -> void:
@@ -319,13 +765,25 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		return
 	_update_voice(delta, speed_factor, moving, action_id)
 	var animation_delta: float = delta * clampf(speed_factor, 0.0, 3.0)
+	# Pause freezes the entire presentation, including props and transition clocks.
+	if animation_delta <= 0.0:
+		return
+	var motion_action: String = "walk" if moving else action_id
+	if motion_action != _motion_action:
+		_motion_action = motion_action
+		_action_time = 0.0
+	_action_time += animation_delta
+	_update_grips(animation_delta,moving,action_id)
 	_time += animation_delta
 	_speech_remaining = maxf(0.0, _speech_remaining - delta)
 	_speech.visible = _speech_remaining > 0.0 and not _speech.text.is_empty()
-	_marker.position.y = 1.97 * _height + sin(_time * 2.0 + _phase_offset) * 0.026
+	_marker.position.y = (_authored_height+.21) * _height + sin(_time * 2.0 + _phase_offset) * 0.026
 	_marker.rotation.y = sin(_time * 0.8) * 0.20
 	var t: float = _time + _phase_offset
-	var blend: float = 1.0 - exp(-delta * 10.0)
+	var blend: float = 1.0 - exp(-animation_delta * 8.0)
+	var anchored: bool = not moving and not action_id.is_empty() and not _activity_anchor.is_empty()
+	anchored = anchored and (str(_activity_anchor.get("action","")) in ["",action_id])
+	var anchor_kind: String = str(_activity_anchor.get("kind","")) if anchored else ""
 	var pose: Dictionary = {}
 	for joint_name: String in JOINT_NAMES:
 		pose[joint_name] = Vector3.ZERO
@@ -337,7 +795,6 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 	pose["Arm_R"] = Vector3(-0.012 * breathe, 0.0, 0.015)
 	_book.visible = false
 	_brush.visible = false
-	_snack.visible = false
 	_watering_can.visible = false
 	if moving:
 		var cycle: float = t * 7.6
@@ -355,25 +812,57 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 	else:
 		offset.y += breathe * 0.003
 		match action_id:
+			"birthday":
+				var cake_scale: float = clampf(_proportion,.8,1.0)
+				var tray: Vector3 = Vector3(0,_hip_height+.30*_proportion,.36*_proportion)
+				if _action_time < 4.1:
+					_reach_hand(pose,"L",tray+Vector3(-.12*cake_scale,0,0),Vector3(-.7,-.8,-.1))
+					_reach_hand(pose,"R",tray+Vector3(.12*cake_scale,0,0),Vector3(.7,-.8,-.1))
+					var blow: float = smoothstep(1.7,2.45,_action_time)*(1.0-smoothstep(3.1,3.7,_action_time))
+					pose["Head"] = Vector3(.23*blow,0,0)
+					lean.x = .055*blow
+				else:
+					var clap: float = .5+.5*sin((_action_time-4.1)*8.0)
+					var hands: Vector3 = Vector3(0,_hip_height+.39*_proportion,.28*_proportion)
+					_reach_hand(pose,"L",hands+Vector3(-(.020+.085*clap)*_proportion,0,0),Vector3(-.7,-.6,-.1))
+					_reach_hand(pose,"R",hands+Vector3((.020+.085*clap)*_proportion,0,0),Vector3(.7,-.6,-.1))
+					pose["Head"] = Vector3(-.025+sin(t*2.0)*.025,0,.035*sin(t*1.2))
 			"sleep", "nap":
-				lean = Vector3(-PI / 2.0 + 0.025, 0, 0)
-				offset += Vector3(0, 0.57, 0.63)
-				pose["Head"] = Vector3(0, -0.12, 0.04)
-				pose["Arm_L"] = Vector3(-0.18, 0, -0.1)
-				pose["Arm_R"] = Vector3(-0.25, 0, 0.08)
-				pose["Forearm_L"] = Vector3(-0.45, 0, 0)
-				pose["Forearm_R"] = Vector3(-0.55, 0, 0)
-				pose["Leg_L"] = Vector3(-0.08, 0, 0)
-				pose["Shin_L"] = Vector3(0.12, 0, 0)
-			"relax", "watch", "toilet", "work", "study", "job":
-				_seated_pose(pose)
-				offset.y -= 0.43 * _height
-				if action_id in ["work", "study", "job"]:
+				if anchor_kind == "seat":
+					_seated_pose(pose)
+					lean = Vector3(-0.10,0.0,0.065)
+					offset.y -= .43 * _height * _proportion
+					pose["Head"] = Vector3(0.19,-0.09,0.12)
+					pose["Forearm_L"] = Vector3(-0.8,0.0,0.0)
+					pose["Forearm_R"] = Vector3(-0.8,0.0,0.0)
+				else:
+					lean = Vector3(-PI / 2.0 + 0.025, 0, 0)
+					offset += Vector3(0, 0.57, 0.63)*_proportion
+					pose["Head"] = Vector3(0, -0.12, 0.04)
+					pose["Arm_L"] = Vector3(-0.18, 0, -0.1)
+					pose["Arm_R"] = Vector3(-0.25, 0, 0.08)
+					pose["Forearm_L"] = Vector3(-0.45, 0, 0)
+					pose["Forearm_R"] = Vector3(-0.55, 0, 0)
+					pose["Leg_L"] = Vector3(-0.08, 0, 0)
+					pose["Shin_L"] = Vector3(0.12, 0, 0)
+			"relax", "watch", "toilet", "work", "study", "job", "school", "homework":
+				if anchor_kind != "standing":
+					_seated_pose(pose)
+					offset.y -= 0.43 * _height * _proportion
+				if action_id in ["work", "study", "job", "school", "homework"]:
 					pose["Arm_L"] = Vector3(-0.42, 0, 0.05)
 					pose["Arm_R"] = Vector3(-0.42, 0, -0.05)
 					pose["Forearm_L"] = Vector3(-0.85 + sin(t * 9.0) * 0.05, 0, 0)
 					pose["Forearm_R"] = Vector3(-0.85 + cos(t * 9.0) * 0.05, 0, 0)
 					pose["Head"] = Vector3(0.16, sin(t * 0.7) * 0.035, 0)
+					if action_id in ["school","homework"] or _activity_anchor.has("hand_center"):
+						_typing_pose(pose,t,anchor_kind)
+					if anchor_kind == "standing" and action_id in ["study","homework"]:
+						pose["Arm_L"] = Vector3(-.43,0,.17)
+						pose["Arm_R"] = Vector3(-.43,0,-.17)
+						pose["Forearm_L"] = Vector3(-1.05,0,.06)
+						pose["Forearm_R"] = Vector3(-1.05,0,-.06)
+						_book.visible = true
 				elif action_id == "watch":
 					pose["Head"] = Vector3(-0.06, sin(t * 0.3) * 0.1, 0)
 					pose["Forearm_R"] = Vector3(-0.42, 0, 0)
@@ -381,18 +870,42 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 					pose["Head"] = Vector3(-0.08, 0.05, 0.05)
 					pose["Arm_L"] = Vector3(0.02, 0, -0.32)
 					pose["Arm_R"] = Vector3(0.02, 0, 0.32)
+			"homework_wait":
+				if anchor_kind == "seat":
+					_seated_pose(pose)
+					pose["Arm_L"] = Vector3(-.16,0,.08)
+					pose["Arm_R"] = Vector3(-.16,0,-.08)
+					pose["Forearm_L"] = Vector3(-.90,0,0)
+					pose["Forearm_R"] = Vector3(-.90,0,0)
+				pose["Head"] = Vector3(.06,.06*sin(t*.45),0)
+			"help_homework":
+				# Stand at the controller's clear side position, explain a step,
+				# then lower the hand to listen. No reach through the child's desk.
+				var explain: float = .5+.5*sin(_action_time*1.6)
+				pose["Arm_R"] = Vector3(-.42-.22*explain,.08,-.13)
+				pose["Forearm_R"] = Vector3(-.68-.28*explain,0,.10)
+				pose["Arm_L"] = Vector3(-.12,0,.06)
+				pose["Forearm_L"] = Vector3(-.32-.10*(1.0-explain),0,0)
+				pose["Head"] = Vector3(.18+.03*sin(_action_time*2.1),.04*sin(t*.7),-.015)
 			"snack":
-				var bite: float = 0.5 + 0.5 * sin(t * 2.0)
-				pose["Arm_R"] = Vector3(lerpf(-0.40, -1.02, bite), 0, -0.30 * bite)
-				pose["Forearm_R"] = Vector3(lerpf(-0.70, -2.45, bite), 0, 0)
-				pose["Head"] = Vector3(0.08 * bite, -0.05, 0)
-				_snack.visible = true
+				var cycle: float = fmod(_action_time, 5.4)
+				var bite: float = smoothstep(.45,1.25,cycle) * (1.0-smoothstep(2.05,2.95,cycle))
+				pose["Head"] = Vector3(.018*bite,-.018*bite,0)
+				var head: Node3D = _joints.get("Head")
+				var mouth: Vector3 = _model.to_local(head.to_global(_mouth_anchor)) if head != null else Vector3(0,1.507,.10)
+				var hand_target: Vector3 = (Vector3(.17,1.12,.31)*_proportion).lerp(mouth+Vector3(.004,-.026,.013)*_proportion,bite)
+				_reach_hand(pose,"R",hand_target,Vector3(.65,-.7,-.05))
+				pose["Arm_L"] = Vector3(-.10,0,.025)
+				pose["Forearm_L"] = Vector3(-.20,0,0)
 			"cook":
-				pose["Arm_L"] = Vector3(-0.50, 0, 0.08)
-				pose["Arm_R"] = Vector3(-0.60 + sin(t * 3.0) * 0.10, 0.13 * cos(t * 3.0), -0.05)
-				pose["Forearm_L"] = Vector3(-0.65, 0, 0)
-				pose["Forearm_R"] = Vector3(-0.68 + cos(t * 3.0) * 0.15, 0, 0)
-				pose["Head"] = Vector3(0.20, -0.05, 0)
+				var stir: float = _action_time * 2.3
+				var bowl_hand: Vector3 = Vector3(-.070,1.120,.350)*_proportion
+				bowl_hand.y += sin(stir*.5)*.005*_proportion
+				_reach_hand(pose,"L",bowl_hand,Vector3(-.7,-.8,-.1),Vector3.UP,Vector3(0,0,1))
+				var spoon_hand: Vector3 = Vector3(-.010+sin(stir)*.045,1.44,.39+cos(stir)*.038)*_proportion
+				var desired_tip: Vector3 = bowl_hand+Vector3(.035+sin(stir)*.048,.132,.025+cos(stir)*.042)*_proportion
+				_reach_hand(pose,"R",spoon_hand,Vector3(.8,-.6,-.1),desired_tip-spoon_hand if not _grip_shapes.R.is_empty() else Vector3.ZERO)
+				pose["Head"] = Vector3(.16,-.025+sin(stir*.5)*.018,0)
 			"read":
 				pose["Arm_L"] = Vector3(-0.43, 0, 0.17)
 				pose["Arm_R"] = Vector3(-0.43, 0, -0.17)
@@ -418,14 +931,94 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 				pose["Forearm_R"] = Vector3(-0.33 + sin(t * 1.5) * 0.13, 0, -0.08)
 				pose["Head"] = Vector3(0.24, 0.05, 0)
 				_watering_can.visible = true
-			"friendly", "joke", "deep_talk", "flirt", "argue":
-				_conversation_pose(pose, action_id, t)
+			"friendly", "joke", "deep_talk", "flirt", "argue", "ask_partner", "commit", "break_up":
+				var gesture_aliases: Dictionary = {"ask_partner":"deep_talk", "commit":"flirt", "break_up":"deep_talk"}
+				_conversation_pose(pose, str(gesture_aliases.get(action_id, action_id)), t)
+	if anchored and anchor_kind == "seat" and _activity_anchor.has("hand_center") and action_id in ["work","study","job","school","homework"]:
+		lean.x = _desk_lean()
+		# Keep thighs horizontal while the torso leans from its supported hips.
+		pose["Leg_L"].x -= lean.x
+		pose["Leg_R"].x -= lean.x
+	if anchored:
+		var world_orientation: Basis = Basis(Vector3.UP,float(_activity_anchor.yaw)) * Basis.from_euler(lean)
+		var reference: Vector3 = Vector3.ZERO
+		if anchor_kind == "seat":
+			reference = Vector3(0.0,_hip_height * _height,0.0)
+		elif anchor_kind == "bed":
+			# Match the back of the body at its midpoint to the mattress surface.
+			reference = Vector3(0.0,_hip_height * _height,-.10 * _proportion * visual.scale.z)
+		var world_origin: Vector3 = _activity_anchor.position - world_orientation * reference
+		offset = to_local(world_origin) + interaction_offset
+		lean = (global_basis.orthonormalized().inverse() * world_orientation).get_euler()
 	visual.position = visual.position.lerp(offset, blend)
 	visual.rotation = _angle_lerp(visual.rotation, lean, blend)
+	_update_visual_followers(anchored,action_id)
 	for joint_name: String in _joints:
 		var joint: Node3D = _joints[joint_name]
 		var goal_rotation: Vector3 = _rest_rotations[joint_name] + pose[joint_name]
-		joint.rotation = _angle_lerp(joint.rotation, goal_rotation, blend)
+		joint.quaternion = joint.quaternion.slerp(Quaternion.from_euler(goal_rotation),blend)
+	for entry: Dictionary in _rig_bones:
+		var skeleton: Skeleton3D = entry.skeleton
+		var bone_index: int = int(entry.index)
+		var rest: Quaternion = entry.rest
+		var target_rotation: Quaternion = rest.inverse() * Quaternion.from_euler(pose[entry.name]) * rest
+		skeleton.set_bone_pose_rotation(bone_index,skeleton.get_bone_pose_rotation(bone_index).slerp(target_rotation,blend))
+	var seated: bool = not moving and ((action_id in ["relax", "watch", "toilet", "work", "study", "job", "school", "homework", "homework_wait"] and anchor_kind != "standing") or (action_id in ["sleep", "nap"] and anchor_kind == "seat"))
+	_sit_amount = lerpf(_sit_amount, 1.0 if seated else 0.0, blend)
+	for entry: Dictionary in _sit_shapes:
+		entry.mesh.set_blend_shape_value(int(entry.index), _sit_amount)
+	_update_expression(animation_delta,action_id,blend)
+	_update_held_props(animation_delta,moving,action_id)
+
+
+func _update_visual_followers(anchored: bool,action_id: String) -> void:
+	if anchored or action_id in ["sleep","nap"]:
+		var sleeping: bool = action_id in ["sleep","nap"] and str(_activity_anchor.get("kind","")) != "seat"
+		var marker_height: float = _authored_height*.71 if sleeping else _authored_height+.21
+		_marker.position = visual.position + visual.basis * Vector3(0.0,marker_height,0.0) + Vector3(0.0,.46 if sleeping else 0.0,0.0)
+		_marker.position.y += sin(_time * 2.0 + _phase_offset) * .025
+		_speech.position = visual.position + visual.basis * Vector3(0.0,_authored_height-.06,0.0) + Vector3(0.0,.55,0.0)
+		_voice.position = visual.position + visual.basis * Vector3(0.0,_authored_height-.22,.025)
+		if anchored:
+			var anchor_position: Vector3 = _activity_anchor.position
+			_ring.position = to_local(Vector3(anchor_position.x,global_position.y+.025,anchor_position.z))
+	else:
+		_marker.position = Vector3(0.0,(_authored_height+.21) * _height + sin(_time * 2.0 + _phase_offset) * .026,0.0)
+		_speech.position = Vector3(0.0,(_authored_height+.54) * _height,0.0)
+		_voice.position = Vector3(0.0,(_authored_height-.26) * _height,0.0)
+	if not anchored:
+		_ring.position = Vector3(0.0,.025,0.0)
+
+
+func _update_expression(delta: float,action_id: String,blend: float) -> void:
+	if _blink_shapes.is_empty() and _smile_shapes.is_empty():
+		return
+	_blink_wait -= delta
+	if _blink_wait <= 0.0 and _blink_elapsed < 0.0:
+		_blink_elapsed = 0.0
+		_blink_wait = _voice_rng.randf_range(2.8,5.6)
+	var blink: float = 0.0
+	if _blink_elapsed >= 0.0:
+		_blink_elapsed += delta
+		blink = sin(clampf(_blink_elapsed / .19,0.0,1.0) * PI)
+		if _blink_elapsed >= .19:
+			_blink_elapsed = -1.0
+	if action_id in ["sleep","nap"]:
+		blink = 1.0
+	for entry: Dictionary in _blink_shapes:
+		entry.mesh.set_blend_shape_value(int(entry.index),blink)
+	var target_smile: float = 0.10
+	if action_id in ["friendly","joke","flirt","ask_partner","commit","help_homework"]:
+		target_smile = 0.55 if action_id == "joke" else 0.34
+	elif action_id == "birthday":
+		target_smile = .12 if _action_time > 1.7 and _action_time < 3.2 else .55
+	elif action_id in ["argue","sleep","nap","break_up"]:
+		target_smile = 0.0
+	if _voice != null and _voice.playing:
+		target_smile += (0.5 + 0.5 * sin(_time * 12.0)) * 0.10
+	_smile = lerpf(_smile,target_smile,blend)
+	for entry: Dictionary in _smile_shapes:
+		entry.mesh.set_blend_shape_value(int(entry.index),_smile)
 
 
 func _update_voice(delta: float, speed_factor: float, moving: bool, action_id: String) -> void:
@@ -443,7 +1036,7 @@ func _update_voice(delta: float, speed_factor: float, moving: bool, action_id: S
 		if _speech_remaining > 0.0:
 			_play_voice(_pending_voice)
 		_pending_voice = ""
-	var categories: Dictionary = {"friendly": "greeting", "joke": "happy", "deep_talk": "thoughtful", "flirt": "happy", "argue": "argument"}
+	var categories: Dictionary = {"friendly": "greeting", "joke": "happy", "deep_talk": "thoughtful", "flirt": "happy", "argue": "argument", "ask_partner":"thoughtful", "commit":"happy", "break_up":"thoughtful","birthday":"happy","help_homework":"thoughtful"}
 	if moving or not categories.has(action_id):
 		_last_voice_action = ""
 		return

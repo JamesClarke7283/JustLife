@@ -165,8 +165,9 @@ func _test_build_transactions() -> void:
 
 func _test_target_rebinding() -> void:
 	_cancel_all()
-	var fridge_id:String=str(_item("fridge").id)
 	main.queue_interaction(_item("fridge"),"cook")
+	# A refrigerator meal routes to the stove when one is available.
+	var fridge_id:String=str(main.sim.get_current_action().target_id)
 	main.queue_interaction(_item("shower"),"shower")
 	main.set_build_mode(true)
 	main.sell_item(main._find_item(fridge_id))

@@ -1,0 +1,27 @@
+# Independent staged review — hand grips in the kitchen
+
+**Historical checkpoint:** the final combined acceptance and current 7.2/10 score are recorded in [iteration_08_final.md](iteration_08_final.md). Earlier scores and open findings below describe their original review stages.
+
+8 September 2026. **Updated: adult kitchen grip and bowl support accepted; child cake/furniture overlap remains open. Current full-request score stays 7.0/10.** This is a candidate overlay, not a production promotion.
+
+The source `/tmp/justlife-grip-source-h3lo_k0o` combines the accepted paused-booster functional checkpoint with the simulation agent's frozen actor candidate SHA-256 `35e817918bc7773e3aa1c26f799d74c25060dcc1036727538766588adec1fd55` and 16 staged grip GLBs mapped to standard model paths. The exact overlay manifest is preserved with evidence. Existing production files were not changed by the critic.
+
+`tests/test_grip_playthrough.gd` extends the normal kitchen flow, using public controls, actual routed arrival, normal-speed cook/snack completion, pause and cancellation. The final close-view run `/tmp/justlife-playthrough-hz4nshf9` passed 69 checks with zero runtime errors. Evidence, diagnostics, source/model hashes and overlay manifest are in `art/screenshots/grip_iteration_08/`. A prior pass on the same production candidate also passed 69, but its wider inspection camera was insufficient for close contact assessment; its results are not added to the final count.
+
+Both imported hand morphs are present. Cooking reaches approximately 0.95 right-hand grip, with the spoon shaft about 3.4–3.7 degrees from the hand's grasp axis. The closed fingers visibly surround the spoon, which points into the bowl. Snack uses a partial right grip of approximately 0.42–0.45. Held props remain absent during approach, arrival costs occur once, pause holds body/props/progress exactly, completion clears props, and canceling cook before snack removes the old cooking props.
+
+The remaining contact problem is the left bowl hand: it appears pressed into the bowl wall, with fingertips projecting sideways, rather than clearly supporting the rim or bottom. The agent has been asked to inspect the relationship between the bowl-center offset and its outer shell before promotion. This illustrates why correct morph values and shaft angles are supporting evidence rather than complete visual acceptance.
+
+The baseline side-profile face attachment defect is clearly visible in these close images and remains covered by `iteration_08_profile.md`. No improved face score or exact final mouth-contact acceptance is inferred before that repair. Child cake contact with the staged grips has not yet received this same independent runtime check.
+
+## Bowl support correction and child cake follow-up
+
+The new frozen actor candidate `ef20e62accd5fdf8fc1c493985bdd1d8d6c2249bfd079ff5a45f4a16f9f7defb` raises the cooking assembly and turns the left palm upward beneath its rounded base. The same normal kitchen harness in `/tmp/justlife-playthrough-dycpbiam` passes **69 checks with zero runtime errors**. The actual close stove view clearly shows an extended forearm and palm supporting the bowl underneath; fingers no longer emerge through its wall. Right-hand spoon alignment, partial snack grip, pause/cost/completion/cancellation remain correct. Adult kitchen contact is accepted. Evidence and overlay manifest are in `base_support_fixed/` under the existing grip evidence directory.
+
+A separate public Child+Adult creation and actual birthday flow passes **55 checks with zero runtime errors**, using the same imported staged actor/assets and no artificial arrival or completion. Both hand morphs are present, the cake is supported on palms, flames go out, applause follows, exactly §30 is charged, and the child becomes a teen. However, the strict side camera exposes the cake intersecting the fridge door. Actor position is approximately `(-5.25, .16, -3.25)` and the cake anchor z is `-3.797`; the fridge's front is approximately `-3.875`, so the cake/plate forward radius crosses that boundary. Root has been asked to turn the active birthday toward the room or derive a properly spaced standing pose. This is an existing birthday spatial defect rather than a hand-morph regression. Evidence is in `child_cake_pending/`. The opposite-side camera is itself occluded by the fridge and is not counted as useful visual evidence.
+
+The first wider child-camera pass had 53 clean checks; a closer rerun on unchanged production added two screenshots. Counts are not added together. A separate attempted fresh import failed during a temporary storage quota episode before gameplay; duplicate completed runtime caches were cleaned, and the child gate then ran from the already-clean kitchen candidate import. Production was never launched or changed by these reviews.
+
+## Final combined acceptance
+
+The room-facing birthday correction was verified together with all16 repaired v18 assets and actor ef20e62 in `/tmp/justlife-playthrough-surface-final-r4sidh_q`. The expanded child gate passes66 checks with no runtime errors, and423 actual visible-cake frame samples contain no vertex inside the fridge volume. The clear room-side camera shows a supported plate and connected child face. Final adult creator/cook/snack checks pass78 with actual v18/revision2 metadata. Both remaining presentation gates are accepted; see `iteration_08_final.md` and `art/screenshots/surface_iteration_08/` for final evidence and limitations.

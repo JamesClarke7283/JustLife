@@ -12,11 +12,11 @@ Live mode connects object/social actions to needs, emotions, skills, relationshi
 
 ## Visual coverage
 
-Folders are relative to the archive root. Additional topics have exact source URLs and filenames in source_pages.json. The original 35 images are in full/. The 39 topic contact sheets were inspected.
+Folders are relative to the archive root. Additional topics have exact source URLs and filenames in source_pages.json. The original 35 images are in full/. The 42 topic contact sheets were inspected.
 
 | System | Inspected images/folders | Base / expansion distinction | Remaining research gaps |
 |---|---|---|---|
-| Main menu, tutorials, settings | full/: start/main menu, lessons, graphics, audio, capture | Core, historical interface | Current save/load slots and accessibility setup |
+| Main menu, tutorials, settings | full/: start/main menu, lessons, graphics, audio, capture; save_recovery | Core, historical interface and 2022/2023 save/recovery UI | Current accessibility setup and contemporary menu comparison |
 | Human appearance editor | full/: body, eyebrows, hats, shoes, face paint, walk style; household_rotation | Core; some garments pack-dependent | Shape dragging, skin controls, outfit categories, genetics, diversity only partly represented |
 | Identity, traits, aspirations | traits, aspiration_icons, current_identity_romance, full/new-question | Core/free updates; icons mix DLC | Current aspiration milestone/reward-store full panels; voice/pronoun/reproduction panels incomplete |
 | Multiple members | household_rotation, moving_households, children | Core | Eight-member queue management, off-lot control and simultaneous emergencies need motion evidence |
@@ -32,11 +32,11 @@ Folders are relative to the archive root. Additional topics have exact source UR
 | Phone/services | phone_services, moving_households | Base apps represented; extra services pack-dependent | Event/job/travel dialogs and camera output need dedicated captures |
 | Calendar | calendar_seasons | Captured image is Seasons-era with holidays; calendar later entered base | Base-only comparison and event creation **not captured** |
 | Rooms/walls/foundations | build_rooms_walls_foundations | Core structure | Current platforms/curved walls/terrain/advanced constraints |
-| Roofs/floors/stairs/basements | roofs, stairs_basements, interior_decoration | Core, surface catalog content-dependent | Newer ceiling/stair controls need version-specific follow-up |
+| Roofs/floors/stairs/basements | roofs, stairs_basements, interior_decoration, family_tree_update_2026 | Core; February 2026 flared-stair controls captured | Newer ceiling controls and full stair editing flow need follow-up |
 | Landscape/fences/pools | landscaping_pools | Core families; decoration varies | Ponds, water depth, ecosystems, terrain sculpting incomplete |
 | Buy catalog/placement | full/buy-toys; painting/buyeasel; bills_inventory/offthegrid; building strips; official move-object image | Core catalog, mixed items | Full current search/filter/swatch/footprint/surface-slot flow |
-| Pregnancy/newborns | newborns_pregnancy | Core, historical | Older guide's life-stage progression obsolete; science baby/adoption/current birth flow incomplete |
-| Infants/toddlers/children | infant_care, toddlers, children | Base life stages; some milestones/family depth require Growing Together | Family tree, teens/elders, milestones and aging settings incomplete |
+| Pregnancy/newborns | newborns_pregnancy, current_family_official | Current EA entry routes and creator capabilities; expansion examples labelled | Full playable pregnancy/birth/adoption UI sequence and genetics remain uncaptured |
+| Infants/toddlers/children | infant_care, toddlers, children | Base life stages; some milestones/family depth require Growing Together | Current family-tree overview in family_tree_update_2026; complete genealogy editing, milestones and care flows remain incomplete |
 | Death/ghosts/grief | death | Core plus Spa Day sauna example | All causes and modern ghost/rebirth systems not mapped |
 | Household management | moving_households, household_rotation | Core | Exact transfers of relationships/funds/inventory and aging settings need verification |
 | Neighborhood Stories | neighborhood_stories | Base update; pet adoption content-dependent | Configuration shown; event timelines/all outcomes not captured |

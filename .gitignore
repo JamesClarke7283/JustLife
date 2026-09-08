@@ -1,3 +1,50 @@
-# Godot 4+ specific ignores
+# Godot's import settings (*.import) and stable resource IDs (*.uid) are source.
+# Its cache, editor state and export credentials are local.
 .godot/
 /android/
+.godot-editor/
+export_credentials.cfg
+
+# Builds and machine-local tooling.
+/dist/
+/.mcp.json
+/.env
+/.env.*
+!/.env.example
+__pycache__/
+*.py[cod]
+*.blend[0-9]*
+.DS_Store
+
+# Candidate model exports are reproducible local studies, never runtime assets.
+/assets/models/*_rig*
+/assets/models/*_grip*
+/assets/audio/measurements.json
+
+# Keep the authored artwork and its generators; leave renders, measurements,
+# playthrough captures, iteration copies and source backups on the workstation.
+/art/*
+!/art/.gdignore
+!/art/README.md
+!/art/BRANDING_PROMPTS.md
+!/art/ICON_PROMPT.md
+!/art/SPLASH_PROMPT.md
+!/art/characters.blend
+!/art/characters_child.blend
+!/art/characters_teen.blend
+!/art/characters_elder.blend
+!/art/furniture.blend
+!/art/furniture/
+/art/furniture/*
+!/art/furniture/desk_booster.blend
+!/art/celebration/
+/art/celebration/*
+!/art/celebration/birthday_cake.blend
+!/art/source/
+!/art/experiments/
+/art/experiments/**/*.png
+/art/experiments/**/*_preservation.json
+/art/experiments/**/*.log
+
+# Browser reference downloads are research material, not game source/assets.
+/research/

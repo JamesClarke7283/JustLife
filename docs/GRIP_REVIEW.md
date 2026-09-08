@@ -1,0 +1,15 @@
+# Accepted grip and contact integration
+
+The combined actor and surface/grip assets are now promoted to production. `scripts/actor.gd` has SHA-256 `ef20e62accd5fdf8fc1c493985bdd1d8d6c2249bfd079ff5a45f4a16f9f7defb`. The 16 standard GLBs and four editable Blender sources match the reviewed v18/surface_revision2 files; `art/iterations/character_surface_v18/production_hashes.json` records exact production bytes.
+
+The actor caches independent `Hand_Grip_L` and `Hand_Grip_R` morphs and interpolates prop support from the palm to each exported grip anchor. Spoon, bowl, snack and cake use distinct grip amounts; walking releases the fingers. Pause freezes the body, morphs and props together. Assets without grip morphs retain their original palm anchors.
+
+A curled hand alone left the spoon shaft 62–81 degrees across the authored finger channel. The final actor constrains the elbow's reach circle and rolls the forearm around the unchanged palm target so the channel follows the shaft. Solving before the authored broad-frame scale keeps contact consistent across frames. Smoothed residual axis error is approximately 3–4 degrees in the measured adult cycle; the stirring tip remains inside the bowl.
+
+The first actual kitchen review rejected the left hand intersecting the bowl wall. The corrected pose supports the rounded base with an upward-facing palm and raises the held assembly by 11cm to permit that posture. Independent actual kitchen review accepted this correction while preserving the right spoon grasp. Surface revision2 repairs the separate baseline floating face/hair defect and exports updated mouth contact metadata; the actor consumes those landmarks directly.
+
+The exact combined assets and actor passed 1,456 instantiated checks in an isolated Godot project: 576 rig/identity, 250 activities, 134 ages, 24 birthday, 288 desk, 60 grip, and 124 cross-age alignment/support. Every age/frame/detail scene was loaded and animated. Tests cover full stirring cycles where eligible, real bowl-surface support, hand orientation, eating contact, pause and walking release. The measured adult eating gap is 6.7mm. These checks supplement rendered review rather than establishing visual quality by themselves.
+
+The final independent rendered run passed 78 adult checks and 66 child checks without runtime errors. It includes adult creator/profile views, normal-speed kitchen approach, cooking/snack contact, pause/cancellation, and the child birthday sequence. The first child cake review identified fridge penetration; the world now turns the activity toward the room. All 423 visible-cake frames in the final run had zero fridge penetrations, including early-turn captures at 0.18s and 0.55s and a room-side contact view.
+
+Durable final evidence is under `art/screenshots/surface_iteration_08/activity_playthrough` and `art/screenshots/surface_iteration_08/grip_birthday`. The final independent assessment and remaining limitations are in `docs/REVIEWS/iteration_08_final.md`: overall 7.2/10, not 10/10. Earlier diagnostic before/after images remain under `art/grip_review`.

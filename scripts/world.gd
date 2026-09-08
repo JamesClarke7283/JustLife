@@ -32,6 +32,9 @@ var elapsed: float = 0.0
 var rng = RandomNumberGenerator.new()
 var material_cache: Dictionary = {}
 var construction: LifeConstruction
+var landscape_trees:Array[Node3D]=[]
+var ceiling_beams:Array[MeshInstance3D]=[]
+var _desk_boosters:Dictionary={}
 
 func _ready() -> void:
 	rng.seed = 91517
@@ -114,6 +117,7 @@ func create_home(layout: Array = []) -> void:
 	for a in actors.values():
 		if is_instance_valid(a): a.queue_free()
 	actors.clear()
+	landscape_trees.clear();ceiling_beams.clear()
 	house = Node3D.new()
 	house.name = "JuniperHouse"
 	add_child(house)
@@ -154,8 +158,8 @@ func create_home(layout: Array = []) -> void:
 	for x in [-4.25,-1.25,3.3]: window_panel(Vector3(x,1.78,-4.945),false)
 	for z in [-2.3,2.2]: window_panel(Vector3(-5.945,1.75,z),true)
 	# Wall accents, skirting, door thresholds and entry.
-	box(house,Vector3(0,.24,-4.94),Vector3(12,.18,.04),"fcf5e6")
-	box(house,Vector3(-5.94,.24,0),Vector3(.04,.18,10),"fcf5e6")
+	box(house,Vector3(0,.24,-4.94),Vector3(12,.18,.04),"fcf5e6").set_meta("wall_decoration",true)
+	box(house,Vector3(-5.94,.24,0),Vector3(.04,.18,10),"fcf5e6").set_meta("wall_decoration",true)
 	box(house,Vector3(0,.02,5.72),Vector3(2.4,.2,1.35),"c7bea9")
 	box(house,Vector3(0,-.025,7.1),Vector3(1.75,.08,1.8),"dcd5be")
 	box(house,Vector3(0,-.02,8.5),Vector3(75,.10,1.25),"e0d9c7")
@@ -168,11 +172,11 @@ func create_home(layout: Array = []) -> void:
 		for x in range(-7,8):sphere(house,Vector3(x,.25,z),Vector3(1.0,.64,.80),"71945e")
 	for x in [-6.85,6.85]:
 		for z in range(-5,5):
-			if z%2==0:sphere(house,Vector3(x,.16,z),Vector3(.68,.34,.65),"84a366")
+			if z%2==0:sphere(house,Vector3(x,.16,z),Vector3(.68,.34,.65),"84a366").set_meta("garden_decoration",true)
 	for x in [-3.5,3.5]:
 		for i in range(12):
-			var p=Vector3(x+rng.randf_range(-.9,.9),.13,6.8+rng.randf_range(-.45,.45))
-			for j in range(3):sphere(house,p+Vector3(j*.045,.16,0),Vector3(.08,.10,.08),"ddad93" if i%2 else "f2dba5")
+			var p=Vector3(x+rng.randf_range(-.9,.9),-.09,6.8+rng.randf_range(-.45,.45))
+			flower_clump(p, rng, "d4868e" if i%2 else "f5e5ad")
 	for x in [-19,20]: neighbor_home(Vector3(x,0,-1))
 	# A simple open mailbox with a brass house number plate.
 	box(house,Vector3(2,.52,7.8),Vector3(.10,1.1,.10),"ab7951")
@@ -206,11 +210,14 @@ func window_panel(p: Vector3, side: bool) -> void:
 	for x in [-1.0,1.0]:box(root,Vector3(x,.03,.12),Vector3(.18,1.6,.09),"d9cbb2")
 
 func tree(p: Vector3, s: float) -> void:
-	cylinder(house,p+Vector3(0,1.45*s,0),.12*s,2.9*s,"8b7452")
+	var tree_root=Node3D.new();house.add_child(tree_root)
+	tree_root.position=p
+	landscape_trees.append(tree_root)
+	cylinder(tree_root,Vector3(0,1.45*s,0),.12*s,2.9*s,"8b7452")
 	for i in range(7):
 		var a:float=i*2.4
 		var offset=Vector3(sin(a)*.64,2.65+(i%3)*.4,cos(a)*.64)*s
-		sphere(house,p+offset,Vector3(1.75,1.8,1.65)*s,"73976a" if i%2 else "8eaa78")
+		sphere(tree_root,offset,Vector3(1.75,1.8,1.65)*s,"73976a" if i%2 else "8eaa78")
 
 func neighbor_home(p: Vector3) -> void:
 	box(house,p+Vector3(0,1.6,0),Vector3(7,3.2,7),"d7dbca")
@@ -311,7 +318,7 @@ func simulation_targets() -> Array:
 	var a:Array=[]
 	for item in items:a.append({"id":item.id,"kind":item.kind,"position":approach(item)})
 	for id in actors:
-		if id!="player":a.append({"id":id,"kind":"neighbor","position":actors[id].position+Vector3(0,0,.8)})
+		a.append({"id":id,"kind":"neighbor","position":actors[id].position+Vector3(0,0,.8)})
 	return a
 
 func set_build(enabled:bool) -> void:
@@ -389,10 +396,17 @@ func update_camera() -> void:
 	if not camera:return
 	camera.position=camera_target+Vector3(sin(camera_angle)*cos(camera_elevation),sin(camera_elevation),cos(camera_angle)*cos(camera_elevation))*camera_distance
 	camera.look_at(camera_target,Vector3.UP)
+	var facing:Vector3=Vector3(sin(camera_angle),0,cos(camera_angle))
+	for tree_root:Node3D in landscape_trees:
+		if not is_instance_valid(tree_root):continue
+		var toward_camera:bool=tree_root.position.dot(facing)>1.0 and absf(tree_root.position.x)<9
+		for mesh:GeometryInstance3D in tree_root.get_children():mesh.transparency=.84 if toward_camera and live_enabled else 0.0
 
 func set_cutaway(value:bool) -> void:
 	cutaway=value
 	if construction:construction.update_cutaway(value)
+	for beam:MeshInstance3D in ceiling_beams:
+		if is_instance_valid(beam):beam.visible=not value
 
 func _process(delta:float) -> void:
 	elapsed+=delta
@@ -412,3 +426,216 @@ func daylight(minutes:float) -> void:
 	sun.light_energy=.12+brightness*.68
 	sun.light_color=Color("b1c5dc").lerp(Color("fff0d7"),brightness)
 	environment.ambient_light_energy=.16+brightness*.20
+
+func closest_item(kind:String,from:Vector3,max_distance:float=100.0) -> Dictionary:
+	var found:Dictionary={}
+	var nearest:float=max_distance
+	for item:Dictionary in items:
+		if str(item.kind)!=kind:continue
+		var distance:float=item.node.position.distance_to(from)
+		if distance<nearest:nearest=distance;found=item
+	return found
+
+func begin_activity_frame(paused:bool=false) -> void:
+	if paused:return
+	for id:int in _desk_boosters.keys():
+		if not is_instance_valid(_desk_boosters[id]):_desk_boosters.erase(id)
+		else:_desk_boosters[id].visible=false
+
+func _show_desk_booster(chair:Node3D) -> void:
+	var id:int=chair.get_instance_id()
+	if not _desk_boosters.has(id) or not is_instance_valid(_desk_boosters[id]):
+		var scene:PackedScene=load("res://assets/models/desk_booster.glb")
+		var booster:Node3D=scene.instantiate()
+		booster.name="LifeletDeskBooster"
+		chair.add_child(booster)
+		booster.position=Vector3(0,.52,.02)
+		_desk_boosters[id]=booster
+	_desk_boosters[id].visible=true
+
+func _desk_surface(node:Node3D) -> Dictionary:
+	return {"hand_center":node.to_global(Vector3(0,.915,.105)),"hand_spread":.105,
+		"desk_surface_y":node.to_global(Vector3(0,.87,0)).y,
+		"desk_front_edge":node.to_global(Vector3(0,.87,.385)),
+		"desk_forward":-node.global_basis.z.normalized()}
+
+func activity_resource_ids(item:Dictionary) -> Array[String]:
+	var resources:Array[String]=[str(item.id)]
+	if str(item.kind)=="desk":
+		var chair:Dictionary=closest_item("chair",item.node.to_global(Vector3(0,0,.88)),1.25)
+		if not chair.is_empty():resources.append(str(chair.id))
+	return resources
+
+func supported_homework_plan(item:Dictionary,learner_from:Vector3,helper_from:Vector3) -> Dictionary:
+	if str(item.get("kind","")) not in ["desk","computer"]:
+		return {"ok":false,"error":"Choose a desk for homework together."}
+	var node:Node3D=item.node
+	var learner_destination:Vector3=approach(item)
+	if path_to(learner_from,learner_destination).is_empty():
+		return {"ok":false,"error":"The learner cannot reach this desk."}
+	var seat:Dictionary=closest_item("chair",node.to_global(Vector3(0,0,.88)),1.25)
+	if seat.is_empty():return {"ok":false,"error":"Place a chair at the desk before doing homework together."}
+	var options:Array[Vector3]=[]
+	for side:float in [-1.0,1.0]:
+		for forward:float in [.65,.95,1.2]:
+			var desired:Vector3=node.to_global(Vector3(side*1.2,0,forward))
+			var cell:Vector2i=Vector2i(roundi(desired.x*4),roundi(desired.z*4))
+			if not navigation.is_in_boundsv(cell) or navigation.is_point_solid(cell):continue
+			var at:Vector3=Vector3(cell.x*.25,.16,cell.y*.25)
+			if not _clear_coaching_space(at) or at.distance_to(seat.node.position)<.85:continue
+			if path_to(helper_from,at).is_empty():continue
+			options.append(at)
+	if options.is_empty():
+		return {"ok":false,"error":"Leave clear floor space beside the desk for an adult to help."}
+	options.sort_custom(func(a:Vector3,b:Vector3)->bool:return a.distance_squared_to(helper_from)<b.distance_squared_to(helper_from))
+	return {"ok":true,"learner_position":learner_destination,"helper_position":options[0]}
+
+func _clear_coaching_space(at:Vector3) -> bool:
+	# Check the whole standing footprint, not a distant nearest-free fallback.
+	for offset:Vector2 in [Vector2.ZERO,Vector2(.29,0),Vector2(-.29,0),Vector2(0,.29),Vector2(0,-.29),Vector2(.21,.21),Vector2(-.21,.21),Vector2(.21,-.21),Vector2(-.21,-.21)]:
+		if construction.point_blocked(Vector2(at.x,at.z)+offset):return false
+	for other:Dictionary in items:
+		if str(other.kind) in ["rug","painting"]:continue
+		var local:Vector3=other.node.to_local(at)
+		var extent:Vector2=other.size*.5+Vector2(.29,.29)
+		if absf(local.x)<extent.x and absf(local.z)<extent.y:return false
+	return true
+
+func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -> Dictionary:
+	var node:Node3D=item.node
+	var local:Vector3=Vector3(0,0,float(item.size.y)*.5+.36)
+	var yaw:float=node.rotation.y+PI
+	var kind:String="standing"
+	match str(item.kind):
+		"fridge":
+			# Turn toward the room to present the cake at the reached position.
+			# Holding it toward the appliance can push the plate into its door.
+			if action_id=="birthday":yaw=node.rotation.y
+		"bench":
+			local=Vector3(0,.522,.05);yaw=node.rotation.y;kind="seat"
+		"sofa":
+			local=Vector3(0,.66,.08);yaw=node.rotation.y;kind="seat"
+		"chair":
+			local=Vector3(0,.52,.02);yaw=node.rotation.y;kind="seat"
+		"toilet":
+			local=Vector3(0,.615,.12);yaw=node.rotation.y;kind="seat"
+		"bed":
+			local=Vector3(-.43,.80,.015);yaw=node.rotation.y;kind="bed"
+		"shower":
+			local=Vector3(0,.166,.01);yaw=node.rotation.y+PI
+		"desk":
+			var chair:Dictionary=closest_item("chair",node.to_global(Vector3(0,0,.88)),1.25)
+			if not chair.is_empty():
+				var seat:Vector3=chair.node.to_global(Vector3(0,.52,.02))
+				var keyboard:Vector3=node.to_global(Vector3(0,.915,.105))
+				if str(landmarks.get("age_stage",""))=="child":
+					# A visible booster and a forward seat position put short arms
+					# within reach. Keep support inside the actual cushion footprint.
+					var forward:Vector3=Vector3(keyboard.x-seat.x,0,keyboard.z-seat.z).normalized()
+					var child_seat:Vector3=chair.node.to_local(seat+forward*.23)
+					child_seat.x=clampf(child_seat.x,-.24,.24)
+					child_seat.z=clampf(child_seat.z,-.25,.26)
+					child_seat.y+=.18
+					_show_desk_booster(chair.node)
+					seat=chair.node.to_global(child_seat)
+				var seated:Dictionary={"position":seat,"yaw":node.rotation.y+PI,"kind":"seat"}
+				seated.merge(_desk_surface(node))
+				return seated
+			local=Vector3(0,0,.75)
+	var anchor: Dictionary={"position":node.to_global(local),"yaw":yaw,"kind":kind}
+	if str(item.kind)=="desk":
+		anchor.merge(_desk_surface(node))
+	return anchor
+
+func create_public_venue(place:String,layout:Array) -> void:
+	if house:house.queue_free()
+	actors.clear();items.clear();walls.clear();landscape_trees.clear();ceiling_beams.clear()
+	house=Node3D.new();house.name="Community_"+place;add_child(house)
+	construction=LifeConstruction.new();house.add_child(construction);construction.initialize(self)
+	furniture=Node3D.new();furniture.name="Furniture";house.add_child(furniture)
+	box(house,Vector3(0,-.3,0),Vector3(120,.3,120),"b8cdaa")
+	box(house,Vector3(0,-.025,0),Vector3(14,.25,12),"d3c9b6")
+	if place=="park":
+		box(house,Vector3(0,.105,0),Vector3(14,.045,12),"9bb683")
+		box(house,Vector3(0,.137,0),Vector3(2.5,.018,12),"ded7c2")
+		box(house,Vector3(0,.138,0),Vector3(14,.018,1.5),"ded7c2")
+		for x in [-5.8,5.8]:
+			for z in [-4.5,3.8]:tree(Vector3(x,.1,z),.75)
+		for x in range(-6,7):
+			for z in [-5.5,5.5]:
+				sphere(house,Vector3(x,.4,z),Vector3(1.1,.65,.8),"74975f")
+		for i in range(32):
+			var a:float=float(i)*2.399
+			var p:Vector3=Vector3(sin(a)*(2.0+float(i%3)*.3),.26,-3.7+cos(a)*.55)
+			sphere(house,p,Vector3(.10,.17,.10),["e7c596","d39b87","f1ddaa"][i%3])
+		# Open pergola frames the garden; posts stay outside the walkable paths.
+		for x in [-1.6,1.6]:
+			for z in [-5.1,-3.4]:box(house,Vector3(x,1.6,z),Vector3(.11,3,.11),"b79468")
+		for z in [-5.2,-4.8,-4.4,-4.0,-3.3]:box(house,Vector3(0,3.12,z),Vector3(3.7,.12,.10),"b79468")
+	else:
+		var floor:String="cbb998" if place=="library" else "c4beb0"
+		box(house,Vector3(0,.105,0),Vector3(12,.045,10),floor)
+		wall(Vector3(0,1.4,-5.04),Vector3(12.2,2.6,.16),"e4e3d3" if place=="library" else "d5b7a1",false)
+		wall(Vector3(-6.04,1.4,0),Vector3(.16,2.6,10.1),"8fa6a2" if place=="library" else "ece7d9",false)
+		wall(Vector3(6.04,.4,0),Vector3(.16,.6,10.1),"e6d8c5",true)
+		for z in [-2.8,.8,3.3]:window_panel(Vector3(-5.945,1.75,z),true)
+		for x in [-4.3,-1.4,1.5,4.4]:
+			var beam=box(house,Vector3(x,2.65,0),Vector3(.1,.18,10),"ae9169")
+			beam.visible=not cutaway
+			ceiling_beams.append(beam)
+		if place=="library":
+			for x in range(-12,13):box(house,Vector3(x*.5,.135,0),Vector3(.007,.004,10),"b39e80")
+		else:
+			for x in range(-6,7):
+				for z in range(-5,6):box(house,Vector3(x,.134,z),Vector3(.98,.004,.98),"c9c3b7" if (x+z)%2 else "d4ccbc")
+		for x in [-7.4,7.4]:
+			for z in [-4,3.7]:tree(Vector3(x,-.1,z),.75)
+	for x in [-11,11,16,-17]:tree(Vector3(x,-.1,-8),1.25)
+	box(house,Vector3(0,-.02,7.1),Vector3(3,.1,2.5),"dcd5be")
+	box(house,Vector3(0,-.02,8.5),Vector3(75,.1,1.25),"e0d9c7")
+	box(house,Vector3(0,-.07,11),Vector3(100,.12,3.7),"798781")
+	grid=Node3D.new();house.add_child(grid);grid.visible=false
+	for entry:Dictionary in layout:
+		if str(entry.get("kind",""))=="__construction":construction.restore(entry)
+		else:add_item(entry,false)
+	construction.refresh_decorations();rebuild_navigation();update_camera()
+
+func flower_clump(at: Vector3, rng: RandomNumberGenerator, petal_color: String) -> void:
+	# A single draw per clump; construction can hide the whole plant under a floor.
+	var plant := MultiMeshInstance3D.new()
+	plant.position = at
+	plant.set_meta("garden_decoration", true)
+	var mesh := SphereMesh.new()
+	mesh.radial_segments = 8; mesh.rings = 4
+	mesh.radius = .5; mesh.height = 1.0
+	var mat := StandardMaterial3D.new()
+	mat.vertex_color_use_as_albedo = true
+	mat.roughness = .85
+	mesh.material = mat
+	var transforms: Array[Transform3D] = []
+	var colors: Array[Color] = []
+	for stalk: int in range(3):
+		var center := Vector3((stalk - 1) * .075, 0, rng.randf_range(-.035, .035))
+		var height: float = rng.randf_range(.20, .30)
+		transforms.append(Transform3D(Basis.from_scale(Vector3(.012, height, .012)), center + Vector3(0, height / 2, 0)))
+		colors.append(Color("537942"))
+		for side: int in [-1, 1]:
+			var basis := (Basis(Vector3.FORWARD, float(side) * .55) * Basis.from_scale(Vector3(.085, .025, .040)))
+			transforms.append(Transform3D(basis, center + Vector3(side * .027, height * .44, 0)))
+			colors.append(Color("719850"))
+		for petal: int in range(5):
+			var angle: float = TAU * petal / 5
+			var basis := (Basis(Vector3.UP, -angle) * Basis.from_scale(Vector3(.048, .018, .030)))
+			transforms.append(Transform3D(basis, center + Vector3(cos(angle) * .027, height, sin(angle) * .027)))
+			colors.append(Color(petal_color))
+		transforms.append(Transform3D(Basis.from_scale(Vector3(.028, .022, .028)), center + Vector3(0, height + .006, 0)))
+		colors.append(Color("bb873d"))
+	var batch := MultiMesh.new()
+	batch.transform_format = MultiMesh.TRANSFORM_3D
+	batch.use_colors = true
+	batch.mesh = mesh
+	batch.instance_count = transforms.size()
+	for i: int in range(transforms.size()):
+		batch.set_instance_transform(i, transforms[i]); batch.set_instance_color(i, colors[i])
+	plant.multimesh = batch
+	house.add_child(plant)

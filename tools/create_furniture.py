@@ -166,7 +166,17 @@ def painting():
     box('Oak picture frame',(0,1,0),(1.20,.9,.055),'oak',.015); box('Canvas',(0,1,.032),(1.08,.78,.015),'cream',0)
     ell('Sun',(.23,1.14,.045),(.18,.18,.004),'coral'); ell('Hill',(-.22,.9,.052),(.30,.21,.004),'teal'); box('Low field',(0,.7,.06),(1.07,.17,.004),'blue',0)
 
-catalog={'sofa':sofa,'bed':bed,'fridge':fridge,'counter':counter,'stove':stove,'sink':sink,'toilet':toilet,'shower':shower,'table':table,'dining':dining,'chair':chair,'desk':desk,'bookshelf':bookshelf,'easel':easel,'tv':tv,'lamp':lamp,'nightstand':nightstand,'rug':rug,'plant':plant,'painting':painting}
+def bench():
+    for x in [-.78,.78]:
+        rod('Cast iron leg',(x,.05,-.22),(x,.5,-.22),.036,'teal')
+        rod('Cast iron leg',(x,.05,.24),(x,.5,.24),.036,'teal')
+        rod('Back support',(x,.43,-.27),(x,1,-.27),.025,'teal')
+        rod('Bench arm',(x,.73,-.26),(x,.73,.3),.029,'teal')
+        rod('Arm upright',(x,.48,.28),(x,.72,.28),.025,'teal')
+    for z in [-.23,-.08,.07,.22]:box('Seat slat',(0,.49,z),(2,.065,.12),'oak_light',.025)
+    for y in [.71,.89]:box('Back slat',(0,y,-.29),(2,.14,.055),'oak_light',.025)
+
+catalog={'bench':bench,'sofa':sofa,'bed':bed,'fridge':fridge,'counter':counter,'stove':stove,'sink':sink,'toilet':toilet,'shower':shower,'table':table,'dining':dining,'chair':chair,'desk':desk,'bookshelf':bookshelf,'easel':easel,'tv':tv,'lamp':lamp,'nightstand':nightstand,'rug':rug,'plant':plant,'painting':painting}
 for idx,(name,fn) in enumerate(catalog.items()):
     active=[]; fn()
     root=bpy.data.objects.new(name,None); bpy.context.collection.objects.link(root)
