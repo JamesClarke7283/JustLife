@@ -15,7 +15,7 @@ static func fresh(stage: String, day: int = 1) -> Dictionary:
 	return {"version":VERSION, "stage":valid_stage, "last_day":clampi(day,1,DAY_LIMIT),
 		"enrolled_day":clampi(day,1,DAY_LIMIT) if valid_stage in SCHOOL_STAGES else 0,
 		"first_class_day":clampi(day,1,DAY_LIMIT) if valid_stage in SCHOOL_STAGES else 0,
-		"attended":0, "missed":0, "homework":0, "prepared":0,
+		"attended":0, "missed":0, "homework":0, "prepared":0, "late_minutes":0.0,
 		"last_attendance_day":0, "last_homework_day":0, "last_prepared_homework_day":0,
 		"records":[]}
 
@@ -29,7 +29,7 @@ static func weekday_name(day: int) -> String:
 
 
 static func score(state: Dictionary) -> float:
-	return clampf(60.0+float(state.get("attended",0))*2.0+float(state.get("prepared",0))*3.0+float(state.get("homework",0))-float(state.get("missed",0))*4.0,0.0,100.0)
+	return clampf(60.0+float(state.get("attended",0))*2.0+float(state.get("prepared",0))*3.0+float(state.get("homework",0))-float(state.get("missed",0))*4.0-float(state.get("late_minutes",0.0))/30.0,0.0,100.0)
 
 
 static func grade(state: Dictionary) -> String:
@@ -100,7 +100,7 @@ static func advance(state: Dictionary, stage: String, day: int, enrollment_minut
 				notices.append("School record closed with a %s grade; attendance or coursework was incomplete." % str(record.grade))
 		var records: Array = next.records
 		next = fresh(stage,day)
-		if stage in SCHOOL_STAGES and enrollment_minutes > 840.0:
+		if stage in SCHOOL_STAGES and enrollment_minutes > 720.0:
 			next.first_class_day = day + 1
 		next.records = records
 	return {"ok":true,"state":next,"effects":effects,"notices":notices}
@@ -147,6 +147,8 @@ static func validate(state: Variant, stage: String, day: int) -> String:
 		return "Save contains an invalid first school day."
 	for key: String in COUNTERS:
 		if not _integer(state.get(key),0,DAY_LIMIT): return "Save contains an invalid school counter."
+	var late:Variant=state.get("late_minutes",0.0)
+	if not (late is int or late is float) or not is_finite(float(late)) or float(late)<0.0 or float(late)>float(state.attended)*180.0:return "Save contains invalid late-school time."
 	for key: String in DATES:
 		if not _integer(state.get(key),0,int(state.last_day)): return "Save contains an invalid school activity date."
 	if not state.get("records") is Array or state.records.size() > 2:
@@ -211,7 +213,7 @@ static func _term_record(state: Dictionary, day: int) -> Dictionary:
 	var passed: bool = int(state.attended) >= 3 and attendance >= .70 and score(state) >= 55.0
 	return {"stage":str(state.stage),"enrolled_day":int(state.enrolled_day),"first_class_day":int(state.get("first_class_day",state.enrolled_day)),"day":day,
 		"attended":int(state.attended),"missed":int(state.missed),"homework":int(state.homework),"prepared":int(state.prepared),
-		"grade":grade(state),"score":score(state),"outcome":("completed" if str(state.stage) == "child" else "graduated") if passed else "unfinished"}
+		"late_minutes":float(state.get("late_minutes",0.0)),"grade":grade(state),"score":score(state),"outcome":("completed" if str(state.stage) == "child" else "graduated") if passed else "unfinished"}
 
 
 static func _validate_record(record: Variant, day: int) -> String:
@@ -222,11 +224,15 @@ static func _validate_record(record: Variant, day: int) -> String:
 	for key: String in COUNTERS:
 		if not _integer(record.get(key),0,DAY_LIMIT): return "Save contains invalid graduation totals."
 	if not _integer(record.get("first_class_day",record.enrolled_day),int(record.enrolled_day),int(record.enrolled_day)+1): return "Save contains an invalid first school day in a term."
+	var late:Variant=record.get("late_minutes",0.0)
+	if not (late is int or late is float) or not is_finite(float(late)) or float(late)<0.0 or float(late)>float(record.attended)*180.0:return "Save contains invalid archived late-school time."
 	var available: int = _weekdays_between(int(record.get("first_class_day",record.enrolled_day)),int(record.day)+1)
 	var assignment_days: int = _weekdays_between(int(record.enrolled_day),int(record.day)+1)
 	if int(record.attended)+int(record.missed) > available or int(record.homework) > assignment_days or int(record.prepared) > mini(int(record.attended),int(record.homework)):
 		return "Save contains inconsistent graduation totals."
-	if not (record.get("score") is float or record.get("score") is int) or not is_finite(float(record.score)) or float(record.score) != score(record) or str(record.get("grade","")) != grade(record):
+	# JSON can round a fractional lateness penalty by a few binary digits.
+	# Keep a strict absolute tolerance and independently verify grade/outcome.
+	if not (record.get("score") is float or record.get("score") is int) or not is_finite(float(record.score)) or absf(float(record.score)-score(record)) > .00000001 or str(record.get("grade","")) != grade(record):
 		return "Save contains an inconsistent graduation grade."
 	var expected: Dictionary = _term_record(record,int(record.day))
 	if str(record.get("outcome","")) != str(expected.outcome): return "Save contains an unearned graduation."

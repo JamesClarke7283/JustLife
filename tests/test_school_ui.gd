@@ -36,6 +36,7 @@ func run() -> void:
 	check(app.overlay_open and app.sim.speed == 0, "School record pauses live gameplay.")
 	press("Back to life")
 	var money: int=app.household.funds
+	press("School record →");await process_frame
 	press("Online classes");await process_frame
 	check(app.sim.get_current_action().id == "school", "School button queues lessons at a real desk.")
 	await finish_activity()

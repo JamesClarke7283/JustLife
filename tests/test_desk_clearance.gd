@@ -8,7 +8,7 @@ func _run() -> void:
 	root.add_child(app);current_scene = app
 	await frames(4);app.set_sound(false)
 	await _create_school_household()
-	await press("Online classes")
+	await press("School record",true);await press("Online classes")
 	await press("▶")
 	if await wait_until(func()->bool:return active_is("school",.065),"actual child route and settled class pose",45):
 		await _school_pose("20_child_desk_clearance")

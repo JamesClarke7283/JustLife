@@ -26,7 +26,8 @@ func _initialize() -> void:
 	sim._step(1)
 	check(sim.character.age_stage == "young_adult" and sim.character.life_stage == "adult", "Crossing an age boundary grants adult eligibility.")
 	check(sim.lifecycle.history.size() == 1 and sim.lifecycle.progress == 0, "Automatic birthday records one transition and resets stage progress.")
-	check(sim.get_action_availability("job").available, "Careers unlock at young adulthood.")
+	check(sim.choose_career("technology"), "Young adulthood unlocks joining an actual adult career.")
+	check(sim.career.schedule.first_day==sim.day+1 and not sim.get_action_availability("job").available, "Adulthood after noon schedules its first available workday tomorrow.")
 	var retained: Dictionary = {"skills":sim.skills.duplicate(true),"relationships":sim.relationships.duplicate(true),"funds":sim.funds}
 	check(sim.celebrate_birthday() and sim.character.age_stage == "adult", "A chosen birthday advances a single stage.")
 	check(sim.skills == retained.skills and sim.relationships == retained.relationships and sim.funds == retained.funds, "Birthdays preserve learned skills, connections and wallet.")

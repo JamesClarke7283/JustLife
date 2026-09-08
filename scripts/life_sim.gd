@@ -7,6 +7,7 @@ signal action_started(action: Dictionary)
 signal action_finished(action: Dictionary)
 signal notice(text: String)
 signal age_changed(previous: String, current: String)
+signal away_changed(state: Dictionary)
 
 const SAVE_PATH: String = "user://justlife_save.json"
 const SAVE_VERSION: int = 1
@@ -28,6 +29,7 @@ var needs: Dictionary = {}
 var character: Dictionary = {}
 var lifecycle: Dictionary = {}
 var education: Dictionary = {}
+var away_state: Dictionary = {}
 var cooperation_owner: Node = null
 var cooperation_member_id: String = ""
 var _notification_depth: int = 0
@@ -47,6 +49,7 @@ var bills_paid: int = 0
 var last_bill_day: int = 0
 var _targets: Array = []
 var _idle_minutes: float = 0.0
+var autonomy_state: Dictionary = {"version":1,"contacts":{},"deferred":{}}
 var _change_accumulator: float = 0.0
 var _warned_needs: Dictionary = {}
 var _actions: Dictionary = {}
@@ -118,7 +121,7 @@ func new_household(profile: Dictionary) -> void:
 	_social_adults.clear()
 	_social_reciprocal.clear()
 	_social_family.clear()
-	career = {"track":"studio","title": "Studio assistant", "level": 1, "performance": 0.0, "salary": 180, "worked_day": 0}
+	career = {"schedule":LifeCareerSchedule.fresh(1),"track":"studio","title": "Studio assistant", "level": 1, "performance": 0.0, "salary": 180, "worked_day": 0}
 	moodlets.clear();memories.clear()
 	aspiration_stage = 1
 	aspiration_next_day = 0
@@ -133,16 +136,20 @@ func new_household(profile: Dictionary) -> void:
 	speed = 1
 	autonomy = true
 	action_queue.clear()
+	away_state = {}
 	satisfaction = 0
 	bills_paid = 0
 	last_bill_day = 0
 	_idle_minutes = 0.0
+	autonomy_state = {"version":1,"contacts":{},"deferred":{}}
 	_warned_needs.clear()
 	_create_wants()
 	_emit_changed()
 
 
 func _build_actions() -> void:
+	_define("career_day", "Go to work", LifeCareerSchedule.LENGTH, {"hunger":30.0,"bladder":38.0,"social":24.0,"energy":-12.0,"fun":-12.0}, 0, "", 0.0, "Weekday work, 09:00–17:00. Arrive by 10:00; late arrivals until noon reduce pay and performance. Lunch and bathroom breaks are included.")
+	_define("school_day", "Go to school", 420.0, {"hunger":22.0,"bladder":28.0,"social":35.0,"energy":-7.0,"fun":-10.0}, 0, "", 0.0, "Leave for school on weekdays from 08:00. Arrive by 09:00 to be on time; late arrival is possible until 12:00. Return at 15:00. Lunch and bathroom breaks are part of the school day.")
 	_define("help_homework", "Help with homework", 45.0, {}, 0, "", 0.0, "Support a child or teen through one assignment and build Parenting skill.")
 	_define("school", "Attend online classes", 180.0, {}, 0, "", 0.0, "Weekday lessons at your desk, 08:00–14:00. Prepared homework improves learning and grades.")
 	_define("homework", "Do homework", 45.0, {}, 0, "", 0.0, "Complete a weekday assignment and prepare for the next attended class.")
@@ -159,7 +166,7 @@ func _build_actions() -> void:
 	_define("paint", "Paint & sell a canvas", 90.0, {"fun": 40.0, "hygiene": -5.0}, 20, "creativity", 42.0, "Create an original canvas; its value grows with your skill.")
 	_define("work", "Do freelance work", 120.0, {"fun": -8.0, "energy": -10.0}, 0, "logic", 24.0, "Complete a small freelance project for income.")
 	_define("study", "Study a skill", 90.0, {"fun": 12.0, "energy": -5.0}, 0, "logic", 40.0, "Practice Logic and prepare for career advancement.")
-	_define("job", "Work a shift", 360.0, {"hunger": -12.0, "energy": -18.0, "fun": -15.0, "social": 12.0}, 0, "logic", 30.0, "Work one paid shift per day and progress your career.")
+	_define("job", "Work a shift from home", 360.0, {"hunger": -12.0, "energy": -18.0, "fun": -15.0, "social": 12.0}, 0, "logic", 30.0, "Optional six-hour home shift. Shares today’s paid attendance with going to work.")
 	_define("water", "Tend the plants", 25.0, {"fun": 15.0, "hygiene": -4.0}, 0, "gardening", 28.0, "Care for greenery and learn Gardening.")
 	_define("friendly", "Have a friendly chat", 25.0, {"social": 28.0, "fun": 6.0}, 0, "charisma", 18.0, "Say hello, catch up and grow your friendship.")
 	_define("joke", "Tell a joke", 20.0, {"social": 22.0, "fun": 16.0}, 0, "charisma", 16.0, "Share a laugh and strengthen your friendship.")
@@ -178,6 +185,7 @@ func _define(id: String, label: String, duration: float, changes: Dictionary, co
 func get_actions_for(kind: String, target_id: String = "") -> Array:
 	var ids: Array = []
 	match kind:
+		"lot_exit": ids = ["school_day"] if str(character.age_stage) in LifeEducation.SCHOOL_STAGES else (["career_day"] if str(character.life_stage)=="adult" else [])
 		"fridge": ids = ["cook", "snack", "birthday"]
 		"stove", "kitchen": ids = ["cook"]
 		"bed": ids = ["sleep", "nap"]
@@ -208,7 +216,146 @@ func get_action_definition(id: String) -> Dictionary:
 	return _actions.get(id, {}).duplicate(true)
 
 
+func is_away() -> bool:
+	return not away_state.is_empty()
+
+
+func get_away_state() -> Dictionary:
+	return away_state.duplicate(true)
+
+
+func school_departure_reason() -> String:
+	return _school_departure_error("lot_exit")
+
+
+func _school_departure_error(target_id: String, ignore_queue: bool = false) -> String:
+	if str(character.age_stage) not in LifeEducation.SCHOOL_STAGES:
+		return "Only children and teens attend school."
+	if is_away(): return "This Lifelet is already away from home."
+	if not LifeEducation.weekday(day): return "School runs Monday through Friday."
+	if day < int(education.first_class_day): return "Classes begin on the next school day."
+	if int(education.last_attendance_day) == day: return "Today's school attendance is already complete."
+	if minutes < 480.0 or minutes > 720.0: return "Leave for school between 08:00 and 12:00. Arrivals after 09:00 affect school performance."
+	if not target_id.is_empty() and _education_target_kind(target_id) != "lot_exit":
+		return "Choose the neighborhood exit to leave for school."
+	if not ignore_queue:
+		for action: Dictionary in action_queue:
+			if str(action.id) in ["school","school_day"]: return "School is already in this Lifelet's plans."
+	return ""
+
+
+func _begin_school_departure(action: Dictionary) -> void:
+	var problem: String = _school_departure_error(str(action.target_id),true)
+	if problem.is_empty() and str(action.target_id).is_empty(): problem = "School needs a real neighborhood exit."
+	for need: String in ["hunger","energy","bladder"]:
+		if float(needs[need]) < 12.0: problem = "Take care of urgent needs before leaving for school."
+	if bool(action.get("autonomous",false)):
+		if not _autonomy_projection_need("school_day",0.0).is_empty(): problem = "Get ready for the school day before leaving."
+		for later: Dictionary in action_queue.slice(1):
+			if not bool(later.get("autonomous",false)): problem = "Following your plans before leaving for school."
+	if not problem.is_empty():
+		cancel_action()
+		_emit_notice(problem)
+		return
+	# The controller calls this only after the Lifelet reaches the registered exit.
+	action.merge({"phase":"active","paid":true,"started_day":day,"started_minutes":minutes,
+		"elapsed":0.0,"progress":0.0,"duration":900.0-minutes},true)
+	for need:String in action.changes:action.changes[need]=float(action.changes[need])*float(action.duration)/420.0
+	away_state = {"version":1,"activity":"school","phase":"away","departure_day":day,
+		"departure_minutes":minutes,"return_day":day,"return_minutes":900.0,
+		"exit_id":str(action.target_id),"exit_position":action.target_position,
+		"age_stage":str(character.age_stage),"completed":false,"ended_at":0.0}
+	_publish("away_changed",[get_away_state()])
+	_emit_changed()
+	_emit_notice("%s has left for school and will be home after 15:00." % str(character.name))
+
+
+func _tick_away(_game_minutes: float) -> void:
+	if not is_away() or str(away_state.phase) != "away": return
+	if str(away_state.activity)=="career":
+		_tick_career_away()
+		return
+	if day != int(away_state.departure_day) or str(character.age_stage) != str(away_state.age_stage):
+		request_return_home()
+		return
+	var action: Dictionary = action_queue[0]
+	var elapsed: float = clampf(minutes-float(away_state.departure_minutes),0.0,float(action.duration))
+	var gained: float = maxf(0.0,elapsed-float(action.elapsed))
+	action.elapsed = elapsed
+	action.progress = elapsed/float(action.duration)
+	_apply_continuous_effects(action,gained/float(action.duration))
+	if minutes < float(away_state.return_minutes): return
+	# Attendance is earned when the school day ends, even if the route home is slow.
+	# Commit the returning state before any school-result notification is dispatched.
+	begin_notifications()
+	var result: Dictionary = LifeEducation.complete(education,str(character.age_stage),day,900.0,"school")
+	away_state.phase = "returning"
+	away_state.ended_at = float(day-1)*1440.0+900.0
+	away_state.completed = bool(result.ok)
+	if bool(result.ok):
+		var late:float=maxf(0.0,float(away_state.departure_minutes)-540.0)
+		result.state["late_minutes"]=float(result.state.get("late_minutes",0.0))+late
+		for skill:String in result.effects.get("skill_xp",{}):result.effects.skill_xp[skill]*=float(action.duration)/420.0
+		_apply_education_result(result)
+		if late>0:
+			_emit_notice("Arrived %d minutes late. School performance reflects the missed lessons." % int(late))
+		add_moodlet("School day complete","Focused","Lessons are finished. Time to head home.",120,2)
+		remember("A day at school","Finished today's lessons and came home with something new to learn.")
+		_record_chapter_activity("school",0)
+	else:
+		_emit_notice(str(result.get("error","Today's school attendance could not be recorded.")))
+	_publish("away_changed",[get_away_state()])
+	_emit_changed()
+	_emit_notice("%s is returning from school." % str(character.name))
+	dispatch_notifications(release_notifications())
+
+
+func request_return_home() -> bool:
+	if not is_away(): return false
+	if str(away_state.phase) == "returning": return true
+	var action: Dictionary = action_queue[0]
+	var elapsed: float = clampf(_autonomy_now()-(float(away_state.departure_day-1)*1440.0+float(away_state.departure_minutes)),0.0,float(action.duration))
+	var gained: float = maxf(0.0,elapsed-float(action.elapsed))
+	action.elapsed = elapsed
+	action.progress = elapsed/float(action.duration)
+	_apply_continuous_effects(action,gained/float(action.duration))
+	var returning_from_work:bool=str(away_state.activity)=="career"
+	defer_autonomous_responsibility("career_day" if returning_from_work else "school_day",maxf(1.0,721.0-minutes))
+	away_state.phase = "returning"
+	away_state.ended_at = _autonomy_now()
+	away_state.completed = false
+	_publish("away_changed",[get_away_state()])
+	_emit_changed()
+	_emit_notice(("%s is leaving work early. Today’s full shift and pay have not been earned." if returning_from_work else "%s is leaving school early. Today’s attendance has not been earned.") % str(character.name))
+	return true
+
+
+func complete_away_return() -> bool:
+	if not is_away() or str(away_state.phase) != "returning": return false
+	# Arrival is owned by the world; never teleport or begin the later queue here.
+	var action: Dictionary = action_queue.pop_front()
+	action.phase = "complete" if bool(away_state.completed) else "cancelled"
+	action["attendance_earned"] = bool(away_state.completed)
+	away_state = {}
+	_idle_minutes = 0.0
+	_publish("away_changed",[{}])
+	if bool(action.attendance_earned): _emit_action_finished(action)
+	_start_front()
+	_emit_changed()
+	return true
+
+
 func queue_action(id: String, target_id: String = "", target_position: Vector3 = Vector3.ZERO) -> bool:
+	if id=="career_day":
+		var problem:String=_career_departure_error(target_id)
+		if target_id.is_empty():problem="Choose the neighborhood exit to leave for work."
+		if not problem.is_empty():_emit_notice(problem);return false
+	if id == "school_day" and target_id.is_empty():
+		_emit_notice("Choose the neighborhood exit to leave for school.")
+		return false
+	if id == "school_day" and not _school_departure_error(target_id).is_empty():
+		_emit_notice(_school_departure_error(target_id))
+		return false
 	if id == "help_homework":
 		_emit_notice("Choose Do homework together at a desk to arrange both Lifelets.")
 		return false
@@ -224,7 +371,7 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 	if funds < int(definition["cost"]):
 		_emit_notice("You need §%d for %s." % [int(definition["cost"]), str(definition["label"]).to_lower()])
 		return false
-	if id == "job" and int(career["worked_day"]) == day:
+	if id in ["job","career_day"] and int(career["worked_day"]) == day:
 		_emit_notice("Today's shift is complete. You can work again tomorrow.")
 		return false
 	if id in SOCIAL_ACTIONS or id in ["birthday", "job", "work", "cook", "school", "homework"]:
@@ -232,7 +379,11 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 		if not bool(availability.available):
 			_emit_notice(str(availability.reason))
 			return false
+	if id not in ["school_day","career_day"] and not action_queue.is_empty() and str(action_queue[0].id) in ["school_day","career_day"] and bool(action_queue[0].get("autonomous",false)) and not is_away():
+		# A valid new player instruction takes ownership before departure.
+		cancel_action()
 	var action: Dictionary = definition.duplicate(true)
+	if id in ["school_day","career_day"]: action["target_kind"] = "lot_exit"
 	if id in ["school","homework"]: action["target_kind"] = _education_target_kind(target_id)
 	if id == "birthday": action["birthday_from_stage"] = str(character.age_stage)
 	action.merge({"target_id": target_id, "target_position": target_position, "phase": "queued", "elapsed": 0.0, "progress": 0.0, "paid": false, "autonomous": false}, true)
@@ -251,9 +402,16 @@ func get_current_action() -> Dictionary:
 
 
 func begin_current_action() -> void:
+	if is_away(): return
 	if action_queue.is_empty() or str(action_queue[0]["phase"]) != "approach":
 		return
 	var action: Dictionary = action_queue[0]
+	if str(action.id)=="career_day":
+		_begin_career_departure(action)
+		return
+	if str(action.id) == "school_day":
+		_begin_school_departure(action)
+		return
 	if action.has("cooperation_id"):
 		if is_instance_valid(cooperation_owner): cooperation_owner.mark_cooperative_ready(cooperation_member_id)
 		return
@@ -275,6 +433,12 @@ func begin_current_action() -> void:
 			cancel_action()
 			return
 	if not bool(action["paid"]):
+		if bool(action.get("autonomous",false)) and str(action.id) in ["school","homework","job"]:
+			var outside_work_hours:bool=str(action.id)=="job" and (not LifeEducation.weekday(day) or minutes<540.0 or minutes>960.0)
+			if outside_work_hours or not _autonomy_projection_need(str(action.id)).is_empty():
+				_emit_notice("Taking care of the day before starting another responsibility.")
+				cancel_action()
+				return
 		if funds < cost:
 			_emit_notice("There isn't enough money for that activity anymore.")
 			cancel_action()
@@ -295,6 +459,9 @@ func begin_current_action() -> void:
 func cancel_action(index: int = 0) -> void:
 	if index < 0 or index >= action_queue.size():
 		return
+	if index == 0 and is_away():
+		request_return_home()
+		return
 	if action_queue[index].has("cooperation_id") and is_instance_valid(cooperation_owner):
 		cooperation_owner.cancel_cooperative_action(cooperation_member_id)
 		return
@@ -306,6 +473,7 @@ func cancel_action(index: int = 0) -> void:
 
 
 func _start_front() -> void:
+	if is_away(): return
 	if action_queue.is_empty():
 		return
 	action_queue[0]["phase"] = "approach"
@@ -364,6 +532,12 @@ func _step(game_minutes: float) -> void:
 		if need_name == "energy" and _has_trait("Active"):
 			decay *= 0.8
 		needs[need_name] = clampf(float(needs[need_name]) - decay * game_minutes / 60.0, 0.0, 100.0)
+	if is_away():
+		_tick_away(game_minutes)
+		_check_need_notices()
+		_update_wants()
+		return
+	_reconsider_active_autonomy()
 	if not action_queue.is_empty() and str(action_queue[0]["phase"]) == "active" and str(action_queue[0].id) != "help_homework":
 		var action: Dictionary = action_queue[0]
 		var actual_step: float = minf(game_minutes, float(action["duration"]) - float(action["elapsed"]))
@@ -458,12 +632,14 @@ func _finish_front() -> void:
 		funds += income
 		earned = income
 		career["worked_day"] = day
+		career.schedule=LifeCareerSchedule.attend(career.get("schedule",LifeCareerSchedule.fresh(day)),day,0.0)
 		var comfort: float = (float(needs["hunger"]) + float(needs["energy"]) + float(needs["fun"])) / 3.0
 		career["performance"] = float(career["performance"]) + 18.0 + comfort * 0.15 + float(skills["logic"]["level"]) * 2.0
 		_emit_notice("Shift finished. Earned §%d." % income)
 		_check_promotion()
 	elif id in SOCIAL_ACTIONS:
 		action["social_accepted"] = _apply_social(action)
+		if bool(action.social_accepted): _record_autonomy_contact(_social_target(str(action.target_id)),id)
 		action["social_events"] = _recent_social_events.duplicate(true)
 	elif id == "water":
 		_emit_notice("The plants look happier. Gardening skill improved.")
@@ -525,7 +701,11 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 	var reason: String = ""
 	if not _actions.has(id):
 		return {"available":false, "reason":"That activity is unavailable."}
-	if id in ["school","homework"]:
+	if id=="career_day":
+		reason=_career_departure_error(target_id)
+	elif id == "school_day":
+		reason = _school_departure_error(target_id)
+	elif id in ["school","homework"]:
 		reason = _school_availability(id,target_id)
 	elif id == "birthday" and LifeLifecycle.next_stage(str(character.age_stage)).is_empty():
 		reason = "This Lifelet has no further birthday stage."
@@ -537,6 +717,8 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 		reason = "Requires §%d." % int(_actions[id].cost)
 	elif id == "job" and int(career.worked_day) == day:
 		reason = "Today's shift is already complete."
+	elif id=="job" and day<int(career.get("schedule",LifeCareerSchedule.fresh(day)).first_day):
+		reason="Your first shift begins on the next workday."
 	elif id in SOCIAL_ACTIONS:
 		var target: String = _social_target(target_id)
 		if target.is_empty() or target == _social_member_id:
@@ -645,6 +827,7 @@ func receive_social_result(source_id: String, source_name: String, source_life_s
 	for event: Dictionary in events:
 		_record_social_event(source_id, str(event.stage), false)
 	_update_relationship_status(mirrored)
+	_record_autonomy_contact(source_id,action_id)
 	# The other Lifelet also took part in this completed conversation. Keep the
 	# reward in their ordinary tick so the household wallet accounts for it once.
 	for want:Dictionary in wants:
@@ -735,9 +918,9 @@ func choose_career(track_id:String) -> bool:
 	if not CAREER_TRACKS.has(track_id):return false
 	if career.get("track","studio")==track_id:return true
 	for action in action_queue:
-		if action.id=="job":_emit_notice("Finish or cancel your shift before changing careers.");return false
+		if action.id in ["job","career_day"]:_emit_notice("Finish or cancel your shift before changing careers.");return false
 	var track:Dictionary=CAREER_TRACKS[track_id]
-	career={"track":track_id,"title":track.titles[0],"level":1,"performance":0.0,"salary":track.base_salary,"worked_day":int(career.worked_day)}
+	career={"schedule":LifeCareerSchedule.fresh(day,day+1 if minutes>LifeCareerSchedule.CLOSE else day),"track":track_id,"title":track.titles[0],"level":1,"performance":0.0,"salary":track.base_salary,"worked_day":int(career.worked_day)}
 	remember("A new direction","Joined "+str(track.label))
 	add_moodlet("New possibilities","Inspired","A new career is a chance to grow.",240,2)
 	_emit_notice("Your new job: %s. §%d per shift." % [career.title,career.salary])
@@ -773,6 +956,11 @@ func _activity_memory(id:String) -> void:
 
 
 func _new_day() -> void:
+	var work_calendar:Dictionary=LifeCareerSchedule.advance(career.get("schedule",LifeCareerSchedule.fresh(day-1)),day,int(career.worked_day),str(character.life_stage)=="adult")
+	career.schedule=work_calendar.state
+	if int(work_calendar.missed)>0:
+		career.performance=maxf(0.0,float(career.performance)-8.0*int(work_calendar.missed))
+		_emit_notice("Missed a weekday shift. Career performance fell; the next workday is a fresh chance.")
 	_advance_education()
 	_cancel_school_actions("A new school day has begun. Choose a fresh class or assignment.")
 	_warned_needs.clear()
@@ -806,33 +994,267 @@ func _check_need_notices() -> void:
 			_warned_needs.erase(need_name)
 
 
-func _autonomous_choice(excluded_target_ids: Array = []) -> Dictionary:
-	var priorities: Array[String] = []
-	for need_name: String in NEED_NAMES:
-		if float(needs[need_name]) < 52.0: priorities.append(need_name)
-	priorities.sort_custom(func(a: String,b: String) -> bool:
-		if not is_equal_approx(float(needs[a]),float(needs[b])): return float(needs[a]) < float(needs[b])
-		return NEED_NAMES.find(a) < NEED_NAMES.find(b))
-	for lowest: String in priorities:
-		var candidates: Array[String] = []
-		match lowest:
-			"hunger": candidates = ["snack", "cook"]
-			"energy": candidates = ["sleep", "nap"]
-			"hygiene": candidates = ["shower"]
-			"bladder": candidates = ["toilet"]
-			"fun":
-				if _has_trait("Bookworm"): candidates = ["read", "watch", "relax"]
-				else: candidates = ["paint", "read", "watch", "relax"]
-			"social": candidates = ["friendly", "joke"]
-		for id: String in candidates:
-			for target: Dictionary in _targets:
-				if excluded_target_ids.has(str(target.id)): continue
-				for definition: Dictionary in get_actions_for(str(target.kind),str(target.id)):
-					if str(definition.id) == id and bool(definition.available):
-						return {"id":id,"target_id":str(target.id),"position":target.position}
+func _autonomy_now() -> float:
+	return float(day-1)*1440.0+minutes
+
+func _autonomy_household_members() -> Array:
+	if is_instance_valid(cooperation_owner) and cooperation_owner.get("members") is Array:
+		return cooperation_owner.members
+	return []
+
+func _autonomy_cohort(school:bool) -> Array:
+	var cohort:Array=[]
+	for member:Dictionary in _autonomy_household_members():
+		var other:LifeSim=member.sim
+		if (str(other.character.age_stage) in LifeEducation.SCHOOL_STAGES)==school and (school or str(other.character.life_stage)=="adult"):
+			cohort.append(member)
+	if cohort.is_empty():cohort.append({"id":_social_member_id,"sim":self})
+	var cohort_ids:Array[String]=[]
+	for member:Dictionary in cohort:cohort_ids.append(str(member.id))
+	cohort.sort_custom(func(a:Dictionary,b:Dictionary)->bool:
+		if school:
+			if int(a.sim.education.missed)!=int(b.sim.education.missed):return int(a.sim.education.missed)>int(b.sim.education.missed)
+			if int(a.sim.education.attended)!=int(b.sim.education.attended):return int(a.sim.education.attended)<int(b.sim.education.attended)
+		else:
+			if int(a.sim.career.worked_day)!=int(b.sim.career.worked_day):return int(a.sim.career.worked_day)<int(b.sim.career.worked_day)
+		var offset:int=posmod(day-1,cohort.size())
+		var ai:int=cohort_ids.find(str(a.id))
+		var bi:int=cohort_ids.find(str(b.id))
+		return posmod(ai-offset,cohort.size())<posmod(bi-offset,cohort.size()))
+	return cohort
+
+func _autonomy_turn(school:bool) -> int:
+	var cohort:Array=_autonomy_cohort(school)
+	for i:int in range(cohort.size()):
+		if cohort[i].sim==self:return i
+	return 0
+
+func _autonomy_school_household() -> bool:
+	for member:Dictionary in _autonomy_household_members():
+		if str(member.sim.character.age_stage) in LifeEducation.SCHOOL_STAGES:return true
+	return false
+
+func _autonomy_duty_id() -> String:
+	if is_away(): return ""
+	if not LifeEducation.weekday(day):return ""
+	var id:String=""
+	if str(character.age_stage) in LifeEducation.SCHOOL_STAGES:
+		if int(education.last_attendance_day)!=day and day>=int(education.first_class_day) and minutes>=480.0 and minutes<=720.0:
+			id="school_day"
+		elif int(education.last_homework_day)!=day and (int(education.last_attendance_day)==day or minutes>=900.0) and minutes>=600.0 and minutes<=1320.0:
+			id="homework"
+	elif str(character.life_stage)=="adult" and str(career.get("track","studio")) in CAREER_TRACKS and int(career.worked_day)!=day:
+		if day>=int(career.get("schedule",LifeCareerSchedule.fresh(day)).first_day) and minutes>=LifeCareerSchedule.OPEN and minutes<=LifeCareerSchedule.CLOSE:id="career_day"
+	if not id.is_empty() and float(autonomy_state.deferred.get(id,-1.0))>_autonomy_now():return ""
+	return id
+
+func _autonomy_preparation_duty_id() -> String:
+	var due:String=_autonomy_duty_id()
+	if not due.is_empty():return due
+	if not LifeEducation.weekday(day):return ""
+	var id:String=""
+	var start:float=0.0
+	if str(character.age_stage) in LifeEducation.SCHOOL_STAGES and int(education.last_attendance_day)!=day and day>=int(education.first_class_day):
+		id="school_day";start=480.0
+	elif str(character.life_stage)=="adult" and str(career.get("track","studio")) in CAREER_TRACKS and int(career.worked_day)!=day:
+		id="career_day";start=LifeCareerSchedule.OPEN
+		if day<int(career.get("schedule",LifeCareerSchedule.fresh(day)).first_day):return ""
+	if id.is_empty() or minutes<start-180.0 or minutes>=start:return ""
+	if float(autonomy_state.deferred.get(id,-1.0))>_autonomy_now():return ""
+	return id
+
+func defer_autonomous_responsibility(id:String,for_minutes:float=120.0) -> void:
+	if id not in ["school","school_day","career_day","homework","job"] or not is_finite(for_minutes):return
+	autonomy_state.deferred[id]=_autonomy_now()+clampf(for_minutes,0.0,1440.0)
+
+func _autonomy_decay(need:String) -> float:
+	var amount:float=float(NEED_DECAY[need])
+	if need=="social" and _has_trait("Outgoing"):amount*=1.35
+	if need=="fun" and _has_trait("Creative"):amount*=1.2
+	if need=="hygiene" and _has_trait("Neat"):amount*=.75
+	if need=="energy" and _has_trait("Active"):amount*=.8
+	return amount
+
+func _autonomy_projection_need(id:String,travel_minutes:float=60.0) -> String:
+	if id not in ["school","school_day","career_day","homework","job"]:return ""
+	var action:Dictionary=_actions[id]
+	var changes:Dictionary=action.changes.duplicate()
+	var duration:float=float(action.duration)
+	if id=="school_day":
+		duration=900.0-minutes
+		var lesson_minutes:float=maxf(0.0,900.0-maxf(480.0,minutes)-travel_minutes)
+		for need:String in changes:changes[need]=float(changes[need])*lesson_minutes/420.0
+		for need:String in {"energy":-10.0,"hunger":-8.0,"fun":-6.0,"social":16.0}:changes[need]=float(changes.get(need,0.0))+float({"energy":-10.0,"hunger":-8.0,"fun":-6.0,"social":16.0}[need])
+	if id=="career_day":
+		duration=LifeCareerSchedule.END-minutes
+		var work_minutes:float=maxf(0.0,LifeCareerSchedule.END-maxf(LifeCareerSchedule.OPEN,minutes)-travel_minutes)
+		for need:String in changes:changes[need]=float(changes[need])*work_minutes/LifeCareerSchedule.LENGTH
+	if id=="school":changes={"energy":-10.0,"hunger":-8.0,"fun":-6.0,"social":16.0}
+	elif id=="homework":changes={"energy":-3.0,"fun":-5.0}
+	var lowest:float=20.0
+	var problem:String=""
+	for need:String in NEED_NAMES:
+		# A school morning prepares physical needs for time away. Moderate
+		# boredom or untidiness affects mood, but should not consume the day
+		# in optional home activities before a physically safe departure.
+		if id in ["school_day","career_day"] and need not in ["hunger","energy","bladder"]:continue
+		var projected:float=float(needs[need])-_autonomy_decay(need)*duration/60.0+float(changes.get(need,0.0))
+		if projected<lowest:lowest=projected;problem=need
+	return problem
+
+func _autonomy_target_load(target_id:String) -> float:
+	var load_minutes:float=0.0
+	for member:Dictionary in _autonomy_household_members():
+		if member.sim==self:continue
+		var current:Dictionary=member.sim.get_current_action()
+		if not current.is_empty() and str(current.target_id)==target_id:
+			load_minutes+=maxf(1.0,float(current.duration)-float(current.elapsed))
+	return load_minutes
+
+func _autonomy_target_for(id:String,excluded_target_ids:Array=[]) -> Dictionary:
+	var selected:Dictionary={}
+	var lowest:float=INF
+	for target:Dictionary in _targets:
+		if excluded_target_ids.has(str(target.id)):continue
+		var available:bool=false
+		for definition:Dictionary in get_actions_for(str(target.kind),str(target.id)):
+			if str(definition.id)!=id:continue
+			available=bool(definition.available)
+			if id=="career_day" and str(target.kind)=="lot_exit" and minutes>=LifeCareerSchedule.OPEN-180.0 and minutes<LifeCareerSchedule.OPEN and LifeEducation.weekday(day) and str(character.life_stage)=="adult" and int(career.worked_day)!=day and day>=int(career.get("schedule",LifeCareerSchedule.fresh(day)).first_day) and not is_away():available=true
+			if id == "school_day" and str(target.kind) == "lot_exit" and minutes >= 300.0 and minutes < 480.0 and LifeEducation.weekday(day) and str(character.age_stage) in LifeEducation.SCHOOL_STAGES and int(education.last_attendance_day) != day and day >= int(education.first_class_day) and not is_away():
+				# Preparation can locate tomorrow's route before departure opens.
+				# The chooser separately requires a due duty before queueing it.
+				available = true
+			if id in ["school","homework"] and not action_queue.is_empty() and str(action_queue[0].id)==id and bool(action_queue[0].get("autonomous",false)):
+				available=_school_availability(id,str(target.id),true).is_empty()
+		if not available:continue
+		var cost:float=_autonomy_target_load(str(target.id))
+		# A bookshelf can host homework without blocking classes or shifts.
+		if id=="homework" and str(target.kind) in ["desk","computer"]:cost+=60.0
+		if cost<lowest:
+			lowest=cost;selected={"id":id,"target_id":str(target.id),"position":target.position}
+	return selected
+
+func _record_autonomy_contact(target:String,id:String) -> void:
+	if target.is_empty() or not relationships.has(target):return
+	var previous:Dictionary=autonomy_state.contacts.get(target,{})
+	autonomy_state.contacts[target]={"at":_autonomy_now(),"action":id,"count":mini(1000000,int(previous.get("count",0))+1)}
+
+func _autonomy_social_choice(excluded_target_ids:Array=[]) -> Dictionary:
+	var selected:Dictionary={}
+	var best:float=-INF
+	for target:Dictionary in _targets:
+		var target_id:String=str(target.id)
+		if excluded_target_ids.has(target_id) or str(target.kind)!="neighbor" or not relationships.has(target_id):continue
+		var occupied:bool=false
+		for member:Dictionary in _autonomy_household_members():
+			if str(member.id)!=target_id:continue
+			var doing:Dictionary=member.sim.get_current_action()
+			occupied=not doing.is_empty() and str(doing.id) in ["school","school_day","career_day","homework","job","sleep","nap","shower","toilet"]
+		if occupied:continue
+		var person:Dictionary=relationships[target_id]
+		var contact:Dictionary=autonomy_state.contacts.get(target_id,{})
+		var hours:float=clampf((_autonomy_now()-float(contact.get("at",_autonomy_now()-2880.0)))/60.0,0.0,48.0)
+		var score:float=hours*1.6+clampf(float(person.friendship),-40,65)*.25
+		if LifeFamilyGraph.is_family(_family_role(target_id)):score+=6.0
+		if target_id==romantic_partner:score+=8.0
+		score-=minf(60.0,_autonomy_target_load(target_id))
+		score+=float((_social_member_id+"|"+target_id+"|"+str(day)).hash()%1000)*.001
+		var id:String="friendly"
+		if not contact.is_empty():
+			if str(contact.action)=="friendly":id="joke"
+			elif str(contact.action)=="joke" and float(person.friendship)>=35.0:id="deep_talk"
+		if not bool(get_action_availability(id,target_id).available):continue
+		if score>best:best=score;selected={"id":id,"target_id":target_id,"position":target.position}
+	return selected
+
+func _autonomy_need_choice(need:String,excluded_target_ids:Array=[],preparing:bool=false) -> Dictionary:
+	if need=="social":return _autonomy_social_choice(excluded_target_ids)
+	var candidates:Array[String]=[]
+	match need:
+		"hunger":candidates=["snack","cook"]
+		"energy":
+			if preparing or (LifeEducation.weekday(day) and minutes>=240.0 and minutes<=960.0):candidates=["nap","sleep"]
+			else:candidates=["sleep","nap"]
+		"hygiene":candidates=["shower"]
+		"bladder":candidates=["toilet"]
+		"fun":
+			if _has_trait("Bookworm"):candidates=["read","watch","relax"]
+			else:candidates=["paint","read","watch","relax"]
+	for id:String in candidates:
+		var chosen:Dictionary=_autonomy_target_for(id,excluded_target_ids)
+		if not chosen.is_empty():return chosen
 	return {}
 
+func _autonomous_choice(excluded_target_ids:Array=[]) -> Dictionary:
+	var duty:String=_autonomy_duty_id()
+	var leaving:bool=duty in ["school_day","career_day"] and _autonomy_projection_need(duty).is_empty() and not _autonomy_target_for(duty,excluded_target_ids).is_empty()
+	var priorities:Array[String]=NEED_NAMES.duplicate()
+	priorities.sort_custom(func(a:String,b:String)->bool:
+		if not is_equal_approx(float(needs[a]),float(needs[b])):return float(needs[a])<float(needs[b])
+		return NEED_NAMES.find(a)<NEED_NAMES.find(b))
+	for need:String in priorities:
+		if float(needs[need])>=20.0:break
+		# Moderate boredom, loneliness or untidiness can wait until after a
+		# scheduled day away. Truly critical needs still request recovery.
+		if leaving and need not in ["hunger","energy","bladder"] and float(needs[need])>=12.0:continue
+		var urgent:Dictionary=_autonomy_need_choice(need,excluded_target_ids)
+		if not urgent.is_empty():return urgent
+	var preparing:String=_autonomy_preparation_duty_id()
+	if not preparing.is_empty() and not _autonomy_target_for(preparing,excluded_target_ids).is_empty():
+		var preparation:String=_autonomy_projection_need(preparing)
+		if not preparation.is_empty():
+			var recovery:Dictionary=_autonomy_need_choice(preparation,excluded_target_ids,true)
+			if not recovery.is_empty():return recovery
+		elif not duty.is_empty():
+			var choice:Dictionary=_autonomy_target_for(duty,excluded_target_ids)
+			if not choice.is_empty():return choice
+	for need:String in priorities:
+		if float(needs[need])>=52.0:break
+		var choice:Dictionary=_autonomy_need_choice(need,excluded_target_ids)
+		if not choice.is_empty():return choice
+	return {}
+
+func _reconsider_active_autonomy() -> void:
+	if is_away(): return
+	if not autonomy or action_queue.is_empty():return
+	var current:Dictionary=action_queue[0]
+	if not bool(current.get("autonomous",false)) or current.has("cooperation_id") or str(current.phase) not in ["active","approach"]:return
+	# Queued player instructions retain their exact order and content.
+	for later:Dictionary in action_queue.slice(1):
+		if not bool(later.get("autonomous",false)):return
+	# A short recovery must get a useful turn when several needs are critical.
+	# Otherwise minute-by-minute replanning can repeatedly buy and abandon food.
+	if str(current.phase)=="active":
+		if str(current.id) in ["nap","snack","shower","toilet"] and float(current.duration)<=90.0:return
+		for need:String in NEED_NAMES:
+			if float(current.changes.get(need,0.0))>0.0 and float(needs[need])<35.0:
+				if float(current.duration)<=90.0 or float(current.elapsed)<60.0:return
+		if int(current.get("cost",0))>0 and float(current.duration)<=90.0:return
+	var danger:bool=false
+	for need:String in NEED_NAMES:
+		if float(needs[need])<12.0 and float(current.changes.get(need,0.0))<=0.0:
+			var recovery:Dictionary=_autonomy_need_choice(need)
+			if not recovery.is_empty() and (str(recovery.id)!=str(current.id) or str(recovery.target_id)!=str(current.target_id)):danger=true
+	var duty:String=_autonomy_duty_id()
+	var optional:bool=str(current.id) not in ["school","school_day","career_day","homework","job"]
+	var duty_ready:bool=optional and not duty.is_empty() and _autonomy_projection_need(duty).is_empty() and not _autonomy_target_for(duty).is_empty()
+	var preparation_ready:bool=false
+	var preparing:String=_autonomy_preparation_duty_id()
+	if optional and not preparing.is_empty() and float(current.elapsed)>=30.0 and not _autonomy_target_for(preparing).is_empty():
+		var need:String=_autonomy_projection_need(preparing)
+		if not need.is_empty():
+			var recovery:Dictionary=_autonomy_need_choice(need,[],true)
+			preparation_ready=not recovery.is_empty() and (str(recovery.id)!=str(current.id) or str(recovery.target_id)!=str(current.target_id))
+	if str(current.phase)=="active" and float(current.duration)-float(current.elapsed)<=15.0:duty_ready=false;preparation_ready=false
+	if not danger and not duty_ready and not preparation_ready:return
+	var next:Dictionary=_autonomous_choice()
+	if next.is_empty() or (str(next.id)==str(current.id) and str(next.target_id)==str(current.target_id)):return
+	cancel_action()
+	if action_queue.is_empty():_choose_autonomous_action()
+
 func _choose_autonomous_action() -> void:
+	if not autonomy or not action_queue.is_empty():return
 	_idle_minutes = 0.0
 	var choice: Dictionary = _autonomous_choice()
 	if not choice.is_empty() and queue_action(str(choice.id),str(choice.target_id),choice.position):
@@ -844,7 +1266,13 @@ func reconsider_waiting_autonomy(blocked_target_ids: Array, waited_game_minutes:
 	if not bool(current.get("autonomous",false)) or str(current.get("phase","")) != "approach" or current.has("cooperation_id"): return false
 	var choice: Dictionary = _autonomous_choice(blocked_target_ids)
 	if choice.is_empty() or (str(choice.id) == str(current.id) and str(choice.target_id) == str(current.target_id)): return false
+	if str(current.id) in ["school","school_day","career_day","homework","job"] and str(choice.id)!=str(current.id):
+		var danger:bool=false
+		for need:String in NEED_NAMES:
+			if float(needs[need])<20.0:danger=true
+		if not danger:return false
 	var replacement: Dictionary = _actions[str(choice.id)].duplicate(true)
+	if str(choice.id) in ["school","school_day","career_day","homework"]:replacement["target_kind"]=_education_target_kind(str(choice.target_id))
 	replacement.merge({"target_id":str(choice.target_id),"target_position":choice.position,"phase":"queued","elapsed":0.0,"progress":0.0,"paid":false,"autonomous":true})
 	action_queue[0] = replacement
 	_idle_minutes=0.0
@@ -1181,7 +1609,7 @@ func get_mood() -> Dictionary:
 
 
 func get_state() -> Dictionary:
-	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "needs": needs.duplicate(true), "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "wants": wants.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "bills_paid": bills_paid, "last_bill_day": last_bill_day,"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true)}
+	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "wants": wants.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "bills_paid": bills_paid, "last_bill_day": last_bill_day,"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true)}
 
 
 func save_game(world_data: Array = []) -> bool:
@@ -1252,6 +1680,7 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 		entry.minutes = int(entry.minutes)
 	_recent_social_events.clear()
 	career = state["career"].duplicate(true)
+	career["schedule"]=career.get("schedule",LifeCareerSchedule.fresh(int(state.day)))
 	wants = state["wants"].duplicate(true)
 	moodlets=state.get("moodlets",[]).duplicate(true)
 	memories=state.get("memories",[]).duplicate(true)
@@ -1285,6 +1714,11 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 	education = LifeEducation.advance(school_state,str(character.age_stage),day).state
 	speed = int(state.get("speed", 1))
 	autonomy = bool(state.get("autonomy", true))
+	autonomy_state = state.get("autonomy_state",{"version":1,"contacts":{},"deferred":{}}).duplicate(true)
+	away_state = state.get("away_state",{}).duplicate(true)
+	if not away_state.is_empty():
+		away_state.exit_position = _as_vector3(away_state.exit_position)
+		for key:String in ["version","departure_day","return_day"]: away_state[key] = int(away_state[key])
 	satisfaction = int(state.get("satisfaction", 0))
 	bills_paid = int(state.get("bills_paid", 0))
 	last_bill_day = int(state.get("last_bill_day", 0))
@@ -1305,18 +1739,106 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 		for key: String in ["cooperation_id","cooperation_role"]:
 			if stored.has(key): action[key] = str(stored[key])
 		if str(action.id) == "birthday": action["birthday_from_stage"] = str(stored.get("birthday_from_stage",character.age_stage))
+		if str(action.id) in ["school_day","career_day"] and is_away():
+			action.phase = "active"
+			for need:String in action.changes:action.changes[need]=float(action.changes[need])*float(action.duration)/(LifeCareerSchedule.LENGTH if str(action.id)=="career_day" else 420.0)
 		action_queue.append(action)
 	_idle_minutes = 0.0
 	_warned_needs.clear()
 	_start_front()
+	_publish("away_changed",[get_away_state()])
 	_emit_changed()
 	_emit_notice("Welcome home, %s." % character["name"])
 	return {"ok": true, "world": state.get("world", []).duplicate(true)}
 
 
+func _autonomy_integer(value:Variant,minimum:int,maximum:int) -> bool:
+	return (value is int or value is float) and is_finite(float(value)) and float(value)==floorf(float(value)) and float(value)>=minimum and float(value)<=maximum
+
+func _validate_autonomy_state(state:Dictionary) -> String:
+	var value:Variant=state.get("autonomy_state",{"version":1,"contacts":{},"deferred":{}})
+	if not value is Dictionary or not _autonomy_integer(value.get("version"),1,1) or not value.get("contacts") is Dictionary or not value.get("deferred") is Dictionary:return "Save contains invalid autonomy history."
+	if value.contacts.size()>state.relationships.size() or value.deferred.size()>4:return "Save contains too many autonomous history entries."
+	var now:float=float(state.day-1)*1440.0+float(state.minutes)
+	for id:Variant in value.contacts:
+		var contact:Variant=value.contacts[id]
+		if not id is String or not state.relationships.has(id) or not contact is Dictionary:return "Save contains an unknown social contact."
+		if not _number_in_range(contact.get("at"),0.0,now) or str(contact.get("action","")) not in SOCIAL_ACTIONS or not _autonomy_integer(contact.get("count"),1,1000000):return "Save contains an invalid social contact time or activity."
+	for id:Variant in value.deferred:
+		if str(id) not in ["school","school_day","career_day","homework","job"] or not _number_in_range(value.deferred[id],0.0,now+1440.0):return "Save contains an invalid postponed responsibility."
+	return ""
+
+
+func _validate_away_state(state:Dictionary) -> String:
+	if not state.get("away_state",{}) is Dictionary:return "Save contains invalid away state."
+	if str(state.get("away_state",{}).get("activity",""))=="career" or state.action_queue.any(func(action:Dictionary)->bool:return str(action.id)=="career_day"):
+		return _validate_career_away_state(state)
+	return _validate_school_away_state(state)
+
+
+func _validate_school_away_state(state: Dictionary) -> String:
+	var value: Variant = state.get("away_state",{})
+	if not value is Dictionary: return "Save contains invalid away state."
+	var pending: Array = state.action_queue.filter(func(action:Dictionary)->bool:return str(action.id) == "school_day")
+	if pending.size() > 1: return "Save contains duplicate school departures."
+	if value.is_empty():
+		if pending.is_empty(): return ""
+		var action: Dictionary = pending[0]
+		if LifeLifecycle.stage_for(state.character) not in LifeEducation.SCHOOL_STAGES or not LifeEducation.weekday(int(state.day)) or float(state.minutes) < 480.0 or float(state.minutes) > 720.0 or int(state.education.last_attendance_day) == int(state.day):
+			return "Save schedules an unavailable school departure."
+		if action.get("paid") != false or not action.get("paid") is bool or not _number_in_range(action.get("elapsed"),0.0,0.0) or not _number_in_range(action.get("duration"),420.0,420.0):
+			return "Save contains a departed pupil without away state."
+		if str(action.get("target_kind","")) != "lot_exit" or str(action.get("target_id","")) != "lot_exit": return "Save contains a school departure without a neighborhood exit."
+		return ""
+	if not _autonomy_integer(value.get("version"),1,1) or value.get("activity") != "school" or str(value.get("phase","")) not in ["away","returning"]:
+		return "Save contains an unsupported away activity."
+	if pending.size() != 1 or state.action_queue.is_empty() or str(state.action_queue[0].id) != "school_day": return "Save has an away Lifelet without its active departure."
+	if not _autonomy_integer(value.get("departure_day"),1,int(state.day)) or not _autonomy_integer(value.get("return_day"),int(value.departure_day),int(value.departure_day)) or not LifeEducation.weekday(int(value.departure_day)):
+		return "Save contains an invalid away calendar."
+	if not _number_in_range(value.get("departure_minutes"),480.0,720.0) or not _number_in_range(value.get("return_minutes"),900.0,900.0) or not value.get("completed") is bool:
+		return "Save contains invalid school departure or return times."
+	if str(value.get("age_stage","")) not in LifeEducation.SCHOOL_STAGES or str(value.get("exit_id","")) != "lot_exit": return "Save contains an invalid pupil or return location."
+	var position: Variant = value.get("exit_position")
+	if position is Vector3:
+		if not position.is_finite(): return "Save contains an invalid return position."
+	elif position is Array and position.size() == 3:
+		for component: Variant in position:
+			if not _number_in_range(component,-100000.0,100000.0): return "Save contains an invalid return position."
+	else: return "Save contains an invalid return position."
+	var departed: float = float(value.departure_day-1)*1440.0+float(value.departure_minutes)
+	var due: float = float(value.return_day-1)*1440.0+900.0
+	var now: float = float(state.day-1)*1440.0+float(state.minutes)
+	if now < departed or not _number_in_range(value.get("ended_at"),0.0,now): return "Save contains future away progress."
+	var action: Dictionary = pending[0]
+	if action.get("paid") != true or not action.get("paid") is bool or str(action.get("target_id","")) != "lot_exit" or str(action.get("target_kind","")) != "lot_exit" or not _as_vector3(action.target_position).is_equal_approx(_as_vector3(position)):
+		return "Save contains a mismatched away action or exit."
+	if not _autonomy_integer(action.get("started_day"),int(value.departure_day),int(value.departure_day)) or not _number_in_range(action.get("started_minutes"),float(value.departure_minutes)-.00000001,float(value.departure_minutes)+.00000001) or not _number_in_range(action.get("duration"),due-departed-.00000001,due-departed+.00000001):
+		return "Save contains an invalid away duration or start."
+	var expected_elapsed: float = now-departed if str(value.phase) == "away" else float(value.ended_at)-departed
+	if not _number_in_range(action.get("elapsed"),maxf(0.0,expected_elapsed-.00001),minf(due-departed+.00000001,expected_elapsed+.00001)):
+		return "Save contains impossible time spent away."
+	if str(value.phase) == "away":
+		if bool(value.completed) or float(value.ended_at) != 0.0 or now >= due or LifeLifecycle.stage_for(state.character) != str(value.age_stage) or int(state.education.last_attendance_day) == int(value.departure_day):
+			return "Save contains an expired or already-rewarded school day."
+	else:
+		if float(value.ended_at) < departed or float(value.ended_at) > due: return "Save contains an invalid return start."
+		if bool(value.completed):
+			if float(value.ended_at) != due or now < due: return "Save rewards an unfinished school day."
+			var late: float = maxf(0.0,float(value.departure_minutes)-540.0)
+			var earned: bool = str(state.education.stage) == str(value.age_stage) and int(state.education.last_attendance_day) >= int(value.departure_day) and float(state.education.get("late_minutes",0.0))+.00000001 >= late
+			for record: Dictionary in state.education.records:
+				if str(record.stage) == str(value.age_stage) and int(record.day) >= int(value.departure_day) and int(record.attended) > 0 and float(record.get("late_minutes",0.0))+.00000001 >= late: earned = true
+			if not earned: return "Save has a school return without its earned attendance."
+		elif float(value.ended_at) >= due:
+			return "Save marks a completed school day as an early return."
+	return ""
+
+
 func _validate_state(state: Dictionary) -> String:
-	if int(state.get("version", -1)) != SAVE_VERSION:
+	if not _autonomy_integer(state.get("version"),SAVE_VERSION,SAVE_VERSION):
 		return "This save uses an unsupported version."
+	# Guard the clock before any lifecycle or career calendar conversion.
+	if not _autonomy_integer(state.get("day"),1,1000000) or not _number_in_range(state.get("minutes"),0.0,1439.99999):return "Save contains an invalid clock."
 	for key: String in ["character", "needs", "skills", "relationships", "career"]:
 		if not state.get(key) is Dictionary:
 			return "Save is missing valid %s data." % key
@@ -1348,8 +1870,13 @@ func _validate_state(state: Dictionary) -> String:
 	var job: Dictionary = state["career"]
 	if not job.get("title") is String or not _number_in_range(job.get("level"), 1.0, 5.0) or not _number_in_range(job.get("performance"), 0.0, 1000.0) or not _number_in_range(job.get("salary"), 0.0, 1000000.0) or not _number_in_range(job.get("worked_day"), 0.0, 1000000.0):
 		return "Save contains an invalid career."
+	if job.has("schedule"):
+		var schedule_error:String=LifeCareerSchedule.validate(job.schedule,int(state.day),int(job.get("worked_day",0)))
+		if not schedule_error.is_empty():return schedule_error
 	if not _number_in_range(state.get("funds"), 0.0, 1000000000.0) or not _number_in_range(state.get("day"), 1.0, 1000000.0) or not _number_in_range(state.get("minutes"), 0.0, 1439.99999):
 		return "Save contains an invalid clock or funds."
+	var autonomy_error:String=_validate_autonomy_state(state)
+	if not autonomy_error.is_empty():return autonomy_error
 	var school_error: String = _validate_school_state(state)
 	if not school_error.is_empty(): return school_error
 	if not _number_in_range(state.get("speed", 1), 0.0, 8.0) or int(state.get("speed", 1)) not in [0, 1, 3, 8] or not state.get("autonomy", true) is bool:
@@ -1387,7 +1914,7 @@ func _validate_state(state: Dictionary) -> String:
 			if not action.get("cooperation_id") is String or str(action.cooperation_id).is_empty() or str(action.get("cooperation_role","")) != ("helper" if action_id == "help_homework" else "learner") or action_id not in ["homework","help_homework"]:
 				return "Save contains an invalid cooperative action."
 			if action_id == "help_homework" and str(profile.get("life_stage","adult")) != "adult": return "Save contains a non-adult homework helper."
-		if action_id in ["job","work"] and str(profile.get("life_stage","adult")) != "adult": return "Save contains adult work queued for a non-adult Lifelet."
+		if action_id in ["job","career_day","work"] and str(profile.get("life_stage","adult")) != "adult": return "Save contains adult work queued for a non-adult Lifelet."
 		if action_id == "cook" and LifeLifecycle.stage_for(profile) == "child": return "Save contains stove cooking queued for a child."
 		if action_id == "birthday":
 			if LifeLifecycle.next_stage(LifeLifecycle.stage_for(profile)).is_empty(): return "Save contains a birthday beyond the supported age stages."
@@ -1401,7 +1928,7 @@ func _validate_state(state: Dictionary) -> String:
 			for component: Variant in position:
 				if not _number_in_range(component, -100000.0, 100000.0):
 					return "Save contains an invalid action position."
-	return ""
+	return _validate_away_state(state)
 
 
 func _validate_social_state(state: Dictionary) -> String:
@@ -1575,7 +2102,8 @@ func _school_availability(id: String, target_id: String, ignore_queue: bool = fa
 		return "Choose a desk or computer for online classes." if id == "school" else "Choose a desk, computer, or bookshelf for homework."
 	if not ignore_queue:
 		for queued: Dictionary in action_queue:
-			if str(queued.id) == id: return "That school activity is already queued."
+			if id == "school" and str(queued.id) == "school_day" and bool(queued.get("autonomous",false)) and not is_away(): continue
+			if str(queued.id) == id or (id == "school" and str(queued.id) == "school_day"): return "That school activity is already queued."
 	for action: Dictionary in LifeEducation.actions(education,str(character.age_stage),day,minutes):
 		if str(action.id) == id:
 			return str(action.unavailable_reason)
@@ -1624,10 +2152,10 @@ func _advance_education() -> void:
 
 
 func _cancel_school_actions(message: String, start_next: bool = true) -> void:
-	var front_removed: bool = not action_queue.is_empty() and str(action_queue[0].id) in ["school","homework"]
+	var front_removed: bool = not action_queue.is_empty() and (str(action_queue[0].id) in ["school","homework"] or (str(action_queue[0].id) == "school_day" and not is_away()))
 	var cancelled: bool = false
 	for index: int in range(action_queue.size()-1,-1,-1):
-		if str(action_queue[index].id) in ["school","homework"]:
+		if str(action_queue[index].id) in ["school","homework"] or (str(action_queue[index].id) == "school_day" and not is_away()):
 			action_queue.remove_at(index)
 			cancelled = true
 	if cancelled:
@@ -1642,7 +2170,7 @@ func _cancel_age_actions() -> Dictionary:
 	var result: Dictionary = {"front_removed":false,"removed":false}
 	for index: int in range(action_queue.size()-1,-1,-1):
 		var action: Dictionary = action_queue[index]
-		var invalid: bool = str(action.id) in ["school","homework"]
+		var invalid: bool = str(action.id) in ["school","homework"] or (str(action.id) == "school_day" and not is_away())
 		invalid = invalid or (str(action.id) == "birthday" and str(action.get("birthday_from_stage","")) != str(character.age_stage))
 		if invalid:
 			result.front_removed = bool(result.front_removed) or index == 0
@@ -1657,6 +2185,15 @@ func _prune_school_actions() -> void:
 	var messages: Array[String] = []
 	for index: int in range(action_queue.size()-1,-1,-1):
 		var action: Dictionary = action_queue[index]
+		if str(action.id) in ["school_day","career_day"]:
+			if is_away(): continue
+			var departure_error: String = _career_departure_error(str(action.target_id),true) if str(action.id)=="career_day" else _school_departure_error(str(action.target_id),true)
+			if departure_error.is_empty(): continue
+			front_removed = front_removed or index == 0
+			action_queue.remove_at(index)
+			removed = true
+			if departure_error not in messages: messages.append(departure_error)
+			continue
 		if str(action.id) not in ["school","homework"]: continue
 		var error: String = _school_action_error(action)
 		if error.is_empty(): continue
@@ -1716,6 +2253,9 @@ func _advance_age(game_minutes: float) -> void:
 		celebrate_birthday()
 
 func celebrate_birthday(start_next_action: bool = true) -> bool:
+	# Close a due school day before changing the age and archiving its record.
+	# This also keeps the legitimate exact-bell transition serializable.
+	if is_away() and str(away_state.phase)=="away" and _autonomy_now()>=float(away_state.return_day-1)*1440.0+float(away_state.return_minutes):_tick_away(0.0)
 	var previous: String = str(character.age_stage)
 	var next: String = LifeLifecycle.next_stage(previous)
 	if next.is_empty(): return false
@@ -1723,8 +2263,10 @@ func celebrate_birthday(start_next_action: bool = true) -> bool:
 	if not bool(school_result.ok):
 		_emit_notice(str(school_result.error))
 		return false
+	if is_away() and str(away_state.phase) == "away": request_return_home()
 	character.age_stage = next
 	character.life_stage = LifeLifecycle.eligibility(next)
+	if LifeLifecycle.eligibility(previous)!="adult" and str(character.life_stage)=="adult":career.schedule=LifeCareerSchedule.fresh(day,day+1 if minutes>LifeCareerSchedule.CLOSE else day)
 	lifecycle.progress = 0.0
 	lifecycle.history.append({"from":previous,"to":next,"day":day})
 	education = school_result.state
@@ -1781,9 +2323,113 @@ func _publish(event: String, args: Array = []) -> void:
 		"action_started": action_started.emit(args[0])
 		"action_finished": action_finished.emit(args[0])
 		"age_changed": age_changed.emit(str(args[0]),str(args[1]))
+		"away_changed": away_changed.emit(args[0])
 
 func _emit_changed() -> void: _publish("changed")
 func _emit_notice(message: String) -> void: _publish("notice",[message])
 func _emit_action_started(action: Dictionary) -> void: _publish("action_started",[action])
 func _emit_action_finished(action: Dictionary) -> void: _publish("action_finished",[action])
 func _emit_age_changed(previous: String, current: String) -> void: _publish("age_changed",[previous,current])
+
+func _career_departure_error(target_id:String,ignore_queue:bool=false) -> String:
+	if str(character.life_stage)!="adult":return "Full-time careers become available in young adulthood."
+	if is_away():return "This Lifelet is already away from home."
+	if not LifeEducation.weekday(day):return "Ordinary work runs Monday through Friday."
+	if day<int(career.get("schedule",LifeCareerSchedule.fresh(day)).first_day):return "Your first shift begins on the next workday."
+	if int(career.worked_day)==day:return "Today's paid shift is already complete."
+	if minutes<LifeCareerSchedule.OPEN or minutes>LifeCareerSchedule.CLOSE:return "Leave for work between 09:00 and 12:00. Arrivals after 10:00 affect pay and performance."
+	if not target_id.is_empty() and _education_target_kind(target_id)!="lot_exit":return "Choose the neighborhood exit to leave for work."
+	if not ignore_queue:
+		for action:Dictionary in action_queue:
+			if str(action.id) in ["job","career_day"]:return "Work is already in this Lifelet's plans."
+	return ""
+
+func _begin_career_departure(action:Dictionary) -> void:
+	var problem:String=_career_departure_error(str(action.target_id),true)
+	if str(action.target_id).is_empty():problem="Work needs a real neighborhood exit."
+	for need:String in ["hunger","energy","bladder"]:
+		if float(needs[need])<12.0:problem="Take care of urgent needs before leaving for work."
+	if bool(action.get("autonomous",false)):
+		if not _autonomy_projection_need("career_day",0.0).is_empty():problem="Get ready for the workday before leaving."
+		for later:Dictionary in action_queue.slice(1):
+			if not bool(later.get("autonomous",false)):problem="Following your plans before leaving for work."
+	if not problem.is_empty():cancel_action();_emit_notice(problem);return
+	action.merge({"phase":"active","paid":true,"started_day":day,"started_minutes":minutes,"elapsed":0.0,"progress":0.0,"duration":LifeCareerSchedule.END-minutes},true)
+	for need:String in action.changes:action.changes[need]=float(action.changes[need])*float(action.duration)/LifeCareerSchedule.LENGTH
+	away_state={"version":1,"activity":"career","phase":"away","departure_day":day,"departure_minutes":minutes,"return_day":day,"return_minutes":LifeCareerSchedule.END,"exit_id":str(action.target_id),"exit_position":action.target_position,"age_stage":str(character.age_stage),"career_track":str(career.get("track","studio")),"salary":int(career.salary),"completed":false,"ended_at":0.0}
+	_publish("away_changed",[get_away_state()]);_emit_changed()
+	_emit_notice("%s has left for work and will be home after 17:00."%str(character.name))
+
+func _tick_career_away() -> void:
+	if day!=int(away_state.departure_day) or str(character.life_stage)!="adult":request_return_home();return
+	var action:Dictionary=action_queue[0]
+	var elapsed:float=clampf(minutes-float(away_state.departure_minutes),0.0,float(action.duration))
+	var gained:float=maxf(0.0,elapsed-float(action.elapsed))
+	action.elapsed=elapsed;action.progress=elapsed/float(action.duration)
+	_apply_continuous_effects(action,gained/float(action.duration))
+	if minutes<LifeCareerSchedule.END:return
+	begin_notifications()
+	away_state.phase="returning";away_state.ended_at=float(day-1)*1440.0+LifeCareerSchedule.END
+	away_state.completed=int(career.worked_day)!=day
+	if bool(away_state.completed):
+		var proportion:float=float(action.duration)/LifeCareerSchedule.LENGTH
+		var late:float=maxf(0.0,float(away_state.departure_minutes)-LifeCareerSchedule.ON_TIME)
+		var income:int=roundi(float(away_state.salary)*proportion)
+		funds+=income;career.worked_day=day
+		career.schedule=LifeCareerSchedule.attend(career.get("schedule",LifeCareerSchedule.fresh(day)),day,late)
+		var career_skill:String=str(CAREER_TRACKS[str(away_state.career_track)].skill)
+		_gain_skill(career_skill,30.0*proportion)
+		var comfort:float=(float(needs.hunger)+float(needs.energy)+float(needs.fun))/3.0
+		career.performance=maxf(0.0,float(career.performance)+(18.0+comfort*.15+float(skills[career_skill].level)*2.0)*proportion-late/20.0)
+		_emit_notice("Shift finished. Earned §%d for %d minutes at work%s."%[income,int(action.duration),"; arrived %d minutes late"%int(late) if late>0.0 else ""])
+		_check_promotion();_activity_memory("job");_record_chapter_activity("job",income)
+		for want:Dictionary in wants:
+			if str(want.id)=="earn":want.progress=float(want.progress)+1.0
+		_update_wants()
+	_publish("away_changed",[get_away_state()]);_emit_changed()
+	_emit_notice("%s is returning from work."%str(character.name))
+	dispatch_notifications(release_notifications())
+
+func _validate_career_away_state(state:Dictionary) -> String:
+	var eligibility:String=LifeLifecycle.eligibility(LifeLifecycle.stage_for(state.character))
+	var value:Dictionary=state.get("away_state",{})
+	var pending:Array=state.action_queue.filter(func(action:Dictionary)->bool:return str(action.id)=="career_day")
+	if pending.size()!=1 or state.action_queue.any(func(action:Dictionary)->bool:return str(action.id)=="school_day"):return "Save contains duplicate or conflicting departures."
+	var action:Dictionary=pending[0]
+	if value.is_empty():
+		if eligibility!="adult" or int(state.day)<int(state.career.get("schedule",LifeCareerSchedule.fresh(int(state.day))).first_day) or not LifeEducation.weekday(int(state.day)) or float(state.minutes)<LifeCareerSchedule.OPEN or float(state.minutes)>LifeCareerSchedule.CLOSE or int(state.career.worked_day)==int(state.day):return "Save schedules an unavailable work departure."
+		if action.get("paid")!=false or not action.get("paid") is bool or not _number_in_range(action.get("elapsed"),0.0,0.0) or not _number_in_range(action.get("duration"),LifeCareerSchedule.LENGTH,LifeCareerSchedule.LENGTH):return "Save contains a departed worker without away state."
+		if str(action.get("target_kind",""))!="lot_exit" or str(action.get("target_id",""))!="lot_exit":return "Save contains work without a neighborhood exit."
+		return ""
+	if not _autonomy_integer(value.get("version"),1,1) or value.get("activity")!="career" or str(value.get("phase","")) not in ["away","returning"]:return "Save contains an unsupported work absence."
+	if state.action_queue.is_empty() or str(state.action_queue[0].id)!="career_day":return "Save has an away worker without its active departure."
+	if not _autonomy_integer(value.get("departure_day"),1,int(state.day)) or not _autonomy_integer(value.get("return_day"),int(value.departure_day),int(value.departure_day)) or not LifeEducation.weekday(int(value.departure_day)):return "Save contains an invalid work calendar."
+	if not state.career.has("schedule") or int(value.get("departure_day",0))<int(state.career.schedule.first_day):return "Save starts work before employment begins."
+	if not _number_in_range(value.get("departure_minutes"),LifeCareerSchedule.OPEN,LifeCareerSchedule.CLOSE) or not _number_in_range(value.get("return_minutes"),LifeCareerSchedule.END,LifeCareerSchedule.END) or not value.get("completed") is bool:return "Save contains invalid work departure or return times."
+	if LifeLifecycle.eligibility(str(value.get("age_stage","")))!="adult" or str(value.get("exit_id",""))!="lot_exit" or str(value.get("career_track","")) not in CAREER_TRACKS or str(value.career_track)!=str(state.career.get("track","studio")) or not _autonomy_integer(value.get("salary"),0,1000000):return "Save contains an invalid worker, salary or career."
+	if str(value.phase)=="away" and int(value.salary)!=int(state.career.salary):return "Save contains a changed salary during work."
+	var position:Variant=value.get("exit_position")
+	if position is Vector3:
+		if not position.is_finite():return "Save contains an invalid work return position."
+	elif position is Array and position.size()==3:
+		for component:Variant in position:
+			if not _number_in_range(component,-100000.0,100000.0):return "Save contains an invalid work return position."
+	else:return "Save contains an invalid work return position."
+	var departed:float=float(value.departure_day-1)*1440.0+float(value.departure_minutes)
+	var due:float=float(value.return_day-1)*1440.0+LifeCareerSchedule.END
+	var now:float=float(state.day-1)*1440.0+float(state.minutes)
+	if now<departed or not _number_in_range(value.get("ended_at"),0.0,now):return "Save contains future work progress."
+	if action.get("paid")!=true or not action.get("paid") is bool or str(action.get("target_id",""))!="lot_exit" or str(action.get("target_kind",""))!="lot_exit" or not _as_vector3(action.target_position).is_equal_approx(_as_vector3(position)):return "Save contains a mismatched work action or exit."
+	if not _autonomy_integer(action.get("started_day"),int(value.departure_day),int(value.departure_day)) or not _number_in_range(action.get("started_minutes"),float(value.departure_minutes)-.00000001,float(value.departure_minutes)+.00000001) or not _number_in_range(action.get("duration"),due-departed-.00000001,due-departed+.00000001):return "Save contains an invalid work duration or start."
+	var elapsed:float=now-departed if str(value.phase)=="away" else float(value.ended_at)-departed
+	if not _number_in_range(action.get("elapsed"),maxf(0.0,elapsed-.00001),minf(due-departed+.00000001,elapsed+.00001)):return "Save contains impossible time at work."
+	if str(value.phase)=="away":
+		if bool(value.completed) or float(value.ended_at)!=0.0 or now>=due or eligibility!="adult" or int(state.career.worked_day)>=int(value.departure_day):return "Save contains an expired or already-paid workday."
+	else:
+		if float(value.ended_at)<departed or float(value.ended_at)>due:return "Save contains an invalid work return start."
+		if bool(value.completed):
+			if float(value.ended_at)!=due or now<due or int(state.career.worked_day)!=int(value.departure_day):return "Save rewards an unfinished workday."
+			var schedule:Dictionary=state.career.get("schedule",{})
+			if int(schedule.get("last_attendance_day",0))!=int(value.departure_day) or float(schedule.get("late_minutes",0.0))+.00000001<maxf(0.0,float(value.departure_minutes)-LifeCareerSchedule.ON_TIME):return "Save has a work return without earned attendance and lateness."
+		elif float(value.ended_at)>=due:return "Save marks a completed workday as an early return."
+	return ""

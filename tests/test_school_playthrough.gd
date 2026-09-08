@@ -90,6 +90,7 @@ func _school_activities() -> void:
 	var school_before: Dictionary = app.sim.education.duplicate(true)
 	var needs_before: Dictionary = app.sim.needs.duplicate(true)
 	var logic_before: float = app.sim.skills.logic.xp
+	await press("School record",true)
 	await press("Online classes")
 	check(app.sim.get_current_action().id == "school","School HUD Online classes queues its real activity.")
 	await press("▶")

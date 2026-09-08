@@ -106,7 +106,7 @@ func _sample()->void:
 		stats.max_stationary_approach_minutes=maxf(stats.max_stationary_approach_minutes,float(still_minutes[id]))
 		sample_positions[id]=position;last_actions[id]=signature
 		var wait_position:Vector3=motion.get("wait_destination",Vector3.INF)
-		record.members.append({"id":id,"needs":sim.needs.duplicate(true),"action":action.duplicate(true),"waiting":waiting,"wait_started":motion.get("wait_started",-1.0),"wait_destination":vec(wait_position) if wait_position.is_finite() else [],"path_size":motion.get("path",[]).size(),"path_index":motion.get("index",0),"position":vec(position),"mood":sim.get_mood()})
+		record.members.append({"id":id,"needs":sim.needs.duplicate(true),"action":action.duplicate(true),"away_state":sim.get_away_state(),"actor_visible":app.world.actors[id].visible,"waiting":waiting,"wait_started":motion.get("wait_started",-1.0),"wait_destination":vec(wait_position) if wait_position.is_finite() else [],"path_size":motion.get("path",[]).size(),"path_index":motion.get("index",0),"position":vec(position),"mood":sim.get_mood()})
 	audit.samples.append(record)
 
 func _daily_capture()->void:
@@ -152,6 +152,28 @@ func _final_review()->void:
 		check(_now()-last_finish<1440.0,"No member is starved of all completed actions for a full game day: "+str(member.sim.character.name))
 		check(longest_gap<1440.0,"Every observed game day includes a useful completed action: "+str(member.sim.character.name))
 		check(float(audit.members[str(member.id)].max_stationary_approach_minutes)<120,"No non-waiting route remains stationary for two game hours: "+str(member.sim.character.name))
+	for member:Dictionary in app.household.members:
+		var simulation:LifeSim=member.sim
+		var counts:Dictionary={"school":0,"school_day":0,"homework":0,"job":0,"career_day":0}
+		var dates:Dictionary={"school":[],"school_day":[],"homework":[],"job":[],"career_day":[]}
+		for event:Dictionary in audit.completions:
+			if event.id!=member.id or str(event.action) not in counts:continue
+			counts[str(event.action)]+=1
+			check(not dates[str(event.action)].has(int(event.day)),"Autonomy grants each daily responsibility at most once: "+str(member.id)+" "+str(event.action))
+			dates[str(event.action)].append(int(event.day))
+		if str(simulation.character.age_stage) in LifeEducation.SCHOOL_STAGES:
+			check(int(simulation.education.attended)==5 and int(counts.school_day)==5,"Each healthy pupil completes all five off-lot school days without home computer attendance: "+str(simulation.character.name))
+			check(int(simulation.education.homework)>0,"Each pupil actually completes homework during the observed school week: "+str(simulation.character.name))
+			check(int(simulation.education.attended)+int(simulation.education.missed)==5,"School attendance and missed days account for all five elapsed weekdays.")
+		else:check(int(counts.career_day)==5 and int(simulation.career.schedule.attended)==5,"Each healthy employed adult completes all five ordinary off-lot weekday shifts: "+str(simulation.character.name))
+	check(app.household.funds>0,"The healthy starter household retains funds instead of repeatedly paying for abandoned recovery actions.")
+	for member:Dictionary in app.household.members:
+		check(member.sim.needs.values().all(func(value:float):return value>0.0),"No member ends the week with a completely depleted need: "+str(member.sim.character.name))
+	check(audit.samples.all(func(sample:Dictionary):return sample.members.all(func(member:Dictionary):return not member.needs.values().all(func(value:float):return value==0.0))),"No sampled member collapses to all six needs at zero.")
 	audit["final_household"]=app.household.get_state(app.world.serialize_items())
+	var partners:Dictionary={}
+	for event:Dictionary in audit.completions:
+		if str(event.action) in ["friendly","joke","deep_talk"]:partners[str(event.target)]=true
+	check(partners.size()>=4,"Completed social interactions reach at least four distinct partners.")
 	await press("Stories",true);await screenshot("day_08_unattended_stories",false,false);await press("Back to life")
 	await press("My Lifelet");await press("Family tree");await screenshot("day_08_family_tree",false,false);await press("Back to life")

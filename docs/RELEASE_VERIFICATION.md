@@ -1,14 +1,16 @@
 # Packaged release verification
 
-8 September 2026. Current artifact: `dist/JustLife/JustLife.x86_64`, speech/v20 build with embedded project data. The character meshes remain the reviewed v18 production assets; the v19 hair experiment is not included.
+8 September 2026. Current artifact: `dist/JustLife/JustLife.x86_64`, school/work responsibility integration with embedded project data. The character meshes remain the reviewed v18 production assets; hair and shared-meal experiments are not included.
 
 ## Packaged checks
 
-The new executable passed **32 packaged checks, zero failures and zero engine/script errors**, using actual Forward+ rendering on the available NVIDIA RTX 5090. Private data: `/tmp/justlife-release-check-speech-v20-s92gkn2z/data`. Seven screenshots, runtime log and the exact build manifest are archived locally in `art/screenshots/release_speech_v20/initial_shutdown_warning/`. The first run reported two ObjectDB instances remaining at shutdown. A verbose repeat of the identical executable in `/tmp/justlife-release-check-speech-verbose-eg2_ae4t/data` passed the same checks without that warning; it recorded four hardware RGB8-to-RGBA8 conversion warnings. The intermittent exit warning is retained, not claimed fixed.
+The integrated Linux export passed, followed by **32 packaged checks with zero failures, warnings or errors**, using actual Forward+ rendering on the available NVIDIA RTX 5090. Private data: `/tmp/justlife-release-check-responsibilities-8bb99kx0`; exporter snapshot: `/tmp/justlife-release-35qjgxn3`. Screenshots, runtime log and the exact build manifest are archived locally in `art/screenshots/responsibility_iteration_11/final_integration/packaged_release/`. All five changed production scripts in the package match the reviewed candidate hashes. The adjacent `dist/JustLife/build_manifest.json` records the executable SHA-256; `dist/JustLife-Linux.tar.gz` was refreshed from this build.
+
+The earlier speech/v20 executable also passed 32 checks. Its first run reported two ObjectDB instances remaining at shutdown; a verbose repeat passed without that warning and recorded four hardware RGB8-to-RGBA8 conversion warnings. That historical evidence remains in `art/screenshots/release_speech_v20/initial_shutdown_warning/`. The intermittent warning is retained, not claimed fixed by the current clean run.
 
 The probe checks startup/main menu, all five creator age choices, face controls, imported wordless voice/ambience/click resources, original cake/booster resources, child/adult move-in, directed genealogy, school enrollment, named save/load, Keep save, confirmed exact-save deletion and library travel. It does not measure perceived audio, sustained simulation or general hardware compatibility.
 
-Frozen input: `/tmp/justlife-speech-source-t0sm4kk1`; exporter snapshot: `/tmp/justlife-release-u6ywt6oa`. Executable SHA-256: `22050b4a58910301964623257bccf9828a7efa20a57aa29713bc8391a4b8e102`.
+Historical speech/v20 input: `/tmp/justlife-speech-source-t0sm4kk1`; exporter snapshot: `/tmp/justlife-release-u6ywt6oa`. Its superseded executable SHA-256 is `22050b4a58910301964623257bccf9828a7efa20a57aa29713bc8391a4b8e102`.
 
 ## Connected gameplay evidence
 
@@ -20,7 +22,9 @@ Cooperative homework now routes both participants, supports cancellation from ei
 
 The speech update repeats the connected homework flow, then checks readable named cards at three zoom levels, an actual 960×600 window, pause/modal restoration, offscreen removal and controlled simultaneous messages (**72 + 93 checks**). A separate **16-check** real-frame presentation probe verifies natural expiry after play resumes. These overlap the earlier homework checks and do not add new simulation breadth. The selected speaker is prioritized; excess crowd cards can be omitted. Source, images, exact hashes and limits are in `art/screenshots/speech_iteration_11/` and `REVIEWS/iteration_11_speech.md`. The package probe loads the new script but does not repeat those speech-specific scenarios.
 
-The independent full-request score is **7.2/10**, with the 10/10 goal still open. Healthy pupils still need player direction for school/homework, adults need direction for work, and autonomous social choice is strongly repetitive. Character acting/art, household depth and the wardrobe/build catalogue remain substantially short of the requested breadth. The current evidence does not establish feature parity with The Sims 4. See `REVIEWS/iteration_10_final.md`.
+The responsibility integration adds physical departure/return, persisted absence, once-only attendance/pay, autonomous school/work/homework and varied social contact. Its final rendered week passed **127 + 210 checks** with all eight members attending five due days; the final-source public career run passed **69 + 38 checks**. Lateness and prolonged low needs remain. See `REVIEWS/iteration_12_responsibilities.md` for the exact evidence, endpoint-test teardown caveat and limits.
+
+The independent full-request score remains **7.2/10**, with the 10/10 goal still open. Character acting/art, household depth and the wardrobe/build catalogue remain substantially short of the requested breadth. The current evidence does not establish feature parity with The Sims 4. The earlier full-scope findings remain in `REVIEWS/iteration_10_final.md`.
 
 ## Delivery and history
 

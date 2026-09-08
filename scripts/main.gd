@@ -30,6 +30,9 @@ var mood_label: Label
 var action_label: Label
 var action_context: Label
 var action_bar: ProgressBar
+var cancel_action_button: Button
+var household_chips: Dictionary = {}
+var away_phases: Dictionary = {}
 var need_bars: Dictionary = {}
 var need_values: Dictionary = {}
 var queue_box: HBoxContainer
@@ -547,6 +550,7 @@ func setup_live(layout:Array) -> void:
 	world.sun.rotation_degrees=Vector3(-52,-35,0)
 	world.environment.background_color=Color("cddfd6")
 	motion_states.clear()
+	away_phases.clear()
 	for i in range(household.members.size()):
 		var member:Dictionary=household.members[i]
 		spawn_actor(member.id,member.sim.character,Vector3(-.7+(i%2)*.65,.16,2.8+(i/2)*.48))
@@ -559,6 +563,9 @@ func setup_live(layout:Array) -> void:
 	path.clear();path_index=0;walk_only=false
 	pending_action={}
 	_restore_world_state(sim.character.get("world_state",{}))
+	for member:Dictionary in household.members:
+		var away:Dictionary=member.sim.get_away_state()
+		world.set_actor_away(str(member.id),str(away.get("phase",""))=="away",not away.is_empty())
 	household.register_targets(world.simulation_targets())
 	for member:Dictionary in household.members:
 		var member_actor:LifeActor=world.actors[member.id]
@@ -661,13 +668,14 @@ func _refresh_progress_labels() -> void:
 			var school: Dictionary=LifeEducation.summary(sim.education)
 			career_labels.title.text=str(school.school)
 			career_labels.details.text="Grade %s · Homework %s" % [school.grade,"ready" if school.homework_ready else "needed"]
-			career_labels.work.disabled=not sim.get_action_availability("school").available
-			career_labels.work.tooltip_text=str(sim.get_action_availability("school").reason)
-			career_labels.homework.disabled=not sim.get_action_availability("homework").available
+			career_labels.work.disabled=not sim.get_action_availability("school_day").available
+			career_labels.work.tooltip_text=str(sim.get_action_availability("school_day").reason)
+			career_labels.homework.disabled=sim.is_away() or not sim.get_action_availability("homework").available
 		else:
 			career_labels.title.text=sim.career.title
-			career_labels.details.text="Level %d · §%d / shift" % [sim.career.level,sim.career.salary]
-			career_labels.work.disabled=int(sim.career.worked_day)==sim.day
+			career_labels.details.text="Weekdays 09–17 · §%d full day" % sim.career.salary
+			career_labels.work.disabled=not sim.get_action_availability("career_day").available
+			career_labels.work.tooltip_text=str(sim.get_action_availability("career_day").reason)
 	if not goal_labels.is_empty():
 		var current:Dictionary={}
 		for want:Dictionary in sim.wants:
@@ -677,6 +685,7 @@ func _refresh_progress_labels() -> void:
 		goal_labels.reward.text="" if current.is_empty() else "+%d satisfaction" % int(current.reward)
 
 func draw_household_bar() -> void:
+	household_chips.clear()
 	if household.members.size()>1:
 		small_caps("Household",Vector2(28,624),Vector2(280,20))
 		for i in range(household.members.size()):
@@ -685,6 +694,7 @@ func draw_household_bar() -> void:
 			compact_button(chip)
 			chip.size=Vector2(31,44)
 			chip.tooltip_text=str(member.sim.character.name)+" · Click to control"
+			household_chips[str(member.id)]=chip
 	card(Vector2(20,718),Vector2(1400,162),P.WHITE,18)
 	line(Vector2(304,738),Vector2(1,121))
 	line(Vector2(964,738),Vector2(1,121))
@@ -709,7 +719,7 @@ func draw_household_bar() -> void:
 	action_bar=ProgressBar.new()
 	action_bar.show_percentage=false
 	rect(action_bar,Vector2(328,818),Vector2(274,7))
-	button("Cancel action",Vector2(326,842),Vector2(144,26),cancel_current_action)
+	cancel_action_button=button("Cancel action",Vector2(326,842),Vector2(144,26),cancel_current_action)
 	time_label=text_label(sim.get_clock_text(),Vector2(652,736),Vector2(280,33),18,P.INK)
 	time_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	var speeds=[0,1,3,8]
@@ -760,14 +770,14 @@ func draw_household_bar() -> void:
 		var school: Dictionary=LifeEducation.summary(sim.education)
 		career_labels["title"]=text_label(str(school.school),Vector2(989,778),Vector2(235,28),19,P.INK,true)
 		career_labels["details"]=text_label("",Vector2(990,814),Vector2(234,27),12,P.MUTED)
-		career_labels["work"]=button("Online classes",Vector2(1241,779),Vector2(149,37),func():queue_nearest("desk","school"),true)
+		career_labels["work"]=button("Go to school",Vector2(1241,779),Vector2(149,37),_go_to_school,true)
 		career_labels["homework"]=button("Homework",Vector2(1241,824),Vector2(149,32),func():queue_nearest("desk","homework"))
 		button("School record →",Vector2(989,848),Vector2(230,24),show_school_record)
 	else:
 		career_labels["title"]=text_label(sim.career.title,Vector2(989,778),Vector2(235,28),19,P.INK,true)
 		career_labels["details"]=text_label("Level %d  ·  §%d / shift" % [sim.career.level,sim.career.salary],Vector2(990,814),Vector2(234,27),12,P.MUTED)
-		career_labels["work"]=button("Work a shift",Vector2(1241,779),Vector2(149,37),func():queue_nearest("desk","job"),true)
-		button("Find a job",Vector2(1241,824),Vector2(149,32),show_careers)
+		career_labels["work"]=button("Go to work",Vector2(1241,779),Vector2(149,37),_go_to_work,true)
+		button("Career details",Vector2(1241,824),Vector2(149,32),show_career_record)
 
 func draw_queue() -> void:
 	var scroll=ScrollContainer.new()
@@ -800,6 +810,17 @@ func refresh_hud() -> void:
 		bar_style.content_margin_top=0;bar_style.content_margin_bottom=0
 		need_bars[key].add_theme_stylebox_override("fill",bar_style)
 		need_values[key].text=str(int(value))
+	var away:Dictionary=sim.get_away_state()
+	for id:String in household_chips:
+		var chip:Button=household_chips[id]
+		if not is_instance_valid(chip):continue
+		var member:LifeSim=household.member_sim(id)
+		var member_away:Dictionary=member.get_away_state()
+		chip.modulate=P.WHITE if member_away.is_empty() else Color("9aafa9")
+		chip.tooltip_text=str(member.character.name)+" · "+(_away_status(member_away) if not member_away.is_empty() else "At home · Click to control")
+	if is_instance_valid(cancel_action_button):
+		cancel_action_button.text="Come home early" if str(away.get("phase",""))=="away" else "Cancel action"
+		cancel_action_button.disabled=str(away.get("phase",""))=="returning"
 	var action=sim.get_current_action()
 	var together:Dictionary=household.cooperative_presentation(bound_member_id) if not str(action.get("cooperation_id","")).is_empty() else {}
 	var partner:LifeSim=household.member_sim(str(together.get("partner_id","")))
@@ -808,6 +829,7 @@ func refresh_hud() -> void:
 		action_context.tooltip_text="Learning with "+str(partner.character.name) if partner else ""
 	if action_label:
 		action_label.text="Enjoying a moment" if action.is_empty() else ((("Waiting for " if waiting_for_target else "Walking to ") if action.phase=="approach" else "")+str(action.label))
+		if str(action.get("id","")) in ["school_day","career_day"] and str(action.get("phase",""))=="approach":action_label.text="Walking to work" if str(action.id)=="career_day" else "Walking to school"
 		if partner:
 			if str(together.get("phase",""))=="active":
 				action_label.text="Learning together" if str(together.role)=="learner" else "Helping with homework"
@@ -817,9 +839,14 @@ func refresh_hud() -> void:
 		action_label.tooltip_text=action_label.text+(" · With "+str(partner.character.name)+". Canceling ends the activity for both Lifelets." if partner else "")
 		action_label.mouse_filter=Control.MOUSE_FILTER_PASS
 		action_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	if not away.is_empty():
+		if action_context:
+			action_context.text=str(sim.career.title).to_upper() if str(away.activity)=="career" else str(LifeEducation.summary(sim.education).school).to_upper()
+			action_context.tooltip_text="Weekdays · 09:00–17:00" if str(away.activity)=="career" else "Weekdays · 08:00–15:00"
+		if action_label:action_label.text=_away_status(away);action_label.tooltip_text=action_label.text
 	if action_bar:action_bar.value=0 if action.is_empty() else float(action.progress)*100
 	if queue_box:
-		var key:String=bound_member_id+str(sim.action_queue.map(func(a:Dictionary):return a.id+":"+str(a.phase)+":"+str(a.get("cooperation_id",""))))
+		var key:String=bound_member_id+str(away.get("phase",""))+str(sim.action_queue.map(func(a:Dictionary):return a.id+":"+str(a.phase)+":"+str(a.get("cooperation_id",""))))
 		if key!=last_queue:
 			last_queue=key
 			for c in queue_box.get_children():
@@ -832,11 +859,15 @@ func refresh_hud() -> void:
 				compact_button(b)
 				var shared:bool=not str(a.get("cooperation_id","")).is_empty()
 				var queue_title:String=("Learn together" if str(a.id)=="homework" else "Help with homework") if shared else str(a.label)
+				if str(a.id) in ["school_day","career_day"] and not away.is_empty():queue_title=("At work" if str(a.id)=="career_day" else "At school") if str(away.phase)=="away" else "Coming home"
 				var title=text_label(queue_title,Vector2(10,6),Vector2(112,31),12,P.INK,false,b)
 				title.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 				title.size=Vector2(112,31)
-				text_label("×",Vector2(132,6),Vector2(17,31),17,P.MUTED,false,b)
+				var returning:bool=str(a.id) in ["school_day","career_day"] and str(away.get("phase",""))=="returning"
+				b.disabled=returning
+				if not returning:text_label("×",Vector2(132,6),Vector2(17,31),17,P.MUTED,false,b)
 				b.tooltip_text=queue_title+(" · With "+str(partner.character.name) if shared and partner else "")+(" · Click to cancel for both Lifelets" if shared else " · Click to cancel this activity")
+				if returning:b.tooltip_text="Coming home · Available after reaching the front garden"
 				b.pressed.connect(func():cancel_current_action(i))
 
 func commas(value:int) -> String:
@@ -1223,6 +1254,9 @@ func _refresh_sim_targets(replan:bool=true) -> void:
 
 func _refresh_member_targets(replan:bool=true) -> void:
 	if not is_instance_valid(sim) or not is_instance_valid(world.house):return
+	if sim.is_away():
+		if str(sim.get_away_state().get("phase",""))=="returning":away_phases.erase(bound_member_id)
+		return
 	var targets:Array=world.simulation_targets()
 	var by_id:Dictionary={}
 	for target:Dictionary in targets:by_id[str(target.id)]=target
@@ -1235,7 +1269,7 @@ func _refresh_member_targets(replan:bool=true) -> void:
 		if not by_id.has(target_id):
 			sim.cancel_action(index)
 			continue
-		var destination:Vector3=by_id[target_id].position
+		var destination:Vector3=world.lot_exit_position(_member_index(bound_member_id)) if str(action.id) in ["school_day","career_day"] else by_id[target_id].position
 		if str(action.get("cooperation_role",""))=="helper":
 			destination=action.target_position
 			var desk:Dictionary=_find_item(target_id)
@@ -1269,6 +1303,10 @@ func _clear_motion() -> void:
 	pending_action={}
 
 func cancel_current_action(index:int=0) -> void:
+	if index==0 and sim.is_away():
+		sim.request_return_home();refresh_hud();return
+	if index==0 and not sim.get_current_action().is_empty() and bool(sim.get_current_action().get("autonomous",false)):
+		sim.defer_autonomous_responsibility(str(sim.get_current_action().id))
 	# The next action's start signal is synchronous; clear the OLD route first.
 	if index==0:_clear_motion()
 	if index==0 and household.cancel_cooperative_action(bound_member_id):
@@ -1281,6 +1319,7 @@ func _cancel_all_cooperative_actions() -> void:
 	for member:Dictionary in household.members:household.cancel_cooperative_action(str(member.id))
 
 func queue_interaction(item:Dictionary,id:String) -> void:
+	if sim.is_away():show_notice("This Lifelet will be available after coming home.");return
 	if str(item.id)==bound_member_id:return
 	var destination:Vector3=world.approach(item)
 	if item.kind=="neighbor":destination=item.node.position+Vector3(0,0,.9)
@@ -1351,6 +1390,7 @@ func show_housemate_interactions(item:Dictionary,screen:Vector2) -> void:
 
 func on_ground_clicked(p:Vector3) -> void:
 	if mode!="live":return
+	if sim.is_away():show_notice("This Lifelet will be available after coming home.");return
 	close_overlay()
 	if not sim.action_queue.is_empty():
 		show_notice("Cancel the current activity before walking somewhere else.");return
@@ -1361,7 +1401,7 @@ func on_ground_clicked(p:Vector3) -> void:
 	if path.is_empty():show_notice("That spot is out of reach.")
 
 func on_action_started(action:Dictionary) -> void:
-	if loading_game or reconciling_targets or not is_instance_valid(player):return
+	if loading_game or reconciling_targets or not is_instance_valid(player) or sim.is_away():return
 	_clear_motion()
 	player.clear_speech()
 	if str(action.id) in LifeSim.SOCIAL_ACTIONS and world.actors.get(str(action.target_id)) is LifeActor:
@@ -1387,7 +1427,7 @@ func _cancel_blocked_action(generation:int,action:Dictionary,member_id:String=""
 
 func on_action_finished(action:Dictionary) -> void:
 	if is_instance_valid(player):
-		player.speech({"cook":"Delicious!","read":"One more chapter…","paint":"Made something lovely.","friendly":"Good to talk with you!","joke":"Ha!","deep_talk":"I understand.","water":"Looking greener.","work":"All done!","homework":"Ready for tomorrow.","help_homework":"We worked it out."}.get(action.id,"That feels better."))
+		player.speech({"school_day":"Learned something new today.","career_day":"Home after a busy day.","cook":"Delicious!","read":"One more chapter…","paint":"Made something lovely.","friendly":"Good to talk with you!","joke":"Ha!","deep_talk":"I understand.","water":"Looking greener.","work":"All done!","homework":"Ready for tomorrow.","help_homework":"We worked it out."}.get(action.id,"That feels better."))
 	refresh_hud()
 
 func show_notice(message:String) -> void:
@@ -1686,9 +1726,11 @@ func _process(delta:float) -> void:
 		for member:Dictionary in household.members:member.sim.autonomy=autonomy_values[member.id]
 		world.daylight(household.minutes)
 		world.begin_activity_frame(household.speed<=0)
+		var away_targets_changed:bool=false
 		for member:Dictionary in household.members:
 			_bind_member(member.id)
-			var moving:bool=_advance_movement(delta)
+			away_targets_changed=_sync_away_presence() or away_targets_changed
+			var moving:bool=_advance_away_movement(delta) if sim.is_away() else _advance_movement(delta)
 			var action:Dictionary=sim.get_current_action()
 			var action_id:String="" if action.is_empty() or action.phase!="active" else action.id
 			if not str(action.get("cooperation_id","")).is_empty() and action_id.is_empty():
@@ -1698,6 +1740,7 @@ func _process(delta:float) -> void:
 			player.animate(delta,float(sim.speed),moving,action_id)
 			_store_motion()
 		_bind_member(selected_id)
+		if away_targets_changed:_refresh_sim_targets(false)
 		for id:String in ["maya","leo"]:
 			var actor:LifeActor=world.actors[id]
 			var talk_id:String=""
@@ -1908,6 +1951,8 @@ func _update_activity_facing(delta:float,action:Dictionary,action_id:String) -> 
 		player.rotation.y=lerp_angle(player.rotation.y,atan2(direction.x,direction.z),minf(delta*6,1))
 
 func _resolve_activity_target(action:Dictionary) -> void:
+	if str(action.id) in ["school_day","career_day"]:
+		action.target_position=world.lot_exit_position(_member_index(bound_member_id));return
 	if world.actors.has(str(action.target_id)):
 		action.target_position=world.actors[str(action.target_id)].position+Vector3(0,0,.9)
 		return
@@ -1949,6 +1994,7 @@ func _activity_available(action:Dictionary) -> bool:
 	return true
 
 func _activity_resources(action:Dictionary) -> Array[String]:
+	if str(action.get("id","")) in ["school_day","career_day"]:return []
 	var target_id:String=str(action.get("target_id",""))
 	var item:Dictionary=_find_item(target_id)
 	var resources:Array[String]=[]
@@ -2044,8 +2090,9 @@ func travel_to(destination:String) -> void:
 	var automatic:Array=[]
 	for member:Dictionary in household.members:
 		automatic.append(member.sim.autonomy);member.sim.autonomy=false
-		while not member.sim.action_queue.is_empty():member.sim.cancel_action()
-		member.sim.character.erase("world_state")
+		if not member.sim.is_away():
+			while not member.sim.action_queue.is_empty():member.sim.cancel_action()
+			member.sim.character.erase("world_state")
 	household.set_speed(1);household.tick(2.5)
 	for i in range(household.members.size()):household.members[i].sim.autonomy=automatic[i]
 	household.set_speed(resume)
@@ -2355,12 +2402,15 @@ func show_school_record() -> void:
 	text_label("Growing every day",Vector2(461,193),Vector2(518,60),35,P.INK,true,overlay)
 	text_label(str(school.school),Vector2(465,278),Vector2(510,40),24,P.TEAL,true,overlay)
 	text_label("Grade %s · %d%% attendance" % [school.grade,roundi(float(school.attendance)*100)],Vector2(465,329),Vector2(510,38),20,P.INK,false,overlay)
-	paragraph("Online classes run Monday to Friday. Start between 08:00 and 14:00 at a desk; lessons take three hours. Do homework to prepare for your next class.",Vector2(465,389),Vector2(505,91),17,P.MUTED,overlay)
+	paragraph("School runs weekdays, 08:00–15:00. Arrive by 09:00; late arrivals until 12:00 reduce performance. Your Lifelet walks to the street and returns after school. Homework prepares the next day.",Vector2(465,389),Vector2(505,91),17,P.MUTED,overlay)
 	var classes:String="%d %s attended" % [sim.education.attended,"class" if int(sim.education.attended)==1 else "classes"]
 	var assignments:String="%d %s" % [sim.education.homework,"assignment" if int(sim.education.homework)==1 else "assignments"]
-	text_label("%s · %d missed · %s" % [classes,sim.education.missed,assignments],Vector2(465,504),Vector2(506,30),14,P.INK,false,overlay)
+	text_label("%s · %d missed · %s · %d min late" % [classes,sim.education.missed,assignments,int(sim.education.get("late_minutes",0.0))],Vector2(465,504),Vector2(506,30),14,P.INK,false,overlay)
 	paragraph("Graduation needs at least three attended classes, 70% attendance and a C grade. Your school record stays with you as you grow.",Vector2(465,555),Vector2(505,63),14,P.MUTED,overlay)
-	button("Back to life",Vector2(464,653),Vector2(512,45),close_overlay,true,overlay)
+	var online:Button=button("Online classes",Vector2(464,653),Vector2(216,45),func():close_overlay();queue_nearest("desk","school"),false,overlay)
+	online.tooltip_text="Optional three-hour class at a home computer. It shares today’s attendance credit with school."
+	online.disabled=not sim.get_action_availability("school").available or sim.is_away()
+	button("Back to life",Vector2(693,653),Vector2(283,45),close_overlay,true,overlay)
 
 func frame_creator_camera() -> void:
 	if not is_instance_valid(preview):return
@@ -2497,3 +2547,62 @@ func _family_level_trial(parents:Array,aligned:Array) -> Dictionary:
 				if int(result[id])<level:result[id]=level;changed=true
 		if not changed:return result
 	return {}
+
+func _member_index(id:String) -> int:
+	for index:int in range(household.members.size()):
+		if str(household.members[index].id)==id:return index
+	return 0
+
+func _away_status(state:Dictionary) -> String:
+	var activity:String="work" if str(state.get("activity",""))=="career" else "school"
+	if str(state.get("phase",""))=="returning":return "Coming home from "+activity
+	var until:int=int(state.get("return_minutes",900))
+	return "At %s · Back %02d:%02d" % [activity,until/60,until%60]
+
+func _sync_away_presence() -> bool:
+	var state:Dictionary=sim.get_away_state()
+	var phase:String=str(state.get("phase",""))
+	var changed:bool=world.set_actor_away(bound_member_id,phase=="away",not state.is_empty())
+	var previous:String=str(away_phases.get(bound_member_id,""))
+	if phase!=previous:
+		away_phases[bound_member_id]=phase
+		_clear_motion()
+		if phase=="returning":
+			# Re-enter the rendered lot only at its sidewalk. Saved return walks
+			# retain their actual position; saved away members reappear at exit.
+			if previous=="away" or not player.visible:player.position=_saved_vector(state.get("exit_position"),world.lot_exit_position(_member_index(bound_member_id)))
+			var destination:Vector3=world.lot_return_position(_member_index(bound_member_id))
+			path=world.path_to(player.position,destination);path_index=0
+			if path.is_empty():show_notice("The return path is blocked. Clear the front garden to let this Lifelet come home.")
+	return changed
+
+func _advance_away_movement(delta:float) -> bool:
+	var state:Dictionary=sim.get_away_state()
+	if str(state.get("phase",""))!="returning" or sim.speed<=0:return false
+	var moved:bool=_advance_path(delta)
+	if moved and path_index>=path.size():
+		_clear_motion()
+		away_phases[bound_member_id]=""
+		sim.complete_away_return()
+	return moved
+
+func _go_to_school() -> void:
+	if sim.queue_action("school_day","lot_exit",world.lot_exit_position(_member_index(bound_member_id))):refresh_hud()
+
+func _go_to_work() -> void:
+	if sim.queue_action("career_day","lot_exit",world.lot_exit_position(_member_index(bound_member_id))):refresh_hud()
+
+func show_career_record() -> void:
+	_begin_pause_overlay()
+	card(Vector2(430,178),Vector2(580,553),P.WHITE,24,overlay)
+	small_caps("Your working life",Vector2(467,209),Vector2(502,24),overlay)
+	text_label(str(sim.career.title),Vector2(465,254),Vector2(510,46),27,P.TEAL,true,overlay)
+	paragraph("Work runs weekdays, 09:00–17:00. Arrive by 10:00; late arrivals until noon reduce performance. Pay reflects actual time at work. Missing a weekday lowers performance.",Vector2(466,319),Vector2(505,114),17,P.MUTED,overlay)
+	var record:Dictionary=sim.career.get("schedule",LifeCareerSchedule.fresh(sim.day))
+	text_label("%d shifts completed · %d missed · %d min late"%[record.attended,record.missed,int(record.late_minutes)],Vector2(466,449),Vector2(505,35),16,P.INK,false,overlay)
+	paragraph("A home shift is an optional six-hour alternative. It shares today's paid attendance with going to work.",Vector2(466,498),Vector2(505,56),14,P.MUTED,overlay)
+	var remote:Button=button("Work from home",Vector2(465,580),Vector2(243,43),func():close_overlay();queue_nearest("desk","job"),false,overlay)
+	remote.disabled=sim.is_away() or not sim.get_action_availability("job").available
+	var change:Button=button("Find a job",Vector2(720,580),Vector2(251,43),show_careers,false,overlay)
+	change.disabled=sim.is_away()
+	button("Back to life",Vector2(465,653),Vector2(506,43),close_overlay,true,overlay)

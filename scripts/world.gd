@@ -314,10 +314,31 @@ func approach(item:Dictionary) -> Vector3:
 	var c=nearest_free(p)
 	return Vector3(c.x*.25,.16,c.y*.25)
 
+func lot_exit_position(member_index:int=0) -> Vector3:
+	# The front sidewalk belongs to the navigable lot, beyond the front door.
+	var cell:Vector2i=nearest_free(Vector3((member_index-3.5)*.75,.16,8.5))
+	return Vector3(cell.x*.25,.16,cell.y*.25)
+
+func lot_return_position(member_index:int=0) -> Vector3:
+	var cell:Vector2i=nearest_free(Vector3((member_index%4-1.5)*.75,.16,6.5+(member_index/4)*.75))
+	return Vector3(cell.x*.25,.16,cell.y*.25)
+
+func set_actor_away(id:String,away:bool,unavailable:bool) -> bool:
+	var actor:LifeActor=actors.get(id)
+	if not is_instance_valid(actor):return false
+	var changed:bool=bool(actor.get_meta("away",false))!=unavailable
+	actor.set_meta("away",unavailable)
+	actor.visible=not away
+	for child:Node in actor.get_children():
+		if child is CollisionObject3D:child.collision_layer=0 if away else 2
+	if away:actor.clear_speech()
+	return changed
+
 func simulation_targets() -> Array:
-	var a:Array=[]
+	var a:Array=[{"id":"lot_exit","kind":"lot_exit","position":lot_exit_position()}]
 	for item in items:a.append({"id":item.id,"kind":item.kind,"position":approach(item)})
 	for id in actors:
+		if bool(actors[id].get_meta("away",false)):continue
 		a.append({"id":id,"kind":"neighbor","position":actors[id].position+Vector3(0,0,.8)})
 	return a
 
@@ -389,7 +410,7 @@ func pick(screen:Vector2) -> void:
 		var id:String=str(hit.collider.get_meta("item_id",""))
 		for item in items:
 			if item.id==id:object_clicked.emit(item,screen);return
-		if actors.has(id):object_clicked.emit({"id":id,"kind":"neighbor","label":actors[id].get_meta("display_name"),"node":actors[id],"size":Vector2(.6,.6)},screen);return
+		if actors.has(id) and not bool(actors[id].get_meta("away",false)):object_clicked.emit({"id":id,"kind":"neighbor","label":actors[id].get_meta("display_name"),"node":actors[id],"size":Vector2(.6,.6)},screen);return
 	ground_clicked.emit(floor_point(screen))
 
 func update_camera() -> void:
