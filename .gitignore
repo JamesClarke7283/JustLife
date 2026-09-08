@@ -45,6 +45,11 @@ __pycache__/
 !/art/meals/garden_supper.blend
 !/art/meals/README.md
 !/art/meals/manifest.json
+!/art/recipes/
+/art/recipes/*
+!/art/recipes/recipe_variants.blend
+!/art/recipes/README.md
+!/art/recipes/manifest.json
 !/art/source/
 !/art/experiments/
 /art/experiments/**/*.png

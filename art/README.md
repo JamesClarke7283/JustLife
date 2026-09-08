@@ -7,6 +7,7 @@ Production artwork is original JustLife work. The runtime loads exported GLBs fr
 - `furniture/desk_booster.blend`: the child's visible desk-seat support.
 - `celebration/birthday_cake.blend`: the birthday cake, plate and candles.
 - `meals/garden_supper.blend`: original serving dish, individual plate, food and fork; export hashes and regeneration instructions are in its README.
+- `recipes/recipe_variants.blend`: original herb pasta and vegetable bake, with serving dishes and individual plates; its README and manifest record authoring and verification.
 - `source/grip_v3/`: immutable hand and rig inputs used by the surface-repair generator. These are source dependencies, not disposable backups.
 - `source/character_v18_production_hashes.json`: compact accepted-asset provenance.
 - `experiments/hair_v19/`: editable, unpromoted hairstyle research. Its README explains how to regenerate the study.

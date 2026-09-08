@@ -1142,14 +1142,16 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 	var column=VBoxContainer.new();column.add_theme_constant_override("separation",10);scroll.add_child(column)
 	for a:Dictionary in actions:
 		var label_text:String=a.label
-		if int(a.cost)>0:label_text+="   §%d" % a.cost
+		if int(a.cost)>0 and str(a.id)!="cook":label_text+="   §%d" % a.cost
 		var b=Button.new();b.text=label_text;b.custom_minimum_size=Vector2(300,44)
 		b.add_theme_font_size_override("font_size",13)
 		b.tooltip_text=str(a.get("unavailable_reason","")) if not bool(a.available) else str(a.description)+"  ·  %d min" % a.duration
+		if str(a.id)=="cook" and bool(a.available):b.tooltip_text="Choose a recipe. Each dish lists its servings, price, time and Cooking level."
 		b.disabled=not bool(a.available)
 		b.pressed.connect(func():
 			play_click()
-			if str(a.id)=="choose_leftovers":meal_flow.show_leftovers(str(item.id))
+			if str(a.id)=="cook":meal_flow.show_recipes(str(item.id))
+			elif str(a.id)=="choose_leftovers":meal_flow.show_leftovers(str(item.id))
 			elif str(a.id)=="call_to_meal":
 				var joined:int=meal_flow.call_to_meal(str(item.id));close_overlay();show_notice("%d Lifelets are coming to eat." % joined)
 			elif str(a.id)=="supported_homework":show_homework_helpers(item)

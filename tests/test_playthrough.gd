@@ -29,8 +29,8 @@ class MotionObserver extends Node:
 
 func _initialize() -> void:
 	var project_path: String = ProjectSettings.globalize_path("res://")
-	if not project_path.begins_with("/tmp/justlife-playthrough-") or ProjectSettings.has_setting("autoload/MCPRuntimeServer"):
-		push_error("Refusing to run outside the isolated /tmp playthrough copy.")
+	if not project_path.trim_suffix("/").get_file().begins_with("justlife-playthrough-") or OS.get_environment("XDG_DATA_HOME")!=project_path.path_join("userdata") or ProjectSettings.has_setting("autoload/MCPRuntimeServer"):
+		push_error("Refusing to run outside an isolated playthrough copy with private userdata.")
 		quit(2)
 		return
 	resume_only = "--resume-only" in OS.get_cmdline_user_args()
@@ -225,7 +225,9 @@ func queue_via_menu(kind: String, action_id: String) -> bool:
 	app.world.object_clicked.emit(item, screen)
 	await frames(2)
 	var definition: Dictionary = app.sim.get_action_definition(action_id)
-	return await press(str(definition.label), true)
+	var opened:bool=await press(str(definition.label), true)
+	if opened and action_id=="cook":return await press("Cook garden skillet")
+	return opened
 
 func active_is(action_id: String, minimum_progress: float = 0.0) -> bool:
 	var action: Dictionary = app.sim.get_current_action()

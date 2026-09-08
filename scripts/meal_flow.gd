@@ -93,6 +93,9 @@ func resolve(sim:LifeSim,action:Dictionary) -> void:
 	if not target.is_empty():action.target_position=app.world.approach(target)
 
 func before_begin(sim:LifeSim,action:Dictionary) -> bool:
+	if str(action.id)=="cook":
+		var problem:String=action_availability(sim,"cook",str(action.target_id))
+		if not problem.is_empty():_stop(sim,problem);return false
 	if str(action.id) not in ACTIONS:return true
 	var person:String=member_id(sim)
 	if action.id=="eat_meal" and action.get("meal_stage")=="pickup":
@@ -203,7 +206,7 @@ func consume(sim:LifeSim,action:Dictionary,minutes:float) -> void:
 func finished(sim:LifeSim,action:Dictionary) -> void:
 	var person:String=member_id(sim)
 	if action.id=="cook":
-		var batch:Dictionary=food().create_batch("garden_skillet",person,clampi(int(sim.skills.cooking.level)/3+1,1,3),app.current_venue,now())
+		var batch:Dictionary=food().create_batch(str(action.get("recipe","garden_skillet")),person,clampi(int(sim.skills.cooking.level)/3+1,1,3),app.current_venue,now())
 		if not batch.is_empty():_prepend(sim,"serve_meal",str(batch.id),{"meal_source":str(batch.id)})
 	elif action.id=="serve_meal":
 		var target:Dictionary=item(str(action.target_id))
@@ -212,7 +215,8 @@ func finished(sim:LifeSim,action:Dictionary) -> void:
 		if not target.is_empty():
 			var offset:Vector3=target.node.to_local(position)
 			food().batch(str(action.meal_source)).offset=[offset.x,offset.y,offset.z]
-		sim._emit_notice("Dinner is ready: four servings of garden skillet.")
+		var served:Dictionary=food().batch(str(action.meal_source))
+		if not served.is_empty():sim._emit_notice("Dinner is ready: %d servings of %s." % [int(served.remaining),str(LifeMeals.RECIPES[str(served.recipe)].label).to_lower()])
 		if float(sim.needs.hunger)<75:_prepend(sim,"eat_meal",str(action.meal_source),{})
 	elif action.id=="eat_meal":
 		var plate:Dictionary=food().portion(str(action.get("meal_plate","")))
@@ -258,7 +262,8 @@ func call_to_meal(target:String) -> int:
 	return count
 
 func _mesh_view(value:Dictionary) -> Node3D:
-	var scene:PackedScene=load("res://assets/models/meal_plate.glb" if value.has("batch") else "res://assets/models/meal_serving.glb")
+	var recipe:String=str(food().batch(str(value.batch)).recipe) if value.has("batch") else str(value.recipe)
+	var scene:PackedScene=load(LifeMeals.model_path(recipe,value.has("batch")))
 	var root:Node3D=scene.instantiate()
 	var body:StaticBody3D=StaticBody3D.new();body.name="FoodPicking";body.collision_layer=2;body.set_meta("item_id",str(value.id));root.add_child(body)
 	var shape:CollisionShape3D=CollisionShape3D.new();var bounds:BoxShape3D=BoxShape3D.new()
@@ -328,6 +333,8 @@ func present_actor(person:String) -> void:
 	if not is_instance_valid(lifelet):return
 	var held:Dictionary=food().carried_by(person)
 	lifelet.meal_presentation={"carrying":not held.is_empty() and str(held.storage)=="carried","platter":not held.is_empty() and not held.has("batch")}
+	var current:Dictionary=app.household.member_sim(person).get_current_action()
+	lifelet.cooking_presentation={"recipe":str(current.get("recipe","garden_skillet")),"progress":float(current.get("progress",0))} if str(current.get("id",""))=="cook" else {}
 
 
 func show_leftovers(fridge_id:String) -> void:
@@ -357,6 +364,7 @@ func show_leftovers(fridge_id:String) -> void:
 
 
 func action_title(action:Dictionary) -> String:
+	if str(action.get("id",""))=="cook":return ("Preparing " if str(action.get("phase",""))=="active" else "Getting ready to cook ")+str(LifeMeals.RECIPES[str(action.get("recipe","garden_skillet"))].label).to_lower()
 	if str(action.get("id","")) not in ACTIONS:return ""
 	var approaching:bool=str(action.get("phase",""))=="approach"
 	match str(action.id):
@@ -399,3 +407,47 @@ func _reconcile_dining_furniture() -> void:
 		action.phase="approach"
 		_choose_seat(str(member.id),action)
 		member.sim._emit_action_started(action)
+
+
+func show_recipes(target_id:String) -> void:
+	app._begin_pause_overlay();app.dismiss_layer()
+	app.card(Vector2(321,118),Vector2(798,664),app.P.WHITE,22,app.overlay)
+	app.text_label("What’s cooking?",Vector2(352,140),Vector2(720,51),34,app.P.INK,true,app.overlay)
+	app.paragraph("Cooking level %d · Choose a dish to share. Ingredients are paid for when cooking begins." % int(app.sim.skills.cooking.level),Vector2(355,206),Vector2(721,49),16,app.P.MUTED,app.overlay)
+	var index:int=0
+	for recipe:String in LifeMeals.RECIPES:
+		var definition:Dictionary=LifeMeals.RECIPES[recipe]
+		var row:Control=Control.new();row.name="RecipeRow_"+recipe
+		app.rect(row,Vector2(349,276+index*135),Vector2(742,122),app.overlay)
+		app.card(Vector2.ZERO,Vector2(742,122),Color("f3f4ed"),13,row)
+		_recipe_preview(recipe,row)
+		app.text_label(str(definition.label),Vector2(179,11),Vector2(533,30),23,app.P.INK,true,row)
+		app.paragraph("%d servings  ·  §%d  ·  %d min  ·  Cooking %d" % [int(definition.servings),int(definition.cost),int(definition.duration),int(definition.skill)],Vector2(181,45),Vector2(533,25),13,app.P.INK,row)
+		var reason:String=LifeMeals.recipe_error(recipe,int(app.sim.skills.cooking.level),str(app.sim.character.age_stage),app.sim.funds)
+		if reason.is_empty():reason=action_availability(app.sim,"cook",target_id)
+		app.paragraph(str(definition.description) if reason.is_empty() else reason,Vector2(181,79),Vector2(310,35),12,app.P.MUTED,row)
+		var choose:Button=app.button("Cook "+str(definition.label).to_lower(),Vector2(509,78),Vector2(218,34),queue_recipe.bind(target_id,recipe),true,row)
+		choose.name="Recipe_"+recipe;choose.disabled=not reason.is_empty();choose.tooltip_text=reason
+		index+=1
+	app.button("Back to life",Vector2(866,718),Vector2(221,39),app.close_overlay,false,app.overlay)
+
+func queue_recipe(target_id:String,recipe:String) -> void:
+	var target:Dictionary=item(target_id)
+	if target.is_empty():app.show_notice("This kitchen item is no longer here.");return
+	if app.sim.is_away():app.show_notice("This Lifelet will be available after coming home.");return
+	if app.sim.queue_action("cook",target_id,app.world.approach(target),recipe):
+		app.close_overlay();app.refresh_hud()
+
+func _recipe_preview(recipe:String,parent:Control) -> void:
+	var viewport:SubViewport=SubViewport.new();viewport.name="DishPreview";viewport.size=Vector2i(300,204)
+	viewport.own_world_3d=true;viewport.transparent_bg=true;viewport.render_target_update_mode=SubViewport.UPDATE_ONCE
+	parent.add_child(viewport)
+	var model:Node3D=load(LifeMeals.model_path(recipe)).instantiate();viewport.add_child(model)
+	var camera:Camera3D=Camera3D.new();camera.projection=Camera3D.PROJECTION_ORTHOGONAL;camera.size=.42
+	viewport.add_child(camera);camera.position=Vector3(.33,.48,.57);camera.look_at(Vector3(0,.035,0));camera.current=true
+	var light:DirectionalLight3D=DirectionalLight3D.new();light.rotation_degrees=Vector3(-48,-30,0);light.light_energy=.8;viewport.add_child(light)
+	var world_environment:WorldEnvironment=WorldEnvironment.new();world_environment.environment=Environment.new()
+	world_environment.environment.ambient_light_source=Environment.AMBIENT_SOURCE_COLOR;world_environment.environment.ambient_light_color=Color("fff4de");world_environment.environment.ambient_light_energy=.35;world_environment.environment.tonemap_mode=Environment.TONE_MAPPER_REINHARDT
+	viewport.add_child(world_environment)
+	var picture:TextureRect=TextureRect.new();picture.texture=viewport.get_texture();picture.expand_mode=TextureRect.EXPAND_IGNORE_SIZE;picture.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED;picture.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	app.rect(picture,Vector2(9,9),Vector2(153,104),parent)

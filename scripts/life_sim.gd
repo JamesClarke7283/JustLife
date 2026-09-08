@@ -161,7 +161,7 @@ func _build_actions() -> void:
 	_define("discard_meal","Clear this meal",5.0,{},0,"",0.0,"Carry the serving dish to the sink and discard its remaining food.")
 	_define("clean_plate","Wash this plate",10.0,{"hygiene":-1.0},0,"",0.0,"Carry the used plate to a sink and wash it.")
 	_define("snack", "Grab a snack", 15.0, {"hunger": 32.0}, 8, "", 0.0, "A quick bite to keep the day going.")
-	_define("cook", "Cook a fresh meal", 45.0, {"fun": 8.0, "hygiene": -5.0}, 25, "cooking", 34.0, "Prepare four servings, then carry the dish to a table. Eating restores hunger.")
+	_define("cook", "Cook a fresh meal", 45.0, {"fun": 8.0, "hygiene": -5.0}, 25, "cooking", 34.0, "Choose a recipe to prepare and share. Cooking skill unlocks more dishes. Eating restores hunger.")
 	_define("sleep", "Sleep", 360.0, {"energy": 95.0}, 0, "", 0.0, "A full night's rest restores energy.")
 	_define("nap", "Take a nap", 75.0, {"energy": 38.0}, 0, "", 0.0, "A short, refreshing nap.")
 	_define("shower", "Take a shower", 30.0, {"hygiene": 85.0, "fun": 4.0}, 0, "", 0.0, "Freshen up and feel ready for the day.")
@@ -354,7 +354,7 @@ func complete_away_return() -> bool:
 	return true
 
 
-func queue_action(id: String, target_id: String = "", target_position: Vector3 = Vector3.ZERO) -> bool:
+func queue_action(id: String, target_id: String = "", target_position: Vector3 = Vector3.ZERO, recipe: String = "garden_skillet") -> bool:
 	if id=="career_day":
 		var problem:String=_career_departure_error(target_id)
 		if target_id.is_empty():problem="Choose the neighborhood exit to leave for work."
@@ -377,6 +377,10 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 		_emit_notice("Choose furniture for that school activity.")
 		return false
 	var definition: Dictionary = _actions[id]
+	if id=="cook":
+		var reason:String=LifeMeals.recipe_error(recipe,int(skills.cooking.level),str(character.age_stage),funds)
+		if not reason.is_empty():_emit_notice(reason);return false
+		definition=LifeMeals.cooking_definition(definition,recipe)
 	if funds < int(definition["cost"]):
 		_emit_notice("You need §%d for %s." % [int(definition["cost"]), str(definition["label"]).to_lower()])
 		return false
@@ -436,7 +440,10 @@ func begin_current_action() -> void:
 			_emit_notice(school_error)
 			cancel_action()
 			return
-	if str(action.id) in RELATIONSHIP_ACTIONS or str(action.id) in ["flirt", "birthday", "job", "work", "cook"]:
+	if str(action.id)=="cook":
+		var recipe_reason:String=LifeMeals.recipe_error(str(action.get("recipe","garden_skillet")),int(skills.cooking.level),str(character.age_stage),funds,bool(action.paid))
+		if not recipe_reason.is_empty():_emit_notice(recipe_reason);cancel_action();return
+	if str(action.id) in RELATIONSHIP_ACTIONS or str(action.id) in ["flirt", "birthday", "job", "work"]:
 		var availability: Dictionary = get_action_availability(str(action.id), str(action.target_id))
 		if not bool(availability.available):
 			_emit_notice(str(availability.reason))
@@ -1753,10 +1760,11 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 	action_queue.clear()
 	for stored: Dictionary in state.get("action_queue", []):
 		var action: Dictionary = _actions[str(stored["id"])].duplicate(true)
+		if str(action.id)=="cook":action=LifeMeals.cooking_definition(action,str(stored.get("recipe","garden_skillet")))
 		action["target_id"] = str(stored.get("target_id", ""))
 		action["target_position"] = _as_vector3(stored.get("target_position", [0.0, 0.0, 0.0]))
-		action["elapsed"] = clampf(float(stored.get("elapsed", 0.0)), 0.0, float(action["duration"]))
 		action["duration"] = float(stored.get("duration", action["duration"]))
+		action["elapsed"] = clampf(float(stored.get("elapsed", 0.0)), 0.0, float(action["duration"]))
 		action["progress"] = clampf(float(action["elapsed"]) / float(action["duration"]), 0.0, 1.0)
 		action["phase"] = "queued"
 		action["paid"] = bool(stored.get("paid", false))
@@ -1943,7 +1951,16 @@ func _validate_state(state: Dictionary) -> String:
 				return "Save contains an invalid cooperative action."
 			if action_id == "help_homework" and str(profile.get("life_stage","adult")) != "adult": return "Save contains a non-adult homework helper."
 		if action_id in ["job","career_day","work"] and str(profile.get("life_stage","adult")) != "adult": return "Save contains adult work queued for a non-adult Lifelet."
-		if action_id == "cook" and LifeLifecycle.stage_for(profile) == "child": return "Save contains stove cooking queued for a child."
+		if action_id == "cook":
+			var recipe:Variant=action.get("recipe","garden_skillet")
+			if not recipe is String or not LifeMeals.RECIPES.has(recipe):return "Save contains an invalid cooking recipe."
+			var recipe_error:String=LifeMeals.recipe_error(recipe,int(state.skills.cooking.level),LifeLifecycle.stage_for(profile),0,true)
+			if not recipe_error.is_empty():return recipe_error
+			var definition:Dictionary=LifeMeals.RECIPES[recipe]
+			if not _number_in_range(action.get("duration"),float(definition.duration),float(definition.duration)) or not _number_in_range(action.get("elapsed",0),0,float(definition.duration)):return "Save contains invalid recipe progress."
+			if action.get("cost")!=definition.cost or action.get("xp")!=definition.xp or not action.get("paid") is bool:return "Save contains invalid recipe ingredients or learning."
+			if str(action.get("phase","")) not in ["queued","approach","active"]:return "Save contains an invalid cooking phase."
+			if (float(action.get("elapsed",0))>0 or str(action.get("phase",""))=="active") and not bool(action.paid):return "Save contains cooking progress without paid ingredients."
 		if action_id == "birthday":
 			if LifeLifecycle.next_stage(LifeLifecycle.stage_for(profile)).is_empty(): return "Save contains a birthday beyond the supported age stages."
 			if str(action.get("birthday_from_stage",LifeLifecycle.stage_for(profile))) != LifeLifecycle.stage_for(profile): return "Save contains a birthday for an age stage that has already passed."

@@ -1,0 +1,72 @@
+{
+  "original_artwork": true,
+  "source": "art/recipes/recipe_variants.blend",
+  "generator": "tools/create_recipe_props.py",
+  "preview": "art/recipes/studio/recipe_comparison.png",
+  "source_sha256": "69e585612056799b14802488feb1db7aa48f2319ae81948b2f7c8f2600ea38bc",
+  "generator_sha256": "abe0600d70aff5de6905f613fd0a5505136d23c9721bd83855943b81c6eecd09",
+  "blender_version": "5.2.1 LTS",
+  "assets": {
+    "meal_herb_pasta_serving": {
+      "path": "assets/models/meal_herb_pasta_serving.glb",
+      "root": "HerbPastaServing",
+      "sha256": "48de8f361b18c2fecb76caddf6ec8ec01f390c56cc0be3e945f4c0e724a275cf",
+      "source_objects": 132,
+      "bytes": 1672664
+    },
+    "meal_herb_pasta_plate": {
+      "path": "assets/models/meal_herb_pasta_plate.glb",
+      "root": "HerbPastaPlate",
+      "sha256": "aa99be552ffbbfb17191e3352aab075e1529f8d2d30dfb1c63cba396b40200bc",
+      "source_objects": 56,
+      "bytes": 596032
+    },
+    "meal_harvest_bake_serving": {
+      "path": "assets/models/meal_harvest_bake_serving.glb",
+      "root": "HarvestBakeServing",
+      "sha256": "cca44aadff4e4fa861ce4b9afd54170bc1549ca3fb0c9daf44a665becfc2a6e1",
+      "source_objects": 137,
+      "bytes": 337248
+    },
+    "meal_harvest_bake_plate": {
+      "path": "assets/models/meal_harvest_bake_plate.glb",
+      "root": "HarvestBakePlate",
+      "sha256": "100c52d97a8a5b3eb8c9bb3f072ee3f63c579ce2168777a739fe7514608555d6",
+      "source_objects": 89,
+      "bytes": 267288
+    }
+  },
+  "verification": {
+    "blender_reopen": {
+      "checks": 32,
+      "failures": [],
+      "report": "art/recipes/studio/blender_reopen_report.json"
+    },
+    "godot_import": {
+      "checks": 42,
+      "failures": [],
+      "report": "art/recipes/studio/godot_import_report.json"
+    },
+    "rejected_gate": "First Godot art-only import omitted art/.gdignore and stopped on missing Blender importer configuration. Preserved rejected logs; adding the art ignore fixed only the harness import scope, with no geometry/export changes.",
+    "protected_originals": {
+      "meal_serving.glb": {
+        "sha256": "676f5f4f4bd436f8c6c11fb534aa5b3addeb0f3d5b92abad07f171abe71e8e57",
+        "unchanged_vs": "bac4294",
+        "candidate_includes_or_replaces": false
+      },
+      "meal_plate.glb": {
+        "sha256": "b4f2e388b690a8af3557e0c9df3432f573728c887ec87e19db4d9db6ac72ce92",
+        "unchanged_vs": "bac4294",
+        "candidate_includes_or_replaces": false
+      },
+      "meal_fork.glb": {
+        "sha256": "e4c39faac5edd35bd27bcb24fe3ad68f2786ad899b3b14d90786b8e72f9705ca",
+        "unchanged_vs": "bac4294",
+        "candidate_includes_or_replaces": false
+      }
+    },
+    "scope": "Fresh source reopen, four actual imported names, Food subtree, underside, footprints, two meshes and canonical grips. Actual live comparison reviewed separately by critic; no additional render was made."
+  },
+  "readme": "art/recipes/README.md",
+  "readme_sha256": "8d24befe649325f536d42bb7bb475c366dbc9746c5df7c77766b78893847119b"
+}

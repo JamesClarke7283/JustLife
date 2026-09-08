@@ -13,10 +13,30 @@ const PLATE_HALF_SIZE := Vector2(.15,.15)
 const PLATTER_HALF_SIZE := Vector2(.25,.168)
 const SURFACE_INSET := .01
 const RECIPES := {
-	"garden_skillet":{"label":"Garden skillet", "servings":4, "cost":25, "skill":1, "nutrition":70.0},
-	"herb_pasta":{"label":"Herb garden pasta", "servings":4, "cost":32, "skill":2, "nutrition":76.0},
-	"harvest_bake":{"label":"Harvest vegetable bake", "servings":8, "cost":52, "skill":4, "nutrition":82.0}
+	"garden_skillet":{"label":"Garden skillet", "servings":4, "cost":25, "skill":1, "nutrition":70.0, "duration":45.0, "xp":34.0, "description":"Toasted grains, roasted vegetables and fresh basil.", "model":"meal"},
+	"herb_pasta":{"label":"Herb garden pasta", "servings":4, "cost":32, "skill":2, "nutrition":76.0, "duration":50.0, "xp":40.0, "description":"Curled pasta folded with garden herbs and tomato.", "model":"meal_herb_pasta"},
+	"harvest_bake":{"label":"Harvest vegetable bake", "servings":8, "cost":52, "skill":4, "nutrition":82.0, "duration":70.0, "xp":55.0, "description":"A generous dish of vegetables under a golden baked topping.", "model":"meal_harvest_bake"}
 }
+const QUALITY_LABELS := ["", "Homestyle", "Delicious", "Excellent"]
+
+static func recipe_error(recipe: String, level: int, age: String, money: int, paid: bool=false) -> String:
+	if not RECIPES.has(recipe):return "Choose a recipe from the cookbook."
+	if age=="child":return "Children can grab a snack. An older Lifelet can use the stove."
+	var definition:Dictionary=RECIPES[recipe]
+	if level<int(definition.skill):return "Cooking level %d unlocks this recipe." % int(definition.skill)
+	if not paid and money<int(definition.cost):return "Requires §%d for ingredients." % int(definition.cost)
+	return ""
+
+static func cooking_definition(base: Dictionary, recipe: String) -> Dictionary:
+	if not RECIPES.has(recipe):return {}
+	var result:Dictionary=base.duplicate(true)
+	var definition:Dictionary=RECIPES[recipe]
+	result.merge({"recipe":recipe,"label":"Cook "+str(definition.label).to_lower(),"duration":float(definition.duration),"cost":int(definition.cost),"xp":float(definition.xp),"description":str(definition.description)},true)
+	return result
+
+static func model_path(recipe: String, plate: bool=false) -> String:
+	return "res://assets/models/"+str(RECIPES.get(recipe,RECIPES.garden_skillet).model)+("_plate.glb" if plate else "_serving.glb")
+
 var serial: int = 0
 var batches: Array = []
 var portions: Array = []

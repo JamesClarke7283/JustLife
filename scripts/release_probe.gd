@@ -41,7 +41,7 @@ func run(owner_app:Node) -> void:
 	choose_age("Child");await app.get_tree().process_frame
 	check(app.preview._cake_flames.size()==3,"The original birthday cake and three candles load from the PCK.")
 	check(ResourceLoader.load("res://assets/models/desk_booster.glb") is PackedScene,"The authored child desk booster loads from the PCK.")
-	for prop:String in ["meal_serving","meal_plate","meal_fork"]:
+	for prop:String in ["meal_serving","meal_plate","meal_fork","meal_herb_pasta_serving","meal_herb_pasta_plate","meal_harvest_bake_serving","meal_harvest_bake_plate"]:
 		check(ResourceLoader.load("res://assets/models/"+prop+".glb") is PackedScene,"The original "+prop+" loads from the PCK.")
 	press("Face");await app.get_tree().process_frame
 	app.preview.set_face_feature("face_round",.5);app.profile.face_round=.5

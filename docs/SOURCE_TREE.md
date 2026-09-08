@@ -8,7 +8,7 @@ The repository contains the game and its authoring inputs. Rendered evidence, do
 | `assets/` | Production models, fonts, audio, icon and JustLife splash. Import settings are retained. |
 | `art/characters*.blend` | The four accepted age-family authoring sources. |
 | `art/furniture.blend`, `art/furniture/`, `art/celebration/` | Original furniture, child desk booster and birthday cake authoring files. |
-| `art/meals/` | Original editable supper props, generator provenance and export hashes; studio renders remain local. |
+| `art/meals/`, `art/recipes/` | Original editable supper props, generator provenance and export hashes; studio renders remain local. |
 | `art/source/` | Immutable authoring inputs required to reproduce the accepted characters, plus compact provenance. |
 | `art/experiments/` | Clearly marked editable studies and their generators; these are not promoted game assets. |
 | `tools/` | Asset generation and Linux export scripts. |

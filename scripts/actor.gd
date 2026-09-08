@@ -77,6 +77,18 @@ var _blink_elapsed: float = -1.0
 var _smile: float = 0.0
 var _activity_anchor: Dictionary = {}
 var meal_presentation: Dictionary = {}
+# Controller-owned recipe identity and normalized progress; visual state only.
+var cooking_presentation: Dictionary = {}
+var _presented_cooking_recipe: String = "garden_skillet"
+var _recipe_bowl: Node3D
+var _recipe_bowl_food: Node3D
+var _baking_tray: Node3D
+var _baking_food: Node3D
+var _seasoning_jar: Node3D
+var _seasoning_grains: Array[MeshInstance3D] = []
+var _seasoning_weight: float = 0.0
+var _preparation_tip: Vector3 = Vector3.ZERO
+var _seasoning_axis: Vector3 = Vector3.DOWN
 var _meal_fork: Node3D
 var _meal_tip: Vector3 = Vector3.ZERO
 
@@ -168,6 +180,9 @@ func configure(new_profile: Dictionary) -> void:
 	_hair_bob = null
 	_sit_amount = 0.0
 	_cook_weight = 0.0
+	_presented_cooking_recipe = "garden_skillet"
+	_seasoning_weight = 0.0
+	_seasoning_grains.clear()
 	_birthday_weight = 0.0
 	_cake_flames.clear()
 	_snack_weight = 0.0
@@ -522,6 +537,7 @@ func _create_props() -> void:
 	_cooking_spoon.add_child(_spoon_tip)
 	_cooking_bowl.visible = false
 	_cooking_spoon.visible = false
+	_create_recipe_props()
 	_meal_fork = _hand_anchor("MealForkGrip", "R")
 	if ResourceLoader.exists("res://assets/models/meal_fork.glb"):
 		_meal_fork.add_child(load("res://assets/models/meal_fork.glb").instantiate())
@@ -571,7 +587,10 @@ func _update_grips(delta: float, moving: bool, action_id: String) -> void:
 	var targets: Dictionary = {"L":0.0,"R":0.0}
 	if not moving:
 		match action_id:
-			"cook": targets = {"L":.25,"R":.95}
+			"cook":
+				targets = {"L":.25,"R":.95}
+				if _presented_cooking_recipe=="harvest_bake":targets={"L":.20,"R":.65 if _is_seasoning() else .30}
+				elif _is_seasoning():targets.R=.65
 			"snack": targets.R = .45
 			"eat_meal": targets.R = .78
 			"paint": targets.R = .80
@@ -735,17 +754,31 @@ func _update_held_props(delta: float, moving: bool, action_id: String) -> void:
 	for flame: Node3D in _cake_flames: flame.visible = action_id == "birthday" and _action_time < 3.12
 	_cook_weight = lerpf(_cook_weight,1.0 if not moving and action_id == "cook" else 0.0,blend)
 	_snack_weight = lerpf(_snack_weight,1.0 if not moving and action_id == "snack" else 0.0,blend)
-	_cooking_bowl.visible = _cook_weight > .015
-	_cooking_spoon.visible = _cook_weight > .015
+	var bake:bool=_presented_cooking_recipe=="harvest_bake"
+	_cooking_bowl.visible = _cook_weight > .015 and not bake
+	_seasoning_weight=lerpf(_seasoning_weight,1.0 if not moving and action_id=="cook" and _is_seasoning() else 0.0,blend)
+	_cooking_spoon.visible = _cook_weight > .015 and not bake and _seasoning_weight<.05
+	_seasoning_jar.visible=_seasoning_weight>.015
+	_baking_tray.visible=_cook_weight>.015 and bake
+	for child:Node3D in _bowl_center.get_children():
+		child.visible=child==_recipe_bowl if _presented_cooking_recipe=="herb_pasta" and is_instance_valid(_recipe_bowl) else child!=_recipe_bowl
 	_snack.visible = _snack_weight > .015
 	# Counter-rotate each grip so the ceramic stays level while its palm moves.
 	_orient_held_prop(_cooking_bowl,Basis.IDENTITY.scaled(Vector3.ONE*maxf(.001,_cook_weight)*_proportion))
 	_orient_held_prop(_snack,Basis.IDENTITY.scaled(Vector3.ONE*maxf(.001,_snack_weight)*_proportion))
+	if _baking_tray.visible:_baking_tray.global_transform=_preparation_tray_transform()
+	if _seasoning_jar.visible:
+		_orient_held_prop(_seasoning_jar,Basis(Quaternion(Vector3.UP,_seasoning_axis)).scaled(Vector3.ONE*_proportion*maxf(.001,_seasoning_weight)))
+		_update_seasoning_grains()
+	else:
+		for grain:MeshInstance3D in _seasoning_grains:grain.hide()
 	if _cooking_spoon.visible:
 		var grip: Vector3 = _model.to_local(_cooking_spoon.global_position)
-		var center: Vector3 = _model.to_local(_bowl_center.global_position)
-		var tip_target: Vector3 = center+Vector3(sin(_action_time*2.3)*.048,.027,cos(_action_time*2.3)*.042)*_proportion
-		var direction: Vector3 = (tip_target-grip).normalized()
+		var target:Vector3=_preparation_tip
+		if _presented_cooking_recipe=="garden_skillet":
+			var center: Vector3 = _model.to_local(_bowl_center.global_position)
+			target=center+Vector3(sin(_action_time*2.3)*.048,.027,cos(_action_time*2.3)*.042)*_proportion
+		var direction: Vector3 = (target-grip).normalized()
 		_orient_held_prop(_cooking_spoon,Basis(Quaternion(Vector3.DOWN,direction)).scaled(Vector3.ONE*maxf(.001,_cook_weight)*_proportion))
 
 
@@ -797,6 +830,9 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		_motion_action = motion_action
 		_action_time = 0.0
 	_action_time += animation_delta
+	if not moving and action_id=="cook":
+		_presented_cooking_recipe=_cooking_recipe()
+		_ensure_cooking_recipe_props()
 	_update_grips(animation_delta,moving,action_id)
 	_time += animation_delta
 	_speech_remaining = maxf(0.0, _speech_remaining - delta)
@@ -928,14 +964,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 				pose["Arm_L"] = Vector3(-.10,0,.025)
 				pose["Forearm_L"] = Vector3(-.20,0,0)
 			"cook":
-				var stir: float = _action_time * 2.3
-				var bowl_hand: Vector3 = Vector3(-.070,1.120,.350)*_proportion
-				bowl_hand.y += sin(stir*.5)*.005*_proportion
-				_reach_hand(pose,"L",bowl_hand,Vector3(-.7,-.8,-.1),Vector3.UP,Vector3(0,0,1))
-				var spoon_hand: Vector3 = Vector3(-.010+sin(stir)*.045,1.44,.39+cos(stir)*.038)*_proportion
-				var desired_tip: Vector3 = bowl_hand+Vector3(.035+sin(stir)*.048,.132,.025+cos(stir)*.042)*_proportion
-				_reach_hand(pose,"R",spoon_hand,Vector3(.8,-.6,-.1),desired_tip-spoon_hand if not _grip_shapes.R.is_empty() else Vector3.ZERO)
-				pose["Head"] = Vector3(.16,-.025+sin(stir*.5)*.018,0)
+				_cooking_pose(pose)
 			"read":
 				pose["Arm_L"] = Vector3(-0.43, 0, 0.17)
 				pose["Arm_R"] = Vector3(-0.43, 0, -0.17)
@@ -1227,3 +1256,109 @@ func _meal_eating_pose(pose:Dictionary) -> void:
 	var support:Vector3=source+Vector3(-.18+.02*bite,.003+sin(bite*PI)*.007,-.19-.075*bite)*_proportion
 	_reach_hand(pose,"L",support,Vector3(-.25,-.12,-1.0))
 	pose["Head"]=Vector3(.08*(1.0-bite),sin(_action_time*.5)*.025,0)
+
+
+func _cooking_recipe() -> String:
+	var recipe:Variant=cooking_presentation.get("recipe","garden_skillet")
+	return recipe if recipe is String and recipe in ["garden_skillet","herb_pasta","harvest_bake"] else "garden_skillet"
+
+func _cooking_progress() -> float:
+	var progress:Variant=cooking_presentation.get("progress",0.0)
+	return clampf(float(progress),0.0,1.0) if (progress is int or progress is float) and is_finite(float(progress)) else 0.0
+
+func _is_seasoning() -> bool:
+	var progress:float=_cooking_progress()
+	return (_presented_cooking_recipe=="herb_pasta" and progress>=.48 and progress<.68) or (_presented_cooking_recipe=="harvest_bake" and progress<.62)
+
+func _create_recipe_props() -> void:
+	_recipe_bowl=null;_recipe_bowl_food=null
+	_baking_food=null
+	_baking_tray=Node3D.new();_baking_tray.name="OvenReadyTray";_model.add_child(_baking_tray);_baking_tray.hide()
+	_seasoning_jar=_hand_anchor("HerbJarGrip","R")
+	# Original small ceramic herb shaker: waist at the finger contact, neck +Y.
+	_cylinder(_seasoning_jar,.030,.076,Color("e4d8ba"))
+	var band:MeshInstance3D=_cylinder(_seasoning_jar,.0308,.022,Color("638c86"));band.position.y=-.010
+	var neck:MeshInstance3D=_cylinder(_seasoning_jar,.020,.022,Color("d9caab"));neck.position.y=.047
+	var lid:MeshInstance3D=_cylinder(_seasoning_jar,.024,.014,Color("ae7844"));lid.position.y=.064
+	for i:int in range(5):
+		var hole:MeshInstance3D=_sphere(_seasoning_jar,Vector3(.002,.0007,.002),Color("514b32"))
+		hole.position=Vector3(sin(i*TAU/5.0)*.011,.0715,cos(i*TAU/5.0)*.011)
+	var mouth:Node3D=Node3D.new();mouth.name="SprinkleMouth";mouth.position.y=.072;_seasoning_jar.add_child(mouth)
+	_seasoning_jar.hide()
+	for i:int in range(7):
+		var grain:MeshInstance3D=_sphere(_model,Vector3(.0025,.0015,.0035),Color("72904d") if i%2==0 else Color("c8b18b"))
+		grain.name="FallingHerb"+str(i);grain.hide();_seasoning_grains.append(grain)
+
+func _preparation_tray_transform() -> Transform3D:
+	return Transform3D(global_basis.orthonormalized(),_model.to_global(Vector3(0,_hip_height+.22*_proportion,.30*_proportion)))
+
+func _recipe_food_point() -> Vector3:
+	if _presented_cooking_recipe=="harvest_bake":
+		return _model.to_local(_preparation_tray_transform()*_food_surface_point(_baking_tray,_baking_food))
+	if is_instance_valid(_recipe_bowl_food):return _model.to_local(_recipe_bowl.to_global(_food_surface_point(_recipe_bowl,_recipe_bowl_food)))
+	return _model.to_local(_bowl_center.global_position)+Vector3(0,.027,0)*_proportion
+
+func _cooking_pose(pose:Dictionary) -> void:
+	var recipe:String=_presented_cooking_recipe
+	var stir:float=_action_time*(1.7 if recipe=="herb_pasta" else 2.3)
+	var bowl_hand:Vector3=Vector3(-.070,1.120,.350)*_proportion
+	bowl_hand.y+=sin(stir*.5)*.005*_proportion
+	if recipe=="harvest_bake":
+		var held:Transform3D=_preparation_tray_transform()
+		var left:Vector3=Vector3(-.105,-.004,0) if _is_seasoning() else Vector3(-.2395,.037,0)
+		_reach_hand(pose,"L",_model.to_local(held*left),Vector3(-.25,-1.0,-.3))
+		if not _is_seasoning():
+			_reach_hand(pose,"R",_model.to_local(held*Vector3(.2395,.037,0)),Vector3(.25,-1.0,-.3))
+			pose.Head=Vector3(.12,sin(_action_time*.6)*.035,0)
+			return
+	else:
+		_reach_hand(pose,"L",bowl_hand,Vector3(-.7,-.8,-.1),Vector3.UP,Vector3(0,0,1))
+	if _is_seasoning():
+		var food:Vector3=_recipe_food_point()
+		var hand:Vector3=food+Vector3(.055+sin(_action_time*1.8)*.022,.205+sin(_action_time*8)*.009,.020)*_proportion
+		_seasoning_axis=(food-hand).normalized()
+		_reach_hand(pose,"R",hand,Vector3(.6,-.45,-.1),_seasoning_axis)
+		_preparation_tip=food
+		pose.Head=Vector3(.14,-.04+sin(_action_time*.7)*.025,0)
+		return
+	if recipe=="herb_pasta":
+		var food:Vector3=_recipe_food_point()
+		_preparation_tip=food+Vector3(sin(stir)*.064,.006+cos(stir*2)*.008,cos(stir)*.027)*_proportion
+		var hand:Vector3=_preparation_tip+Vector3(.015,.19,-.012)*_proportion
+		_reach_hand(pose,"R",hand,Vector3(.8,-.6,-.1),_preparation_tip-hand)
+	else:
+		var hand:Vector3=Vector3(-.010+sin(stir)*.045,1.44,.39+cos(stir)*.038)*_proportion
+		_preparation_tip=bowl_hand+Vector3(.035+sin(stir)*.048,.132,.025+cos(stir)*.042)*_proportion
+		_reach_hand(pose,"R",hand,Vector3(.8,-.6,-.1),_preparation_tip-hand if not _grip_shapes.R.is_empty() else Vector3.ZERO)
+	pose.Head=Vector3(.16,-.025+sin(stir*.5)*.018,0)
+
+func _update_seasoning_grains() -> void:
+	var mouth:Node3D=_seasoning_jar.get_node("SprinkleMouth")
+	var start:Vector3=_model.to_local(mouth.global_position)
+	var finish:Vector3=_recipe_food_point()
+	for i:int in range(_seasoning_grains.size()):
+		var grain:MeshInstance3D=_seasoning_grains[i]
+		grain.visible=_seasoning_weight>.8
+		var fall:float=fmod(_action_time*2.8+float(i)*.143,1.0)
+		grain.position=start.lerp(finish,fall)+Vector3(sin(i*2.4)*.014,0,cos(i*2.4)*.014)*fall*_proportion
+
+func _food_surface_point(dish:Node3D,food:Node3D) -> Vector3:
+	var top:float=0.0
+	if is_instance_valid(food):
+		for mesh:MeshInstance3D in food.find_children("*","MeshInstance3D",true,false):
+			for i:int in range(8):top=maxf(top,dish.to_local(mesh.to_global(mesh.get_aabb().get_endpoint(i))).y)
+	return Vector3(0,maxf(0.0,top-.005),0)
+
+func _ensure_cooking_recipe_props() -> void:
+	# Load the larger recipe artwork only for a Lifelet who prepares that recipe.
+	if _presented_cooking_recipe=="herb_pasta" and not is_instance_valid(_recipe_bowl):
+		var path:String="res://assets/models/meal_herb_pasta_serving.glb"
+		if ResourceLoader.exists(path):
+			_recipe_bowl=load(path).instantiate();_bowl_center.add_child(_recipe_bowl)
+			_recipe_bowl.position=Vector3(0,-.098,0);_recipe_bowl.scale=Vector3.ONE*.70
+			_recipe_bowl_food=_recipe_bowl.find_child("Food",true,false);_recipe_bowl.hide()
+	if _presented_cooking_recipe=="harvest_bake" and _baking_tray.get_child_count()==0:
+		var path:String="res://assets/models/meal_harvest_bake_serving.glb"
+		if not ResourceLoader.exists(path):path="res://assets/models/meal_serving.glb"
+		if ResourceLoader.exists(path):
+			_baking_tray.add_child(load(path).instantiate());_baking_food=_baking_tray.find_child("Food",true,false)
