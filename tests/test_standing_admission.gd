@@ -30,6 +30,17 @@ func _run()->void:
 		app.household.member_sim("player").cancel_action()
 		check(app._activity_available(queued),"Releasing the standing reservation admits the same later nap.")
 		check(is_same(incoming.get_current_action(),queued) and not bool(queued.autonomous),"Admission preserves the exact explicit instruction and its ownership.")
+	await _release_fixture()
 	var file:=FileAccess.open("user://standing_arrival_probe.json",FileAccess.WRITE);file.store_string(JSON.stringify({"checks":checks,"failures":failures},"  "));file.close()
-	print("STANDING_ARRIVAL ",checks," checks ",failures.size()," failures");app.queue_free();await process_frame;await process_frame;await process_frame;quit(0 if failures.is_empty() else 1)
+	print("STANDING_ARRIVAL ",checks," checks ",failures.size()," failures");quit(0 if failures.is_empty() else 1)
 func sim_position(value:Vector3)->Array:return [value.x,value.y,value.z]
+
+func _release_fixture() -> void:
+	var ambience:WeakRef=weakref(app.ambience_player.stream)
+	var playback:WeakRef=weakref(app.ambience_player.get_stream_playback())
+	app.queue_free()
+	await process_frame;await process_frame
+	var deadline:int=Time.get_ticks_msec()+1000
+	while (ambience.get_ref()!=null or playback.get_ref()!=null) and Time.get_ticks_msec()<deadline:
+		await create_timer(.01).timeout
+	check(ambience.get_ref()==null and playback.get_ref()==null,"Fixture teardown releases its ambience stream and backend playback before quitting.")

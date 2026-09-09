@@ -5,7 +5,13 @@ func _standing_fixture() -> Dictionary:
 	for value:Dictionary in app.world.items.duplicate():
 		if str(value.kind) in ["chair","dining","counter","stove"]:app.world.remove_item(str(value.id))
 	app.meal_flow.carry_diner_plate(f.action)
-	app.meal_flow._choose_seat("player",f.action)
+	check(app.meal_flow._choose_seat("player",f.action),"The cleared home offers a supported standing reservation.")
+	var destination:Vector3=f.action.target_position
+	var route:PackedVector3Array=app.world.path_to(app.world.actors.player.position,destination)
+	check(not route.is_empty() and route[-1]==destination,"Standing fixture uses the exact endpoint of a real reachable route.")
+	# Supply the physical arrival required by the actual meal service. This
+	# component fixture does not claim to animate or traverse this route.
+	app.world.actors.player.position=destination
 	f.action.phase="approach";app.household.begin_action("player")
 	check(str(f.action.meal_seat).is_empty() and str(f.plate.host).is_empty(),"No chairs or nearby support produces a real held standing serving.")
 	return f
@@ -85,6 +91,17 @@ func _waiting_washer() -> void:
 func _run() -> void:
 	app=load("res://scenes/main.tscn").instantiate();root.add_child(app);app.set_process(false);app.set_sound(false)
 	_floor_finish();_floor_cancel();_packing();_cleanup_policy();_waiting_washer()
+	await _release_fixture()
 	var report:Dictionary={"checks":checks,"failures":failures,"method":"Controlled ledger and actual controller arrival callbacks; no rendered navigation claim."}
 	var file:=FileAccess.open("user://meal_placement_result.json",FileAccess.WRITE);file.store_string(JSON.stringify(report,"  "));file.close()
-	print("MEAL_PLACEMENT "+JSON.stringify(report));app.queue_free();await process_frame;await process_frame;await process_frame;quit(0 if failures.is_empty() else 1)
+	print("MEAL_PLACEMENT "+JSON.stringify(report));quit(0 if failures.is_empty() else 1)
+
+func _release_fixture() -> void:
+	var ambience:WeakRef=weakref(app.ambience_player.stream)
+	var playback:WeakRef=weakref(app.ambience_player.get_stream_playback())
+	app.queue_free()
+	await process_frame;await process_frame
+	var deadline:int=Time.get_ticks_msec()+1000
+	while (ambience.get_ref()!=null or playback.get_ref()!=null) and Time.get_ticks_msec()<deadline:
+		await create_timer(.01).timeout
+	check(ambience.get_ref()==null and playback.get_ref()==null,"Fixture teardown releases its ambience stream and backend playback before quitting.")

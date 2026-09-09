@@ -7,6 +7,23 @@ class TestWorld:
 	extends Node3D
 	var actors: Dictionary = {}
 	var items: Array = []
+	var navigation := AStarGrid2D.new()
+	var construction := LifeConstruction.new()
+	var house := Node3D.new()
+	func _ready() -> void:
+		# Real support queries need a bounded navigation grid, construction and
+		# an actual floor surface even in this straight-path component fixture.
+		navigation.region = Rect2i(-20, -20, 41, 41)
+		navigation.cell_size = Vector2(.25, .25)
+		navigation.update()
+		add_child(construction)
+		add_child(house)
+		var floor_node := MeshInstance3D.new()
+		var slab := BoxMesh.new()
+		slab.size = Vector3(10, .2, 10)
+		floor_node.mesh = slab
+		house.add_child(floor_node)
+		floor_node.position.y = .06
 	func closest_item(kind: String, from: Vector3, maximum: float = 100.0) -> Dictionary:
 		var nearest: Dictionary = {}
 		for entry: Dictionary in items:
@@ -66,7 +83,7 @@ func add_item(f: Dictionary, id: String, kind: String, at: Vector3) -> Dictionar
 	var node: Node3D = Node3D.new()
 	f.world.add_child(node)
 	node.position = at
-	var entry: Dictionary = {"id": id, "kind": kind, "node": node}
+	var entry: Dictionary = {"id": id, "kind": kind, "node": node, "size": LifeCatalog.ITEMS[kind].size, "level": 0}
 	f.world.items.append(entry)
 	return entry
 
@@ -238,6 +255,7 @@ func support_and_malformed() -> void:
 	f.table.node.rotation_degrees.y = 37
 	for support: Dictionary in [{"kind": "dining", "height": .847, "plate_x": .64, "dish_z": .382}, {"kind": "counter", "height": .952, "plate_x": .365, "dish_z": .212}, {"kind": "stove", "height": .997, "plate_x": .35, "dish_z": .207}]:
 		f.table.kind = support.kind
+		f.table.size = LifeCatalog.ITEMS[support.kind].size
 		place(f.home.meals.batches[0], f.table.node, Vector3(0, support.height, support.dish_z))
 		place(plate, f.table.node, Vector3(support.plate_x, support.height, 0))
 		var good: Dictionary = snapshot(f)

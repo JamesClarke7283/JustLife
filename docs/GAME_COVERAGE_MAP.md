@@ -96,8 +96,12 @@ The stills connect map information, household selection, distinct eviction/move 
 
 ## Guest meal follow-up, 9 September 2026
 
-Five inspected [historical potluck screenshots](https://simscommunity.info/2025/12/29/sims-4-neighbourhood-potluck/) add participant-role, food-carrying and event-goal references in `topics/neighbourhood_potluck_legacy`. For Rent content is labelled separately. Complete guest dining, cancellation and reward delivery remain unpictured; JustLife guest meals are still in development.
+Five inspected [historical potluck screenshots](https://simscommunity.info/2025/12/29/sims-4-neighbourhood-potluck/) add participant-role, food-carrying and event-goal references in `topics/neighbourhood_potluck_legacy`. For Rent content is labelled separately. Complete reference-game guest dining, cancellation and reward delivery remain unpictured. JustLife's bounded guest-meal implementation is documented separately in `GUEST_MEALS.md`.
 
 ## Garden follow-up, 9 September 2026
 
 Nine new browser-exported images from [EA's June 2026 garden guide](https://careers.ea.com/es/games/the-sims/the-sims-4/news/gnomes-guide-to-garden-harmony) are saved in `topics/garden_harmony_official_2026`. All were inspected. They show planter work, layered planting, vertical gardens, oversized crops, winter and magical effects. One is an editorial collage. Mixed expansion content is labelled in the manifest; full gardening actions and plant lifecycles remain uncaptured.
+
+## Current settings follow-up, 9 September 2026
+
+Two new, inspected browser exports from [EA's 21 July 2026 update](https://www.ea.com/pl/games/the-sims/the-sims-4/news/update-7-21-2026) are archived in `topics/july_update_official_2026`. One shows festival-notification toggles with Save Settings and Accessibility entries in the sidebar; neither panel is open. The other compares six worn stove variants from City Living. Both are original served 1280×720 AVIF files with exact provenance and no prior duplicate. These stills do not complete the save, accessibility or catalogue-placement workflows.
