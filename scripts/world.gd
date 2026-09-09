@@ -26,6 +26,9 @@ var walls: Array[Node3D] = []
 var items: Array[Dictionary] = []
 var _furnishing_volume_cache:Dictionary={}
 var actors: Dictionary = {}
+var _target_approaches:Dictionary={}
+var _target_navigation_id:int=0
+var _target_navigation_generation:int=-1
 var navigation = AStarGrid2D.new()
 var lot_navigation=LotNavigation.new()
 var view_level:int=0
@@ -469,6 +472,8 @@ func serialize_items() -> Array:
 	return out
 
 func rebuild_navigation() -> void:
+	# Even a rejected rebuild can replace the compatibility grid.
+	_target_approaches.clear()
 	# Compatibility grid stays ground-only until main/food callers are migrated.
 	navigation.region=Rect2i(-36,-28,73,65)
 	navigation.cell_size=Vector2(.25,.25)
@@ -572,11 +577,32 @@ func set_actor_away(id:String,away:bool,unavailable:bool) -> bool:
 	if away:actor.clear_speech()
 	return changed
 
+func _simulation_approach(item:Dictionary) -> Vector3:
+	var node:Node3D=item.node
+	var identity:int=node.get_instance_id()
+	# These are every input read by approach(); changing a moving dish, puddle,
+	# furnishing or parent transform therefore computes a fresh exact result.
+	var signature:Array=[node.global_transform,item.size,item_level(item),str(item.kind),bool(item.get("transient_food",false)),bool(item.get("transient_puddle",false)),construction.building_state.is_empty()]
+	var cached:Dictionary=_target_approaches.get(identity,{})
+	if not cached.is_empty() and cached.signature==signature:return cached.position
+	var at:Vector3=approach(item)
+	_target_approaches[identity]={"signature":signature,"position":at}
+	return at
+
 func simulation_targets() -> Array:
+	var navigation_id:int=lot_navigation.get_instance_id()
+	if _target_navigation_id!=navigation_id or _target_navigation_generation!=lot_navigation.generation:
+		_target_approaches.clear()
+		_target_navigation_id=navigation_id;_target_navigation_generation=lot_navigation.generation
 	var a:Array=[{"id":"lot_exit","kind":"lot_exit","position":lot_exit_position()}]
+	var present:Dictionary={}
 	for item in items:
-		var at:Vector3=approach(item)
+		present[item.node.get_instance_id()]=true
+		var at:Vector3=_simulation_approach(item)
 		if at.is_finite():a.append({"id":item.id,"kind":item.kind,"position":at,"level":item_level(item)})
+	for identity:int in _target_approaches.keys():
+		if not present.has(identity):_target_approaches.erase(identity)
+	# People move independently of the static navigation geometry.
 	for id in actors:
 		if bool(actors[id].get_meta("away",false)):continue
 		a.append({"id":id,"kind":"neighbor","position":actors[id].position+Vector3(0,0,.8)})
