@@ -10,7 +10,9 @@ Production artwork is original JustLife work. The runtime loads exported GLBs fr
 - `meals/garden_supper.blend`: original serving dish, individual plate, food and fork; export hashes and regeneration instructions are in its README.
 - `recipes/recipe_variants.blend`: original herb pasta and vegetable bake, with serving dishes and individual plates; its README and manifest record authoring and verification.
 - `source/grip_v3/`: immutable hand and rig inputs used by the surface-repair generator. These are source dependencies, not disposable backups.
-- `source/character_v18_production_hashes.json`: compact accepted-asset provenance.
+- `source/character_production_hashes.json`: current sixteen GLB and four editable-source hashes.
+- `source/character_v18_production_hashes.json`: historical v18 provenance, preserved unchanged.
+- `source/clothing_v22/`: immutable adult input and current garment reproduction guide. The adjacent tools author the shirt, continuous trousers and corrected cardigan hem while preserving other character geometry.
 - `experiments/hair_v19/`: editable, unpromoted hairstyle research. Its README explains how to regenerate the study.
 - `ICON_PROMPT.md`, `SPLASH_PROMPT.md`, `BRANDING_PROMPTS.md`: provenance for the original home/heart/sprout icon and JustLife wordmark splash in `assets/ui/`.
 

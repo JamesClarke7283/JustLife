@@ -1,0 +1,22 @@
+{
+  "assets/models/character_broad.glb": "48e2d7e062d1936b0808db6e372c6e135b209341a505f22d2b59344c28d73ee8",
+  "assets/models/character_broad_lod.glb": "e730aef7da6e777419d6ac3059fef80af5af5beb3ed2c930dcbdcade13e1b145",
+  "assets/models/character.glb": "b1f495e0c9cce4ca43bb0204a55d6d2bc6798f30c8a64886db468f8b086a67a2",
+  "assets/models/character_lod.glb": "345516166483d2d3f03333bf843bf8a659acc3a632cf3cd2389ee6bed954141c",
+  "assets/models/character_child_broad.glb": "e9bc18f047a5b87b2aecc09a67e872469b12fc319e422614d4d12bfb26775aad",
+  "assets/models/character_child_broad_lod.glb": "ba5857513eabe1bcd325a3ce36ac9c200cbcb13444d0e648aa412349ec35c51d",
+  "assets/models/character_child.glb": "9047bf3d65e466de0c81546be2a43342a5f2cde6a310e2aad7daf68b764dc3ee",
+  "assets/models/character_child_lod.glb": "0a608395a465c2868db3b44bad4c99c6719bf139a0f4295451babdb06c426acf",
+  "assets/models/character_elder_broad.glb": "709e3722bc95b19d808dd3ec6433067c7d53c064db5ffe57e961341f5561db7d",
+  "assets/models/character_elder_broad_lod.glb": "e479e3f77d21f69daba5cce8643ba8ba9c1ae7fe4c8b6daab5ec415fd3b38314",
+  "assets/models/character_elder.glb": "ddfdafc5d460522cf795fb83b346fc4e86ba587978784841fee339063099f08b",
+  "assets/models/character_elder_lod.glb": "351c8802a97aaa2e81fbe6a664374767ba87935429875e83f3beb65616c09b79",
+  "assets/models/character_teen_broad.glb": "e6cea21de523059e04cb327601c3752b73dd7f6672d332c26ded4fca23f935d3",
+  "assets/models/character_teen_broad_lod.glb": "4a242e742b205f8ab36a79aade3ec7092536b9d2a374b517a61d1d6a753780f6",
+  "assets/models/character_teen.glb": "ed7781298b238c0173a99249542ae77e9555056b9754e489b26dcf6e5dfa279e",
+  "assets/models/character_teen_lod.glb": "9d83f919957026e3517ff4c6b48e36f7ed6d97a371c329969837fe6ca45432a6",
+  "art/characters.blend": "6de0bf9235efd9f9768ec1ca59945066cbec151b0364313fdd7c1c11f1a3d74f",
+  "art/characters_child.blend": "ac1cfe5dd4103c9062a961a6f468b35a13bc866dc6d094f1e8cdbebf3b4111c1",
+  "art/characters_teen.blend": "4a19a3d25fa19f2a7732ad55c61ba352434b4b191acbb932d6a8836ccd50a6f3",
+  "art/characters_elder.blend": "c3c6514559b13aa54fb8ddf69ac7510d98f6af7cd8c9bdf25f4957867e88043d"
+}

@@ -1,0 +1,47 @@
+{
+  "garment_revision": 22,
+  "garment_correction": "cardigan_rear_hem",
+  "rig_version": 18,
+  "surface_revision": 2,
+  "blender_version": "5.2.1 LTS",
+  "source_sha256": "bab2d4e1a261a6b12cbf4c913e59a62f05890b06ab5b54cadee07d545588a81f",
+  "blender_build_hash": "9e2066aef7ef",
+  "export_worker_sha256": "d7782d2b1556684fb135990e671b76a8fef46bdd2ab39e395cce0f80e43e0561",
+  "generator_sha256": "db0b4ad118d553fcfdd265537f1b28d4f04ef561d20deb3935663b4ea0ebbe12",
+  "decoded_output_digests": {
+    "character.glb": "38505d8eba1d84b3c5e87cbba5ee4b82a58e67dfe23ef48e86d0c19e1b0a95c6",
+    "character_broad.glb": "18429f695dca7e73fdb5bd7dfcfdc97548995bd6f7f02d3042b4d84190277886",
+    "character_lod.glb": "722706b11b440dc55b922dd3b739f9d8522fcba4ddfd18b11e268ed0264b43bb",
+    "character_broad_lod.glb": "729efd666709846b88a26897447904602022adac21d26af6b1f972e21084fcac"
+  },
+  "export_guard_sha256": "2d9873c99916eedcb2028e085be5aa552c1e3bad9cf23e8acd9445379c13a6db",
+  "helper_sha256": "46e7981de92907aab9be9833efc71db082a5bf8a170bb78462366a671defbbb0",
+  "outputs": {
+    "art/characters.blend": "6de0bf9235efd9f9768ec1ca59945066cbec151b0364313fdd7c1c11f1a3d74f",
+    "assets/models/character.glb": "b1f495e0c9cce4ca43bb0204a55d6d2bc6798f30c8a64886db468f8b086a67a2",
+    "assets/models/character_broad.glb": "48e2d7e062d1936b0808db6e372c6e135b209341a505f22d2b59344c28d73ee8",
+    "assets/models/character_lod.glb": "345516166483d2d3f03333bf843bf8a659acc3a632cf3cd2389ee6bed954141c",
+    "assets/models/character_broad_lod.glb": "e730aef7da6e777419d6ac3059fef80af5af5beb3ed2c930dcbdcade13e1b145"
+  },
+  "scope": "Original adult casual shirt, continuous shared trousers, attached pocket trims and local CardiganBody rear-hem ease; nonadult assets unchanged.",
+  "immutable_source": "art/source/clothing_v22/characters_v18.blend",
+  "blender_binary_sha256": "fd7c5e44f50de3012e9cd8c919ce7cfaca716ff7bc3b9d9e53d300401b892e7c",
+  "exporter_generator": "Khronos glTF Blender I/O v5.2.40",
+  "evaluation": {
+    "authoring_threads": 6,
+    "each_export_threads": 1,
+    "fresh_process_per_variant": true,
+    "mesh_payload_repair": false
+  },
+  "preservation": {
+    "nonadult_assets": "Unchanged accepted v18; historical character_v18_production_hashes.json retained",
+    "cardigan_detailed": "Only lower rear coordinates/normals change; topology/UV/weights exact",
+    "cardigan_lod": "Existing shape-dependent Decimate changes UV/weight/index rows; triangle count remains4244",
+    "other_v4_meshes": "All exact across four adult files; zero numeric tolerance"
+  },
+  "reproduction": {
+    "four_glbs_byte_exact": true,
+    "source_object_facts_exact": true,
+    "qualified_environment_only": true
+  }
+}
