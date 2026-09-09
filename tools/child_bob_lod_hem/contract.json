@@ -1,0 +1,54 @@
+{
+  "input_commit": "5ee38d2fd1dde81ee4c1dcb01bd0cf9c01597dc4",
+  "source_sha256": "2e2c64f593a85efe3bacc840a51bee7a9067b97a1323eaa925c050e4826f4dbd",
+  "baseline_glbs": {
+    "character_child": "828fbb099097fba3fccefc1a5554b06fa53f5e542839d68ea00ddfbb425ff40d",
+    "character_child_broad": "b4b874065f43e2702ab0757b6c86558b111ad0feef2137fc7183828f1f15d58c",
+    "character_child_lod": "feccb94503ef056c07aa6f7ba9045d77f971e1b6e4172d028ef674ecfa3710d7",
+    "character_child_broad_lod": "4961177f63112bb700e3cc0197a82629a84fa4ec90816b3f2f3305dbc897191a"
+  },
+  "raw_glbs": {
+    "character_child_lod": "0347ab21bab6a1160f9948b53244667587099aa6efa71fdd69c9493c1a132a6a",
+    "character_child_broad_lod": "aa4b8485b1cbb9df1841dda0413957bef36d3d587142b35d603bc995a5ebacf7"
+  },
+  "candidate_glbs": {
+    "character_child_lod": "51b6c48e2f9e5b5dbfff7194480db4b6f945f4a13ceb46007b5218f0dcb2e1d6",
+    "character_child_broad_lod": "30036faefabd6d362dc7d4d998fda6414913a9fa3e93250eeff3603f9c69b73c"
+  },
+  "inherited_transfer_owned_meshes": [
+    "Hair_Bob_Cap",
+    "Hair_Bob_Lock",
+    "Hair_Bob_Lock.001",
+    "Hair_Bob_Lock.002",
+    "Hair_Bob_Lock.003",
+    "Hair_Bob_Lock.004",
+    "Hair_Bob_Lock.005",
+    "Hair_Bob_Lock.006",
+    "Hair_Bob_Lock.007",
+    "Hair_Bob_Lock.008",
+    "Hair_Bob_Lock.009",
+    "Hair_Bob_Lock.010",
+    "Hair_Bob_Lock.011",
+    "Hair_Bob_Strand",
+    "Hair_Bob_Strand.001",
+    "Hair_Bob_Strand.002",
+    "Hair_Bob_Strand.003",
+    "Hair_Bob_Strand.004",
+    "Hair_Bob_Strand.005",
+    "Hair_Bob_Strand.006",
+    "Hair_Bob_Strand.007",
+    "Hair_Bob_Strand.008",
+    "Hair_Bob_Strand.009",
+    "Hair_Bob_Strand.010",
+    "Hair_Bob_Strand.011"
+  ],
+  "only_changed_mesh": "Hair_Bob_Cap",
+  "protected_decoded_mesh_count": 338,
+  "blender_version": "5.2.1 LTS",
+  "blender_build": "9e2066aef7ef",
+  "helper_pins": {
+    "transfer_bob.py": "074a3bdefde6b2ec6fdb5b4caa507aa55d60e9edf9f14b68529530b5e9f67a74",
+    "decoded_facts.py": "d0e10a3fbc459e1214d37db2dfcd4ff3694425e0831066d412160f6386ce094c",
+    "decoded_gltf.py": "58c4544c37daa0cf4e2e73f8474e59bd7b85d0f72b9dffc9d6bb0858cd9f6451"
+  }
+}
