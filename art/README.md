@@ -13,6 +13,7 @@ Production artwork is original JustLife work. The runtime loads exported GLBs fr
 - `source/character_production_hashes.json`: current sixteen GLB and four editable-source hashes.
 - `source/character_v18_production_hashes.json`: historical v18 provenance, preserved unchanged.
 - `source/clothing_v22/`: immutable adult input and current garment reproduction guide. The adjacent tools author the shirt, continuous trousers and corrected cardigan hem while preserving other character geometry.
+- `source/face_v23/`: immutable accepted clothing input and reproduction guide for the current adult eyelid/lip revision. `tools/sculpt_face.py` generates its separate editable source and four guarded adult exports.
 - `experiments/hair_v19/`: editable, unpromoted hairstyle research. Its README explains how to regenerate the study.
 - `ICON_PROMPT.md`, `SPLASH_PROMPT.md`, `BRANDING_PROMPTS.md`: provenance for the original home/heart/sprout icon and JustLife wordmark splash in `assets/ui/`.
 
