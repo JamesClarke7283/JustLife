@@ -111,3 +111,7 @@ Two new, inspected browser exports from [EA's 21 July 2026 update](https://www.e
 Seven browser exports from [the July 2026 patch overview](https://simscommunity.info/2026/07/22/sims-4-july-2026-patch-overview-autosave-other-new-features/) are archived in `topics/starter_cas_july_2026`: six full-body creator screenshots and one edited main-menu image. Root inspected every original WebP; none duplicated the archive. They add varied sleeves, layered clothing, accessories and silhouettes. They do not show the save-settings panel or certify a base-only installation.
 
 [EA's current autosave guide](https://help.ea.com/sv/articles/the-sims/the-sims-4/autosave-and-save-reminders/) was separately read in the browser. It describes a separate rolling autosave slot, configurable triggers and manual-save reminders. This is written reference evidence; complete visual save/recovery workflows remain open.
+
+## Inheritance follow-up, 9 September 2026
+
+Three inspected screenshots from [EA's Life & Death guide](https://help.ea.com/en/articles/the-sims/the-sims-4/wills-and-heirloom-items/) add object-memory, inventory and catalogue eligibility references in `topics/legacy_inheritance_official_2026`. Their hashes are new to the archive. Will editing, death, delivery, transfer execution and failed-beneficiary handling remain visually unpictured; this set does not complete lifecycle coverage.

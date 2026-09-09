@@ -129,3 +129,9 @@ Two inspected browser downloads from [EA’s July update](https://www.ea.com/pl/
 ### Current starter silhouettes, 9 September 2026
 
 Six creator views and an edited menu image from [the July patch overview](https://simscommunity.info/2026/07/22/sims-4-july-2026-patch-overview-autosave-other-new-features/) are inspected and archived in `topics/starter_cas_july_2026`. Contrasting shirt lengths, sleeve shapes, layered outfits and accessories differentiate identities before recoloring. This informs original garment design; the references remain separate from production assets. The manifest pins all seven served WebP files and records no prior duplicates. Full customization and save-settings sequences remain unpictured.
+
+### Inheritance interface follow-up, 9 September 2026
+
+Three browser downloads from [EA's wills and heirlooms guide](https://help.ea.com/en/articles/the-sims/the-sims-4/wills-and-heirloom-items/) are archived in `topics/legacy_inheritance_official_2026`. Root inspected all three: an owner portrait and personal note above a world object, a will in personal inventory, and heirloom eligibility in a Build product card. The 800×450 images contain editorial annotations. Original AVIF bytes and pixel-exact PNG display copies are retained; only the three original hashes count as references.
+
+The written guide separates the author's death from loss of the entire household, and describes beneficiaries receiving a will before reading it to execute transfers. This suggests distinct pending and completed inheritance states for future JustLife design. It is expansion evidence; death and inheritance remain unimplemented.
