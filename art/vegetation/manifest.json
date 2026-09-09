@@ -1,0 +1,174 @@
+{
+  "status": "QUALIFIED_INCREMENTAL_ART_READY_FOR_ROOT_INTEGRATION",
+  "blender": "5.2.1 LTS",
+  "provenance": "Original authored points and branch fan meshes in create_vegetation.py; no external image or mesh inputs",
+  "units": "metres; native Blender +Z up, glTF +Y up",
+  "geometry_contract": "Each GLB has two top-level mesh nodes with identity transforms and no wrapper objects, rigs, cameras, lights, animations or textures. Godot import root must be checked before integration.",
+  "variants": {
+    "a": {
+      "title": "Spreading field maple",
+      "parts": [
+        {
+          "name": "Tree_A_branching_trunk",
+          "vertices": 372,
+          "triangles": 740,
+          "materials": 1
+        },
+        {
+          "name": "Tree_A_connected_foliage",
+          "vertices": 852,
+          "triangles": 1700,
+          "materials": 1
+        }
+      ],
+      "bounds_blender": {
+        "minimum": [
+          -1.4999810457229614,
+          -1.2877600193023682,
+          0.0
+        ],
+        "maximum": [
+          1.5414953231811523,
+          1.4106781482696533,
+          4.084164142608643
+        ]
+      },
+      "ground_origin": [
+        0,
+        0,
+        0
+      ],
+      "glb_sha256": "7d227e227ec3ba4f686b0ef6264aff5847072db00af39f94040206bb7e6e5e59",
+      "glb_bytes": 61280
+    },
+    "b": {
+      "title": "Upright field maple",
+      "parts": [
+        {
+          "name": "Tree_B_branching_trunk",
+          "vertices": 372,
+          "triangles": 740,
+          "materials": 1
+        },
+        {
+          "name": "Tree_B_connected_foliage",
+          "vertices": 852,
+          "triangles": 1700,
+          "materials": 1
+        }
+      ],
+      "bounds_blender": {
+        "minimum": [
+          -1.3731250762939453,
+          -1.1537213325500488,
+          0.0
+        ],
+        "maximum": [
+          1.2763216495513916,
+          0.9355605244636536,
+          4.205873489379883
+        ]
+      },
+      "ground_origin": [
+        0,
+        0,
+        0
+      ],
+      "glb_sha256": "2f787577e824254f28bdbad85a6ff43b59726aaf38569c819ca6380a528d546d",
+      "glb_bytes": 61280
+    }
+  },
+  "native_sha256": "95f96170e05c8049ee984812bdf62d147204147fbd4f34ed196f61c74cc12b81",
+  "generator_output_note": "create_vegetation.py produces an unqualified generation report; this reviewed manifest adds source, import and matched-render qualification.",
+  "generator": {
+    "path": "tools/create_vegetation.py",
+    "sha256": "daf3dad8e7c7842627576165d0f23291a01e8b178346f6b0d5af1a6905d0e85d"
+  },
+  "native_verifier": {
+    "path": "tools/verify_vegetation.py",
+    "sha256": "9ba5970f5c7095199ae7f030f4c3d629a9ddbaa117e07a4c9fa7b61ddbc70c11"
+  },
+  "native_source_signature": {
+    "facts_sha256": "9ab8a24ba9bc97d66cd3325339f2a8aad241abf119ab08c1416ac31fa634de95",
+    "object_count": 26,
+    "material_count": 2,
+    "container_byte_reproduction": false,
+    "recorded_source_values_exact": true,
+    "scope": "Exact recorded object transforms, collection memberships/visibility, custom properties, base mesh positions/edges/polygons/smooth/material assignment, UVs/color attributes, material graph input values/links and unit settings. Not every Blender RNA field or container byte reproduction."
+  },
+  "export_reproduction": {
+    "a": {
+      "qualified_sha256": "7d227e227ec3ba4f686b0ef6264aff5847072db00af39f94040206bb7e6e5e59",
+      "reproduced_sha256": "7d227e227ec3ba4f686b0ef6264aff5847072db00af39f94040206bb7e6e5e59",
+      "exact": true,
+      "bytes": 61280
+    },
+    "b": {
+      "qualified_sha256": "2f787577e824254f28bdbad85a6ff43b59726aaf38569c819ca6380a528d546d",
+      "reproduced_sha256": "2f787577e824254f28bdbad85a6ff43b59726aaf38569c819ca6380a528d546d",
+      "exact": true,
+      "bytes": 61280
+    }
+  },
+  "integration": {
+    "world_function": "LifeWorld.tree",
+    "variant_selection": "Coordinate-only stable integer hash; no shared RNG draws",
+    "immediate_children_per_tree": 2,
+    "surfaces_per_tree": 2,
+    "full_triangles_per_tree": 2440,
+    "branch_lod_counts": [
+      7,
+      7
+    ],
+    "canopy_lod_counts": [
+      0,
+      0
+    ],
+    "shadow_meshes_retained": true,
+    "cast_shadows_retained": true,
+    "instance_lod_bias": 1.0,
+    "camera_fade_loop_unchanged": true,
+    "material_scope": "Only four tree-owned materials; no non-tree instance sharing in actual fixtures",
+    "imports": {
+      "assets/models/tree_field_maple_a.glb.import": "2542f7bcb9d460664d8de1401368062f98912f358c8ca2411f98fb106c1a6f6d",
+      "assets/models/tree_field_maple_b.glb.import": "cf8894428c3b0cc9db57cea74bc53be13d5ba095e29a0747d3b047c3630dc088"
+    }
+  },
+  "qualification": {
+    "fixture_commit": "409ff96431d794d155ff6f70e2d44da26f48cecd",
+    "views": [
+      "home",
+      "home_opposite",
+      "home_build",
+      "park",
+      "maya_home",
+      "leo_home"
+    ],
+    "viewport": [
+      1440,
+      900
+    ],
+    "baseline_checks": 2144,
+    "candidate_checks": 970,
+    "raw_exact_comparison_checks": 684,
+    "failures": 0,
+    "fixture_limit": "Direct venue setup and held poses from a literal authored starter layout; excludes native input and simulation. Not gameplay completion.",
+    "visual_verdict": "ACCEPT: independent critic inspected all12 matched images and verified40 pins; previous canopy marks gone, no new voids, branch/contour/fade improvement retained. Smooth broad crown and horizontal lower shelf remain.",
+    "visual_freeze_sha256": "461fa6e13f769098fbbf7d57daec792e0a24605a20c7466bcc3eb13feca16a03",
+    "source_reproduction_freeze_sha256": "e1e890ac8738dfd7b39f26c0d8b041f770654d7ebff2b5851b044c58a1e5fbf6",
+    "cost_freeze_sha256": "b29264ff585c2b64683ab0b0a2af19b2e1926060c91a7913f421ff531134183b",
+    "diagnosis_freeze_sha256": "1c1fdc07219636e709d3b835692cc958ab4c9205b88fd5dce07cc408af438f42",
+    "root_release_validation": "Separate: root owns current-source integration, tests and exported package validation.",
+    "critic_report_sha256": "af5c44765451d69ae84453cfa1ce497e5bcd209bdcc83b9cbf963c2f6bfa8268",
+    "critic_freeze_sha256": "e76f47c6c3696db7bcb004abb12d4701491a075d83d1d0b03384b34100a89ad5",
+    "fresh_import_scope_freeze_sha256": "d9d0869822edfe951efee1c6b123b73ac002019a4ed251a249b12477178ce528"
+  },
+  "limits": [
+    "Soft sculpted crowns and broad lower shelf remain.",
+    "Garden planting unchanged.",
+    "Whole-game quality does not become10 from a tree increment.",
+    "Sequential RTX5090 measurements do not establish low-end performance.",
+    "Home CPU rendering median increased0.371ms versus procedural baseline; park increased0.019ms.",
+    "Blender logs retain disclosed addon/exporter/deprecation problems; Godot visual and benchmark logs are clean."
+  ]
+}

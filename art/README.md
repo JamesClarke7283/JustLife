@@ -9,6 +9,7 @@ Production artwork is original JustLife work. The runtime loads exported GLBs fr
 - `celebration/birthday_cake.blend`: the birthday cake, plate and candles.
 - `meals/garden_supper.blend`: original serving dish, individual plate, food and fork; export hashes and regeneration instructions are in its README.
 - `recipes/recipe_variants.blend`: original herb pasta and vegetable bake, with serving dishes and individual plates; its README and manifest record authoring and verification.
+- `vegetation/field_maples.blend`: two original branching field maples with connected crowns. Its README and manifest retain portable generation, native-source checks and canopy import settings.
 - `source/grip_v3/`: immutable hand and rig inputs used by the surface-repair generator. These are source dependencies, not disposable backups.
 - `source/character_production_hashes.json`: current sixteen GLB and four editable-source hashes.
 - `source/character_v18_production_hashes.json`: historical v18 provenance, preserved unchanged.

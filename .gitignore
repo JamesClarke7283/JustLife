@@ -87,3 +87,9 @@ __pycache__/
 !/art/sanitation/juniper_mop.blend
 !/art/sanitation/README.md
 !/art/sanitation/manifest.json
+
+!/art/vegetation/
+/art/vegetation/*
+!/art/vegetation/field_maples.blend
+!/art/vegetation/README.md
+!/art/vegetation/manifest.json

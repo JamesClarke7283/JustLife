@@ -386,14 +386,22 @@ func window_panel(p: Vector3, side: bool) -> void:
 	assign_structure_layer(root,clampi(floori((p.y-Building.GROUND_Y)/Building.RISE),0,1))
 
 func tree(p: Vector3, s: float) -> void:
-	var tree_root=Node3D.new();house.add_child(tree_root)
+	# Coordinate-only variation preserves the world's shared random stream.
+	var key:int=(roundi(p.x*100.0)*73856093) ^ (roundi(p.z*100.0)*19349663)
+	var variant:String="a" if posmod(key,5)<3 else "b"
+	var tree_root:Node3D=load("res://assets/models/tree_field_maple_%s.glb"%variant).instantiate()
+	house.add_child(tree_root)
 	tree_root.position=p
+	# The imported scene has two immediate meshes. Keep the same root transform
+	# and immediate GeometryInstance3D contract used by camera transparency.
+	var yaw:float=float(posmod(key,8))*PI/4.0
+	for mesh:MeshInstance3D in tree_root.get_children():
+		mesh.scale*=s
+		mesh.rotation.y=yaw
+		# Godot imports COLOR_0 but leaves its material contribution disabled.
+		var tree_material:StandardMaterial3D=mesh.get_active_material(0)
+		tree_material.vertex_color_use_as_albedo=true
 	landscape_trees.append(tree_root)
-	cylinder(tree_root,Vector3(0,1.45*s,0),.12*s,2.9*s,"8b7452")
-	for i in range(7):
-		var a:float=i*2.4
-		var offset=Vector3(sin(a)*.64,2.65+(i%3)*.4,cos(a)*.64)*s
-		sphere(tree_root,offset,Vector3(1.75,1.8,1.65)*s,"73976a" if i%2 else "8eaa78")
 
 func neighbor_home(p: Vector3) -> void:
 	var cottage:bool=p.x<0

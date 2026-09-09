@@ -4,6 +4,8 @@ JustLife is an original life simulation. Its characters are Lifelets; its homes,
 
 The application icon and matching JustLife launch splash were created for JustLife with the built-in image generation tool. Their home, heart and sprout symbolize home-making, relationships and growth; the final prompts are recorded in `art/ICON_PROMPT.md` and `art/SPLASH_PROMPT.md` in the source project.
 
+The field maple trees are original Blender artwork, with their editable source in `art/vegetation/` and generator in `tools/create_vegetation.py`. Camera and menu icons are original SVG drawings in `assets/ui/`.
+
 Godot Engine is distributed under the MIT license. Its license text, component copyright notices and third-party license texts are included in `licenses/`. Blender is an authoring tool and is not included in the game.
 
 Roboto Regular (`assets/fonts/Body.ttf`): Copyright 2011 Google Inc. Apache License 2.0; see `licenses/Roboto-Apache-2.0.txt`. Unmodified font.

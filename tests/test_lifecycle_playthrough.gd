@@ -46,7 +46,7 @@ func _create_household() -> void:
 	check(app.sim.relationship_order().slice(0, 2) == ["housemate_1", "housemate_2"], "Partner and sibling precede unrelated acquaintances.")
 
 func _open_settings() -> void:
-	await press("☰")
+	await press("PauseMenu")
 	await press("Life settings")
 	check(app.sim.speed == 0, "Life settings pause the live household.")
 

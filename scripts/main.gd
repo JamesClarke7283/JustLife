@@ -232,6 +232,20 @@ func button(value:String,p:Vector2,s:Vector2,callback:Callable,primary:bool=fals
 		b.size=s
 	return b
 
+func icon_button(icon_name:String,hint:String,p:Vector2,s:Vector2,callback:Callable) -> Button:
+	var b:=button("",p,s,callback)
+	b.icon=load("res://assets/ui/"+icon_name+".svg")
+	b.icon_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	b.add_theme_constant_override("icon_max_width",24)
+	for state:String in ["normal","hover","focus"]:
+		b.add_theme_color_override("icon_"+state+"_color",P.INK)
+	for state:String in ["pressed","hover_pressed"]:
+		b.add_theme_color_override("icon_"+state+"_color",P.WHITE)
+	b.tooltip_text=hint
+	b.accessibility_name=hint
+	b.size=s
+	return b
+
 func line(p:Vector2,s:Vector2,parent:Node=ui) -> void:
 	var n=ColorRect.new()
 	n.color=P.LINE
@@ -415,8 +429,8 @@ func draw_creator() -> void:
 		button("Coastal",Vector2(1100,665),Vector2(88,41),func():profile.top_color="efeadb";profile.bottom_color="51697c";refresh_preview())
 		button("Earthy",Vector2(1197,665),Vector2(88,41),func():profile.top_color="c97c66";profile.bottom_color="eadfc9";refresh_preview())
 		button("Sage",Vector2(1294,665),Vector2(88,41),func():profile.top_color="417a71";profile.bottom_color="493e37";refresh_preview())
-	button("↶",Vector2(626,726),Vector2(48,42),func():creator_spin-=.5;preview.rotation.y=creator_spin)
-	button("↷",Vector2(769,726),Vector2(48,42),func():creator_spin+=.5;preview.rotation.y=creator_spin)
+	icon_button("rotate_left","Turn Lifelet left",Vector2(626,726),Vector2(48,42),func():creator_spin-=.5;preview.rotation.y=creator_spin).name="CreatorTurnLeft"
+	icon_button("rotate_right","Turn Lifelet right",Vector2(769,726),Vector2(48,42),func():creator_spin+=.5;preview.rotation.y=creator_spin).name="CreatorTurnRight"
 	text_label("DRAG TO ROTATE",Vector2(657,782),Vector2(160,24),11,P.MUTED)
 	small_caps("Household · %d / 8" % household_profiles.size(),Vector2(42,743),Vector2(162,24))
 	var connections=button("Connections",Vector2(214,738),Vector2(133,31),show_creator_connections)
@@ -676,7 +690,7 @@ func draw_live() -> void:
 	button("Phone",Vector2(952,27),Vector2(153,43),adoption_flow.show_phone).name="HouseholdPhone"
 	card(Vector2(1125,18),Vector2(293,62),P.WHITE,14)
 	funds_label=text_label("§ 2,500",Vector2(1145,29),Vector2(170,38),25,P.TEAL)
-	button("☰",Vector2(1357,27),Vector2(48,42),show_menu)
+	icon_button("menu","Pause menu (Esc)",Vector2(1357,27),Vector2(48,42),show_menu).name="PauseMenu"
 	# Live floor viewing changes only visibility and camera height.
 	if mode=="live" and current_venue=="home":
 		for level:int in [0,1]:
@@ -686,10 +700,10 @@ func draw_live() -> void:
 			floor_button.tooltip_text="View ground floor (Page Down)" if level==0 else ("View upper floor (Page Up)" if not floor_button.disabled else "Build an upper floor to view it (Page Up)")
 			live_floor_buttons[level]=floor_button
 	# Camera affordances remain visible above the household controls.
-	button("−",Vector2(1359,530),Vector2(46,42),func():world.camera.size=minf(world.camera.size+1.5,30))
-	button("+",Vector2(1359,481),Vector2(46,42),func():world.camera.size=maxf(world.camera.size-1.5,7))
-	button("↶",Vector2(1306,530),Vector2(46,42),func():world.camera_angle-=PI/4;world.update_camera())
-	button("↷",Vector2(1306,481),Vector2(46,42),func():world.camera_angle+=PI/4;world.update_camera())
+	icon_button("zoom_out","Zoom out (mouse wheel)",Vector2(1359,530),Vector2(46,42),func():world.camera.size=minf(world.camera.size+1.5,30)).name="CameraZoomOut"
+	icon_button("zoom_in","Zoom in (mouse wheel)",Vector2(1359,481),Vector2(46,42),func():world.camera.size=maxf(world.camera.size-1.5,7)).name="CameraZoomIn"
+	icon_button("rotate_left","Rotate camera left (Q)",Vector2(1306,530),Vector2(46,42),func():world.camera_angle-=PI/4;world.update_camera()).name="CameraRotateLeft"
+	icon_button("rotate_right","Rotate camera right (E)",Vector2(1306,481),Vector2(46,42),func():world.camera_angle+=PI/4;world.update_camera()).name="CameraRotateRight"
 	button("Walls",Vector2(1306,585),Vector2(99,38),func():world.set_cutaway(not world.cutaway))
 	if mode=="build":draw_build_catalog()
 	else:
@@ -776,7 +790,9 @@ func _refresh_progress_labels() -> void:
 func draw_household_bar() -> void:
 	household_chips.clear()
 	if household.members.size()>1:
-		small_caps("Household",Vector2(28,624),Vector2(280,20))
+		card(Vector2(20,618),Vector2(maxi(128,household.members.size()*35+16),89),P.WHITE,12).name="HouseholdSwitcher"
+		var household_caption:=small_caps("Household",Vector2(28,624),Vector2(108,20))
+		household_caption.add_theme_color_override("font_color",P.INK)
 		for i in range(household.members.size()):
 			var member:Dictionary=household.members[i]
 			var chip=button(member_initials(str(member.sim.character.name),i,household_profiles),Vector2(28+i*35,657),Vector2(31,44),func():select_household_member(i),i==household.selected_index)

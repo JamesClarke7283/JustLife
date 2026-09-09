@@ -44,7 +44,7 @@ func _run() -> void:
 		check(visible_cancel, "Queue cancel mark stays within the visible card.")
 		await screenshot("01b_paused_queue_theme")
 	await press("Cancel action")
-	await press("☰")
+	await press("PauseMenu")
 	await press("Save this life")
 	app.menus.name_input.text = "   "
 	await press("Save as new")
@@ -57,7 +57,7 @@ func _run() -> void:
 		await _public_save("Juniper chapter " + str(i + 2))
 		slot_ids.append(str(app.active_save_id))
 	check(library.list_saves().size() == 5, "Five separately named saves coexist.")
-	await press("☰")
+	await press("PauseMenu")
 	await press("Load a saved life")
 	await _select_slot(slot_ids[0])
 	_check_long_copy("saved-life picker", "Alexandria")
@@ -83,7 +83,7 @@ func _run() -> void:
 	await frames(4)
 	check(library.read_slot(slot_ids[0]).ok and library.list_saves().size() == 5, "Escape from confirmation does not delete a save.")
 	if not app.overlay_open:
-		await press("☰")
+		await press("PauseMenu")
 		await press("Load a saved life")
 		await _select_slot(slot_ids[0])
 	else:
@@ -101,7 +101,7 @@ func _run() -> void:
 	# A corrupt local fixture checks the public recovery UI, not filesystem trust.
 	var bad_file := FileAccess.open(library.SAVE_DIR.path_join("unreadable_fixture.json"), FileAccess.WRITE)
 	bad_file.store_string("{broken test fixture");bad_file.close()
-	await press("☰")
+	await press("PauseMenu")
 	await press("Load a saved life")
 	await _select_slot("unreadable_fixture")
 	var can_load: bool = is_instance_valid(button_matching("Load selected life", true))

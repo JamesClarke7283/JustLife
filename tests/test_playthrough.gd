@@ -97,7 +97,7 @@ func _enter_new_game() -> void:
 		check(app.mode == "creator", "Main menu New game opens household creation.")
 
 func _public_save(title: String) -> void:
-	await press("☰")
+	await press("PauseMenu")
 	await press("Save this life")
 	if is_instance_valid(button_matching("Save as new")):
 		var name_field: LineEdit = app.menus.name_input
@@ -117,7 +117,7 @@ func _public_load() -> void:
 	elif is_instance_valid(button_matching("Continue saved life")):
 		await press("Continue saved life")
 	else:
-		await press("☰")
+		await press("PauseMenu")
 		await press("Load a saved life")
 		await press("Load selected life", true)
 	if is_instance_valid(button_matching("Continue without saving")):
@@ -146,7 +146,8 @@ func observe_motion(delta: float) -> void:
 func button_matching(label_text: String, prefix: bool = false) -> Button:
 	for node: Node in app.find_children("*", "Button", true, false):
 		if node is Button and node.is_visible_in_tree() and not node.disabled:
-			if str(node.text).begins_with(label_text) if prefix else str(node.text) == label_text:
+			var matches:bool=str(node.text).begins_with(label_text) if prefix else str(node.text)==label_text
+			if matches or (not prefix and str(node.name)==label_text):
 				return node
 	return null
 
@@ -637,7 +638,7 @@ func _seating_and_save_flow() -> void:
 	app.sim.funds += 777
 	app.sim.character["name"] = "Unsaved change"
 	app.sim.cancel_action(1)
-	if not app.has_method("show_main_menu"):await press("☰")
+	if not app.has_method("show_main_menu"):await press("PauseMenu")
 	await _public_load()
 	await _compare_saved(expected, "same-process")
 	await screenshot("12_loaded_same_process")

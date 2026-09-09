@@ -15,7 +15,7 @@ func _run() -> void:
 	var remaining:float=app.player.speech_presentation().remaining
 	await create_timer(3.5).timeout
 	check(is_equal_approx(app.player.speech_presentation().remaining,remaining),"Paused speech survives longer than its normal real-time lifetime.")
-	await press("☰");await frames(3)
+	await press("PauseMenu");await frames(3)
 	check(not app.activity_bubbles.visible,"Pause modal hides speech while retaining actor state.")
 	await press("Resume");await frames(3)
 	check(app.activity_bubbles.cards.has("player") and app.activity_bubbles.cards.player.visible,"Closing the modal restores the still-paused message.")

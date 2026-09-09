@@ -156,7 +156,7 @@ func _review_speech() -> void:
 	app.world.camera.size=18;app.world.update_camera();await frames(4)
 	_check_bubble_layout("960 by 600 window")
 	await screenshot("07_speech_small_window",false,false)
-	await press("☰");await frames(3)
+	await press("PauseMenu");await frames(3)
 	check(not bubbles.visible,"Opening a modal hides in-world bubbles.")
 	await press("Resume");await frames(3)
 	check(bubbles.visible,"Closing the modal restores paused speech.")
