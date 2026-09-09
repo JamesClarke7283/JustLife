@@ -15,6 +15,7 @@ The repository contains the game and its authoring inputs. Rendered evidence, do
 | `art/source/` | Immutable authoring inputs required to reproduce the accepted characters, plus compact provenance. |
 | `art/experiments/` | Clearly marked editable studies and their generators; these are not promoted game assets. |
 | `tools/` | Asset generation and Linux export scripts. |
+| `tools/adult_face_volume/` | Adult chin/mouth and Smile authoring, native verification and four model exports; reuses the adult-eye source helpers. |
 | `tests/` | Simulation, model, controller and rendered playthrough checks. |
 | `docs/` | Controls, APIs, reference findings and concise independent reviews. |
 | `addons/` | Vendored Godot MCP development toolkit, retained with its notices. The release exporter excludes it. |

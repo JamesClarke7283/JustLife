@@ -17,7 +17,8 @@ Production artwork is original JustLife work. The runtime loads exported GLBs fr
 - `source/character_v18_production_hashes.json`: historical v18 provenance, preserved unchanged.
 - `source/clothing_v22/`: immutable adult input and current garment reproduction guide. The adjacent tools author the shirt, continuous trousers and corrected cardigan hem while preserving other character geometry.
 - `source/face_v23/`: immutable accepted clothing input and reproduction guide for the earlier adult eyelid/lip stage. `tools/sculpt_face.py` reproduces that stage, which predates the current eye and Crop refinements.
-- `../tools/adult_eyes/`: current adult eye depth and lid attachment authoring from the pinned accepted source, with exact native-fact guards and four reproducible exports. The original editable `characters.blend` can also be edited directly.
+- `../tools/adult_eyes/`: accepted adult eye depth and lid attachment stage, retained with its pinned inputs and native/export guards.
+- `../tools/adult_face_volume/`: current adult chin and mouth support, Smile and mouth-anchor authoring from the accepted eye stage. All four exports and the editable `characters.blend` reproduced exactly in the qualified environment; the source can also be edited directly.
 - `experiments/hair_v19/`: editable, unpromoted hairstyle research. Its README explains how to regenerate the study.
 - `ICON_PROMPT.md`, `SPLASH_PROMPT.md`, `BRANDING_PROMPTS.md`: provenance for the original home/heart/sprout icon and JustLife wordmark splash in `assets/ui/`.
 

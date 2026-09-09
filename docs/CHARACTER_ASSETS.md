@@ -4,7 +4,7 @@ Original geometry and artwork authored in Blender for JustLife. The exported ass
 
 ## Files and integration status
 
-The four adult game models and their editable source include the accepted clothing, lip and Crop revisions plus the current eye-depth and lid-attachment refinement. They retain the revision 18 rig, surface revision 2 and accepted hands. The eight teen and elder GLBs and their two editable sources remain v18. The child source and four child GLBs retain that rig and anatomy with the bounded casual-shirt, Bob grouping and lower-detail hem refinements. The repository keeps the production assets, editable sources and required generator inputs. Duplicate `*_surface_grip*`, older `*_rig*` and age `*_grip*` candidates, renders and historical `art/iterations` archives remain local and are excluded from Git:
+The four adult game models and their editable source include the accepted clothing, lip and Crop revisions, eye-depth and lid-attachment refinement, and current chin/mouth support improvement. They retain the revision 18 rig, surface revision 2 and accepted hands. The eight teen and elder GLBs and their two editable sources remain v18. The child source and four child GLBs retain that rig and anatomy with the bounded casual-shirt, Bob grouping and lower-detail hem refinements. The repository keeps the production assets, editable sources and required generator inputs. Duplicate `*_surface_grip*`, older `*_rig*` and age `*_grip*` candidates, renders and historical `art/iterations` archives remain local and are excluded from Git:
 
 | File | Intended use |
 | --- | --- |
@@ -13,7 +13,8 @@ The four adult game models and their editable source include the accepted clothi
 | `assets/models/character_lod.glb` | Standard frame for the live camera |
 | `assets/models/character_broad_lod.glb` | Broad frame for the live camera |
 | `art/characters.blend` | Editable current rig, garments, hair, expressions and portrait studio |
-| `tools/adult_eyes/` | Current adult eye/lid authoring from the pinned previously accepted source, with portable native and export guards |
+| `tools/adult_face_volume/` | Current adult lower-face authoring from the pinned eye stage, with native/material and exact export guards |
+| `tools/adult_eyes/` | Accepted adult eye/lid authoring stage and shared native/export helpers |
 | `tools/sculpt_clothing.py` | Current adult garment authoring from immutable v18 input; uses the adjacent trouser helper, per-variant export worker and exact output verifier |
 | `tools/create_characters.py` | Historical v18 generator and unchanged teen/elder authoring pipeline |
 | `tools/child_shirt_v31/` | Accepted child casual-shirt stage, retained as historical authoring and preservation tooling |
@@ -31,11 +32,17 @@ Reproduce the adult clothing stage using the explicit six-thread authoring and f
 
 The older `blender --background --python tools/create_characters.py -- --surface-repair` command regenerates historical v18 adult candidates; it does **not** reproduce current adult clothing. Add `--age child`, `--age teen` or `--age elder` for the historical age pipeline; the child result predates the current shirt and Bob refinements. Its `--promote` flag replaces that stage’s four GLBs and editable source, so use it only after reviewing the intended stage replacement. Running without `--surface-repair` retains the earlier sculpt pipeline for historical comparison. This separate Blender process creates its own scene and leaves any other open Blender session untouched. All default morph values are explicitly zeroed before and after export. All exported mesh primitives have UVs, including the untextured morph meshes, for clean Godot tangent generation.
 
+## Adult chin and mouth support (review iteration 47)
+
+The current lower face has more chin projection and a smoother transition beneath the lips. The original head, lips and seam receive the neutral shape and shared Smile field; the mouth landmark follows the measured seam center to `[0, .054, .118866]` in Head-local Godot coordinates. Existing topology, UVs, rig and unrelated character parts stay fixed. The slightly angular underside, outlined lips and faint Smile crease remain visible limitations.
+
+[The current adult source guide](../tools/adult_face_volume/README.md) reproduces the neutral authoring, native measurement, Smile/anchor finish and four exports from the pinned eye-stage input. A fresh eight-process run reproduced all five production files byte for byte and verified all 362 recorded native object facts and material values. Blender startup and exporter diagnostics remain in the retained logs. [Review 47](REVIEWS/iteration_47_adult_lower_face.md) records the matched Creator and paused Live views, full/LOD feeding contact, narrow decoded sparse-count changes and independent acceptance of this bounded improvement at approximately 5.5/10 for the face. The overall quality goal remains open.
+
 ## Adult eye depth and eyelid attachment (review iteration 44)
 
 The adult eyes have less profile protrusion, a more open neutral lid margin and upper lid roots blended into the supporting head surface. Only ten eye pieces, two upper lids and the local orbital head mask change. The final pass preserves all unrelated decoded model payloads, the rig, materials, contact landmarks and other age families. Angular closed corner creases, horizontal lid bands and the lower seam remain visible limitations.
 
-[The current adult source guide](../tools/adult_eyes/README.md) reproduces the two sculpt stages and four exports from a pinned Git input into a new output directory. All four GLBs reproduced byte for byte; the newly saved native file has exact recorded object/material facts, while its container bytes differ. Production retains the original reviewed editable file. [The review](REVIEWS/iteration_44_adult_eyes.md) records matched Creator, LOD and paused Live views, controller checks and remaining limitations. These checks do not replace a full-game review or qualify arbitrary facial motion.
+[The eye-stage source guide](../tools/adult_eyes/README.md) reproduces that stage's two sculpts and four exports from a pinned Git input into a new output directory. All four stage GLBs reproduced byte for byte; the newly saved native file had exact recorded object/material facts, while its container bytes differed. That reviewed source is the input to the current lower-face stage above. [The review](REVIEWS/iteration_44_adult_eyes.md) records matched Creator, LOD and paused Live views, controller checks and remaining limitations. These checks do not replace a full-game review or qualify arbitrary facial motion.
 
 ## Child casual-shirt shoulders (review iteration 34)
 
