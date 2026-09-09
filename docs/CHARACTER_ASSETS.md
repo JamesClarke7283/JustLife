@@ -4,7 +4,7 @@ Original geometry and artwork authored in Blender for JustLife. The exported ass
 
 ## Files and integration status
 
-Adult garment revision 22 is promoted to the four adult game paths and their editable source. It retains the accepted revision 18 rig, surface revision 2, face, hair and hands. The eight teen and elder GLBs and their two editable sources remain v18. The child source and four child GLBs retain that rig and anatomy with the bounded casual-shirt shoulder refinement documented below. The repository keeps the production assets, editable sources and required generator inputs. Duplicate `*_surface_grip*`, older `*_rig*` and age `*_grip*` candidates, renders and historical `art/iterations` archives remain local and are excluded from Git:
+Adult garment revision 22 is promoted to the four adult game paths and their editable source. It retains the accepted revision 18 rig, surface revision 2, face, hair and hands. The eight teen and elder GLBs and their two editable sources remain v18. The child source and four child GLBs retain that rig and anatomy with the bounded casual-shirt shoulder refinement and child Bob grouping/taper documented below. The repository keeps the production assets, editable sources and required generator inputs. Duplicate `*_surface_grip*`, older `*_rig*` and age `*_grip*` candidates, renders and historical `art/iterations` archives remain local and are excluded from Git:
 
 | File | Intended use |
 | --- | --- |
@@ -15,7 +15,8 @@ Adult garment revision 22 is promoted to the four adult game paths and their edi
 | `art/characters.blend` | Editable current rig, garments, hair, expressions and portrait studio |
 | `tools/sculpt_clothing.py` | Current adult garment authoring from immutable v18 input; uses the adjacent trouser helper, per-variant export worker and exact output verifier |
 | `tools/create_characters.py` | Historical v18 generator and unchanged teen/elder authoring pipeline |
-| `tools/child_shirt_v31/` | Current child casual-shirt authoring, fresh native protection, pinned input extraction and guarded shirt-only export transfer |
+| `tools/child_shirt_v31/` | Accepted child casual-shirt stage, retained as historical authoring and preservation tooling |
+| `tools/child_bob_v36/` | Current child Bob source from the accepted shirt stage, fresh native protection, pinned input extraction and guarded Bob-only standard-LOD transfer |
 | `art/characters_child.blend`, `characters_teen.blend`, `characters_elder.blend` | Editable current age variants |
 | `art/source/grip_v3/` | Four immutable Blender inputs preserving accepted hand meshes and grip morphs |
 | `art/source/character_production_hashes.json` | Current hashes of sixteen production GLBs and four editable character sources |
@@ -27,7 +28,7 @@ All sixteen paths retain the reviewed surface repair and hand grips. The histori
 
 Reproduce current adult clothing using the explicit six-thread authoring and fresh single-thread export command in [the garment source guide](../art/source/clothing_v22/README.md). It writes a new output directory, keeps the immutable v18 input separate, and verifies exact qualified output. The four adult GLBs reproduced byte for byte in the documented Blender environment. The 361 recorded editable-source object facts also matched; unrelated addon/modifier notices remain in the local logs.
 
-The older `blender --background --python tools/create_characters.py -- --surface-repair` command regenerates historical v18 adult candidates; it does **not** reproduce current adult clothing. Add `--age child`, `--age teen` or `--age elder` for the historical age pipeline; the child result predates the current shirt refinement. Its `--promote` flag replaces that stage’s four GLBs and editable source, so use it only after reviewing the intended stage replacement. Running without `--surface-repair` retains the earlier sculpt pipeline for historical comparison. This separate Blender process creates its own scene and leaves any other open Blender session untouched. All default morph values are explicitly zeroed before and after export. All exported mesh primitives have UVs, including the untextured morph meshes, for clean Godot tangent generation.
+The older `blender --background --python tools/create_characters.py -- --surface-repair` command regenerates historical v18 adult candidates; it does **not** reproduce current adult clothing. Add `--age child`, `--age teen` or `--age elder` for the historical age pipeline; the child result predates the current shirt and Bob refinements. Its `--promote` flag replaces that stage’s four GLBs and editable source, so use it only after reviewing the intended stage replacement. Running without `--surface-repair` retains the earlier sculpt pipeline for historical comparison. This separate Blender process creates its own scene and leaves any other open Blender session untouched. All default morph values are explicitly zeroed before and after export. All exported mesh primitives have UVs, including the untextured morph meshes, for clean Godot tangent generation.
 
 ## Child casual-shirt shoulders (review iteration 34)
 
@@ -36,6 +37,16 @@ The child casual shirt has lower sleeve crowns and a gentler shoulder join. Only
 [The portable source guide](../tools/child_shirt_v31/README.md) describes extraction of the five pinned former assets from local Git history and generation into a new directory. Four fresh single-thread exports supply the authored shirt, then guarded accessor transfer keeps every other decoded mesh exact. This is necessary because an unchanged standard child LOD export drifted in seven unrelated hair U values. Only the shirt's derived LOD tessellation changes: 1,859 to 1,848 vertices, with 2,640 triangles retained; the detailed shirt retains 7,083 vertices and 12,000 triangles. All four final GLBs reproduce byte for byte in the documented Blender environment.
 
 The final visual gate separates 18 contextual Creator/Live/seated pairs from six isolated actual carry/stair rig inspection pairs. The isolated frames hide scene geometry after placing the held pose and dish, and establish garment visibility at those poses only. Occluded earlier camera compositions remain rejected visual evidence. The change is modest; the broad-frame sculpted join and small profile improvement remain limitations. There is no arbitrary-pose or cloth-simulation guarantee and no new family-wide or whole-game art score. [The review](REVIEWS/iteration_34_child_shirt.md) records the scoped verdict and evidence.
+
+## Child Bob grouping and taper (review iteration 36)
+
+The child's Bob now uses connected shallow side flow and a curved lower cut instead of six similar hanging tubes. Its swept fringe remains exact. The stage changes only positions on the cap, 12 locks and 12 dependent detail meshes; the other 337 native objects, face/anatomy, rig, shirt, other hair families and shared materials remain exact. Native polygons, UVs, weights, morph data and metadata are protected. A final cap-only pass changes 383 vertices below Z1.05 while preserving the upper cap and all other objects relative to the grouped source.
+
+[The current child source guide](../tools/child_bob_v36/README.md) extracts five pinned accepted inputs from local Git history and reproduces the two native stages and four GLBs in a new directory. Fresh read-only native signatures protect the populated editable scene and recorded authored data. All four final GLBs match the reviewed bytes in the documented Blender environment. Native container bytes may vary with save provenance. The standard LOD uses a guarded transfer of only the 25 freshly Blender-authored Bob primitives into the accepted GLB because raw export reproduces unrelated Crop UV drift. All 314 other decoded mesh records and protected-only sharing remain exact; owned derived triangulation and alias changes are recorded explicitly.
+
+Independent review accepts four neutral default pairs plus 16 broader pairs covering both supported body extremes, combined maximum identity, full/LOD ear/nape views and four ordinary friendly head/face samples. Creator LOD is a disclosed inspection override. Live retains production-selected LOD and supported public camera controls, with approximately 35-pixel unobstructed heads; it demonstrates ordinary-distance motion appearance only. Both broader strict Godot receipts retain the shared verbose RGB8 startup warning despite 139 capture assertions and six audio drains passing per side.
+
+The rear remains smooth and heavy, and dark angular LOD hem pinches are visible in close rear obliques. Their cause is unproven. These are accepted limitations of this incremental change, with no arbitrary-pose guarantee or overall score uplift. [Review 36](REVIEWS/iteration_36_child_bob.md) records exact scope, reproduction and retained failures.
 
 ## Adult garment revision 22
 

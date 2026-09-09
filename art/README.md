@@ -12,6 +12,7 @@ Production artwork is original JustLife work. The runtime loads exported GLBs fr
 - `vegetation/field_maples.blend`: two original branching field maples with connected crowns. Its README and manifest retain portable generation, native-source checks and canopy import settings.
 - `source/grip_v3/`: immutable hand and rig inputs used by the surface-repair generator. These are source dependencies, not disposable backups.
 - `../tools/child_shirt_v31/`: bounded child casual-shirt authoring and strict export transfer. Its README explains pinned Git input extraction and preservation; the historical age generator does not reproduce this garment.
+- `../tools/child_bob_v36/`: current child Bob grouping and taper from the accepted shirt source, with pinned input extraction, exact native protection and guarded standard-LOD export transfer. Its README records the real lower-detail hem limitations.
 - `source/character_production_hashes.json`: current sixteen GLB and four editable-source hashes.
 - `source/character_v18_production_hashes.json`: historical v18 provenance, preserved unchanged.
 - `source/clothing_v22/`: immutable adult input and current garment reproduction guide. The adjacent tools author the shirt, continuous trousers and corrected cardigan hem while preserving other character geometry.
