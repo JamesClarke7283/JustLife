@@ -1503,6 +1503,7 @@ func _refresh_member_targets(replan:bool=true) -> void:
 	var by_id:Dictionary={}
 	for target:Dictionary in targets:by_id[str(target.id)]=target
 	sim.register_targets(targets.filter(func(target:Dictionary):return str(target.id)!=bound_member_id))
+	var interrupted_social:bool=false
 	reconciling_targets=true
 	for index:int in range(sim.action_queue.size()-1,-1,-1):
 		var action:Dictionary=sim.action_queue[index]
@@ -1511,8 +1512,12 @@ func _refresh_member_targets(replan:bool=true) -> void:
 		if not pending_move.is_empty() and target_id==str(pending_move.entry.id):continue
 		if not pending_move.is_empty() and str(action.id)=="eat_meal" and str(household.meals.portion(str(action.get("meal_plate",""))).get("host",""))==str(pending_move.entry.id):continue
 		if not by_id.has(target_id):
+			if index==0 and str(action.id) in LifeSim.SOCIAL_ACTIONS:interrupted_social=true
 			sim.cancel_action(index)
 			continue
+		# Queued socials resolve when they start. A current social retains its
+		# admitted endpoint until the shared reconciliation below can replan it.
+		if str(action.id) in LifeSim.SOCIAL_ACTIONS:continue
 		var destination:Vector3=world.lot_exit_position(_member_index(bound_member_id)) if str(action.id) in ["school_day","career_day"] else by_id[target_id].position
 		if str(action.id)=="cook" and str(action.get("recipe",""))=="harvest_bake":
 			var oven:Dictionary=_find_item(target_id)
@@ -1533,6 +1538,11 @@ func _refresh_member_targets(replan:bool=true) -> void:
 			action.phase="approach"
 		action.target_position=destination
 	reconciling_targets=false
+	if interrupted_social and not loading_game:
+		var next:Dictionary=sim.get_current_action()
+		if next.is_empty():_clear_motion()
+		else:on_action_started(next)
+	if not loading_game:_reconcile_social_action()
 	if not replan or loading_game:return
 	if traversal.busy(bound_member_id):return
 	var current:Dictionary=sim.get_current_action()
@@ -1674,6 +1684,7 @@ func on_action_started(action:Dictionary) -> void:
 	if traversal.busy(bound_member_id):
 		traversal.cancel(bound_member_id);pending_action=action;return
 	if str(action.id)=="arrive_home":adoption_flow.start_arrival(action);return
+	var social_admitted:bool=traversal.active(bound_member_id) or not path.is_empty() or str(action.phase)=="active"
 	var arrived_waiter:bool=traversal.active(bound_member_id) and str(traversal.routes[bound_member_id].phase)=="waiting" and is_same(action,pending_action)
 	_clear_motion(arrived_waiter)
 	var resident_id:String=str(action.get("target_id",""))
@@ -1684,8 +1695,14 @@ func on_action_started(action:Dictionary) -> void:
 	player.clear_speech()
 	if str(action.id) in LifeSim.SOCIAL_ACTIONS and world.actors.get(str(action.target_id)) is LifeActor:
 		world.actors[str(action.target_id)].clear_speech()
-	_resolve_activity_target(action)
-	residents.prepare_social(action)
+	if str(action.id) in LifeSim.SOCIAL_ACTIONS:
+		var destination:Vector3=_social_destination(action,social_admitted)
+		if not destination.is_finite():
+			show_notice(_social_refusal_message(action))
+			_cancel_blocked_action.call_deferred(route_generation,action,bound_member_id,load_epoch)
+			return
+		action.target_position=destination
+	else:_resolve_activity_target(action)
 	meal_flow.resolve(sim,action)
 	if not is_same(sim.get_current_action(),action):return
 	pending_action=action
@@ -2215,6 +2232,7 @@ func _process(delta:float) -> void:
 		residents.publish_targets()
 		meal_flow.sync_world(household.speed>0)
 		_store_motion()
+		if household.speed>0:_reconcile_social_routes()
 		var selected_id:String=household.selected_id()
 		var autonomy_values:Dictionary={}
 		for member:Dictionary in household.members:
@@ -2535,6 +2553,79 @@ func _update_activity_facing(delta:float,action:Dictionary,action_id:String) -> 
 		if sim.speed<=0 and residents.home_visit.owns(str(action.target_id)):return
 		var direction:Vector3=world.actors[str(action.target_id)].position-player.position
 		player.rotation.y=lerp_angle(player.rotation.y,atan2(direction.x,direction.z),minf(delta*6,1))
+
+func _social_point_clear(point:Vector3,target:LifeActor)->bool:
+	if not point.is_finite() or not target.visible:return false
+	if absf(point.y-target.position.y)>.1:return false
+	var distance:float=point.distance_to(target.position)
+	if distance<LifeTraversal.ROUTE_CLEARANCE or distance>1.6:return false
+	if not world.construction.building_state.is_empty():
+		if not traversal._free(bound_member_id,point):return false
+	else:
+		var cell:=Vector2i(roundi(point.x*4),roundi(point.z*4))
+		if not world.navigation.region.has_point(cell) or world.navigation.is_point_solid(cell):return false
+	for id:String in world.actors:
+		if id==bound_member_id:continue
+		var other:LifeActor=world.actors[id]
+		if other.visible and absf(point.y-other.position.y)<.1 and point.distance_to(other.position)<LifeTraversal.ROUTE_CLEARANCE:return false
+	return true
+
+func _social_refusal_message(action:Dictionary)->String:
+	if traversal.busy(str(action.get("target_id",""))):return "This Lifelet is using the stairs. Try talking after they reach the next floor."
+	return "There is no clear place for this conversation right now."
+
+func _social_destination(action:Dictionary,preserve:bool=true)->Vector3:
+	if traversal.busy(str(action.get("target_id",""))):return Vector3.INF
+	var target:LifeActor=world.actors.get(str(action.get("target_id","")))
+	if not is_instance_valid(target) or not target.visible or bool(target.get_meta("away",false)):return Vector3.INF
+	# Keep the admitted endpoint exactly while the conversation remains nearby.
+	# Published actor targets are suggestions, not replacements for owned routes.
+	var previous:Vector3=action.get("target_position",Vector3.INF)
+	if preserve and _social_point_clear(previous,target):return previous
+	var canonical:bool=not world.construction.building_state.is_empty()
+	var target_level:int=world.point_level(target.position)
+	var from_level:int=world.point_level(player.position)
+	if canonical and (target_level<0 or from_level<0):return Vector3.INF
+	var offsets:Array[Vector3]=[Vector3(0,0,1),Vector3(1,0,0),Vector3(0,0,-1),Vector3(-1,0,0),Vector3(.75,0,.75),Vector3(.75,0,-.75),Vector3(-.75,0,-.75),Vector3(-.75,0,.75)]
+	var best:Vector3=Vector3.INF;var best_distance:float=INF
+	var occupied:Array[Vector3]=[]
+	if canonical:occupied=traversal._occupied(bound_member_id)
+	for offset:Vector3 in offsets:
+		var point:Vector3=target.position+offset
+		point.x=snappedf(point.x,.25);point.z=snappedf(point.z,.25)
+		if not _social_point_clear(point,target):continue
+		var points:PackedVector3Array=[]
+		if canonical:
+			var route:Dictionary=world.lot_navigation.route_avoiding(LifeLotNavigation.floor_location(from_level,player.position),LifeLotNavigation.floor_location(target_level,point),occupied,LifeTraversal.ROUTE_CLEARANCE)
+			if not bool(route.ok):continue
+			points=route.points
+		else:points=world.path_to(player.position,point)
+		if points.is_empty() or points[-1]!=point:continue
+		var length:float=0.0
+		for index:int in range(1,points.size()):length+=points[index-1].distance_to(points[index])
+		if length<best_distance:best_distance=length;best=point
+	return best
+
+func _reconcile_social_action()->void:
+	var action:Dictionary=sim.get_current_action()
+	if action.is_empty() or str(action.id) not in LifeSim.SOCIAL_ACTIONS or str(action.phase) not in ["approach","active"] or traversal.busy(bound_member_id):return
+	var destination:Vector3=_social_destination(action)
+	if not destination.is_finite():
+		show_notice(_social_refusal_message(action))
+		cancel_current_action();return
+	var changed:bool=destination!=Vector3(action.target_position)
+	if changed:action.target_position=destination;action.phase="approach"
+	var missing_route:bool=str(action.phase)=="approach" and not traversal.active(bound_member_id) and path.is_empty()
+	if changed or missing_route:on_action_started(action)
+
+func _reconcile_social_routes()->void:
+	var prior:String=bound_member_id
+	_store_motion()
+	for member:Dictionary in household.members:
+		_bind_member(str(member.id))
+		if not sim.is_away():_reconcile_social_action()
+		_store_motion()
+	_bind_member(prior)
 
 func _resolve_activity_target(action:Dictionary) -> void:
 	if str(action.id) in ["school_day","career_day"]:

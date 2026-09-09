@@ -1,0 +1,13 @@
+# Iteration 32 — earning a recipe through play
+
+A public-created adult on commit `6819feed9798392284e1c4c0d7fc1f899977bd77` earned Cooking 2, used the newly available pasta recipe, and retained that choice after a named save and fresh public load. This closes the recipe-progression portion of the broader review plan, not its later aspiration chapter or the whole-game quality goal.
+
+The character began with ordinary funds, needs, clock and zero cooking XP. Two actual garden skillets earned 34 XP each; pasta then unlocked and its completed preparation earned another 40 XP. The final state was Cooking 2 plus 58 XP and §2478: §2500 minus §82 of ingredients plus the real, once-only §60 first-meal wish. One serving was eaten and eleven were refrigerated. The supported dirty plate remained for later cleaning. Default autonomy stayed enabled; the player canceled due work twice through the public action control to finish handling the food.
+
+The producer passed **92 assertions with zero failures**, using ordinary routed movement and preparation, public controls, and one engine-frame yield after each controlled 0.05-second step. No skills, funds, needs, age, clock or actor positions were injected. Fresh loading passed **16/0**, preserving exact decoded food state, XP, wallet, clock and needs; pasta remained available and the later bake remained locked. These were headless checks, without native pointer, perceived audio, animation or performance claims.
+
+The first attempt remains a separate finding: due work displaced the automatic serving continuation after cooking. A fresh batch was left on a supported floor position and spoiled before the Lifelet returned. That harness also wrongly waited for the entire queue to empty, so its later unattended tail is not a completed multiday study. The directed pass does not claim to solve this food/work priority conflict.
+
+Two rapid fresh-test exits reported a WAV stream and playback still retained. An unchanged-runtime control used the existing test precedent of a 0.2-second engine interval after scene cleanup and passed **16/0 with no diagnostics**; its result JSON exactly matched the earlier fresh results. Only the private teardown line and disclosed import-generated UID sidecars differed. Original warnings and the failed first attempt are retained.
+
+Independent review: `dist/test-work/earned-cooking-review-ww4h46vk/REVIEW.md`, SHA-256 `4a5f046a7b4a56fb18e16e07f85e19278f800c70231116aa9dc7083a780f629a`. Its `FINAL_FROZEN.json` is `8d20de7383d1bd73b66aee80781c5967556af4e5a9129a1fc94314371f6b6cbc`; root verified all 2,968 linked pins. This evidence adds no new overall rating.
