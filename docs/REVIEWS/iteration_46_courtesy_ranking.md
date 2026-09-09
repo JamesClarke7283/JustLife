@@ -1,0 +1,19 @@
+# Iteration 46 — choosing a useful sidestep
+
+A crowded household could find a valid sidestep but send the passing Lifelet around a long route. Selection previously stopped at the first successful candidate. It now compares each successful donor/beneficiary pair within the existing search bounds, using the donor's retreat distance plus the returned passing path. The selected beneficiary and its path stay together. Exact ties retain the existing candidate order, then beneficiary ID.
+
+Eligibility, body clearance, the first twelve candidates, the first two eligible peers per candidate and the 24-query ceiling remain unchanged. Ordinary activities, explicit floor walks, protected stair exits and the typed pre-stair/furnishing-return case keep their existing ownership and save rules. The search may perform more queries; this is not a performance improvement claim. The score omits the donor's later journey, future stairs, activity duration and waiting. It does not guarantee fairness or recovery in every layout.
+
+## Qualification
+
+Three maintained suites pass **1,461/0**: current-floor passage **355/0**, stair/walk beneficiaries **906/0**, and ordinary courtesy **200/0**. They cover 31 successful gameplay processes and three clean imports, including real phase saves, fresh loading, original queues, physical clearance, cancellation and Build reconciliation. All runtime and save input checks pass. The first two suites used the original test helper; the ordinary suite reran with only the reviewed natural assertions changed. Those new assertions are not executed by the other suites.
+
+Beneficiary assertion counts depend on observed movement steps. The directed hold producer uses 19 samples instead of 15, and its fresh continuation 110 instead of 136; all original outcomes and bounds pass. This explains 906 rather than the previous 928 assertions without changing or removing a check.
+
+In the current-runtime crowded-meal case, Ellis chooses a different holding place while retaining the original instruction. Morgan follows a shorter passing route, reaches the original food pickup, receives exactly one serving and releases Ellis's hold before its original expiry. The same fixture and complete recorded source context, except courtesy selection, establish pickup at 1462.5 instead of 1469.4: 6.9 game minutes earlier. The candidate's returned passing path is about 9.54m instead of 11.60m; Ellis steps about 1.06m instead of .75m.
+
+The first unchanged courtesy run retained a 16/1 failure because its assertion named the old sidestep coordinate. Independent review confirmed actual passage, custody and release. The revised test checks the original donor, beneficiary and route identity, the exact original passing-path endpoints, and physical arrival at the selected holding place. It keeps the queue, pickup, serving, clearance, release and query-bound assertions. The earlier failed receipt remains retained. Its report was written before the final teardown assertion, so it records 15/1 while the terminal records 16/1.
+
+A separate private morning experiment passed 48/0 and completed Toilet and Snack 58.8 and 21.9 game minutes earlier. It used an unshipped preparation-policy experiment and the prior courtesy source context; those gains are not claimed for the current production policy. Neither adult reached work by noon. That experiment's complete initial state and first 432 recorded rows matched its reference; the first changed decision and subsequent real movement were recorded without rescue commands or horizon changes.
+
+Only courtesy selection and its natural regression assertions change at runtime/test level. Production time, autonomy policy and save format remain unchanged. No new package or character artwork is included. The last recorded comprehensive game score is 7.2/10, with sustained household routines and the broader 10/10 goal still open.

@@ -52,10 +52,13 @@ func _run_natural()->void:
 				var route:Dictionary=app.traversal.routes[owner_id];var fact:Dictionary=route.courtesy
 				if not retreat and fact.phase=="retreat" and app.world.actors[owner_id].position.distance_to(route.courtesy_start)>.01:
 					retreat=true
-					check(owner_id=="housemate_1" and fact.anchor==Vector3(-.75,.16,2.5),"Natural selection chooses the measured Ellis retreat opening Morgan's complete route.")
+					var peer_id:String="housemate_2"
+					var priority:PackedVector3Array=route.courtesy_priority
+					check(owner_id=="housemate_1" and str(fact.beneficiary_id)==peer_id and str(fact.get("beneficiary_kind",""))=="action" and int(fact.beneficiary_identity)==int(starting.members[peer_id].motion.identity) and priority.size()>1 and priority[0]==LifeJourneyState.vector(starting.members[peer_id].position) and priority[-1]==LifeJourneyState.vector(starting.members[peer_id].motion.destination),"Natural Ellis retreat preserves Morgan's original pickup route and complete priority endpoints.")
 					check(app.household.member_sim(owner_id).action_queue==queues[owner_id] and route.destination==LifeJourneyState.vector(starting.members[owner_id].motion.destination) and route.identity==starting.members[owner_id].motion.identity,"Natural retreat keeps the complete original donor queue, destination and identity.")
 					await _save_phase("retreat");await press("▶")
 				if not held and fact.phase=="hold":
+					check(app.world.actors[owner_id].position==fact.anchor,"Natural donor physically reaches the selected anchor before holding.")
 					held=true;await _save_phase("hold");await press("▶")
 			var meal:Dictionary=app.household.member_sim("housemate_2").get_current_action()
 			if str(meal.get("id",""))=="eat_meal" and str(meal.get("meal_stage",""))!="pickup":pickup=true

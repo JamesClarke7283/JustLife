@@ -346,7 +346,8 @@ func consider(t)->void:
 		if a.anchor.x!=b.anchor.x:return a.anchor.x<b.anchor.x
 		return a.anchor.z<b.anchor.z)
 	var used:int=0;var evaluated:Array=[];var best:Dictionary={}
-	for candidate:Dictionary in candidates.slice(0,12):
+	for candidate_rank:int in mini(candidates.size(),12):
+		var candidate:Dictionary=candidates[candidate_rank]
 		var count:int=0
 		for peer:String in ids:
 			if peer==str(candidate.donor) or not _local_pair(t,str(candidate.donor),peer):continue
@@ -356,9 +357,13 @@ func consider(t)->void:
 			var ok:bool=not points.is_empty()
 			evaluated.append({"donor":candidate.donor,"anchor":candidate.anchor,"beneficiary":peer,"kind":_beneficiary_kind(t,peer),"complete":ok})
 			if ok:
-				candidate.beneficiaries.append(peer)
-				if not candidate.has("priority"):candidate.priority=points
-		if not candidate.beneficiaries.is_empty():best=candidate;break
+				var length:float=0.0
+				for index:int in range(1,points.size()):length+=points[index-1].distance_to(points[index])
+				var pair:Dictionary=candidate.duplicate(true)
+				pair.beneficiaries=[peer];pair.priority=points
+				pair.path_length=length;pair.total_travel=length+float(candidate.distance)
+				pair.candidate_rank=candidate_rank
+				if _better_pair(pair,best):best=pair
 	queries+=used
 	trace.append({"at":now(t),"queries":used,"evaluated":evaluated,"selected":best.duplicate(true)})
 	if trace.size()>32:trace.pop_front()
@@ -378,6 +383,13 @@ func consider(t)->void:
 	if _kind(route.courtesy)=="walk":route.courtesy_peer_walk=t.routes[peer].destination
 	route.courtesy_start=t.app.world.actors[donor].position
 	route.courtesy_points=PackedVector3Array([t.app.world.actors[donor].position,best.anchor]);route.courtesy_point=0
+
+func _better_pair(a:Dictionary,b:Dictionary)->bool:
+	if b.is_empty():return true
+	if float(a.total_travel)!=float(b.total_travel):return float(a.total_travel)<float(b.total_travel)
+	# Exact ties preserve the existing deterministic candidate order, then peer ID.
+	if int(a.candidate_rank)!=int(b.candidate_rank):return int(a.candidate_rank)<int(b.candidate_rank)
+	return str(a.beneficiaries[0])<str(b.beneficiaries[0])
 
 func _still_owned(t,id:String)->bool:
 	var route:Dictionary=t.routes[id];var fact:Dictionary=route.courtesy;var peer:String=str(fact.beneficiary_id)
