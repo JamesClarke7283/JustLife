@@ -40,6 +40,80 @@ func _eligible(t,id:String)->bool:
 		if str(leg.kind)!="floor":return false
 	return t.app.world.point_level(actor.position)==t.app.world.point_level(route.destination)
 
+func _stair_clear(t,id:String)->bool:
+	if not t.routes.has(id) or not t.app.world.actors.has(id):return false
+	var route:Dictionary=t.routes[id];var actor:LifeActor=t.app.world.actors[id]
+	if not actor.visible or str(route.phase)!="clear" or int(route.ticket)<=0 or Vector3(route.wait).is_finite():return false
+	var lock:Dictionary=t.stairs.get(str(route.stair_id),{})
+	if str(lock.get("owner",""))!=id or lock.get("exit",Vector3.INF)!=route.exit or lock.get("clear",Vector3.INF)!=route.clear:return false
+	if not Vector3(route.clear).is_finite() or t.app.world.point_level(actor.position)!=t.app.world.point_level(route.clear):return false
+	# Cancellation can transfer a real held portion to the protected safety walk.
+	# Validate that current custody, without retaining the canceled action object.
+	if not str(route.get("custody","")).is_empty():
+		var held:Dictionary=t.app.household.meals.carried_by(id)
+		if not bool(route.safety) or str(held.get("id",""))!=str(route.custody) or str(held.get("venue",""))!=t.app.current_venue:return false
+	return not route.points.is_empty() and Vector3(route.points[-1])==Vector3(route.clear)
+
+func _walk_intent(t,id:String)->Dictionary:
+	# Bound UI/controller fields are newer than their cache while a ground-click
+	# request is in flight. Detached loading has only the restored motion cache.
+	if id==str(t.app.bound_member_id) and not bool(t.app.loading_game):
+		return {"walk":t.app.walk_only,"destination":t.app.walk_destination,"waiting":t.app.waiting_for_target,"wait_started":t.app.wait_started,"resume_active":t.app.resume_activity}
+	return t.app.motion_states.get(id,{})
+
+func _walk_eligible(t,id:String)->bool:
+	if not t.routes.has(id) or not t.app.world.actors.has(id):return false
+	var person:LifeSim=t.app.household.member_sim(id)
+	if not is_instance_valid(person) or person.is_away() or not person.action_queue.is_empty():return false
+	var route:Dictionary=t.routes[id];var actor:LifeActor=t.app.world.actors[id]
+	if not actor.visible or str(route.phase)!="route" or bool(route.safety) or not str(route.stair_id).is_empty() or int(route.ticket)!=0 or not str(route.get("custody","")).is_empty() or Vector3(route.wait).is_finite():return false
+	var intent:Dictionary=_walk_intent(t,id)
+	if not bool(intent.get("walk",false)) or Vector3(intent.get("destination",Vector3.INF))!=Vector3(route.destination):return false
+	if bool(intent.get("waiting",false)) or bool(intent.get("resume_active",false)) or float(intent.get("wait_started",-1))>=0:return false
+	if route.legs.is_empty() or not route.legs.all(func(leg:Dictionary)->bool:return str(leg.kind)=="floor"):return false
+	var level:int=t.app.world.point_level(actor.position)
+	return level>=0 and level==t.app.world.point_level(route.destination)
+
+func _beneficiary_kind(t,id:String)->String:
+	if _eligible(t,id):return "action"
+	if _stair_clear(t,id):return "stair_clear"
+	return "walk" if _walk_eligible(t,id) else ""
+
+func _blocked_candidate(t,id:String)->bool:
+	if _eligible(t,id) or _walk_eligible(t,id):return true
+	if not _stair_clear(t,id):return false
+	# A blocked observation may precede an ordinary replan in the same step.
+	# Selection needs a currently blocked step; ongoing ownership does not.
+	var next:Vector3=_next(t,id)
+	return next.is_finite() and not t._step_clear(id,t.app.world.actors[id].position,next)
+
+func _kind(fact:Dictionary)->String:return str(fact.get("beneficiary_kind","action"))
+
+func _clear_signature(t,id:String)->Array:
+	var route:Dictionary=t.routes[id]
+	return [int(route.identity),str(route.stair_id),int(route.ticket),route.exit,route.clear,route.destination]
+
+func _clear_priority(t,peer:String,occupied:Array[Vector3])->PackedVector3Array:
+	if not _stair_clear(t,peer):return []
+	var route:Dictionary=t.routes[peer]
+	var points:=PackedVector3Array([t.app.world.actors[peer].position])
+	for index:int in range(int(route.point),route.points.size()):
+		if points[-1]!=route.points[index]:points.append(route.points[index])
+	if points.size()<2 or not LifeJourneyState.clear_corridor(t.app.world.lot_navigation,points,occupied):return []
+	# The protected polyline is derived on fresh load. Require that unchanged
+	# restore contract to work too, while leaving the live path untouched.
+	var reconstructed:PackedVector3Array=t._floor_route(t.app.world.actors[peer].position,route.clear)
+	if not LifeJourneyState.clear_corridor(t.app.world.lot_navigation,reconstructed,occupied):return []
+	return points
+
+func _benefit(t,peer:String,donor:String,anchor:Vector3,restoring:bool=false)->PackedVector3Array:
+	var occupied:Array[Vector3]=_hypothetical(t,peer,donor,anchor,restoring)
+	if _beneficiary_kind(t,peer)=="stair_clear":return _clear_priority(t,peer,occupied)
+	var from:Vector3=t.app.world.actors[peer].position;var to:Vector3=t.routes[peer].destination
+	var result:Dictionary=t.app.world.lot_navigation.route_avoiding(LifeLotNavigation.floor_location(t.app.world.point_level(from),from),LifeLotNavigation.floor_location(t.app.world.point_level(to),to),occupied,CLEARANCE)
+	if not bool(result.ok) or not result.segments.all(func(leg:Dictionary)->bool:return str(leg.kind)=="floor"):return []
+	return result.points
+
 func reservations(t,except_id:String)->Array[Vector3]:
 	var points:Array[Vector3]=[]
 	for id:String in t.routes:
@@ -155,7 +229,7 @@ func _hypothetical_step(t,id:String,next:Vector3,occupied:Array[Vector3])->bool:
 	return true
 
 func note_block(t,id:String,time:float,moved:bool)->void:
-	if not _eligible(t,id):return
+	if _beneficiary_kind(t,id).is_empty():return
 	var at:Vector3=t.app.world.actors[id].position
 	var old:Dictionary=blocked.get(id,{})
 	var age:float=float(old.get("age",0))+time if not moved and old.get("at",Vector3.INF)==at and int(old.get("identity",-1))==int(t.routes[id].identity) else time
@@ -165,7 +239,7 @@ func consider(t)->void:
 	if t.app.household.speed<=0 or not owner(t).is_empty():return
 	var ids:Array=[]
 	for peer:String in blocked:
-		if _eligible(t,peer) and float(blocked[peer].age)>=.25 and blocked[peer].at==t.app.world.actors[peer].position and int(blocked[peer].identity)==int(t.routes[peer].identity):ids.append(peer)
+		if _blocked_candidate(t,peer) and float(blocked[peer].age)>=.25 and blocked[peer].at==t.app.world.actors[peer].position and int(blocked[peer].identity)==int(t.routes[peer].identity):ids.append(peer)
 	ids.sort()
 	if ids.size()<2:return
 	var key:Array=_positions(t)+[ids]
@@ -177,6 +251,7 @@ func consider(t)->void:
 	attempted=key;attempted_at=now(t)
 	var candidates:Array=[]
 	for donor:String in ids:
+		if not _eligible(t,donor):continue
 		var start:Vector3=t.app.world.actors[donor].position;var seen:Array[Vector3]=[]
 		for distance:float in [.5,.75,1.0,1.5]:
 			for direction:Vector2 in [Vector2(1,0),Vector2(-1,0),Vector2(0,1),Vector2(0,-1),Vector2(1,1).normalized(),Vector2(-1,1).normalized(),Vector2(1,-1).normalized(),Vector2(-1,-1).normalized()]:
@@ -202,39 +277,44 @@ func consider(t)->void:
 			if peer==str(candidate.donor):continue
 			if count>=2 or used>=QUERY_LIMIT:break
 			count+=1;used+=1
-			var from:Vector3=t.app.world.actors[peer].position;var to:Vector3=t.routes[peer].destination
-			var route:Dictionary=t.app.world.lot_navigation.route_avoiding(LifeLotNavigation.floor_location(t.app.world.point_level(from),from),LifeLotNavigation.floor_location(t.app.world.point_level(to),to),_hypothetical(t,peer,candidate.donor,candidate.anchor),CLEARANCE)
-			var ok:bool=bool(route.ok) and route.segments.all(func(leg:Dictionary)->bool:return str(leg.kind)=="floor")
-			evaluated.append({"donor":candidate.donor,"anchor":candidate.anchor,"beneficiary":peer,"complete":ok})
+			var points:PackedVector3Array=_benefit(t,peer,candidate.donor,candidate.anchor)
+			var ok:bool=not points.is_empty()
+			evaluated.append({"donor":candidate.donor,"anchor":candidate.anchor,"beneficiary":peer,"kind":_beneficiary_kind(t,peer),"complete":ok})
 			if ok:
 				candidate.beneficiaries.append(peer)
-				if not candidate.has("priority"):candidate.priority=route.points
+				if not candidate.has("priority"):candidate.priority=points
 		if not candidate.beneficiaries.is_empty():best=candidate;break
 	queries+=used
 	trace.append({"at":now(t),"queries":used,"evaluated":evaluated,"selected":best.duplicate(true)})
 	if trace.size()>32:trace.pop_front()
 	if best.is_empty():return
 	var donor:String=str(best.donor);var peer:String=str(best.beneficiaries[0]);var route:Dictionary=t.routes[donor]
-	route.courtesy={"version":1,"phase":"retreat","anchor":best.anchor,"beneficiary_id":peer,"beneficiary_identity":int(t.routes[peer].identity),"expires_at":now(t)+LIMIT}
+	route.courtesy={"version":2,"beneficiary_kind":_beneficiary_kind(t,peer),"phase":"retreat","anchor":best.anchor,"beneficiary_id":peer,"beneficiary_identity":int(t.routes[peer].identity),"expires_at":now(t)+LIMIT}
 	route.courtesy_action=_action(t,donor);route.courtesy_peer_action=_action(t,peer)
 	route.courtesy_generation=t.app.world.lot_navigation.generation
 	route.courtesy_priority=best.priority
-	_install_priority(t,peer,best.priority)
+	if _kind(route.courtesy)=="stair_clear":route.courtesy_peer_clear=_clear_signature(t,peer)
+	else:_install_priority(t,peer,best.priority)
+	if _kind(route.courtesy)=="walk":route.courtesy_peer_walk=t.routes[peer].destination
 	route.courtesy_start=t.app.world.actors[donor].position
 	route.courtesy_points=PackedVector3Array([t.app.world.actors[donor].position,best.anchor]);route.courtesy_point=0
 
 func _still_owned(t,id:String)->bool:
 	var route:Dictionary=t.routes[id];var fact:Dictionary=route.courtesy;var peer:String=str(fact.beneficiary_id)
-	if now(t)>=float(fact.expires_at) or not _eligible(t,id) or not _eligible(t,peer):return false
-	if not is_same(_action(t,id),route.courtesy_action) or not is_same(_action(t,peer),route.courtesy_peer_action):return false
-	if int(t.routes[peer].identity)!=int(fact.beneficiary_identity):return false
+	if now(t)>=float(fact.expires_at) or not _eligible(t,id) or not t.routes.has(peer):return false
+	if not is_same(_action(t,id),route.courtesy_action) or int(t.routes[peer].identity)!=int(fact.beneficiary_identity):return false
+	if _kind(fact)=="stair_clear":
+		if not _stair_clear(t,peer) or _clear_signature(t,peer)!=route.courtesy_peer_clear:return false
+	elif _kind(fact)=="walk":
+		if not _walk_eligible(t,peer) or Vector3(t.routes[peer].destination)!=Vector3(route.courtesy_peer_walk):return false
+	elif not _eligible(t,peer) or not is_same(_action(t,peer),route.courtesy_peer_action):return false
 	return _anchor_clear(t,id,fact.anchor)
 
 func release(t,id:String,reason:String="changed_intent")->void:
 	if not t.routes.has(id) or not t.routes[id].has("courtesy"):return
 	var route:Dictionary=t.routes[id]
 	trace.append({"at":now(t),"released":id,"phase":route.courtesy.phase,"reason":reason})
-	for key:String in ["courtesy","courtesy_action","courtesy_peer_action","courtesy_start","courtesy_points","courtesy_point","courtesy_priority","courtesy_generation"]:route.erase(key)
+	for key:String in ["courtesy","courtesy_action","courtesy_peer_action","courtesy_start","courtesy_points","courtesy_point","courtesy_priority","courtesy_generation","courtesy_peer_clear","courtesy_peer_walk"]:route.erase(key)
 	rejected=_positions(t)
 	# Replan only motion. Keep identity/destination and the current instruction.
 	var from:Vector3=t.app.world.actors[id].position
@@ -252,6 +332,7 @@ func reconcile(t,recheck:bool=false)->void:
 		var reason:String="changed_intent"
 		if now(t)>=float(fact.expires_at):reason="expired"
 		elif not t.routes.has(peer) or int(t.routes[peer].identity)!=int(fact.beneficiary_identity):reason="beneficiary_retired"
+		elif _kind(fact)=="stair_clear" and str(t.routes[peer].phase)!="clear" and str(t.stairs.get(str(t.routes[peer].stair_id),{}).get("owner",""))!=peer:reason="beneficiary_cleared"
 		release(t,id,reason);return
 	if recheck or int(t.routes[id].courtesy_generation)!=t.app.world.lot_navigation.generation:rebuild(t)
 
@@ -260,6 +341,9 @@ func preserve_request(t,id:String,destination:Vector3)->bool:
 	if donor.is_empty() or not t.routes.has(id):return false
 	var owned:Dictionary=t.routes[donor]
 	if id!=donor and id!=str(owned.courtesy.beneficiary_id):return false
+	# Natural stair clearance must retire its old route, even at the same destination.
+	if id!=donor and _kind(owned.courtesy)=="stair_clear":return false
+	if id!=donor and _kind(owned.courtesy)=="walk":return _walk_eligible(t,id) and Vector3(t.routes[id].destination)==destination and Vector3(owned.courtesy_peer_walk)==destination
 	var expected:Dictionary=owned.courtesy_action if id==donor else owned.courtesy_peer_action
 	return is_same(_action(t,id),expected) and Vector3(t.routes[id].destination)==destination and _eligible(t,id)
 
@@ -281,7 +365,9 @@ func restore(t,id:String,saved:Dictionary)->void:
 	route.courtesy_start=t.app.world.actors[id].position
 	route.courtesy_points=PackedVector3Array([t.app.world.actors[id].position,fact.anchor]);route.courtesy_point=0
 	route.courtesy_priority=_priority_route(t,id,true)
-	if not route.courtesy_priority.is_empty():_install_priority(t,str(fact.beneficiary_id),route.courtesy_priority)
+	if _kind(fact)=="stair_clear":route.courtesy_peer_clear=_clear_signature(t,str(fact.beneficiary_id))
+	elif not route.courtesy_priority.is_empty():_install_priority(t,str(fact.beneficiary_id),route.courtesy_priority)
+	if _kind(fact)=="walk":route.courtesy_peer_walk=t.routes[str(fact.beneficiary_id)].destination
 
 func _point_distance(point:Vector3,a:Vector3,b:Vector3)->float:
 	var line:Vector3=b-a
@@ -319,10 +405,7 @@ func step_allowed(t,id:String,from:Vector3,to:Vector3)->bool:
 
 func _priority_route(t,donor:String,restoring:bool=false)->PackedVector3Array:
 	var fact:Dictionary=t.routes[donor].courtesy;var peer:String=str(fact.beneficiary_id)
-	var from:Vector3=t.app.world.actors[peer].position;var to:Vector3=t.routes[peer].destination
-	var result:Dictionary=t.app.world.lot_navigation.route_avoiding(LifeLotNavigation.floor_location(t.app.world.point_level(from),from),LifeLotNavigation.floor_location(t.app.world.point_level(to),to),_hypothetical(t,peer,donor,fact.anchor,restoring),CLEARANCE)
-	if not bool(result.ok) or not result.segments.all(func(leg:Dictionary)->bool:return str(leg.kind)=="floor"):return []
-	return result.points
+	return _benefit(t,peer,donor,fact.anchor,restoring)
 
 func rebuild(t)->bool:
 	var donor:String=owner(t)
@@ -335,6 +418,8 @@ func rebuild(t)->bool:
 	route.courtesy_priority=points
 	route.courtesy_generation=t.app.world.lot_navigation.generation
 	for id:String in [donor,peer]:
+		# The owned stair walk keeps its actual polyline, phase, ticket and lock.
+		if id==peer and _kind(route.courtesy)=="stair_clear":continue
 		var current:Dictionary=t.routes[id];var at:Vector3=t.app.world.actors[id].position
 		var ordinary:PackedVector3Array=original if id==donor else points
 		current.legs=[{"key":"floor:","kind":"floor","stair_id":"","points":ordinary,"from":at,"to":current.destination}]

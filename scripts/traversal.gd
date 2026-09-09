@@ -171,9 +171,10 @@ func _walk(id:String,route:Dictionary,time:float,consider_courtesy:bool=true)->D
 		if not courtesy.step_allowed(self,id,actor.position,next):return {"time":0.0,"moved":moved,"blocked":true}
 		if not _step_clear(id,actor.position,next):
 			if courtesy.beneficiary(self,id):return {"time":0.0,"moved":moved,"blocked":true}
+			if consider_courtesy and str(route.get("phase",""))=="clear":courtesy.note_block(self,id,time,moved)
 			var alternative:PackedVector3Array=_floor_route(actor.position,route.points[-1],id)
 			if not alternative.is_empty():route.points=alternative;route.point=0
-			elif consider_courtesy:courtesy.note_block(self,id,time,moved)
+			elif consider_courtesy and str(route.get("phase",""))!="clear":courtesy.note_block(self,id,time,moved)
 			return {"time":0.0,"moved":moved,"blocked":true}
 		actor.rotation.y=lerp_angle(actor.rotation.y,atan2(difference.x,difference.z),minf(1,remaining*12))
 		actor.position=next;remaining-=step/WALK_SPEED;moved=true

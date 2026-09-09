@@ -1,5 +1,5 @@
 extends RefCounted
-class_name LifeJourneyState
+class_name PreviousStairJourneyState
 ## Saved physical facts, validated before adopting a household. Paths, gait
 ## schedules, temporary graph indices and runtime node references are derived.
 const VERSION:int=2
@@ -247,7 +247,7 @@ static func _courtesy_error(data:Dictionary,people:Dictionary,nav:LifeLotNavigat
 		count+=1
 		if count>1:return "Two household members claim courtesy movement."
 		var fact:Variant=motion.courtesy
-		if not fact is Dictionary or (fact.get("version")!=1 and fact.get("version")!=2) or fact.size()!=(6 if fact.get("version")==1 else 7) or (fact.get("version")==2 and fact.get("beneficiary_kind") not in ["action","stair_clear","walk"]) or fact.get("phase") not in ["retreat","hold"] or not vector_valid(fact.get("anchor")) or not fact.get("beneficiary_id") is String or not number(fact.get("beneficiary_identity"),1,float(data.next_identity)-1,true) or not number(fact.get("expires_at"),now,now+60.0) or float(fact.expires_at)<=now:return "Invalid saved courtesy facts or deadline."
+		if not fact is Dictionary or (fact.get("version")!=1 and fact.get("version")!=2) or fact.size()!=(6 if fact.get("version")==1 else 7) or (fact.get("version")==2 and fact.get("beneficiary_kind") not in ["action","stair_clear"]) or fact.get("phase") not in ["retreat","hold"] or not vector_valid(fact.get("anchor")) or not fact.get("beneficiary_id") is String or not number(fact.get("beneficiary_identity"),1,float(data.next_identity)-1,true) or not number(fact.get("expires_at"),now,now+60.0) or float(fact.expires_at)<=now:return "Invalid saved courtesy facts or deadline."
 		var fields:Array=["version","phase","anchor","beneficiary_id","beneficiary_identity","expires_at"]
 		if fact.version==2:fields.append("beneficiary_kind")
 		for key:Variant in fact:
@@ -264,10 +264,6 @@ static func _courtesy_error(data:Dictionary,people:Dictionary,nav:LifeLotNavigat
 		for member_id:String in [id,peer]:
 			if member_id==peer and kind=="stair_clear":continue
 			var route:Dictionary=data.members[member_id].motion;var state:Dictionary=people[member_id].state
-			if member_id==peer and kind=="walk":
-				if route.phase!="route" or not str(route.stair_id).is_empty() or bool(route.safety) or str(route.intent.kind)!="walk" or not state.action_queue.is_empty() or vector(route.intent.destination)!=vector(route.destination) or level(vector(route.destination))!=level(anchor):return "Courtesy movement conflicts with the saved ordinary walk."
-				if float(state.character.world_state.get("resource_wait_started",-1))>=0 or bool(state.character.world_state.get("resource_action_active",false)):return "A resource owner cannot take courtesy walk priority."
-				continue
 			if route.phase!="route" or not str(route.stair_id).is_empty() or bool(route.safety) or str(route.intent.kind)!="action" or level(vector(route.destination))!=level(anchor):return "Courtesy movement conflicts with a protected journey."
 			if float(state.character.world_state.get("resource_wait_started",-1))>=0 or bool(state.character.world_state.get("resource_action_active",false)) or not str(state.action_queue[0].get("cooperation_role","")).is_empty():return "A resource owner cannot take courtesy movement."
 		for member_id:String in data.members:

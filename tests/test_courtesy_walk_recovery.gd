@@ -1,0 +1,221 @@
+extends "res://tests/test_courtesy_walk_observation.gd"
+## Genuine original bathroom checkpoint: natural recovery, observed retreat and fresh continuation.
+var test_mode:String=OS.get_environment("WALK_TEST_MODE")
+var phase_wanted:String=OS.get_environment("WALK_PHASE")
+var loaded_slot:String=OS.get_environment("WALK_SLOT")
+var saved_destination:Vector3=Vector3.INF
+var walk_identity:int=235
+var step_count:int=0
+
+func _initialize()->void:
+	var base:String=ProjectSettings.globalize_path("res://").trim_suffix("/")
+	if not base.get_file().begins_with("justlife-playthrough-beneficiaries") or OS.get_environment("JUSTLIFE_DATA_DIR")!=OS.get_environment("WALK_RUN_ROOT").path_join("save_data") or OS.get_environment("WALK_CANDIDATE_TOKEN").is_empty() or ProjectSettings.has_setting("autoload/MCPRuntimeServer"):
+		printerr("Nominated candidate and private walk test roots required");quit(2);return
+	root.gui_disable_input=true;node_added.connect(exclude_input);run.call_deferred()
+
+func write_json(name:String,value:Variant)->void:
+	var f:=FileAccess.open(OS.get_environment("WALK_RUN_ROOT").path_join("evidence").path_join(name),FileAccess.WRITE)
+	f.store_string(JSON.stringify(wire(value),"  ",true,true));f.close()
+
+# Exact existing scalar comparison/projections from the reviewed stair study.
+# No float tolerance, rounding, blanket serialization or calendar advancement.
+func _same(disk:Variant,current:Variant)->bool:
+	if current is Vector3:return disk is Array and disk.size()==3 and current==LifeJourneyState.vector(disk)
+	if disk is Dictionary:
+		if not current is Dictionary or disk.size()!=current.size():return false
+		for key:Variant in disk:
+			if not current.has(key) or not _same(disk[key],current[key]):return false
+		return true
+	if disk is Array:
+		if not current is Array or disk.size()!=current.size():return false
+		for i:int in disk.size():
+			if not _same(disk[i],current[i]):return false
+		return true
+	return disk==current
+
+func _project_journeys(data:Dictionary)->Dictionary:
+	var projected:Dictionary=data.duplicate(true)
+	for record:Dictionary in projected.members.values():
+		record.position=LifeJourneyState.packed(LifeJourneyState.vector(record.position))
+		record.yaw=float(PackedFloat32Array([record.yaw])[0])
+		var motion:Dictionary=record.motion
+		if motion.is_empty():continue
+		for key:String in ["destination","wait","clear"]:
+			if not motion[key].is_empty():motion[key]=LifeJourneyState.packed(LifeJourneyState.vector(motion[key]))
+		if motion.has("courtesy"):motion.courtesy.anchor=LifeJourneyState.packed(LifeJourneyState.vector(motion.courtesy.anchor))
+	return projected
+
+func _project_queue(queue:Array)->Array:
+	var result:Array=queue.duplicate(true)
+	for action:Dictionary in result:action.progress=clampf(float(action.elapsed)/float(action.duration),0.0,1.0)
+	return result
+
+func _decoded_integer_fields(decoded:Dictionary,fields:Array,scope:String)->Dictionary:
+	var result:Dictionary=decoded.duplicate(true)
+	var invalid:Array[String]=[]
+	for key:String in fields:
+		var value:Variant=decoded.get(key)
+		if not (value is int or value is float) or not is_finite(float(value)) or float(value)!=floorf(float(value)):
+			invalid.append(scope+"."+key)
+	check(invalid.is_empty(),"Specified decoded identity fields are finite integral values: "+scope+str(invalid))
+	if not invalid.is_empty():return result
+	for key:String in fields:result[key]=int(decoded[key])
+	return result
+
+func _now()->float:return float(app.household.day-1)*1440.0+app.household.minutes
+
+func authoritative_facts()->Dictionary:
+	# Same named authoritative scope as the accepted stair phase study, plus
+	# sanitation/all visible bodies. Full semantic snapshots accompany saves.
+	return {"clock":[app.household.day,app.household.minutes,app.household.speed],"speeds":speeds(),"funds":app.household.funds,"people":app.household.members.map(func(m:Dictionary):return {"id":m.id,"position":app.world.actors[m.id].position,"yaw":app.world.actors[m.id].rotation.y,"queue":m.sim.action_queue.duplicate(true),"needs":m.sim.needs.duplicate(true),"career":m.sim.career.duplicate(true),"education":m.sim.education.duplicate(true)}),"actors":semantic().actors,"journeys":app.traversal.snapshot(),"food":app.household.meals.get_state(),"sanitation":app.household.sanitation.get_state(),"visitor":app.residents.home_visit.state.duplicate(true),"stair_locks":app.traversal.stairs.duplicate(true)}
+
+func press_speed(text:String)->void:
+	var found:Button
+	for n:Node in app.find_children("*","Button",true,false):
+		if n.text==text and n.is_visible_in_tree():found=n;break
+	check(is_instance_valid(found),"Existing public speed control found: "+text)
+	if is_instance_valid(found):found.pressed.emit()
+	freeze(app);input_guard.grab_focus()
+	report.speed_observations.append(speeds())
+
+func adopted_pause()->void:
+	var before:Dictionary=authoritative_facts();var expected:Dictionary=before.duplicate(true)
+	# An explicit speed-only expected delta, not a comparison normalization.
+	expected.clock[2]=0;expected.speeds.household=0;expected.speeds.selected=0;expected.speeds.bound=0
+	for id:String in expected.speeds.members:expected.speeds.members[id].speed=0
+	press_speed("Ⅱ");await ordinary_step()
+	var after:Dictionary=authoritative_facts()
+	check(after==expected,"Public pause adoption changes only the explicitly requested speed fields")
+	report.pause_boundary={"before":wire(before),"expected_speed_only":wire(expected),"after":wire(after)}
+	check(app.household.speed==0 and app.sim.speed==0 and app.household.members.all(func(m:Dictionary):return m.sim.speed==0),"Pause adopted in direct selected, aggregate and all member clocks")
+
+func compare_loaded(disk:Dictionary)->void:
+	check(app.household.funds==int(disk.funds) and app.household.day==int(disk.day) and app.household.minutes==float(disk.minutes),"Fresh named load preserves exact decoded wallet and clock")
+	check(_same(_project_journeys(disk.journeys),app.traversal.snapshot()),"Fresh complete authoritative journeys match exact decoded scalars and existing typed vector/yaw projection")
+	for saved:Dictionary in disk.members:
+		var sim:LifeSim=app.household.member_sim(str(saved.id))
+		check(_same(_project_queue(saved.state.action_queue),sim.action_queue),"Complete fresh queue/paid/duration/target and elapsed-derived progress: "+str(saved.id))
+		check(sim.needs==saved.state.needs and sim.career==saved.state.career,"Exact fresh needs and career: "+str(saved.id))
+		check(sim.education==_decoded_integer_fields(saved.state.education,["attended","enrolled_day","first_class_day","homework","last_attendance_day","last_day","last_homework_day","last_prepared_homework_day","missed","prepared","version"],str(saved.id)+".education"),"Exact education with existing nominated integer identities: "+str(saved.id))
+	check(app.household.meals.get_state()==_decoded_integer_fields(disk.meals,["version","serial"],"food"),"Exact fresh food with only existing version/serial integer identities")
+
+func walk_fact()->Dictionary:
+	var t=app.traversal;var donor:String=t.courtesy.owner(t)
+	if donor.is_empty():return {}
+	var fact:Dictionary=t.routes[donor].courtesy
+	if str(fact.get("beneficiary_kind",""))!="walk" or str(fact.get("beneficiary_id",""))!=MORGAN or int(fact.get("beneficiary_identity",-1))!=walk_identity:return {}
+	return {"donor":donor,"fact":fact.duplicate(true),"route":t.routes[donor].duplicate(true)}
+
+func record_step()->Dictionary:
+	return {"step":step_count,"speeds":speeds(),"journeys":app.traversal.snapshot(),"routes":app.traversal.routes.duplicate(true),"motions":app.motion_states.duplicate(true),"bodies":body_facts(),"actors":semantic().actors,"queues":app.household.members.map(func(m:Dictionary):return {"id":m.id,"queue":m.sim.action_queue.duplicate(true)}),"courtesy_trace":app.traversal.courtesy.trace.duplicate(true)}
+
+func run()->void:
+	phase=test_mode+"_"+phase_wanted
+	check(test_mode in ["natural","produce","fresh"],"Nominated test mode is explicit")
+	if test_mode!="natural":check(phase_wanted in ["retreat","hold"],"Observed phase is explicitly named")
+	input_guard=LineEdit.new();input_guard.name="DiagnosticPolledInputGuard";input_guard.position=Vector2(-10000,-10000);root.add_child(input_guard)
+	app=MainScene.instantiate();root.add_child(app);current_scene=app;freeze(app);await frames(3)
+	var read:Dictionary=LifeSaveLibrary.read_slot(loaded_slot);check(bool(read.get("ok",false)),"Actual input slot passes production named read")
+	if not bool(read.get("ok",false)):await finish();return
+	app.load_game(loaded_slot);freeze(app);input_guard.grab_focus();await frames(3)
+	check(app.active_save_id==loaded_slot and app.mode=="live","Production named load adopts exact input slot")
+	check(app.household.speed==0 and app.household.members.all(func(m:Dictionary):return m.sim.speed==0),"Actual input loads paused without a helper-induced pause")
+	report.loaded_read=wire(read);compare_loaded(read.data)
+	check(app.traversal.routes.has(MORGAN),"Actual saved Morgan route is present")
+	if not app.traversal.routes.has(MORGAN):await finish();return
+	var route:Dictionary=app.traversal.routes[MORGAN];saved_destination=route.destination
+	check(int(route.identity)==235 and saved_destination==Vector3(4,.16,-3) and app.household.member_sim(MORGAN).action_queue.is_empty() and bool(app.motion_states[MORGAN].walk),"Exact original Morgan235 empty-queue walk intent/destination survives load")
+	check(not app.traversal.courtesy._eligible(app.traversal,MORGAN) and app.traversal.courtesy._beneficiary_kind(app.traversal,MORGAN)=="walk","Morgan gains only a separate walk beneficiary kind; unchanged donor gate rejects it")
+	var initial:Dictionary=semantic()
+	for i:int in 10:await ordinary_step()
+	check(initial==semantic(),"Ten ordinary paused calls preserve complete typed observed state")
+	report.initial=wire(record_step())
+	for m:Dictionary in app.household.members:
+		m.sim.changed.connect(changed_signal.bind(str(m.id)));m.sim.action_started.connect(action_event.bind(str(m.id),"started"));m.sim.action_finished.connect(action_event.bind(str(m.id),"finished"))
+	if test_mode=="fresh":
+		var restored:Dictionary=walk_fact()
+		check(not restored.is_empty() and str(restored.fact.phase)==phase_wanted and restored.fact.version==2,"Actual fresh phase keeps scalar version2 and walk ownership")
+		if restored.is_empty():await finish();return
+		var raw:Dictionary=JSON.parse_string(FileAccess.get_file_as_string(LifeSaveLibrary._slot_path(loaded_slot)))
+		report.codec={"raw_fact":wire(raw.data.journeys.members[str(restored.donor)].motion.courtesy),"restored_fact":wire(restored.fact),"raw_version_type":typeof(raw.data.journeys.members[str(restored.donor)].motion.courtesy.version)}
+	if failures.is_empty():await exercise()
+	await finish()
+
+func exercise()->void:
+	var t=app.traversal;var original_queues:Dictionary={};var original_actions:Dictionary={};var original_routes:Dictionary={};var original_positions:Dictionary={}
+	for m:Dictionary in app.household.members:
+		original_queues[m.id]=m.sim.action_queue.duplicate(true);original_actions[m.id]=m.sim.get_current_action()
+		original_positions[m.id]=app.world.actors[m.id].position
+		if t.routes.has(m.id):original_routes[m.id]=t.routes[m.id].duplicate(true)
+	var selected:Dictionary=walk_fact();var seen_hold:bool=not selected.is_empty() and str(selected.fact.phase)=="hold"
+	var reached:bool=false;var retired:bool=false;var resumed:bool=false;var identity_changed:bool=false;var donor_changed:bool=false
+	var unsupported:int=0;var overlaps:int=0;var steps:Array=[];var start:float=_now()
+	var released_at_step:int=-1;var release_evidence:Dictionary={};var resumption_evidence:Dictionary={}
+	var expiry:float=float(selected.fact.expires_at) if not selected.is_empty() else start+60.0
+	press_speed("▶▶▶" if test_mode=="natural" else "▶")
+	var cap:int=100 if test_mode=="natural" else 200
+	for i:int in cap:
+		if _now()>=expiry:break
+		var donor_before:Dictionary={}
+		if not selected.is_empty():
+			var id:String=str(selected.donor)
+			donor_before={"position":app.world.actors[id].position,"route":t.routes.get(id,{}).duplicate(true),"step":step_count}
+		await ordinary_step();step_count+=1
+		var current:Dictionary=walk_fact();var checkpoint_now:bool=false
+		if not current.is_empty():
+			if selected.is_empty():selected=current;expiry=float(current.fact.expires_at)
+			var id:String=str(current.donor)
+			if str(current.fact.phase)=="hold":seen_hold=true
+			if not t.courtesy._eligible(t,id) or not is_same(original_actions[id],app.household.member_sim(id).get_current_action()) or app.household.member_sim(id).action_queue!=original_queues[id] or current.route.destination!=original_routes[id].destination or int(current.route.identity)!=int(original_routes[id].identity):donor_changed=true
+			checkpoint_now=test_mode=="produce" and str(current.fact.phase)==phase_wanted and app.world.actors[id].position!=original_positions[id]
+		if t.routes.has(MORGAN) and int(t.routes[MORGAN].identity)==walk_identity:
+			if t.routes[MORGAN].destination!=saved_destination or not bool(app.motion_states[MORGAN].walk) or not app.household.member_sim(MORGAN).action_queue.is_empty():identity_changed=true
+		else:retired=true
+		if app.world.actors[MORGAN].position==saved_destination:reached=true
+		if retired and reached and not selected.is_empty() and t.courtesy.owner(t).is_empty():
+			var id:String=str(selected.donor)
+			if released_at_step<0:
+				released_at_step=step_count;release_evidence=record_step()
+			elif step_count>released_at_step and not donor_before.is_empty():
+				var before_route:Dictionary=donor_before.route
+				resumed=not before_route.is_empty() and not before_route.has("courtesy") and str(before_route.phase)=="route" and int(before_route.identity)==int(original_routes[id].identity) and before_route.destination==original_routes[id].destination and app.world.actors[id].position!=donor_before.position and is_same(original_actions[id],app.household.member_sim(id).get_current_action()) and app.household.member_sim(id).action_queue==original_queues[id]
+				if resumed:resumption_evidence={"before":donor_before,"after":record_step(),"donor":id,"release_step":released_at_step}
+		var bodies:Dictionary=body_facts()
+		for pair:Dictionary in bodies.nearby_pairs:
+			if bool(pair.below_gap):overlaps+=1
+		for member:Dictionary in bodies.member_support:
+			if member.visible and not member.static_point_clear and not member.stair_busy:unsupported+=1
+		steps.append(wire(record_step()))
+		if checkpoint_now:
+			check(not identity_changed and not donor_changed and overlaps==0 and unsupported==0,"Observed phase reached with exact owned intent/instruction and safe sampled bodies")
+			report.observed_phase=wire(record_step());report.selected=wire(selected)
+			report.producer_steps={"start":start,"end":_now(),"observed_game_minutes":_now()-start,"samples":steps}
+			if failures.is_empty():await save_observed_phase(current)
+			return
+		if resumed:break
+	report.continuation={"start":start,"end":_now(),"observed_game_minutes":_now()-start,"steps":step_count,"samples":steps,"selected":wire(selected),"seen_hold":seen_hold,"physically_reached_original_destination":reached,"retired":retired,"donor_resumed_same_instruction":resumed,"identity_changed":identity_changed,"donor_changed":donor_changed,"overlaps":overlaps,"unsupported":unsupported,"release_evidence":wire(release_evidence),"actual_later_movement":wire(resumption_evidence)}
+	check(test_mode!="produce","Requested phase must be reached naturally before a producer may succeed")
+	check(not selected.is_empty() and selected.fact.version==2 and str(selected.fact.beneficiary_kind)=="walk","Natural selection uses exact scalar version2 and separate walk kind")
+	check(not identity_changed and not donor_changed,"Walk destination/intent and original donor instruction survive owned motion")
+	check(reached and retired and resumed,"Morgan physically reaches original destination, retires235, and donor resumes unchanged instruction")
+	check(overlaps==0 and unsupported==0,"Sampled motion introduces no body-gap or floor-support violation")
+	check(app.active_save_id==loaded_slot,"Natural/fresh continuation uses no save to induce recovery")
+	report.final=wire(record_step())
+
+func save_observed_phase(current:Dictionary)->void:
+	await adopted_pause()
+	var paused:Dictionary=walk_fact()
+	check(not paused.is_empty() and str(paused.fact.phase)==phase_wanted,"Public pause retains the naturally observed phase")
+	if paused.is_empty():return
+	var before:Dictionary=authoritative_facts();var full_before:Dictionary=semantic()
+	var id:String="walk_actual_"+phase_wanted;var ok:bool=app.save_game(id,"Actual Morgan walk — "+phase_wanted);freeze(app)
+	var read:Dictionary=LifeSaveLibrary.read_slot(id)
+	check(ok and bool(read.get("ok",false)),"Production named save/read validates the actual walk phase")
+	check(before==authoritative_facts(),"Named phase save preserves exact authoritative body/queue/needs/resources/journey/clock scope")
+	report.phase_save={"slot":id,"observed":wire(current),"read":wire(read),"authoritative_before":wire(before),"authoritative_after":wire(authoritative_facts()),"full_semantic_before":wire(full_before),"full_semantic_after":wire(semantic())}
+	if not bool(read.get("ok",false)):return
+	var fact:Dictionary=read.data.journeys.members[str(paused.donor)].motion.courtesy
+	check(fact.version==2 and str(fact.beneficiary_kind)=="walk" and str(fact.phase)==phase_wanted and int(fact.beneficiary_identity)==walk_identity,"Actual disk scalar version/kind/phase/identity survive named codec")
+	var destination:String=OS.get_environment("WALK_RUN_ROOT").path_join("evidence/actual_checkpoint.json")
+	check(DirAccess.copy_absolute(LifeSaveLibrary._slot_path(id),destination)==OK,"Archive copies only the actual generated named slot bytes")
+	write_json("checkpoint.json",{"slot":id,"phase":phase_wanted,"actual_file":destination,"source_token":OS.get_environment("WALK_CANDIDATE_TOKEN")})
