@@ -6,6 +6,14 @@ func _phase_progress(name:String,part:float=.5)->float:
 		if str(phase_entry[0])==name:return lerpf(float(phase_entry[1]),float(phase_entry[2]),part)
 	return 0.0
 
+func _advance_oven_minutes(amount:float)->void:
+	var rate:float=LifeSim.GAME_MINUTES_PER_SECOND*float(app.household.speed)
+	assert(rate>0.0)
+	while amount>0.0:
+		var step:float=minf(amount,60.0*rate)
+		app.household.tick(step/rate)
+		amount-=step
+
 func _bake(progress:float,second:bool=false) -> Dictionary:
 	app.household_profiles=[{"name":"Oven Audit","age_stage":"adult","traits":[]}]
 	if second:app.household_profiles.append({"name":"Waiting Cook","age_stage":"adult","traits":[]})
@@ -20,7 +28,7 @@ func _bake(progress:float,second:bool=false) -> Dictionary:
 	var action:Dictionary=app.sim.get_current_action()
 	app.player.position=action.target_position # Controlled arrival callback, no walking claim.
 	app.household.begin_action("player")
-	app.household.tick(70.0*progress/LifeSim.GAME_MINUTES_PER_SECOND)
+	_advance_oven_minutes(70.0*progress)
 	check(str(action.phase)=="active" and bool(action.paid) and is_equal_approx(float(action.elapsed),70.0*progress),"Actual paid cooking time reaches the chosen probe phase.")
 	check(app.household.funds==948 and app.household.meals.batches.is_empty(),"Ingredients charge exactly once; unfinished cooking creates no serving ledger.")
 	app.meal_flow.present_actor("player");app._update_activity_facing(.1,action,"cook");app.player.animate(.1,1.0,false,"cook")
@@ -78,7 +86,7 @@ func _interior_and_completion() -> void:
 	var action:Dictionary=app.sim.get_current_action()
 	app.household.set_speed(1);app.player.position=action.target_position # Controlled re-arrival, not rendered proof.
 	app.household.begin_action("player")
-	app.household.tick((70.0-float(action.elapsed)+.01)/LifeSim.GAME_MINUTES_PER_SECOND)
+	_advance_oven_minutes(70.0-float(action.elapsed)+.01)
 	app.meal_flow.sync_world()
 	check(app.household.meals.batches.size()==1 and int(app.household.meals.batches[0].initial)==8,"Only finishing the remaining real cooking time creates one eight-serving batch.")
 	check(app.household.funds==948 and app.world.oven_food_views.is_empty() and app.world.oven_presentations.is_empty(),"Completion removes preparation visuals with no second ingredient charge.")

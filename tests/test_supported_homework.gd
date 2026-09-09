@@ -61,11 +61,11 @@ func run() -> void:
 	check(not queue_pair(home,"housemate_2").ok,"A second caregiver cannot reserve the same learner.")
 	home.begin_action("player")
 	check(home.cooperative_presentation("player").ready and not home.cooperative_presentation("housemate_1").ready,"The learner can wait seated for the caregiver.")
-	home.tick(1)
+	home.tick(6.0/LifeSim.GAME_MINUTES_PER_SECOND)
 	check(float(learner.action_queue[0].elapsed)==0 and learner.education.homework==0 and helper.skills.parenting.xp==0,"Waiting advances needs/time but awards no assignment progress or effects.")
 	home.begin_action("housemate_1")
 	check(home.cooperative_presentation("player").phase=="active" and learner.action_queue[0].phase=="active" and helper.action_queue[0].phase=="active","Both arrivals start the shared activity.")
-	home.tick(2)
+	home.tick(12.0/LifeSim.GAME_MINUTES_PER_SECOND)
 	check(is_equal_approx(float(learner.action_queue[0].elapsed),12.0) and learner.action_queue[0].elapsed==helper.action_queue[0].elapsed,"The learner clock advances once and helper progress mirrors it.")
 	var snapshot: Dictionary=roundtrip(home.get_state())
 	home.set_speed(0)
@@ -76,7 +76,7 @@ func run() -> void:
 	var before_logic: float=learner.skills.logic.xp
 	var before_friend: float=learner.relationships.housemate_1.friendship
 	var before_funds: int=home.funds
-	home.tick(5.5)
+	home.tick(33.0/LifeSim.GAME_MINUTES_PER_SECOND)
 	check(home.cooperations.is_empty() and learner.action_queue.is_empty() and helper.action_queue.is_empty(),"Successful completion clears both actions and the reservation.")
 	check(learner.education.homework==1 and learner.education.last_homework_day==1 and learner.education.attended==0,"The ordinary assignment completes once without inventing school attendance.")
 	check(is_equal_approx(float(learner.skills.logic.xp)-before_logic,10.0) and helper.skills.parenting.xp==20.0,"Completion grants base Logic6 plus supported4 and Parenting20.")
@@ -104,7 +104,7 @@ func _restore_cases(snapshot: Dictionary) -> void:
 	var standalone: LifeSim=LifeSim.new()
 	check(not standalone.restore_state(snapshot.members[1].state).ok,"A paired helper cannot be loaded alone.")
 	standalone.free()
-	home.register_targets(targets());home.begin_action("housemate_1");home.begin_action("player");home.tick(5.5)
+	home.register_targets(targets());home.begin_action("housemate_1");home.begin_action("player");home.tick(33.0/LifeSim.GAME_MINUTES_PER_SECOND)
 	check(home.selected().education.homework==1 and home.member_sim("housemate_1").skills.parenting.xp==20.0,"Reapproach finishes only the remaining work, with effects once.")
 	var stable: Dictionary=home.get_state()
 	for mutation: String in ["orphan","missing_pair","duplicate","wrong_member","underage","low_trust","different_clock","wrong_position","late","bad_ready","bad_token","delayed_action","bad_skill"]:
@@ -136,15 +136,15 @@ func _cancel_cases() -> void:
 		var home: LifeHousehold=make_home();observe(home);queue_pair(home)
 		var learner: LifeSim=home.selected();var helper: LifeSim=home.member_sim("housemate_1")
 		if cause not in ["timeout","midnight"]:
-			home.begin_action("player");home.begin_action("housemate_1");home.tick(.5)
+			home.begin_action("player");home.begin_action("housemate_1");home.tick(3.0/LifeSim.GAME_MINUTES_PER_SECOND)
 		match cause:
 			"learner":learner.cancel_action()
 			"helper":helper.cancel_action()
-			"timeout":home.tick(10)
+			"timeout":home.tick(60.0/LifeSim.GAME_MINUTES_PER_SECOND)
 			"midnight":
 				home.day=1;home.minutes=1439.0
 				for member: Dictionary in home.members:member.sim.minutes=1439.0
-				home.tick(.2)
+				home.tick(1.2/LifeSim.GAME_MINUTES_PER_SECOND)
 			"birthday":learner.celebrate_birthday()
 			"furniture":home.register_targets(targets().filter(func(target:Dictionary)->bool:return str(target.id)!="desk"))
 			"presence":home.register_targets(targets().filter(func(target:Dictionary)->bool:return str(target.id)!="housemate_1"))

@@ -7,6 +7,12 @@ func check(value: bool, message: String) -> void:
 	checks += 1
 	if not value: failures += 1; push_error(message)
 
+func advance_minutes(sim: LifeSim, amount: float) -> void:
+	while amount > 0.0:
+		var step: float = minf(amount,60.0*LifeSim.GAME_MINUTES_PER_SECOND)
+		sim.tick(step/LifeSim.GAME_MINUTES_PER_SECOND)
+		amount -= step
+
 func _initialize() -> void:
 	var sim := LifeSim.new()
 	sim.new_household({"age_stage":"teen"})
@@ -19,7 +25,7 @@ func _initialize() -> void:
 	check(sim.lifecycle.progress == .5 and LifeLifecycle.description("teen", sim.lifecycle).contains("42 days"), "Changing pace preserves fractional age.")
 	sim.set_speed(0);sim.tick(60)
 	check(sim.lifecycle.progress == .5, "Paused simulation does not age anyone.")
-	sim.set_speed(1);sim.set_aging("normal", false);sim.tick(60)
+	sim.set_speed(1);sim.set_aging("normal", false);advance_minutes(sim,360.0)
 	check(sim.lifecycle.progress == .5, "Automatic birthdays can be disabled independently of the clock.")
 	sim.set_aging("short", true)
 	sim.lifecycle.progress = 1.0 - 1.0 / (10.5 * 1440)

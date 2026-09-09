@@ -16,7 +16,7 @@ func setup(stage:String="child") -> LifeSim:
 func complete_snack(sim:LifeSim) -> void:
 	check(sim.queue_action("snack","fridge"),"The first snack can use an ordinary queued fridge activity.")
 	sim.begin_current_action()
-	sim.tick(float(sim.get_action_definition("snack").duration)/6.0)
+	sim.tick(float(sim.get_action_definition("snack").duration)/LifeSim.GAME_MINUTES_PER_SECOND)
 
 func _initialize() -> void:
 	var child:LifeSim=setup()

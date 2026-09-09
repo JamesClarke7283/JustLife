@@ -42,7 +42,7 @@ func setup(stage: String = "child", clock: float = 480.0, calendar_day: int = 1)
 func advance(sim: LifeSim, amount: float) -> void:
 	while amount > .000001:
 		var step: float = minf(60.0,amount)
-		sim.tick(step/6.0)
+		sim.tick(step/LifeSim.GAME_MINUTES_PER_SECOND)
 		amount -= step
 
 func snapshot(sim: LifeSim) -> Dictionary:

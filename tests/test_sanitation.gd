@@ -21,7 +21,7 @@ func frames(count:int=2)->void:
 func step(minutes:float)->void:
 	var remaining:float=minutes
 	while remaining>.000001:
-		var part:float=minf(.30,remaining);app._process(part/6.0);remaining-=part
+		var part:float=minf(.05*LifeSim.GAME_MINUTES_PER_SECOND,remaining);app._process(part/LifeSim.GAME_MINUTES_PER_SECOND);remaining-=part
 func until(done:Callable,limit:float=100.0)->bool:
 	for i:int in int(limit/.3):
 		if done.call():return true
@@ -148,9 +148,9 @@ func run()->void:
 		app.select_household_member(0);app.world.camera_target=wood_at+Vector3(0,.3,0);app.world.camera.size=5.7;app.world.camera_angle=2.4;app.world.update_camera()
 		await capture("02b_bare_wood")
 	# A pending car/hidden event waits for a real visible location.
-	app.sim.needs.bladder=0.0;app.sim.bladder_grace=9.0;app.mode="travel";app.household.tick(2.5)
+	app.sim.needs.bladder=0.0;app.sim.bladder_grace=9.0;app.mode="travel";app.household.tick(15.0/LifeSim.GAME_MINUTES_PER_SECOND)
 	check(app.household.sanitation.puddles.size()==2 and app.sim.bladder_grace==10.0,"Trip time retains urgent need without a stale departure puddle.")
-	app.mode="live";app.player.visible=false;app.household.tick(1.0/6.0)
+	app.mode="live";app.player.visible=false;app.household.tick(1.0/LifeSim.GAME_MINUTES_PER_SECOND)
 	check(app.household.sanitation.puddles.size()==2,"A hidden actor cannot create a puddle at stale coordinates.")
 	app.player.visible=true;step(.3)
 	check(app.household.sanitation.puddles.size()==3,"Pending urgency resolves once the Lifelet is visibly present again.")

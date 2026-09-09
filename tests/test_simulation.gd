@@ -81,9 +81,18 @@ func _test_pause_and_clock() -> void:
 	_check(sim.minutes == state["minutes"] and sim.needs == state["needs"], "Pause should freeze the clock and needs.")
 	sim.set_speed(3)
 	sim.tick(1.0)
-	_check(is_equal_approx(sim.minutes, 498.0), "Speed 3 should advance eighteen game minutes per second.")
+	_check(is_equal_approx(sim.minutes, 483.0), "Speed 3 should advance three game minutes per second.")
 	sim.set_speed(2)
 	_check(sim.speed == 3, "Unsupported speeds must leave the speed unchanged.")
+	for pace: int in [1, 3, 8]:
+		sim.set_speed(pace)
+		var before_clock: float = sim.minutes
+		sim.tick(0.125)
+		_check(sim.minutes == before_clock + 0.125 * float(pace), "Every supported speed uses the one-minute Normal clock: " + str(pace))
+		var snapshot: Dictionary = sim.get_state()
+		var restored: Node = _new_sim()
+		_check(bool(restored.restore_state(snapshot)["ok"]) and restored.speed == pace and restored.minutes == sim.minutes, "Snapshot restoration preserves clock and selected speed: " + str(pace))
+		restored.free()
 	sim.set_speed(1)
 	sim.minutes = 1439.0
 	_advance(sim, 2.0)

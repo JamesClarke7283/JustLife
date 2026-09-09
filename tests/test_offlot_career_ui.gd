@@ -58,7 +58,10 @@ func _resume_work() -> void:
 	check(app.household.funds==int(expected.funds),"Loading an away worker cannot pay a salary.")
 	await screenshot("07_restored_work",false,false)
 	await press("▶▶▶")
-	if await wait_until(func()->bool:return str(app.sim.get_away_state().get("phase",""))=="returning","scheduled17:00 end of work",45):
+	# Preserve the fixed 17:00 endpoint and original wait capacity at slower clocks.
+	var remaining_minutes:float=maxf(0.0,(float(expected.day)-1.0)*1440.0+1020.0-((float(app.sim.day)-1.0)*1440.0+float(app.sim.minutes)))
+	var return_wait_seconds:float=maxf(45.0,remaining_minutes/(LifeSim.GAME_MINUTES_PER_SECOND*8.0)+15.0)
+	if await wait_until(func()->bool:return str(app.sim.get_away_state().get("phase",""))=="returning","scheduled17:00 end of work",return_wait_seconds):
 		await press("Ⅱ")
 		check(app.sim.day==int(expected.day) and app.sim.minutes>=1020 and app.sim.minutes<1023,"The workday ends at17:00 through real frame processing.")
 		var salary:int=roundi(float(expected.away.salary)*(1020.0-float(expected.away.departure_minutes))/480.0)

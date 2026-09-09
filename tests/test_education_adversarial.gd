@@ -33,8 +33,8 @@ func targets() -> Array:
 
 func advance_minutes(sim: LifeSim, amount: float) -> void:
 	while amount > .000001:
-		var step: float = minf(amount,300.0)
-		sim.tick(step / 6.0)
+		var step: float = minf(amount,minf(300.0,60.0*LifeSim.GAME_MINUTES_PER_SECOND))
+		sim.tick(step / LifeSim.GAME_MINUTES_PER_SECOND)
 		amount -= step
 
 func json_state(sim: LifeSim) -> Dictionary:

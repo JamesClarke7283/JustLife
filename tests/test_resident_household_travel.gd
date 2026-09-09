@@ -144,6 +144,22 @@ func _run()->void:
 				max_basis_error=maxf(max_basis_error,absf(original.transform.basis[axis][component]-restored.transform.basis[axis][component]))
 	print("FURNITURE_MAX_BASIS_COMPONENT_ERROR=",String.num(max_basis_error,20))
 	check(furniture_ok and max_basis_error<=1.1920928955078125e-7,"Every furnishing retains its exact position and orientation within float32 Euler reconstruction precision")
+	# Real controller journeys preserve the fixed travel duration at every live resume speed.
+	for pace:int in [1,3,8]:
+		app.household.set_speed(pace)
+		before=clock_minutes()
+		var destination:String="library" if app.current_venue=="home" else "home"
+		app.travel_to(destination)
+		check(app.mode=="travel","Clock-rate control starts a real car trip at speed "+str(pace))
+		await finish_trip()
+		check(app.mode=="live" and app.current_venue==destination,"Clock-rate control reaches the actual destination at speed "+str(pace))
+		check(clock_minutes()==before+15.0,"Travel always charges fifteen game minutes at speed "+str(pace))
+		check(app.household.speed==pace and app.household.members.all(func(m:Dictionary)->bool:return m.sim.speed==pace),"Travel restores every member's chosen speed "+str(pace))
+		check(app.save_game("","Travel clock "+str(pace)),"Arrival permits an actual named save at speed "+str(pace))
+		var clock_save:Dictionary=LifeSaveLibrary.read_slot(app.active_save_id)
+		check(bool(clock_save.get("ok",false)),"The arrival save validates at speed "+str(pace))
+		if bool(clock_save.get("ok",false)):
+			check((int(clock_save.data.day)-1)*1440.0+float(clock_save.data.minutes)==clock_minutes() and int(clock_save.data.speed)==pace,"Named save retains the charged clock and chosen speed "+str(pace))
 	app.queue_free();await process_frame;await process_frame;await create_timer(.15).timeout
 	print("RESIDENT_HOUSEHOLD_TRAVEL_RESULT checks=%d failures=%d" % [checks,failures])
 	quit(0 if failures==0 else 1)

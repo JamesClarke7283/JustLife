@@ -18,21 +18,26 @@ func setup(stage: String = "child") -> LifeSim:
 	sim.register_targets([{"id":"desk","kind":"desk","position":Vector3.ZERO},{"id":"shelf","kind":"bookshelf","position":Vector3.ONE},{"id":"fridge","kind":"fridge","position":Vector3.ZERO}])
 	return sim
 
+func advance_minutes(sim: LifeSim, amount: float) -> void:
+	var rate: float = LifeSim.GAME_MINUTES_PER_SECOND*float(sim.speed)
+	assert(rate > 0.0)
+	while amount > .0001:
+		var step: float = minf(amount,minf(2400.0,60.0*rate))
+		sim.tick(step/rate)
+		amount -= step
+
 func finish(sim: LifeSim, action: String, target: String = "desk") -> void:
 	check(sim.queue_action(action,target),"Eligible %s must queue at suitable furniture." % action)
 	sim.begin_current_action()
 	check(not sim.get_current_action().is_empty() and sim.get_current_action().phase == "active","School action must become active after reaching furniture.")
 	var duration: float = float(sim.get_current_action().duration)
-	sim.tick(duration/(6.0*float(sim.speed)))
+	advance_minutes(sim,duration)
 	check(sim.get_current_action().is_empty(),"School action must finish through real simulation ticks.")
 
 func go_to_next_morning(sim: LifeSim) -> void:
 	var remaining: float = 1440.0-float(sim.minutes)+480.0
 	sim.set_speed(8)
-	while remaining > .0001:
-		var step: float = minf(remaining,2400.0)
-		sim.tick(step/48.0)
-		remaining -= step
+	advance_minutes(sim,remaining)
 	sim.set_speed(1)
 
 func run() -> void:
@@ -66,21 +71,21 @@ func run() -> void:
 	var partial: LifeSim = setup("teen")
 	check(partial.queue_action("school","desk"),"An online class can be queued for persistence testing.")
 	check(not partial.queue_action("school","desk"),"Duplicate queued classes must fail before attendance is completed.")
-	partial.begin_current_action();partial.tick(10)
+	partial.begin_current_action();advance_minutes(partial,60.0)
 	check(partial.get_current_action().elapsed == 60.0 and partial.skills.logic.xp == 0.0,"Partially completed lessons must not grant completion learning.")
 	state = partial.get_state()
 	var resumed: LifeSim = setup("teen")
 	check(resumed.restore_state(JSON.parse_string(JSON.stringify(sim._json_safe(state)))).ok,"An active online class must survive JSON save and reload.")
 	resumed.begin_current_action()
 	check(resumed.get_current_action().started_minutes == 480.0,"Resuming a class must preserve its original start time.")
-	resumed.tick(20)
+	advance_minutes(resumed,120.0)
 	check(resumed.education.attended == 1 and resumed.skills.logic.xp == 6.0,"Resumed completion must award attendance and learning exactly once.")
 	partial.cancel_action()
 	check(partial.education.attended == 0 and partial.skills.logic.xp == 0.0,"Cancelling an unfinished class must not award attendance or learning.")
 	var late: LifeSim = setup("teen")
 	late.minutes = 839.0
 	check(late.queue_action("school","desk"),"A class can queue before the daily deadline.")
-	late.tick(1)
+	advance_minutes(late,6.0)
 	late.begin_current_action()
 	check(late.action_queue.is_empty() and late.education.attended == 0,"Arrival after the start deadline must cancel without effects.")
 	var birthday: LifeSim = setup("teen")
@@ -112,7 +117,7 @@ func run() -> void:
 	var completion_gate: LifeSim = setup("teen")
 	completion_gate.queue_action("school","desk");completion_gate.begin_current_action()
 	completion_gate.education = LifeEducation.complete(completion_gate.education,"teen",1,660,"school").state
-	completion_gate.tick(30)
+	advance_minutes(completion_gate,180.0)
 	check(completion_gate.education.attended == 1 and completion_gate.skills.logic.xp == 0.0,"Completion must recheck attendance and reject a duplicate without granting effects.")
 	var graduation: LifeSim = setup("teen")
 	for i: int in range(3):

@@ -346,7 +346,9 @@ func consider(t)->void:
 		if a.anchor.x!=b.anchor.x:return a.anchor.x<b.anchor.x
 		return a.anchor.z<b.anchor.z)
 	var used:int=0;var evaluated:Array=[];var best:Dictionary={}
-	for candidate_rank:int in mini(candidates.size(),12):
+	# Bound route queries, so a two-person blockage can use the full budget.
+	for candidate_rank:int in candidates.size():
+		if used>=QUERY_LIMIT:break
 		var candidate:Dictionary=candidates[candidate_rank]
 		var count:int=0
 		for peer:String in ids:

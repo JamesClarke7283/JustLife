@@ -18,7 +18,7 @@ signal away_changed(state: Dictionary)
 
 const SAVE_PATH: String = "user://justlife_save.json"
 const SAVE_VERSION: int = 1
-const GAME_MINUTES_PER_SECOND: float = 6.0
+const GAME_MINUTES_PER_SECOND: float = 1.0
 const MAX_QUEUE: int = 8
 const NEED_NAMES: Array[String] = ["hunger", "energy", "hygiene", "bladder", "fun", "social"]
 const TRAIT_NAMES: Array[String] = ["Creative", "Outgoing", "Active", "Bookworm", "Foodie", "Neat"]

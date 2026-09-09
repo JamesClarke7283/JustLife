@@ -1,6 +1,6 @@
 # LifeSim integration
 
-`scripts/life_sim.gd` is a `Node` with class name `LifeSim`. It does not process itself. Instantiate it, add it to the scene tree, and call `sim.tick(delta)` from the world's `_process`. One real second advances six game minutes at speed 1. Supported speeds are `0`, `1`, `3`, and `8`. Clock starts at day 1, 08:00. Need decay and action durations use game minutes.
+`scripts/life_sim.gd` is a `Node` with class name `LifeSim`. It does not process itself. Instantiate it, add it to the scene tree, and call `sim.tick(delta)` from the world's `_process`. One real second advances one game minute at speed 1, so a full Normal-speed day lasts 24 minutes. Supported speeds are `0`, `1`, `3`, and `8`. Clock starts at day 1, 08:00. Need decay and action durations use game minutes.
 
 ## World and character setup
 

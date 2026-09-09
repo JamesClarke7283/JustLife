@@ -25,7 +25,7 @@ func run() -> void:
 	home.begin_action("player")
 	home.begin_action("housemate_1")
 	check(a.funds==2492 and b.funds==2492 and home.funds==2492,"One ingredient expense updates the shared wallet")
-	home.tick(3)
+	home.tick(18.0/LifeSim.GAME_MINUTES_PER_SECOND)
 	check(a.needs.hunger>40 and b.needs.hunger<80,"Eating changes only the acting Lifelet's need")
 	check(a.action_queue.is_empty() and b.action_queue.size()==1,"Action queues progress independently")
 	check(a.day==b.day and is_equal_approx(a.minutes,b.minutes),"The household clock is shared")
@@ -36,7 +36,7 @@ func run() -> void:
 	home.tick(.1)
 	check(a.funds==2637 and home.funds==2637,"Selected-member UI income synchronizes to household")
 	home.day=1;home.minutes=1439
-	home.tick(.5)
+	home.tick(3.0/LifeSim.GAME_MINUTES_PER_SECOND)
 	check(home.day==2,"Household advances across midnight")
 	check(home.funds==2602,"Bills are charged once for the entire household")
 	check(a.bills_paid==35 and b.bills_paid==0,"Bill accounting belongs to one household owner")

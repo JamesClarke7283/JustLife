@@ -37,7 +37,7 @@ func _fresh_phase(wanted:String,part:float=.5)->void:
 		# Establish real held geometry first, then advance actual paid time into
 		# the interior phase. No action/pose progress is fabricated.
 		app.household.set_speed(1)
-		app.household.tick((70.0*desired-float(f.action.elapsed))/LifeSim.GAME_MINUTES_PER_SECOND)
+		_advance_oven_minutes(70.0*desired-float(f.action.elapsed))
 		app.meal_flow.present_actor("player");app._update_activity_facing(.1,f.action,"cook");app.player.animate(.1,1.0,false,"cook")
 		app.household.set_speed(0);app.meal_flow.sync_world()
 		f.progress=float(f.action.progress);f.elapsed=float(f.action.elapsed)

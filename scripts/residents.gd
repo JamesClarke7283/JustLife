@@ -308,7 +308,7 @@ func _arrive() -> void:
  var destination:String=str(trip.destination)
  var automatic:Array=[]
  for member:Dictionary in app.household.members:automatic.append(member.sim.autonomy);member.sim.autonomy=false
- app.household.set_speed(1);app.household.tick(2.5);app.household.set_speed(0)
+ app.household.set_speed(1);app.household.tick(15.0/LifeSim.GAME_MINUTES_PER_SECOND);app.household.set_speed(0)
  for index:int in range(app.household.members.size()):app.household.members[index].sim.autonomy=automatic[index]
  app.household.journeys.clear() # Old-house floor positions cannot enter the new lot.
  app.current_venue=destination

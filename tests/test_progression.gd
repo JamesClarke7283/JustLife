@@ -15,7 +15,7 @@ func _initialize() -> void:
 	check(sim.get_mood().label=="Inspired","An activity can leave a persistent emotion")
 	sim.set_speed(0);sim.tick(10)
 	check(sim.moodlets[0].remaining==20,"Pause preserves emotion duration")
-	sim.set_speed(1);sim.tick(4)
+	sim.set_speed(1);sim.tick(24.0/LifeSim.GAME_MINUTES_PER_SECOND)
 	check(sim.moodlets.is_empty(),"Timed emotions expire with the simulation clock")
 	check(sim.choose_career("culinary"),"A Lifelet can choose a culinary career")
 	check(sim.career.title=="Kitchen assistant" and sim.career.salary==160,"Career changes have actual titles and pay")

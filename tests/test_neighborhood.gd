@@ -51,7 +51,7 @@ func run() -> void:
 	check(JSON.parse_string(JSON.stringify(app.world.serialize_items(),"",true,true))==JSON.parse_string(JSON.stringify(home,"",true,true)),"Returning home restores furnishings and custom walls.")
 	check(app.floor_color=="896953","Returning home retains the chosen flooring.")
 	app.household.day=1;app.household.minutes=1439
-	app.household.set_speed(1);app.household.tick(.5)
+	app.household.set_speed(1);app.household.tick(3.0/LifeSim.GAME_MINUTES_PER_SECOND)
 	check(not app.sim.get_story_events().is_empty(),"A new day creates a readable choice event.")
 	app.show_stories();await process_frame
 	var event:Dictionary=app.sim.get_story_events()[0]

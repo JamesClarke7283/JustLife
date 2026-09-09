@@ -33,7 +33,7 @@ func make_sim(aspiration: String = "Maker") -> LifeSim:
 func advance(sim: LifeSim, game_minutes: float) -> void:
 	var remaining: float = game_minutes
 	while remaining > .0001:
-		var step: float = minf(remaining, 180.0)
+		var step: float = minf(remaining, minf(180.0, 60.0*Simulation.GAME_MINUTES_PER_SECOND))
 		sim.tick(step / Simulation.GAME_MINUTES_PER_SECOND)
 		remaining -= step
 
@@ -194,6 +194,7 @@ func _test_legacy_and_malformed_saves() -> void:
 func _test_saved_day_sets_and_reentrant_choices() -> void:
 	var sim: LifeSim = make_sim()
 	sim.day = 2
+	sim.career.schedule = LifeCareerSchedule.fresh(sim.day) # Fresh calendar for this deliberately selected fixture day.
 	sim.aspiration_stage = 2
 	sim._create_recurring_wants()
 	complete(sim, "friendly", "maya")

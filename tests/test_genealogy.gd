@@ -37,7 +37,7 @@ func run() -> void:
 	for member: Dictionary in home.members:member.sim.autonomy=false
 	check(child.queue_action("friendly","housemate_1"),"A child can have an ordinary friendly conversation with a parent.")
 	home.begin_action("housemate_3")
-	for i: int in range(12):home.tick(.5)
+	for i: int in range(12):home.tick(3.0/LifeSim.GAME_MINUTES_PER_SECOND)
 	check(child.action_queue.is_empty() and child.relationships.housemate_1.friendship==parent.relationships.housemate_3.friendship,"A completed family conversation mirrors friendship.")
 	check(child.relationships.housemate_1.family_role=="parent" and parent.relationships.housemate_3.family_role=="child","Reciprocal social mirroring preserves parent/child direction.")
 	check(child.relationships.housemate_1.status=="Parent" and parent.relationships.housemate_3.status=="Child","Family labels remain readable after social completion.")
