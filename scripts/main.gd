@@ -2700,6 +2700,9 @@ func show_replace_life(action:String,id:String) -> void:
 
 func capture_save_preview() -> void:
 	if DisplayServer.get_name()=="headless":return
+	# A panel can close and Save can run in the same input frame. Draw the current
+	# scene before readback without advancing play or deferring this save's preview.
+	RenderingServer.force_draw(false,0.0)
 	var rendered:Image=get_viewport().get_texture().get_image()
 	if rendered==null or rendered.is_empty():return
 	var dimensions:Vector2i=rendered.get_size()
