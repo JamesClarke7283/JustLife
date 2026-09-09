@@ -1,0 +1,31 @@
+{
+  "source_sha256": "ac1cfe5dd4103c9062a961a6f468b35a13bc866dc6d094f1e8cdbebf3b4111c1",
+  "baseline_native_signature": "a9e125266408a337a9365fb40440c18b97fe76329ed0d06f97a487da27289e2c",
+  "candidate_native_signature": "a6b1f8c74106512b708fca335f9a5597af651ccacbd91c32fb4f15fbc0598cf7",
+  "baseline_glbs": {
+    "character_child": "9047bf3d65e466de0c81546be2a43342a5f2cde6a310e2aad7daf68b764dc3ee",
+    "character_child_broad": "e9bc18f047a5b87b2aecc09a67e872469b12fc319e422614d4d12bfb26775aad",
+    "character_child_lod": "0a608395a465c2868db3b44bad4c99c6719bf139a0f4295451babdb06c426acf",
+    "character_child_broad_lod": "ba5857513eabe1bcd325a3ce36ac9c200cbcb13444d0e648aa412349ec35c51d"
+  },
+  "candidate_glbs": {
+    "character_child": "90f38b59f88f7fffdb670bea13ed3675665bef86ae1245eefaafa0f212e151c5",
+    "character_child_broad": "062bdce4d445e7eff7cae805a5337b1bd7f80e391784d951b5994e551a33df80",
+    "character_child_lod": "0432c254afa211bf58e4db8c9845a1bb172caf2d77c39c847ead644f3d09f3e2",
+    "character_child_broad_lod": "5e1d829b2bc7c726d2b4542373cf05fff3c8dd70fde0e42e17848b517c0dfe12"
+  },
+  "scope": {
+    "object": "Outfit_Casual_Shirt",
+    "mesh": "Top_Blouse",
+    "protected_native_objects": 361,
+    "protected_gltf_meshes": 338,
+    "material_flag": {
+      "material": "Hair_shadow",
+      "property": "use_fake_user",
+      "before": false,
+      "after": true
+    }
+  },
+  "blender": "5.2.1 LTS",
+  "input_commit": "1fd7a0c1d4c8b2196c23eef29f8c04a2757ec59e"
+}

@@ -4,7 +4,7 @@ Original geometry and artwork authored in Blender for JustLife. The exported ass
 
 ## Files and integration status
 
-Adult garment revision 22 is promoted to the four adult game paths and their editable source. It retains the accepted revision 18 rig, surface revision 2, face, hair and hands. The twelve child, teen and elder GLBs and their three editable sources remain v18. The repository keeps the production assets, editable sources and required generator inputs. Duplicate `*_surface_grip*`, older `*_rig*` and age `*_grip*` candidates, renders and historical `art/iterations` archives remain local and are excluded from Git:
+Adult garment revision 22 is promoted to the four adult game paths and their editable source. It retains the accepted revision 18 rig, surface revision 2, face, hair and hands. The eight teen and elder GLBs and their two editable sources remain v18. The child source and four child GLBs retain that rig and anatomy with the bounded casual-shirt shoulder refinement documented below. The repository keeps the production assets, editable sources and required generator inputs. Duplicate `*_surface_grip*`, older `*_rig*` and age `*_grip*` candidates, renders and historical `art/iterations` archives remain local and are excluded from Git:
 
 | File | Intended use |
 | --- | --- |
@@ -14,7 +14,8 @@ Adult garment revision 22 is promoted to the four adult game paths and their edi
 | `assets/models/character_broad_lod.glb` | Broad frame for the live camera |
 | `art/characters.blend` | Editable current rig, garments, hair, expressions and portrait studio |
 | `tools/sculpt_clothing.py` | Current adult garment authoring from immutable v18 input; uses the adjacent trouser helper, per-variant export worker and exact output verifier |
-| `tools/create_characters.py` | Historical v18 generator and unchanged age-family authoring pipeline |
+| `tools/create_characters.py` | Historical v18 generator and unchanged teen/elder authoring pipeline |
+| `tools/child_shirt_v31/` | Current child casual-shirt authoring, fresh native protection, pinned input extraction and guarded shirt-only export transfer |
 | `art/characters_child.blend`, `characters_teen.blend`, `characters_elder.blend` | Editable current age variants |
 | `art/source/grip_v3/` | Four immutable Blender inputs preserving accepted hand meshes and grip morphs |
 | `art/source/character_production_hashes.json` | Current hashes of sixteen production GLBs and four editable character sources |
@@ -26,7 +27,15 @@ All sixteen paths retain the reviewed surface repair and hand grips. The histori
 
 Reproduce current adult clothing using the explicit six-thread authoring and fresh single-thread export command in [the garment source guide](../art/source/clothing_v22/README.md). It writes a new output directory, keeps the immutable v18 input separate, and verifies exact qualified output. The four adult GLBs reproduced byte for byte in the documented Blender environment. The 361 recorded editable-source object facts also matched; unrelated addon/modifier notices remain in the local logs.
 
-The older `blender --background --python tools/create_characters.py -- --surface-repair` command regenerates historical v18 adult candidates; it does **not** reproduce current adult clothing. Add `--age child`, `--age teen` or `--age elder` for the unchanged age pipeline. Its `--promote` flag replaces that stage’s four GLBs and editable source, so use it only after reviewing the intended stage replacement. Running without `--surface-repair` retains the earlier sculpt pipeline for historical comparison. This separate Blender process creates its own scene and leaves any other open Blender session untouched. All default morph values are explicitly zeroed before and after export. All exported mesh primitives have UVs, including the untextured morph meshes, for clean Godot tangent generation.
+The older `blender --background --python tools/create_characters.py -- --surface-repair` command regenerates historical v18 adult candidates; it does **not** reproduce current adult clothing. Add `--age child`, `--age teen` or `--age elder` for the historical age pipeline; the child result predates the current shirt refinement. Its `--promote` flag replaces that stage’s four GLBs and editable source, so use it only after reviewing the intended stage replacement. Running without `--surface-repair` retains the earlier sculpt pipeline for historical comparison. This separate Blender process creates its own scene and leaves any other open Blender session untouched. All default morph values are explicitly zeroed before and after export. All exported mesh primitives have UVs, including the untextured morph meshes, for clean Godot tangent generation.
+
+## Child casual-shirt shoulders (review iteration 34)
+
+The child casual shirt has lower sleeve crowns and a gentler shoulder join. Only positions on `Outfit_Casual_Shirt` (`Top_Blouse`) change: 2,678 of 6,002 native vertices, at most 10.360 mm. All 881 vertices within 9 mm of the retained collar, placket and cuff surfaces remain exact. The other 361 native objects, anatomy/face/hair, all UVs, rig weights and metadata remain exact. A separately approved `Hair_shadow.use_fake_user` false-to-true flag keeps that unused original material through a normal editable-source save; all material contents remain unchanged.
+
+[The portable source guide](../tools/child_shirt_v31/README.md) describes extraction of the five pinned former assets from local Git history and generation into a new directory. Four fresh single-thread exports supply the authored shirt, then guarded accessor transfer keeps every other decoded mesh exact. This is necessary because an unchanged standard child LOD export drifted in seven unrelated hair U values. Only the shirt's derived LOD tessellation changes: 1,859 to 1,848 vertices, with 2,640 triangles retained; the detailed shirt retains 7,083 vertices and 12,000 triangles. All four final GLBs reproduce byte for byte in the documented Blender environment.
+
+The final visual gate separates 18 contextual Creator/Live/seated pairs from six isolated actual carry/stair rig inspection pairs. The isolated frames hide scene geometry after placing the held pose and dish, and establish garment visibility at those poses only. Occluded earlier camera compositions remain rejected visual evidence. The change is modest; the broad-frame sculpted join and small profile improvement remain limitations. There is no arbitrary-pose or cloth-simulation guarantee and no new family-wide or whole-game art score. [The review](REVIEWS/iteration_34_child_shirt.md) records the scoped verdict and evidence.
 
 ## Adult garment revision 22
 
@@ -56,7 +65,7 @@ The continuous head/neck, upper arms/forearms/hands, trousers, casual shirt and 
 
 ## Age variants and contact landmarks
 
-Child, teen and elder assets use the same skeleton, hair, outfit and morph contracts, with independently placed rest landmarks and continuous anatomy changes. Their file families are `character_child.glb`, `character_child_lod.glb`, `character_child_broad.glb`, `character_child_broad_lod.glb`; replace `child` with `teen` or `elder` for the other stages. `young_adult` and `adult` use the ordinary adult paths. Regenerate the current stage candidate with `blender --background -t 8 --python tools/create_characters.py -- --surface-repair --age child` (or `teen` / `elder`). Append `--preview-only` to export all four variants and render only full-body/face portraits when a small material refinement does not need a repeated full pose sheet. Reviewed editable sources are `art/characters_child.blend`, `characters_teen.blend` and `characters_elder.blend`; new candidates use the corresponding `characters_child_surface.blend` names until promotion.
+Child, teen and elder assets use the same skeleton, hair, outfit and morph contracts, with independently placed rest landmarks and continuous anatomy changes. Their file families are `character_child.glb`, `character_child_lod.glb`, `character_child_broad.glb`, `character_child_broad_lod.glb`; replace `child` with `teen` or `elder` for the other stages. `young_adult` and `adult` use the ordinary adult paths. Regenerate the historical v18 stage candidate with `blender --background -t 8 --python tools/create_characters.py -- --surface-repair --age child` (or `teen` / `elder`). Append `--preview-only` to export all four variants and render only full-body/face portraits when a small material refinement does not need a repeated full pose sheet. Reviewed editable sources are `art/characters_child.blend`, `characters_teen.blend` and `characters_elder.blend`; new candidates use the corresponding `characters_child_surface.blend` names until promotion.
 
 | Stage | Approximate height | Hip hinge | Knee hinge | Head pivot height | Anatomy |
 | --- | --- | --- | --- | --- | --- |
