@@ -1693,8 +1693,15 @@ func on_action_started(action:Dictionary) -> void:
 	var social_admitted:bool=traversal.active(bound_member_id) or not path.is_empty() or str(action.phase)=="active"
 	var arrived_waiter:bool=traversal.active(bound_member_id) and str(traversal.routes[bound_member_id].phase)=="waiting" and is_same(action,pending_action)
 	var retained_courtesy:bool=traversal.courtesy.preserve_request(traversal,bound_member_id,action.target_position)
+	var courtesy_motion:Dictionary={}
+	var courtesy_owner:String=traversal.courtesy.owner(traversal)
+	var retained_current_floor:bool=retained_courtesy and not courtesy_owner.is_empty() and str(traversal.routes[courtesy_owner].courtesy.get("donor_kind",""))=="current_floor"
+	if retained_current_floor and traversal.courtesy.generation_current(traversal) and traversal.courtesy._still_owned(traversal,courtesy_owner):
+		# Only the live marker/FIFO fields are temporarily cleared below. Keep
+		# independent path values; never reinstall a retired route or ownership.
+		courtesy_motion={"owner":courtesy_owner,"owner_route":traversal.routes[courtesy_owner],"route":traversal.routes[bound_member_id],"fact":traversal.routes[courtesy_owner].courtesy,"navigation":world.lot_navigation.generation,"action":action.duplicate(true),"resources":_activity_resources(action),"path":path.duplicate(),"index":path_index,"waiting":waiting_for_target,"started":wait_started,"review":wait_review,"destination":wait_destination}
 	var resource_wait:Dictionary={}
-	if waiting_for_target and wait_started>=0 and is_same(action,pending_action) and str(action.phase)=="approach" and not walk_only and not resume_activity and not arrived_waiter and not retained_courtesy and str(action.get("cooperation_id","")).is_empty() and not str(action.id) in LifeSim.SOCIAL_ACTIONS and not _find_item(str(action.target_id)).is_empty():
+	if waiting_for_target and wait_started>=0 and is_same(action,pending_action) and str(action.phase)=="approach" and not walk_only and not resume_activity and not arrived_waiter and (not retained_courtesy or retained_current_floor) and str(action.get("cooperation_id","")).is_empty() and not str(action.id) in LifeSim.SOCIAL_ACTIONS and not _find_item(str(action.target_id)).is_empty():
 		resource_wait={"started":wait_started,"review":wait_review,"destination":wait_destination,"resources":_activity_resources(action),"plate":str(action.get("meal_plate","")),"source":str(action.get("meal_source","")),"stage":str(action.get("meal_stage",""))}
 	_clear_motion(arrived_waiter or retained_courtesy)
 	var resident_id:String=str(action.get("target_id",""))
@@ -1717,6 +1724,11 @@ func on_action_started(action:Dictionary) -> void:
 	if not is_same(sim.get_current_action(),action):return
 	pending_action=action
 	if not pending_move.is_empty() and str(action.target_id)==str(pending_move.entry.id):return
+	if not courtesy_motion.is_empty() and world.lot_navigation.generation==int(courtesy_motion.navigation) and action==courtesy_motion.action and _activity_resources(action)==courtesy_motion.resources and is_same(traversal.routes.get(bound_member_id,{}),courtesy_motion.route) and is_same(traversal.routes.get(courtesy_motion.owner,{}),courtesy_motion.owner_route) and is_same(courtesy_motion.owner_route.get("courtesy",{}),courtesy_motion.fact):
+		# Normal target/meal resolution completed with the same instruction and
+		# resource. The following request still performs live reconciliation.
+		path=courtesy_motion.path;path_index=int(courtesy_motion.index)
+		waiting_for_target=bool(courtesy_motion.waiting);wait_started=float(courtesy_motion.started);wait_review=float(courtesy_motion.review);wait_destination=courtesy_motion.destination
 	if not resource_wait.is_empty() and resource_wait.resources==_activity_resources(action) and resource_wait.plate==str(action.get("meal_plate","")) and resource_wait.source==str(action.get("meal_source","")) and resource_wait.stage==str(action.get("meal_stage","")):
 		# A harmless Build replan retains this instruction's physical queue turn.
 		waiting_for_target=true;wait_started=float(resource_wait.started);wait_review=float(resource_wait.review)
@@ -2168,6 +2180,8 @@ func _restore_journeys() -> Dictionary:
 	var painted:Dictionary=traversal.reconstruct()
 	if not bool(painted.ok):return painted
 	_bind_member(household.selected_id())
+	var courtesy_loaded:Dictionary=traversal.validate_current_floor_courtesy()
+	if not bool(courtesy_loaded.ok):return courtesy_loaded
 	meal_flow.sync_world(false)
 	sanitation_flow.sync_world(false)
 	sanitation_flow.reconstruct_actors()

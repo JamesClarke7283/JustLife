@@ -1,0 +1,27 @@
+# Current-floor passage regression
+
+Run `python tests/run_current_floor.py` on Linux. The runner copies an explicit dependency set into an ignored private project, removes development plugins there, and isolates all five data/config/cache/temp paths. Existing UI helpers disable all four Node input modes, GUI input, automatic app/world processing and direct camera polling; only declared controller steps advance the household. Each stage uses a new engine process. Reports, input/save hashes and raw logs remain in the printed private work directory.
+
+The sole committed fixture is an actual public save from the original four-member household at game minute4107. Its producer matched all237 sampled rows and the unchanged public command prefix of the original three-day replay. No body, need, queue or movement state was created for this fixture. Its exact SHA256 is `b4026e446bc8a330fc572fb9bdbc5d59ad30b4a1fd05280c6fcfec21f06bf688`.
+
+Morgan has unpaid Sleep route219 to the original upstairs bed, an ordinary current-floor leg, chosen stair wait(-2.5,.16,-3.5), and ticket0. Rowan has unpaid Read route218 returning to the now-free bookcase, original FIFO4058.999999999738, and later explicit Cook. The temporary retreat leaves both full instructions and destinations intact. Rowan must physically reach the bookcase before Read starts; actual route retirement releases Morgan. Expiry does not count as recovery.
+
+The runtime adds a separate nested courtesy version3 with exactly eight fields: `version`, `donor_kind`, `beneficiary_kind`, `phase`, `anchor`, `beneficiary_id`, `beneficiary_identity`, and `expires_at`. The only new pair is `current_floor` donor with `resource_return` beneficiary. Existing full journey, stair, food and resource checks still apply. Numeric versions must be finite integral values1–3; decoded JSON numeric values are accepted. Kind fields must be strings. Prior nested readers reject version3; old absent-courtesy v1/v2 saves remain readable. Exact prior-reader rejection is retained in the private qualification; the portable suite retains current legacy compatibility and malformed-state checks without publishing a redundant historical validator.
+
+The donor's full future legs, chosen wait, destination and identity remain authoritative. Only the current floor polyline is replaced temporarily. A saved v3 fact stays staged outside live ownership while unrelated routes and wait fields reconstruct. Final prepared-world validation checks the exact expected saved owner, current body/geometry and member-specific FIFO before adoption. A failed validation cannot silently discard the saved hold or mutate the active household.
+
+The fixed stages cover:
+
+- Unchanged original no-save passage, then at most400 additional normal calls for real stair ticket/lock/transit/clearance and original upstairs Sleep admission.
+- Actual observed retreat and hold producers, each compared with its complete6/18-row prefix from the same runner's natural result. Both use public Pause and named Save.
+- Fresh processes consuming the exact files just produced, preserving original ownership/deadline and earning actual Read admission and donor resumption within the original60-game-minute expiry and200-call cap.
+- Strict schema, legacy, third-member missing-route reconstruction and earlier arrived-FIFO prepared-load rejection components. These deliberately changed detached records are distinct from genuine gameplay.
+- Unchanged Build entry/return; real certified unaffected geometry edits; a bounded actual affected-route placement; both public cancellations; and actual bookcase sale with the same later Cook starting normally.
+
+An unchanged Build refresh preserves the participants' marker path/FIFO fields after normal target and meal resolution, only while the original action, resources, navigation and ownership objects still match. It keeps cancellation-generation invalidation. Geometry edits may preserve a courtesy only after existing full-route certification and current corridor reconstruction. An uncertified changed route releases the courtesy and retains the still-valid ordinary furnishing FIFO. Callbacks that retire ownership cannot be undone by the refresh.
+
+Fresh comparisons use exact recursive scalar values with the existing action Vector3 reconstruction and elapsed/duration progress projection. They do not claim identical JSON/runtime numeric Variant types. Ten-paused comparisons use exact typed in-memory containers. Named Save projects only the existing physical world-state cache supplied by the production capture function. Build checks name the exact queues, reservation, bodies, clock and funds they compare; small existing food-position geometry projections remain reported and are not hidden by normalization.
+
+The affected-placement search is bounded to128 deduplicated candidate inspections and24 full transaction checks. It uses existing route points, real furnishing placement rules and detached route certification before issuing one actual public placement. A missing legal candidate fails the bounded witness rather than changing bodies or support. The original qualified witness needed six full queries.
+
+These are focused ownership, persistence and physical continuation regressions. They do not establish Sleep completion, later Cook completion, global pedestrian-pair collision safety, general crowd recovery, performance or whole-day attendance.

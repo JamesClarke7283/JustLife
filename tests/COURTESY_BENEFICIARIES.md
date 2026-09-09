@@ -31,8 +31,10 @@ recovery. Both generated slots are then kept as private evidence.
 Mutation controls cover same-destination requests, unrelated Build/replan,
 changed destination, public cancellation, a real new action, excluded floor
 transfer/resource/custody ownership, and immediate public named saves. The
-runtime allows only ordinary activity donors; it does not make idle actors,
-resource wait owners or future stair approaches into donors.
+version-1/2 cases use ordinary activity donors. Idle actors and furnishing wait
+owners remain excluded as donors. A separate [current-floor regression](CURRENT_FLOOR_CONTRACT.md)
+covers the new version-3 pair: an unowned future stair approach yields to a
+housemate returning to an available furnishing while retaining its FIFO place.
 
 The comparison boundaries are explicit. JSON INT identities use only the
 existing named integer fields, vectors/yaw use their actual engine projection,

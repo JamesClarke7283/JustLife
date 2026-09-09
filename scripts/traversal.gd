@@ -414,6 +414,9 @@ func restore(data:Dictionary)->Dictionary:
 	next_identity=int(data.next_identity);next_ticket=int(data.next_ticket)
 	return {"ok":true}
 
+func validate_current_floor_courtesy()->Dictionary:
+	return courtesy.validate_restored_current_floor(self)
+
 func reconstruct()->Dictionary:
 	# Called after held props have their exact saved ownership/presentation.
 	# This paints a zero-time pose; no step, reservation, food or clock advances.

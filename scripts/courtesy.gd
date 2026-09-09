@@ -10,9 +10,10 @@ var rejected:Array=[]
 var trace:Array=[]
 var queries:int=0
 var attempted_at:float=-1.0
+var staged_current_floor:Dictionary={}
 
 func reset()->void:
-	blocked.clear();attempted=[];rejected=[];trace.clear();queries=0;attempted_at=-1.0
+	blocked.clear();attempted=[];rejected=[];trace.clear();queries=0;attempted_at=-1.0;staged_current_floor.clear()
 
 func now(t)->float:return float(t.app.household.day-1)*1440.0+t.app.household.minutes
 
@@ -74,13 +75,87 @@ func _walk_eligible(t,id:String)->bool:
 	var level:int=t.app.world.point_level(actor.position)
 	return level>=0 and level==t.app.world.point_level(route.destination)
 
+# Typed pre-stair donation preserves the original full journey and FIFO peer.
+# Its v3 save is validated separately from ordinary complete-floor courtesy.
+func _live_motion(t,id:String)->Dictionary:
+	var motion:Dictionary=t.app.motion_states.get(id,{}).duplicate()
+	if id==str(t.app.bound_member_id) and not bool(t.app.loading_game):
+		motion.waiting=t.app.waiting_for_target;motion.wait_started=t.app.wait_started
+		motion.wait_review=t.app.wait_review;motion.wait_destination=t.app.wait_destination
+		motion.resume_active=t.app.resume_activity;motion.walk=t.app.walk_only
+		motion.path=t.app.path;motion.index=t.app.path_index;motion.pending=t.app.pending_action
+	return motion
+
+func _current_floor_goal(t,id:String)->Vector3:
+	var route:Dictionary=t.routes[id]
+	if Vector3(route.wait).is_finite():return route.wait
+	return route.legs[int(route.cursor)].to
+
+func _current_floor_donor(t,id:String)->bool:
+	if not t.routes.has(id) or not t.app.world.actors.has(id):return false
+	var person:LifeSim=t.app.household.member_sim(id)
+	if not is_instance_valid(person) or person.is_away():return false
+	var route:Dictionary=t.routes[id];var actor:LifeActor=t.app.world.actors[id]
+	if not actor.visible or str(route.phase)!="route" or bool(route.safety) or int(route.ticket)!=0 or not str(route.get("custody","")).is_empty():return false
+	if not t.app.household.meals.carried_by(id).is_empty():return false
+	var index:int=int(route.cursor)
+	if index<0 or index+1>=route.legs.size() or str(route.legs[index].kind)!="floor" or str(route.legs[index+1].kind)!="stair":return false
+	if not bool(route.prepared) or not Vector3(route.wait).is_finite() or route.points.is_empty() or route.points[-1]!=route.wait:return false
+	var level:int=t.app.world.point_level(actor.position)
+	if level<0 or level!=t.app.world.point_level(route.wait):return false
+	for lock:Dictionary in t.stairs.values():
+		if str(lock.owner)==id or lock.queue.any(func(entry:Dictionary)->bool:return str(entry.id)==id):return false
+	var motion:Dictionary=_live_motion(t,id);var action:Dictionary=person.get_current_action()
+	if bool(motion.get("waiting",false)) or bool(motion.get("resume_active",false)) or bool(motion.get("walk",false)) or float(motion.get("wait_started",-1))>=0:return false
+	if motion.get("path",PackedVector3Array()).size()<=int(motion.get("index",0)):return false
+	if str(action.get("phase",""))!="approach" or bool(action.get("paid",false)) or float(action.get("elapsed",0))!=0.0 or not str(action.get("cooperation_id","")).is_empty() or not str(action.get("cooperation_role","")).is_empty():return false
+	return Vector3(action.target_position)==Vector3(route.destination) and is_same(motion.get("pending",{}),action)
+
+func _resource_return(t,id:String)->bool:
+	if not t.routes.has(id) or not t.app.world.actors.has(id):return false
+	var person:LifeSim=t.app.household.member_sim(id)
+	if not is_instance_valid(person) or person.is_away():return false
+	var route:Dictionary=t.routes[id];var actor:LifeActor=t.app.world.actors[id]
+	if not actor.visible or str(route.phase)!="route" or bool(route.safety) or int(route.ticket)!=0 or not str(route.stair_id).is_empty() or Vector3(route.wait).is_finite() or not str(route.get("custody","")).is_empty():return false
+	if route.legs.is_empty() or not route.legs.all(func(leg:Dictionary)->bool:return str(leg.kind)=="floor"):return false
+	var motion:Dictionary=_live_motion(t,id);var action:Dictionary=person.get_current_action()
+	if not bool(motion.get("waiting",false)) or float(motion.get("wait_started",-1))<0.0 or bool(motion.get("resume_active",false)) or bool(motion.get("walk",false)):return false
+	if str(action.get("phase",""))!="approach" or bool(action.get("paid",false)) or float(action.get("elapsed",0))!=0.0 or not str(action.get("cooperation_id","")).is_empty() or not str(action.get("cooperation_role","")).is_empty():return false
+	if not t.app.household.meals.carried_by(id).is_empty() or t.app._find_item(str(action.target_id)).is_empty():return false
+	var level:int=t.app.world.point_level(actor.position)
+	if level<0 or level!=t.app.world.point_level(route.destination) or Vector3(action.target_position)!=Vector3(route.destination) or Vector3(motion.get("wait_destination",Vector3.INF))!=Vector3(route.destination):return false
+	return is_same(motion.get("pending",{}),action) and t.app._activity_available_for_member(action,id)
+
+func _floor_signature(t,id:String)->Array:
+	var route:Dictionary=t.routes[id]
+	return [int(route.identity),int(route.cursor),route.destination,route.wait,int(route.ticket),str(route.stair_id),route.exit,route.clear,bool(route.safety),str(route.get("custody","")),route.legs.duplicate(true)]
+
+func _return_signature(t,id:String)->Array:
+	var motion:Dictionary=_live_motion(t,id)
+	return [int(t.routes[id].identity),t.routes[id].destination,float(motion.wait_started),float(motion.wait_review),motion.wait_destination,t.app._activity_resources(_action(t,id))]
+
+func _local_pair(t,donor:String,peer:String)->bool:
+	var local_donor:bool=_current_floor_donor(t,donor);var local_peer:bool=_resource_return(t,peer)
+	if local_donor or local_peer:return local_donor and local_peer
+	return not _beneficiary_kind(t,peer).is_empty()
+
+func _install_current_floor(t,id:String,points:PackedVector3Array)->void:
+	# This cursor addresses derived points only. Full legs, future stairs,
+	# destination and selected wait are deliberately not replaced.
+	var route:Dictionary=t.routes[id]
+	route.points=points;route.point=0;route.prepared=true
+
 func _beneficiary_kind(t,id:String)->String:
 	if _eligible(t,id):return "action"
+	if _resource_return(t,id):return "resource_return"
 	if _stair_clear(t,id):return "stair_clear"
 	return "walk" if _walk_eligible(t,id) else ""
 
 func _blocked_candidate(t,id:String)->bool:
 	if _eligible(t,id) or _walk_eligible(t,id):return true
+	if _current_floor_donor(t,id) or _resource_return(t,id):
+		var point:Vector3=_next(t,id)
+		return point.is_finite() and not t._step_clear(id,t.app.world.actors[id].position,point)
 	if not _stair_clear(t,id):return false
 	# A blocked observation may precede an ordinary replan in the same step.
 	# Selection needs a currently blocked step; ongoing ownership does not.
@@ -229,7 +304,7 @@ func _hypothetical_step(t,id:String,next:Vector3,occupied:Array[Vector3])->bool:
 	return true
 
 func note_block(t,id:String,time:float,moved:bool)->void:
-	if _beneficiary_kind(t,id).is_empty():return
+	if _beneficiary_kind(t,id).is_empty() and not _current_floor_donor(t,id):return
 	var at:Vector3=t.app.world.actors[id].position
 	var old:Dictionary=blocked.get(id,{})
 	var age:float=float(old.get("age",0))+time if not moved and old.get("at",Vector3.INF)==at and int(old.get("identity",-1))==int(t.routes[id].identity) else time
@@ -251,7 +326,7 @@ func consider(t)->void:
 	attempted=key;attempted_at=now(t)
 	var candidates:Array=[]
 	for donor:String in ids:
-		if not _eligible(t,donor):continue
+		if not _eligible(t,donor) and not _current_floor_donor(t,donor):continue
 		var start:Vector3=t.app.world.actors[donor].position;var seen:Array[Vector3]=[]
 		for distance:float in [.5,.75,1.0,1.5]:
 			for direction:Vector2 in [Vector2(1,0),Vector2(-1,0),Vector2(0,1),Vector2(0,-1),Vector2(1,1).normalized(),Vector2(-1,1).normalized(),Vector2(1,-1).normalized(),Vector2(-1,-1).normalized()]:
@@ -262,7 +337,7 @@ func consider(t)->void:
 				if not _anchor_clear(t,donor,anchor) or not _sweep(t,donor,start,anchor):continue
 				var freed:int=0
 				for peer:String in ids:
-					if peer!=donor and _hypothetical_step(t,peer,_next(t,peer),_hypothetical(t,peer,donor,anchor)):freed+=1
+					if peer!=donor and _local_pair(t,donor,peer) and _hypothetical_step(t,peer,_next(t,peer),_hypothetical(t,peer,donor,anchor)):freed+=1
 				candidates.append({"donor":donor,"anchor":anchor,"distance":start.distance_to(anchor),"freed":freed,"beneficiaries":[]})
 	candidates.sort_custom(func(a:Dictionary,b:Dictionary)->bool:
 		if a.freed!=b.freed:return a.freed>b.freed
@@ -274,7 +349,7 @@ func consider(t)->void:
 	for candidate:Dictionary in candidates.slice(0,12):
 		var count:int=0
 		for peer:String in ids:
-			if peer==str(candidate.donor):continue
+			if peer==str(candidate.donor) or not _local_pair(t,str(candidate.donor),peer):continue
 			if count>=2 or used>=QUERY_LIMIT:break
 			count+=1;used+=1
 			var points:PackedVector3Array=_benefit(t,peer,candidate.donor,candidate.anchor)
@@ -290,10 +365,15 @@ func consider(t)->void:
 	if best.is_empty():return
 	var donor:String=str(best.donor);var peer:String=str(best.beneficiaries[0]);var route:Dictionary=t.routes[donor]
 	route.courtesy={"version":2,"beneficiary_kind":_beneficiary_kind(t,peer),"phase":"retreat","anchor":best.anchor,"beneficiary_id":peer,"beneficiary_identity":int(t.routes[peer].identity),"expires_at":now(t)+LIMIT}
+	if _current_floor_donor(t,donor):
+		route.courtesy.version=3;route.courtesy.donor_kind="current_floor"
+		route.courtesy_floor_signature=_floor_signature(t,donor)
+		route.courtesy_return_signature=_return_signature(t,peer)
 	route.courtesy_action=_action(t,donor);route.courtesy_peer_action=_action(t,peer)
 	route.courtesy_generation=t.app.world.lot_navigation.generation
 	route.courtesy_priority=best.priority
 	if _kind(route.courtesy)=="stair_clear":route.courtesy_peer_clear=_clear_signature(t,peer)
+	elif _kind(route.courtesy)=="resource_return":_install_current_floor(t,peer,best.priority)
 	else:_install_priority(t,peer,best.priority)
 	if _kind(route.courtesy)=="walk":route.courtesy_peer_walk=t.routes[peer].destination
 	route.courtesy_start=t.app.world.actors[donor].position
@@ -301,9 +381,14 @@ func consider(t)->void:
 
 func _still_owned(t,id:String)->bool:
 	var route:Dictionary=t.routes[id];var fact:Dictionary=route.courtesy;var peer:String=str(fact.beneficiary_id)
-	if now(t)>=float(fact.expires_at) or not _eligible(t,id) or not t.routes.has(peer):return false
+	if now(t)>=float(fact.expires_at) or not t.routes.has(peer):return false
+	if str(fact.get("donor_kind",""))=="current_floor":
+		if not _current_floor_donor(t,id) or _floor_signature(t,id)!=route.courtesy_floor_signature:return false
+	elif not _eligible(t,id):return false
 	if not is_same(_action(t,id),route.courtesy_action) or int(t.routes[peer].identity)!=int(fact.beneficiary_identity):return false
-	if _kind(fact)=="stair_clear":
+	if _kind(fact)=="resource_return":
+		if not _resource_return(t,peer) or not is_same(_action(t,peer),route.courtesy_peer_action) or _return_signature(t,peer)!=route.courtesy_return_signature:return false
+	elif _kind(fact)=="stair_clear":
 		if not _stair_clear(t,peer) or _clear_signature(t,peer)!=route.courtesy_peer_clear:return false
 	elif _kind(fact)=="walk":
 		if not _walk_eligible(t,peer) or Vector3(t.routes[peer].destination)!=Vector3(route.courtesy_peer_walk):return false
@@ -313,14 +398,17 @@ func _still_owned(t,id:String)->bool:
 func release(t,id:String,reason:String="changed_intent")->void:
 	if not t.routes.has(id) or not t.routes[id].has("courtesy"):return
 	var route:Dictionary=t.routes[id]
+	var local:bool=str(route.courtesy.get("donor_kind",""))=="current_floor"
+	var goal:Vector3=_current_floor_goal(t,id) if local else route.destination
 	trace.append({"at":now(t),"released":id,"phase":route.courtesy.phase,"reason":reason})
-	for key:String in ["courtesy","courtesy_action","courtesy_peer_action","courtesy_start","courtesy_points","courtesy_point","courtesy_priority","courtesy_generation","courtesy_peer_clear","courtesy_peer_walk"]:route.erase(key)
+	for key:String in ["courtesy","courtesy_action","courtesy_peer_action","courtesy_start","courtesy_points","courtesy_point","courtesy_priority","courtesy_generation","courtesy_peer_clear","courtesy_peer_walk","courtesy_floor_signature","courtesy_return_signature"]:route.erase(key)
 	rejected=_positions(t)
 	# Replan only motion. Keep identity/destination and the current instruction.
 	var from:Vector3=t.app.world.actors[id].position
-	var points:PackedVector3Array=t._floor_route(from,route.destination,id)
-	if points.is_empty():points=t._floor_route(from,route.destination)
+	var points:PackedVector3Array=t._floor_route(from,goal,id)
+	if points.is_empty():points=t._floor_route(from,goal)
 	if points.is_empty():route.error="The original route is no longer supported.";return
+	if local:_install_current_floor(t,id,points);return
 	route.legs=[{"key":"floor:","kind":"floor","stair_id":"","points":points,"from":from,"to":route.destination}]
 	route.cursor=0;route.prepared=false;route.points=PackedVector3Array();route.point=0
 
@@ -344,6 +432,10 @@ func preserve_request(t,id:String,destination:Vector3)->bool:
 	# Natural stair clearance must retire its old route, even at the same destination.
 	if id!=donor and _kind(owned.courtesy)=="stair_clear":return false
 	if id!=donor and _kind(owned.courtesy)=="walk":return _walk_eligible(t,id) and Vector3(t.routes[id].destination)==destination and Vector3(owned.courtesy_peer_walk)==destination
+	if str(owned.courtesy.get("donor_kind",""))=="current_floor":
+		if Vector3(t.routes[id].destination)!=destination:return false
+		if id==donor:return _current_floor_donor(t,id) and is_same(_action(t,id),owned.courtesy_action)
+		return _resource_return(t,id) and is_same(_action(t,id),owned.courtesy_peer_action)
 	var expected:Dictionary=owned.courtesy_action if id==donor else owned.courtesy_peer_action
 	return is_same(_action(t,id),expected) and Vector3(t.routes[id].destination)==destination and _eligible(t,id)
 
@@ -358,6 +450,9 @@ func advance(t,id:String,time:float)->Dictionary:
 	return {"moving":bool(result.moved),"finished":false,"cleared":false,"error":""}
 
 func restore(t,id:String,saved:Dictionary)->void:
+	if saved.get("version")==3:
+		staged_current_floor={"donor":id,"fact":saved.duplicate(true)}
+		return
 	var route:Dictionary=t.routes[id];var fact:Dictionary=saved.duplicate(true)
 	fact.anchor=LifeJourneyState.vector(saved.anchor)
 	route.courtesy_generation=t.app.world.lot_navigation.generation
@@ -366,8 +461,39 @@ func restore(t,id:String,saved:Dictionary)->void:
 	route.courtesy_points=PackedVector3Array([t.app.world.actors[id].position,fact.anchor]);route.courtesy_point=0
 	route.courtesy_priority=_priority_route(t,id,true)
 	if _kind(fact)=="stair_clear":route.courtesy_peer_clear=_clear_signature(t,str(fact.beneficiary_id))
-	elif not route.courtesy_priority.is_empty():_install_priority(t,str(fact.beneficiary_id),route.courtesy_priority)
+	elif not route.courtesy_priority.is_empty():
+		if str(fact.get("donor_kind",""))=="current_floor":_install_current_floor(t,str(fact.beneficiary_id),route.courtesy_priority)
+		else:_install_priority(t,str(fact.beneficiary_id),route.courtesy_priority)
 	if _kind(fact)=="walk":route.courtesy_peer_walk=t.routes[str(fact.beneficiary_id)].destination
+
+func validate_restored_current_floor(t)->Dictionary:
+	# No active owner is published until every saved wait and the final selected
+	# bind exist. Unrelated route requests during preparation cannot retire it.
+	var expected_id:String="";var expected:Dictionary={}
+	for id:String in t.app.household.journeys.members:
+		var saved:Dictionary=t.app.household.journeys.members[id].motion
+		if saved.get("courtesy",{}).get("version")==3:expected_id=id;expected=saved.courtesy
+	if expected_id.is_empty():
+		return {"ok":true} if staged_current_floor.is_empty() else {"ok":false,"error":"Unexpected staged current-floor courtesy."}
+	if str(staged_current_floor.get("donor",""))!=expected_id or staged_current_floor.get("fact",{})!=expected or not owner(t).is_empty():return {"ok":false,"error":"The saved current-floor courtesy was lost or replaced during preparation."}
+	var donor:String=expected_id;var peer:String=str(expected.beneficiary_id)
+	if not _current_floor_donor(t,donor) or not _resource_return(t,peer):return {"ok":false,"error":"The saved current-floor courtesy no longer owns its action or available furnishing return."}
+	var route:Dictionary=t.routes[donor];var saved_donor:Dictionary=t.app.household.journeys.members[donor].motion
+	if int(route.identity)!=int(saved_donor.identity) or route.destination!=LifeJourneyState.vector(saved_donor.destination) or int(t.routes[peer].identity)!=int(expected.beneficiary_identity) or now(t)>=float(expected.expires_at):return {"ok":false,"error":"The saved current-floor courtesy owner or deadline has retired."}
+	var current:Dictionary=_action(t,peer);var targets:Array=t.app.household.member_sim(peer)._targets
+	if not targets.any(func(target:Dictionary)->bool:return str(target.id)==str(current.target_id) and Vector3(target.position)==Vector3(current.target_position)):return {"ok":false,"error":"The saved furnishing return target no longer matches the actual layout."}
+	var fact:Dictionary=expected.duplicate(true);fact.anchor=LifeJourneyState.vector(expected.anchor)
+	if not _anchor_clear(t,donor,fact.anchor) or not _sweep(t,donor,t.app.world.actors[donor].position,fact.anchor):return {"ok":false,"error":"Visible bodies obstruct the saved current-floor retreat."}
+	var priority:PackedVector3Array=_benefit(t,peer,donor,fact.anchor)
+	if priority.is_empty():return {"ok":false,"error":"The saved furnishing return has no body-clear priority corridor."}
+	route.courtesy=fact;route.courtesy_action=_action(t,donor);route.courtesy_peer_action=current
+	route.courtesy_start=t.app.world.actors[donor].position
+	route.courtesy_points=PackedVector3Array([route.courtesy_start,fact.anchor]);route.courtesy_point=0
+	route.courtesy_generation=t.app.world.lot_navigation.generation
+	route.courtesy_floor_signature=_floor_signature(t,donor);route.courtesy_return_signature=_return_signature(t,peer)
+	route.courtesy_priority=priority;_install_current_floor(t,peer,priority)
+	staged_current_floor.clear()
+	return {"ok":true}
 
 func _point_distance(point:Vector3,a:Vector3,b:Vector3)->float:
 	var line:Vector3=b-a
@@ -411,6 +537,19 @@ func rebuild(t)->bool:
 	var donor:String=owner(t)
 	if donor.is_empty():return false
 	var route:Dictionary=t.routes[donor];var peer:String=str(route.courtesy.beneficiary_id)
+	if str(route.courtesy.get("donor_kind",""))=="current_floor":
+		# A changed graph must revalidate the complete future journey normally;
+		# never mark an old stair schedule current after only a floor query.
+		if int(route.generation)!=t.app.world.lot_navigation.generation:release(t,donor,"changed_layout");return false
+		var priority:PackedVector3Array=_priority_route(t,donor)
+		if priority.is_empty():release(t,donor,"blocked_priority");return false
+		if str(route.courtesy.phase)=="retreat":
+			var at:Vector3=t.app.world.actors[donor].position
+			if not _sweep(t,donor,at,route.courtesy.anchor):release(t,donor,"blocked_retreat");return false
+			route.courtesy_points=PackedVector3Array([at,route.courtesy.anchor]);route.courtesy_point=0
+		route.courtesy_priority=priority;route.courtesy_generation=t.app.world.lot_navigation.generation
+		_install_current_floor(t,peer,priority)
+		return true
 	var points:PackedVector3Array=_priority_route(t,donor)
 	if points.is_empty():release(t,donor,"blocked_priority");return false
 	var original:PackedVector3Array=t._floor_route(t.app.world.actors[donor].position,route.destination)
