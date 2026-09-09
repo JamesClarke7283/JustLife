@@ -92,6 +92,7 @@ var _stair_exit_carry:bool=false
 var _reconstructing_cooking: bool = false
 var _reconstructing_sanitation:bool=false
 var _reconstructing_meal:bool=false
+var _reconstructing_rest:bool=false
 var _presented_cooking_recipe: String = "garden_skillet"
 var _recipe_bowl: Node3D
 var _recipe_bowl_food: Node3D
@@ -638,7 +639,7 @@ func _update_grips(delta: float, moving: bool, action_id: String) -> void:
 	if bool(meal_presentation.get("carrying",false)):
 		var hold:float=.38 if bool(meal_presentation.get("platter",false)) else .20
 		targets={"L":hold,"R":hold}
-	var blend: float = 1.0 if _reconstructing_stair or not stair_presentation.is_empty() or _reconstructing_cooking or _reconstructing_sanitation or _reconstructing_meal or (not moving and action_id=="cook" and _has_oven()) else 1.0-exp(-delta*8.0)
+	var blend: float = 1.0 if _reconstructing_stair or not stair_presentation.is_empty() or _reconstructing_cooking or _reconstructing_sanitation or _reconstructing_meal or _reconstructing_rest or (not moving and action_id=="cook" and _has_oven()) else 1.0-exp(-delta*8.0)
 	for side: String in ["L","R"]:
 		_grip_amounts[side] = float(targets[side]) if blend>=1.0 else lerpf(float(_grip_amounts[side]),float(targets[side]),blend)
 		for entry: Dictionary in _grip_shapes[side]:
@@ -774,7 +775,7 @@ func _orient_held_prop(prop: Node3D, model_basis: Basis) -> void:
 
 
 func _update_held_props(delta: float, moving: bool, action_id: String) -> void:
-	var blend: float = 1.0 if _reconstructing_stair or not stair_presentation.is_empty() or _reconstructing_cooking or _reconstructing_sanitation or _reconstructing_meal or (not moving and action_id=="cook" and _has_oven()) else 1.0-exp(-delta*12.0)
+	var blend: float = 1.0 if _reconstructing_stair or not stair_presentation.is_empty() or _reconstructing_cooking or _reconstructing_sanitation or _reconstructing_meal or _reconstructing_rest or (not moving and action_id=="cook" and _has_oven()) else 1.0-exp(-delta*12.0)
 	if is_instance_valid(_meal_fork):
 		_meal_fork.visible=not moving and action_id=="eat_meal"
 		if _meal_fork.visible:
@@ -870,6 +871,18 @@ func reconstruct_meal_pose(eating:bool)->void:
 	animate(0.0,0.0,false,"eat_meal" if eating else "")
 	_reconstructing_meal=false
 
+func reconstruct_rest_pose(action_id:String)->void:
+	# Loading a paused sleeper evaluates only its authored bed/seat pose.
+	# Ordinary pause, animation clocks, blink sampling and voice stay frozen.
+	if _model==null or action_id not in ["sleep","nap"] or str(_activity_anchor.get("action",""))!=action_id or str(_activity_anchor.get("kind","")) not in ["bed","seat"]:return
+	if not _activity_anchor.get("position") is Vector3 or not Vector3(_activity_anchor.position).is_finite() or not is_finite(float(_activity_anchor.get("yaw",NAN))):return
+	_reconstructing_rest=true
+	animate(0.0,0.0,false,action_id)
+	_reconstructing_rest=false
+	for entry:Dictionary in _blink_shapes:entry.mesh.set_blend_shape_value(int(entry.index),1.0)
+	_smile=0.0
+	for entry:Dictionary in _smile_shapes:entry.mesh.set_blend_shape_value(int(entry.index),0.0)
+
 func reconstruct_sanitation_pose(action_id:String)->void:
 	if action_id not in ["plant_wee","mop_puddle"]:return
 	_reconstructing_sanitation=true
@@ -887,15 +900,15 @@ func _can_react_to_accident(moving:bool,action_id:String) -> bool:
 
 
 func animate(delta: float, speed_factor: float, moving: bool, action_id: String) -> void:
-	if _model == null or (delta <= 0.0 and not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation and not _reconstructing_meal):
+	if _model == null or (delta <= 0.0 and not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation and not _reconstructing_meal and not _reconstructing_rest):
 		return
-	if not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation and not _reconstructing_meal:_update_voice(delta, speed_factor, moving, action_id)
+	if not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation and not _reconstructing_meal and not _reconstructing_rest:_update_voice(delta, speed_factor, moving, action_id)
 	if is_instance_valid(_mop) and action_id!="mop_puddle":_mop.visible=false
 	var animation_delta: float = delta * clampf(speed_factor, 0.0, 3.0)
 	# Pause freezes the entire presentation, including props and transition clocks.
-	if animation_delta <= 0.0 and not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation and not _reconstructing_meal:
+	if animation_delta <= 0.0 and not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation and not _reconstructing_meal and not _reconstructing_rest:
 		return
-	if not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation and not _reconstructing_meal:
+	if not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation and not _reconstructing_meal and not _reconstructing_rest:
 		if stair_presentation.is_empty():_stair_exit_carry=false
 		var motion_action: String = "walk" if moving else action_id
 		if motion_action != _motion_action:
@@ -903,7 +916,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 			_action_time = 0.0
 		_action_time += animation_delta
 	_accident_visible = false
-	if not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation and not _reconstructing_meal and _accident_time >= 0.0:
+	if not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation and not _reconstructing_meal and not _reconstructing_rest and _accident_time >= 0.0:
 		if not _can_react_to_accident(moving,action_id):
 			_accident_time = -1.0
 		else:
@@ -914,7 +927,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		_presented_cooking_recipe=_cooking_recipe()
 		_ensure_cooking_recipe_props()
 	_update_grips(animation_delta,moving,action_id)
-	if not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation and not _reconstructing_meal:
+	if not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation and not _reconstructing_meal and not _reconstructing_rest:
 		_time += animation_delta
 		_speech_remaining = maxf(0.0, _speech_remaining - delta)
 		_speech.visible = not screen_speech and _speech_remaining > 0.0 and not _speech.text.is_empty()
@@ -923,7 +936,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 	var t: float = _time + _phase_offset
 	# Oven handling already has smooth progress curves. Evaluating its pose
 	# directly makes live and paused reconstruction agree without frame lag.
-	var blend: float = 1.0 if _reconstructing_cooking or _reconstructing_sanitation or _reconstructing_meal or (not moving and action_id=="cook" and _has_oven()) else 1.0 - exp(-animation_delta * 8.0)
+	var blend: float = 1.0 if _reconstructing_cooking or _reconstructing_sanitation or _reconstructing_meal or _reconstructing_rest or (not moving and action_id=="cook" and _has_oven()) else 1.0 - exp(-animation_delta * 8.0)
 	var anchored: bool = not moving and not action_id.is_empty() and not _activity_anchor.is_empty()
 	anchored = anchored and (str(_activity_anchor.get("action","")) in ["",action_id])
 	var anchor_kind: String = str(_activity_anchor.get("kind","")) if anchored else ""
@@ -1149,7 +1162,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		offset = to_local(world_origin) + interaction_offset
 		lean = (global_basis.orthonormalized().inverse() * world_orientation).get_euler()
 	var body_blend:float=1.0 if anchored and action_id=="mop_puddle" else blend
-	visual.position = visual.position.lerp(offset, body_blend)
+	visual.position = offset if _reconstructing_rest else visual.position.lerp(offset, body_blend)
 	visual.rotation = _angle_lerp(visual.rotation, lean, body_blend)
 	_update_visual_followers(anchored,action_id)
 	if not moving and action_id=="cook" and _has_oven():
@@ -1177,7 +1190,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 	_sit_amount = lerpf(_sit_amount, 1.0 if seated else 0.0, blend)
 	for entry: Dictionary in _sit_shapes:
 		entry.mesh.set_blend_shape_value(int(entry.index), _sit_amount)
-	if not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation and not _reconstructing_meal:_update_expression(animation_delta,action_id,blend)
+	if not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation and not _reconstructing_meal and not _reconstructing_rest:_update_expression(animation_delta,action_id,blend)
 	if not stair_presentation.is_empty():_apply_stair_pose()
 	_update_held_props(animation_delta,moving,action_id)
 

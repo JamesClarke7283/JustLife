@@ -1994,6 +1994,7 @@ func load_game(slot_id:String="") -> void:
 	residents.home_visit.meal.present(true)
 	meal_flow.sync_world(false)
 	_reconstruct_paused_cooking()
+	_reconstruct_paused_rest()
 	_sync_actor_sound()
 	show_notice("Welcome back, %s." % sim.character.name)
 
@@ -2087,6 +2088,7 @@ func _prepare_loaded_world(data:Dictionary) -> Dictionary:
 	candidate.residents.home_visit.meal.present(true)
 	candidate.meal_flow.sync_world(false)
 	candidate._reconstruct_paused_cooking()
+	candidate._reconstruct_paused_rest()
 	return {"ok":true,"candidate":candidate,"viewport":viewport}
 
 func _adopt_loaded_world(prepared:Dictionary,slot_id:String,title:String="") -> void:
@@ -2182,6 +2184,18 @@ func _reconstruct_paused_cooking() -> void:
 			_update_activity_facing(0.0,action,"cook")
 		else:player.clear_activity_anchor()
 		player.reconstruct_cooking_pose()
+	_bind_member(prior)
+
+func _reconstruct_paused_rest() -> void:
+	if household.speed>0:return
+	var prior:String=bound_member_id
+	for member:Dictionary in household.members:
+		var current:Dictionary=member.sim.get_current_action()
+		var action_id:String=str(current.get("id",""))
+		if member.sim.speed>0 or member.sim.is_away() or str(current.get("phase",""))!="active" or action_id not in ["sleep","nap"]:continue
+		_bind_member(str(member.id))
+		_update_activity_facing(0.0,current,action_id)
+		player.reconstruct_rest_pose(action_id)
 	_bind_member(prior)
 
 func _restore_resource_waits() -> void:
