@@ -165,7 +165,8 @@ def environment(group: Path) -> tuple[dict[str, str], Path]:
     for key in ("STAIR_SAVE_CASE", "STAIR_SAVE_STAGE", "ADOPTION_JOURNEY_STAGE"):
         env.pop(key, None)
     for key, folder in (("XDG_DATA_HOME", "xdg-data"), ("XDG_CONFIG_HOME", "xdg-config"),
-                        ("XDG_CACHE_HOME", "xdg-cache"), ("JUSTLIFE_DATA_DIR", "data")):
+                        ("XDG_CACHE_HOME", "xdg-cache"), ("JUSTLIFE_DATA_DIR", "data"),
+                        ("TMPDIR", "tmp")):
         path = group / folder
         path.mkdir(parents=True, exist_ok=True)
         env[key] = str(path)

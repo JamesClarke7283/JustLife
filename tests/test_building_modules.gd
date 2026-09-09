@@ -33,6 +33,7 @@ func _run() -> void:
 	_test_transactions()
 	_test_upper_wall_and_landing_dependencies()
 	_test_routes()
+	_test_geometry_queries()
 	receipt["assertions"]=assertions;receipt["failures"]=failures
 	var file:=FileAccess.open("user://building_modules.json",FileAccess.WRITE)
 	file.store_string(JSON.stringify(_json_safe(receipt),"  "));file.close()
@@ -246,6 +247,26 @@ func _test_routes() -> void:
 	if bool(rotated_route.ok):receipt.routes.append(rotated_route)
 	var normalized:Dictionary=JSON.parse_string(JSON.stringify(stairs))
 	check(bool(nav.rebuild(normalized).ok) and bool(nav.route(lower,upper).ok),"JSON-loaded geometry rebuilds the same reachable floor/stair connections.")
+
+func _test_geometry_queries() -> void:
+	var nav=Navigation.new()
+	var at:=Vector3(-2,.16,0)
+	check(not nav.point_clear(0,at),"An unbuilt navigation has no supported query point.")
+	var base:Dictionary=_base()
+	check(bool(nav.rebuild(base).ok) and nav.point_clear(0,at),"Rebuild publishes supported ground geometry with its graph.")
+	var obstacle:Dictionary={"id":"query_box","level":0,"x":-2.0,"z":0.0,"w":.5,"d":.5}
+	check(bool(nav.rebuild(base,[obstacle]).ok) and not nav.point_clear(0,at),"A valid furniture rebuild updates exact point clearance.")
+	var beside:=Vector3(-2.5,.16,0)
+	check(nav.point_clear(0,beside) and not nav.point_clear(0,beside,Vector2(.3,.16)) and nav.point_clear(0,beside,Vector2(.16,.3)),"Custom footprints retain their distinct X and Z extent beside an obstacle.")
+	var from:=Vector3(-3,.16,0);var to:=Vector3(-1,.16,0)
+	check(nav.point_clear(0,from) and nav.point_clear(0,to) and not nav.segment_clear(0,from,to),"Clear public endpoints still reject a segment through furniture.")
+	check(nav.segment_clear(1,from+Vector3(0,3,0),to+Vector3(0,3,0)),"The same segment remains supported above a ground-only obstacle.")
+	var generation:int=nav.generation
+	var malformed:Dictionary=base.duplicate(true);malformed.version=999
+	check(not bool(nav.rebuild(malformed).ok) and nav.generation==generation and not nav.point_clear(0,at) and not nav.segment_clear(0,from,to),"Rejected structure retains prior point and segment clearance.")
+	check(not bool(nav.rebuild(base,[{"id":"bad"}]).ok) and nav.generation==generation and not nav.point_clear(0,at),"Rejected obstacle retains prior geometry and generation.")
+	check(bool(nav.rebuild(base).ok) and nav.point_clear(0,at) and nav.segment_clear(0,from,to),"Removing furniture rebuilds both public query results.")
+	check(bool(nav.rebuild(_base(false)).ok) and not nav.point_clear(1,at+Vector3(0,3,0)),"Removing Upper replaces its support geometry without stale clearance.")
 
 func _json_safe(value:Variant) -> Variant:
 	if value is Vector3:return [value.x,value.y,value.z]

@@ -12,6 +12,10 @@ var _floor_ids:Dictionary={}
 var _locations:Dictionary={}
 var _stair_edges:Dictionary={}
 var generation:int=0
+# Derived geometry belongs to the same immutable rebuild as the graph.
+var _support_surfaces:Array=[[],[]]
+var _support_holes:Array=[[],[]]
+var _blockers:Array=[[],[]]
 
 func rebuild(state:Variant,obstacles:Variant=[]) -> Dictionary:
 	var error:String=Building.validate(state)
@@ -30,6 +34,7 @@ func rebuild(state:Variant,obstacles:Variant=[]) -> Dictionary:
 	if not bool(result.ok):return result
 	_state=candidate._state;_obstacles=candidate._obstacles;_graph=candidate._graph
 	_floor_ids=candidate._floor_ids;_locations=candidate._locations;_stair_edges=candidate._stair_edges
+	_support_surfaces=candidate._support_surfaces;_support_holes=candidate._support_holes;_blockers=candidate._blockers
 	generation+=1
 	return {"ok":true,"generation":generation,"points":_graph.get_point_count(),"stairs":_state.stairs.size()}
 
@@ -44,6 +49,7 @@ func _add(point:Vector3,location:Dictionary) -> int:
 	return id
 
 func _build_graph() -> Dictionary:
+	_prepare_geometry()
 	for level:int in [0,1]:
 		for x:int in range(-36,37):
 			for z:int in range(-28,37):
@@ -61,7 +67,7 @@ func _build_graph() -> Dictionary:
 			if offset.x!=0 and offset.y!=0:
 				if not _floor_ids.has(_cell_key(int(location.level),cell+Vector2i(offset.x,0))) or not _floor_ids.has(_cell_key(int(location.level),cell+Vector2i(0,offset.y))):continue
 			var next_id:int=int(_floor_ids[next])
-			if segment_clear(int(location.level),point,_graph.get_point_position(next_id)):_graph.connect_points(id,next_id)
+			if _segment_bounds_clear(int(location.level),point,_graph.get_point_position(next_id)):_graph.connect_points(id,next_id)
 	for stair:Dictionary in _state.stairs:
 		# Placement validates the entire landing. An obstacle added afterwards may
 		# make this staircase unavailable; never snap its endpoint through it.
@@ -84,23 +90,41 @@ func _build_graph() -> Dictionary:
 		_stair_edges[_edge_key(prior,int(_floor_ids[last]))]=str(stair.id)
 	return {"ok":true}
 
+func _prepare_geometry()->void:
+	_support_surfaces=[[],[]];_support_holes=[[],[]];_blockers=[[],[]]
+	for level:int in [0,1]:
+		var surfaces:Array=Building._rects(_state,"floors",level)
+		# Bearings are computed from the original slabs and openings once.
+		surfaces.append_array(Building._wall_bearing_rects(_state,level))
+		if level==0:surfaces.append(Building.LOT)
+		_support_surfaces[level]=surfaces
+		_support_holes[level]=Building._rects(_state,"openings",level)
+		for wall:Dictionary in _state.walls:
+			if int(wall.level)==level:_blockers[level].append(Building.rect(wall))
+		for stair:Dictionary in _state.stairs:
+			if level==int(stair.lower):_blockers[level].append(Building.stair_rect(stair))
+			if level==int(stair.upper):_blockers[level].append_array(Building.guard_footprints(stair))
+		for obstacle:Dictionary in _obstacles:
+			if int(obstacle.level)==level:_blockers[level].append(Building.rect(obstacle))
+
+func _bounds_clear(level:int,bounds:Rect2)->bool:
+	if not Building.LOT.encloses(bounds) or not Building._covered(bounds,_support_surfaces[level],_support_holes[level]):return false
+	for blocker:Rect2 in _blockers[level]:
+		if blocker.intersects(bounds):return false
+	return true
+
 func point_clear(level:int,point:Vector3,half:Vector2=Vector2(RADIUS,RADIUS)) -> bool:
 	if _state.is_empty() or level not in [0,1] or not point.is_finite() or absf(point.y-Building.level_y(level))>.00001 or half.x<=0 or half.y<=0:return false
-	var bounds:=Rect2(Vector2(point.x,point.z)-half,half*2)
-	if not Building.footprint_supported(_state,level,bounds,level==0) or Building.blocked_rect(_state,level,bounds):return false
-	for obstacle:Dictionary in _obstacles:
-		if int(obstacle.level)==level and Building.rect(obstacle).intersects(bounds):return false
-	return true
+	return _bounds_clear(level,Rect2(Vector2(point.x,point.z)-half,half*2))
+
+func _segment_bounds_clear(level:int,from:Vector3,to:Vector3)->bool:
+	var low:=Vector2(minf(from.x,to.x)-RADIUS,minf(from.z,to.z)-RADIUS)
+	var high:=Vector2(maxf(from.x,to.x)+RADIUS,maxf(from.z,to.z)+RADIUS)
+	return _bounds_clear(level,Rect2(low,high-low))
 
 func segment_clear(level:int,from:Vector3,to:Vector3) -> bool:
 	if not point_clear(level,from) or not point_clear(level,to):return false
-	var low:=Vector2(minf(from.x,to.x)-RADIUS,minf(from.z,to.z)-RADIUS)
-	var high:=Vector2(maxf(from.x,to.x)+RADIUS,maxf(from.z,to.z)+RADIUS)
-	var bounds:=Rect2(low,high-low)
-	if not Building.footprint_supported(_state,level,bounds,level==0) or Building.blocked_rect(_state,level,bounds):return false
-	for obstacle:Dictionary in _obstacles:
-		if int(obstacle.level)==level and Building.rect(obstacle).intersects(bounds):return false
-	return true
+	return _segment_bounds_clear(level,from,to)
 
 func _endpoint(value:Variant) -> Dictionary:
 	if not value is Dictionary or value.get("kind")!="floor" or not Building.number(value.get("level"),0,1,true):return {"ok":false,"error":"Route endpoint requires an explicit floor level."}
