@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "input_reference_blend_sha256": "c19747545b00715b655e3e67c2b51714d080a230d21a02114c671c3547d1a32d",
+  "output_reference_blend_sha256": "3b2053feef862fb2bd93fa1d1d3190e0b22a4f2b37b2b73046db67b28d668330",
+  "input_native_signature": "b5b386346f6f9373a02e9b3662057f437dd7fb36b6620a9b17c972eb77ca7b6b",
+  "output_native_signature": "2b283db666bfcf3acc4d5bacd47b2f55d0d95061f32404d7ce538f5f1d318b36",
+  "signature_definition": "SHA256 sorted JSON of source_facts.objects()[objects] and materials()"
+}

@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "source_art_revision": "Adult Crop26 with local identity-envelope clearance",
+  "accepted_input_blend_sha256": "e8e9d64944d4640659fad856a42cb46858a3a59b8a6e5db84cbd31d2cc6ce3fd",
+  "native_stages": {
+    "fitted_seed_reference": "70550516e89517d5396f480720117e59605ae2cbce62a67bc343adc93cefe797",
+    "feathered_reference": "c19747545b00715b655e3e67c2b51714d080a230d21a02114c671c3547d1a32d",
+    "final_qualified_source": "3b2053feef862fb2bd93fa1d1d3190e0b22a4f2b37b2b73046db67b28d668330"
+  },
+  "reproduced_native_sha256": {
+    "seed/art/characters.blend": "e15d58d66316347db74f787a3f7b80e948577d2044e46c98935f301999ed73c9",
+    "feathered/art/characters.blend": "4d21e1b58175c794b3f159899534f5369e0acfdc22044e140df1b3237c03e0ed",
+    "final/art/characters.blend": "475f23fdb9f4f41d7fce5fd4fa0753cecab8c183696e020a4b6f4340ac95fd14"
+  },
+  "native_container_note": "Fresh .blend saves have different container hashes; fresh read-only signatures and recorded source facts verify equivalent authoring data. All four final GLBs reproduce byte-for-byte in the same Blender environment.",
+  "blender_version": "5.2.1 LTS",
+  "blender_build_hash": "9e2066aef7ef",
+  "blender_binary_sha256": "fd7c5e44f50de3012e9cd8c919ce7cfaca716ff7bc3b9d9e53d300401b892e7c",
+  "model_sha256": {
+    "assets/models/character.glb": "e9c8466c1a2885791858bd8881d5ad919b21dee4a7b577718c6ced8058731e48",
+    "assets/models/character_broad.glb": "19cfeb8b485a53531cd47170f431b9b1696135120f022df0671fc8cb63cdd491",
+    "assets/models/character_lod.glb": "361724c2482ddd89ba98389be959fb38a338d575e8ac840e371b2d0bdb564d5e",
+    "assets/models/character_broad_lod.glb": "baf04a98c7327bb1a3184b896315a336ad0582b9cd686523d7f5f0fc760276bf"
+  },
+  "protected_production_files": {
+    "assets/models/character_child_broad.glb": "e9bc18f047a5b87b2aecc09a67e872469b12fc319e422614d4d12bfb26775aad",
+    "assets/models/character_child_broad_lod.glb": "ba5857513eabe1bcd325a3ce36ac9c200cbcb13444d0e648aa412349ec35c51d",
+    "assets/models/character_child.glb": "9047bf3d65e466de0c81546be2a43342a5f2cde6a310e2aad7daf68b764dc3ee",
+    "assets/models/character_child_lod.glb": "0a608395a465c2868db3b44bad4c99c6719bf139a0f4295451babdb06c426acf",
+    "assets/models/character_elder_broad.glb": "709e3722bc95b19d808dd3ec6433067c7d53c064db5ffe57e961341f5561db7d",
+    "assets/models/character_elder_broad_lod.glb": "e479e3f77d21f69daba5cce8643ba8ba9c1ae7fe4c8b6daab5ec415fd3b38314",
+    "assets/models/character_elder.glb": "ddfdafc5d460522cf795fb83b346fc4e86ba587978784841fee339063099f08b",
+    "assets/models/character_elder_lod.glb": "351c8802a97aaa2e81fbe6a664374767ba87935429875e83f3beb65616c09b79",
+    "assets/models/character_teen_broad.glb": "e6cea21de523059e04cb327601c3752b73dd7f6672d332c26ded4fca23f935d3",
+    "assets/models/character_teen_broad_lod.glb": "4a242e742b205f8ab36a79aade3ec7092536b9d2a374b517a61d1d6a753780f6",
+    "assets/models/character_teen.glb": "ed7781298b238c0173a99249542ae77e9555056b9754e489b26dcf6e5dfa279e",
+    "assets/models/character_teen_lod.glb": "9d83f919957026e3517ff4c6b48e36f7ed6d97a371c329969837fe6ca45432a6",
+    "art/characters_child.blend": "ac1cfe5dd4103c9062a961a6f468b35a13bc866dc6d094f1e8cdbebf3b4111c1",
+    "art/characters_teen.blend": "4a19a3d25fa19f2a7732ad55c61ba352434b4b191acbb932d6a8836ccd50a6f3",
+    "art/characters_elder.blend": "c3c6514559b13aa54fb8ddf69ac7510d98f6af7cd8c9bdf25f4957867e88043d"
+  },
+  "authored_scope": "Relative to accepted face-v23:14 Crop meshes change. Cap and2sideburn coordinate changes;6Crown and5Part_fan topology/SurfaceUV rebuilds. Final clearance stage changes316 horizontal cap coordinates only and preserves every cap height. All9 front sweep meshes, faces/morphs, clothes, rig and shared materials remain exact.",
+  "decoded_scope": "Compare exact decoded accessors by named mesh/semantic consumer. Detailed8 flow meshes share1 index accessor, eliminating7 entries; new sharing is limited to11 rebuilt flow meshes. All protected values, sharing, materials, skins and morphs remain exact. Final cap-only LOD vertex/UV count2173\u21922159, index count10782 unchanged. No float/triangle-order tolerance.",
+  "visual_scope": "Independent critic accepted26 corrected default/maximum-identity/acting/meal frames across standard/broad and full/LOD. Crop slice7.5/10; whole-game score remains7.2/10. Modest rear/temple flare and LOD edge shading ripples remain disclosed limits. This does not establish full game or all possible sliders/poses at10/10.",
+  "capture_freeze_sha256": "0b5de80364d3318cdf5bd440d8665a63561943fc24eb1bfb54a2ad5d8eaa4143",
+  "failed_attempts": [
+    {
+      "stage": "Feathered source c197 before final cap clearance",
+      "finding": "Passed default views but failed combined-maximum identity with jagged scalp intrusion behind ear; retained privately.",
+      "retained_package_freeze_sha256": "ded1d60285ce72d71a81b49b3c2a1a07324688de523ed8232f0fe589ef509f33"
+    },
+    {
+      "stage": "Positional decoded comparison",
+      "finding": "Numeric accessor-ID assumption failed after7 identical index entries were deduplicated; replaced by exact named-consumer comparison plus explicit sharing checks."
+    },
+    {
+      "stage": "First native reproduction JSON comparison",
+      "finding": "Native material-link tuples were compared to serialized arrays; explicit JSON representation fixes type mismatch without changing scalar values or geometry tolerance."
+    }
+  ]
+}

@@ -1,8 +1,8 @@
 {
-  "assets/models/character_broad.glb": "511fde9f7973175c95c1c6aba4f60e043487d830780c051df95118e91833a29b",
-  "assets/models/character_broad_lod.glb": "ccd849074b83bf753419320702541b8c57efde8d56fd5c7e9baf2c05d73bcd6c",
-  "assets/models/character.glb": "846e1f0ca8fe7d20b048f5662b4938c1cf5fc4543589818058d907c724174981",
-  "assets/models/character_lod.glb": "9b8c709a1b572208303a6daf4d719229795c5dab8421c0335c051872a23ded20",
+  "assets/models/character_broad.glb": "19cfeb8b485a53531cd47170f431b9b1696135120f022df0671fc8cb63cdd491",
+  "assets/models/character_broad_lod.glb": "baf04a98c7327bb1a3184b896315a336ad0582b9cd686523d7f5f0fc760276bf",
+  "assets/models/character.glb": "e9c8466c1a2885791858bd8881d5ad919b21dee4a7b577718c6ced8058731e48",
+  "assets/models/character_lod.glb": "361724c2482ddd89ba98389be959fb38a338d575e8ac840e371b2d0bdb564d5e",
   "assets/models/character_child_broad.glb": "e9bc18f047a5b87b2aecc09a67e872469b12fc319e422614d4d12bfb26775aad",
   "assets/models/character_child_broad_lod.glb": "ba5857513eabe1bcd325a3ce36ac9c200cbcb13444d0e648aa412349ec35c51d",
   "assets/models/character_child.glb": "9047bf3d65e466de0c81546be2a43342a5f2cde6a310e2aad7daf68b764dc3ee",
@@ -15,7 +15,7 @@
   "assets/models/character_teen_broad_lod.glb": "4a242e742b205f8ab36a79aade3ec7092536b9d2a374b517a61d1d6a753780f6",
   "assets/models/character_teen.glb": "ed7781298b238c0173a99249542ae77e9555056b9754e489b26dcf6e5dfa279e",
   "assets/models/character_teen_lod.glb": "9d83f919957026e3517ff4c6b48e36f7ed6d97a371c329969837fe6ca45432a6",
-  "art/characters.blend": "e8e9d64944d4640659fad856a42cb46858a3a59b8a6e5db84cbd31d2cc6ce3fd",
+  "art/characters.blend": "3b2053feef862fb2bd93fa1d1d3190e0b22a4f2b37b2b73046db67b28d668330",
   "art/characters_child.blend": "ac1cfe5dd4103c9062a961a6f468b35a13bc866dc6d094f1e8cdbebf3b4111c1",
   "art/characters_teen.blend": "4a19a3d25fa19f2a7732ad55c61ba352434b4b191acbb932d6a8836ccd50a6f3",
   "art/characters_elder.blend": "c3c6514559b13aa54fb8ddf69ac7510d98f6af7cd8c9bdf25f4957867e88043d"

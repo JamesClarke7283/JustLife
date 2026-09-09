@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "signature_definition": "SHA256 sorted JSON of source_facts.objects()[objects] and materials()",
+  "accepted_blend_sha256": "e8e9d64944d4640659fad856a42cb46858a3a59b8a6e5db84cbd31d2cc6ce3fd",
+  "seed_reference_blend_sha256": "70550516e89517d5396f480720117e59605ae2cbce62a67bc343adc93cefe797",
+  "final_reference_blend_sha256": "c19747545b00715b655e3e67c2b51714d080a230d21a02114c671c3547d1a32d",
+  "native_signature": {
+    "accepted": "c13315fc4d4ba538d21cc68bbeea1a4640e7198ccf095c6338d169adb19530d8",
+    "seed": "ff6eafcd2d180e609511ef4e9f144526c5189cf261d8db364b3e11a33df84508",
+    "final": "b5b386346f6f9373a02e9b3662057f437dd7fb36b6620a9b17c972eb77ca7b6b"
+  }
+}
