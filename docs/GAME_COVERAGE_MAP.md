@@ -105,3 +105,9 @@ Nine new browser-exported images from [EA's June 2026 garden guide](https://care
 ## Current settings follow-up, 9 September 2026
 
 Two new, inspected browser exports from [EA's 21 July 2026 update](https://www.ea.com/pl/games/the-sims/the-sims-4/news/update-7-21-2026) are archived in `topics/july_update_official_2026`. One shows festival-notification toggles with Save Settings and Accessibility entries in the sidebar; neither panel is open. The other compares six worn stove variants from City Living. Both are original served 1280×720 AVIF files with exact provenance and no prior duplicate. These stills do not complete the save, accessibility or catalogue-placement workflows.
+
+## Current creator follow-up, 9 September 2026
+
+Seven browser exports from [the July 2026 patch overview](https://simscommunity.info/2026/07/22/sims-4-july-2026-patch-overview-autosave-other-new-features/) are archived in `topics/starter_cas_july_2026`: six full-body creator screenshots and one edited main-menu image. Root inspected every original WebP; none duplicated the archive. They add varied sleeves, layered clothing, accessories and silhouettes. They do not show the save-settings panel or certify a base-only installation.
+
+[EA's current autosave guide](https://help.ea.com/sv/articles/the-sims/the-sims-4/autosave-and-save-reminders/) was separately read in the browser. It describes a separate rolling autosave slot, configurable triggers and manual-save reminders. This is written reference evidence; complete visual save/recovery workflows remain open.
