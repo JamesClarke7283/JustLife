@@ -9,11 +9,13 @@ var locations:Dictionary={}
 var active_place:String=""
 var trip:Dictionary={}
 var car:Node3D
+var home_visit:LifeHomeVisit
 
-func _init(controller:Node) -> void:app=controller
+func _init(controller:Node) -> void:
+ app=controller;home_visit=LifeHomeVisit.new(self)
 
 func reset() -> void:
- locations.clear();active_place="";trip.clear()
+ locations.clear();active_place="";trip.clear();home_visit.reset()
 
 func _default_state(id:String,place:String) -> Dictionary:
  var at:Vector3=Vector3(-8.25,.16,8.25) if id=="maya" else Vector3(8.25,.16,8.65)
@@ -46,7 +48,10 @@ func can_visit(id:String) -> bool:
 func prepare_social(action:Dictionary) -> void:
  var id:String=str(action.get("target_id",""))
  if PEOPLE.has(id) and present(id) and str(action.get("id","")) in LifeSim.SOCIAL_ACTIONS:
-  var at:Vector3=app.world.actors[id].position+Vector3(0,0,.8)
+  # A quarter-grid social point must stay beyond the route body clearance.
+  # The old .8 offset snapped to .75 and made a home guest an unreachable target.
+  var spacing:float=1.0 if home_visit.owns(id) and not app.world.construction.building_state.is_empty() else .8
+  var at:Vector3=app.world.actors[id].position+Vector3(0,0,spacing)
   if not app.world.construction.building_state.is_empty():action.target_position=app.world.nearest_clear_point(at,0)
   else:
    var cell:Vector2i=app.world.nearest_free(at)
@@ -61,7 +66,7 @@ func _speaker(id:String) -> Dictionary:
 
 func publish_targets() -> void:
  var targets:Array=app.world.simulation_targets()
- for member:Dictionary in app.household.members:member.sim.register_targets(targets.filter(func(t:Dictionary):return str(t.id)!=str(member.id)))
+ for member:Dictionary in app.household.members:member.sim.register_targets(targets.filter(func(t:Dictionary):return str(t.id)!=str(member.id) and home_visit.social_allowed(str(t.id),member.sim.get_current_action())))
 
 func tick(delta:float) -> void:
  if active_place.is_empty() or not locations.has(active_place):return
@@ -70,6 +75,7 @@ func tick(delta:float) -> void:
   var actor:LifeActor=app.world.actors.get(id)
   if not is_instance_valid(actor):continue
   var state:Dictionary=locations[active_place][id]
+  if home_visit.owns(id):home_visit.tick(delta);continue
   var speaker:Dictionary=_speaker(id)
   var moving:bool=false
   var talk:String=""
@@ -116,7 +122,9 @@ func snapshot() -> Dictionary:
    if is_instance_valid(actor) and captured[active_place].has(id):
     captured[active_place][id].position=[actor.position.x,actor.position.y,actor.position.z]
     captured[active_place][id].rotation=actor.rotation.y
- return {"version":1,"locations":captured}
+ var result:Dictionary={"version":1,"locations":captured}
+ if home_visit.active() or home_visit.next_serial>1:result.home_visit=home_visit.snapshot()
+ return result
 
 func restore(value:Variant) -> void:
  reset()
@@ -144,11 +152,14 @@ func restore(value:Variant) -> void:
    accepted[id]={"position":record.position.duplicate(),"phase":str(record.phase),"wait":minf(float(record.wait),999999.0),"direction":int(direction),"rotation":float(record.rotation),"waypoint":int(waypoint)}
   locations[place]=accepted
 
+ if value.get("home_visit") is Dictionary:home_visit.restore(value.home_visit)
+
 func _integer(value:Variant,minimum:int,maximum:int) -> bool:
  if not (value is int or value is float):return false
  return is_finite(float(value)) and float(value)>=minimum and float(value)<=maximum and float(value)==floorf(float(value))
 
 func begin_trip(destination:String) -> bool:
+ if home_visit.active():app.show_notice("Say goodbye and wait for your guest to leave before traveling.");return false
  if not trip.is_empty():return false
  for member:Dictionary in app.household.members:
   if member.sim.is_away():app.show_notice("Wait until everyone is home before taking a trip together.");return false

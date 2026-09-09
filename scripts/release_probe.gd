@@ -12,7 +12,8 @@ func press(value:String) -> void:
 	check(false,"Missing public control "+value)
 func capture(name:String) -> void:
 	for i in range(3):await app.get_tree().process_frame
-	await RenderingServer.frame_post_draw
+	# Private verification windows may have automatic redraw suspended when hidden.
+	RenderingServer.force_draw(false,0.0)
 	var directory:String="user://release_check"
 	DirAccess.make_dir_recursive_absolute(directory)
 	check(app.get_viewport().get_texture().get_image().save_png(directory.path_join(name+".png"))==OK,"Capture "+name)
@@ -40,6 +41,7 @@ func run(owner_app:Node) -> void:
 	if not isolated_environment():
 		printerr("Release check requires an isolated justlife-release-check-* XDG_DATA_HOME and JUSTLIFE_DATA_DIR set to its save_data folder.")
 		app.get_tree().quit(2);return
+	app.get_viewport().gui_disable_input=true
 	app.set_process(false);app.set_sound(false)
 	check(app.mode=="menu","Packaged main menu starts.")
 	check(is_instance_valid(app.ambience_player.stream) and is_instance_valid(app.audio_player.stream),"Imported ambience and click audio load from the PCK.")

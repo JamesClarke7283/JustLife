@@ -159,6 +159,8 @@
     "scripts/education.gd.uid",
     "scripts/family_graph.gd",
     "scripts/family_graph.gd.uid",
+    "scripts/home_visit.gd",
+    "scripts/home_visit.gd.uid",
     "scripts/household.gd",
     "scripts/household.gd.uid",
     "scripts/idle_space.gd",

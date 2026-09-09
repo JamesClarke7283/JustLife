@@ -1838,6 +1838,8 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 			if stored.has(key): action[key] = str(stored[key])
 		if stored.has("meal_standing"): action["meal_standing"] = stored.meal_standing
 		if stored.has("adoption_serial"): action["adoption_serial"]=int(stored.adoption_serial)
+		for key:String in ["home_visit_serial","home_visit_token"]:
+			if stored.has(key):action[key]=int(stored[key])
 		if str(action.id) == "birthday": action["birthday_from_stage"] = str(stored.get("birthday_from_stage",character.age_stage))
 		if str(action.id) in ["school_day","career_day"] and is_away():
 			action.phase = "active"
@@ -2020,6 +2022,8 @@ func _validate_state(state: Dictionary) -> String:
 		if action_id=="arrive_home":
 			if not LifeAdoption.integer(action.get("adoption_serial"),1,7) or action.get("paid")!=false or not action.get("paid") is bool or action.get("autonomous")!=false or not action.get("autonomous") is bool or not LifeAdoption.integer(action.get("cost"),0,0) or not LifeAdoption.integer(action.get("duration"),1,1) or not LifeAdoption.integer(action.get("elapsed"),0,0) or str(action.get("phase",""))!="approach" or str(action.get("target_id",""))!="lot_exit" or str(action.get("target_kind",""))!="lot_exit" or not LifeAdoption.point(action.get("target_position")):
 				return "Save contains invalid adoption arrival progress."
+		if action.has("home_visit_serial") or action.has("home_visit_token"):
+			if action_id!="friendly" or not _autonomy_integer(action.get("home_visit_serial"),1,1000000000) or not _autonomy_integer(action.get("home_visit_token"),1,1000000):return "Save contains invalid home welcome metadata."
 		if action.has("cooperation_id") or action.has("cooperation_role") or action_id == "help_homework":
 			if not action.get("cooperation_id") is String or str(action.cooperation_id).is_empty() or str(action.get("cooperation_role","")) != ("helper" if action_id == "help_homework" else "learner") or action_id not in ["homework","help_homework"]:
 				return "Save contains an invalid cooperative action."
