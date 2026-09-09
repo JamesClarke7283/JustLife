@@ -7,6 +7,8 @@ signal action_started(action: Dictionary)
 signal action_finished(action: Dictionary)
 var meal_service: Node
 var sanitation_service: Node
+# Optional live resource admission; standalone simulations keep their old policy.
+var autonomy_activity_available: Callable
 const BLADDER_DESPERATE: float = 12.0
 const BLADDER_GRACE_MINUTES: float = 10.0
 var bladder_grace: float = 0.0
@@ -1345,6 +1347,9 @@ func _reconsider_active_autonomy() -> void:
 	# Let its real eating approach arrive instead of releasing and reclaiming
 	# that plate every hunger check. Different urgent recoveries still interrupt.
 	if str(current.phase)=="approach" and str(next.id)=="eat_meal" and _autonomy_eating_owned_portion(current):return
+	# A waiting alternative must not immediately lose its turn to the same
+	# still-occupied furnishing during ordinary emergency reconsideration.
+	if autonomy_activity_available.is_valid() and not bool(autonomy_activity_available.call({"id":str(next.id),"target_id":str(next.target_id),"target_position":next.position})):return
 	cancel_action()
 	if action_queue.is_empty():_choose_autonomous_action()
 

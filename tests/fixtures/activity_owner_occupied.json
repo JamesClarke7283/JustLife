@@ -1,0 +1,2256 @@
+{
+	"data": {
+		"adoptions": {
+			"events": [],
+			"next_serial": 1.0,
+			"version": 1.0
+		},
+		"cooperation_serial": 0,
+		"cooperation_version": 1,
+		"cooperations": [],
+		"day": 2,
+		"family_graph": {
+			"parents": [],
+			"siblings": [],
+			"version": 1
+		},
+		"funds": 1049,
+		"household_version": 2,
+		"journeys": {
+			"members": {
+				"housemate_1": {
+					"motion": {
+						"clear": [],
+						"custody": "",
+						"destination": [
+							-0.5,
+							0.1599999964237213,
+							1.0
+						],
+						"direction": 0,
+						"distance": 0.0,
+						"identity": 90,
+						"intent": {
+							"id": "paint",
+							"kind": "action",
+							"meal_plate": "",
+							"meal_source": "",
+							"meal_stage": "",
+							"target_id": "item_15"
+						},
+						"phase": "route",
+						"safety": false,
+						"stair_id": "",
+						"ticket": 0,
+						"wait": []
+					},
+					"position": [
+						-0.73130202293396,
+						0.1599999964237213,
+						1.73130202293396
+					],
+					"yaw": -3.2973544597625732
+				},
+				"housemate_2": {
+					"motion": {},
+					"position": [
+						-0.5,
+						0.1599999964237213,
+						1.0
+					],
+					"yaw": -1.570796251296997
+				},
+				"housemate_3": {
+					"motion": {
+						"clear": [],
+						"custody": "",
+						"destination": [
+							-0.5,
+							0.1599999964237213,
+							1.0
+						],
+						"direction": 0,
+						"distance": 0.0,
+						"identity": 92,
+						"intent": {
+							"id": "paint",
+							"kind": "action",
+							"meal_plate": "",
+							"meal_source": "",
+							"meal_stage": "",
+							"target_id": "item_15"
+						},
+						"phase": "route",
+						"safety": false,
+						"stair_id": "",
+						"ticket": 0,
+						"wait": []
+					},
+					"position": [
+						1.6206759214401245,
+						0.1599999964237213,
+						1.8706759214401245
+					],
+					"yaw": -2.35772967338562
+				},
+				"player": {
+					"motion": {
+						"clear": [],
+						"custody": "",
+						"destination": [
+							5.0,
+							0.1599999964237213,
+							-3.0
+						],
+						"direction": 0,
+						"distance": 0.0,
+						"identity": 91,
+						"intent": {
+							"id": "shower",
+							"kind": "action",
+							"meal_plate": "",
+							"meal_source": "",
+							"meal_stage": "",
+							"target_id": "item_22"
+						},
+						"phase": "route",
+						"safety": false,
+						"stair_id": "",
+						"ticket": 0,
+						"wait": []
+					},
+					"position": [
+						3.083451509475708,
+						0.1599999964237213,
+						-0.833451509475708
+					],
+					"yaw": 8.414798736572266
+				}
+			},
+			"next_identity": 93,
+			"next_ticket": 7,
+			"version": 2
+		},
+		"meals": {
+			"batches": [
+				{
+					"chef": "player",
+					"created": 1205.0999999999879,
+					"discarded": 0,
+					"expires": 1565.0999999999879,
+					"host": "item_5",
+					"id": "meal_1",
+					"initial": 4,
+					"offset": [
+						0.0,
+						0.847000002861023,
+						0.0
+					],
+					"owner": "",
+					"position": [
+						-3.5,
+						1.0069999694824219,
+						-1.850000023841858
+					],
+					"quality": 1,
+					"recipe": "garden_skillet",
+					"remaining": 3,
+					"served": 1,
+					"storage": "surface",
+					"venue": "home"
+				}
+			],
+			"portions": [
+				{
+					"batch": "meal_1",
+					"company": [],
+					"expires": 1565.0999999999879,
+					"host": "item_5",
+					"id": "plate_2",
+					"offset": [
+						0.0,
+						0.847000002861023,
+						0.38999998569488525
+					],
+					"owner": "",
+					"position": [
+						-3.5,
+						1.0069999694824219,
+						-1.4600000381469727
+					],
+					"progress": 1.0,
+					"seat": "",
+					"shared_minutes": 0.0,
+					"storage": "dirty",
+					"venue": "home"
+				}
+			],
+			"serial": 2,
+			"version": 2
+		},
+		"members": [
+			{
+				"id": "player",
+				"state": {
+					"action_queue": [
+						{
+							"autonomous": true,
+							"changes": {
+								"fun": 4.0,
+								"hygiene": 85.0
+							},
+							"cost": 0,
+							"description": "Freshen up and feel ready for the day.",
+							"duration": 30.0,
+							"elapsed": 0.0,
+							"id": "shower",
+							"label": "Take a shower",
+							"paid": false,
+							"phase": "approach",
+							"progress": 0.0,
+							"skill": "",
+							"target_id": "item_22",
+							"target_position": [
+								5.0,
+								0.1599999964237213,
+								-3.0
+							],
+							"xp": 0.0
+						},
+						{
+							"autonomous": false,
+							"changes": {
+								"fun": 8.0,
+								"hygiene": -5.0
+							},
+							"cost": 25,
+							"description": "Toasted grains, roasted vegetables and fresh basil.",
+							"duration": 45.0,
+							"elapsed": 0.0,
+							"id": "cook",
+							"label": "Cook garden skillet",
+							"paid": false,
+							"phase": "queued",
+							"progress": 0.0,
+							"recipe": "garden_skillet",
+							"skill": "cooking",
+							"target_id": "item_2",
+							"target_position": [
+								-3.0,
+								0.1599999964237213,
+								-3.5
+							],
+							"xp": 34.0
+						}
+					],
+					"aspiration_history": [],
+					"aspiration_next_day": 0,
+					"aspiration_stage": 1,
+					"autonomy": true,
+					"autonomy_state": {
+						"contacts": {
+							"housemate_1": {
+								"action": "friendly",
+								"at": 1873.199999999963,
+								"count": 1
+							},
+							"leo": {
+								"action": "friendly",
+								"at": 1068.9999999999966,
+								"count": 1.0
+							},
+							"maya": {
+								"action": "friendly",
+								"at": 1107.399999999998,
+								"count": 1.0
+							}
+						},
+						"deferred": {},
+						"version": 1.0
+					},
+					"away_state": {},
+					"bills_paid": 35,
+					"bladder_grace": 0.0,
+					"career": {
+						"level": 1.0,
+						"performance": 37.06472136719479,
+						"salary": 180.0,
+						"schedule": {
+							"attended": 2,
+							"first_day": 1.0,
+							"last_attendance_day": 2,
+							"last_day": 2,
+							"late_minutes": 118.49999999993463,
+							"missed": 0,
+							"version": 1.0
+						},
+						"title": "Studio assistant",
+						"track": "studio",
+						"worked_day": 2
+					},
+					"character": {
+						"age_stage": "adult",
+						"aspiration": "Maker",
+						"body_scale": 1.0,
+						"bottom_color": "eadfc9",
+						"eye_color": "547365",
+						"frame": 1.0,
+						"hair": 2.0,
+						"hair_color": "54382a",
+						"height_scale": 1.0,
+						"life_stage": "adult",
+						"name": "Rowan Vale",
+						"outfit": 0.0,
+						"skin_color": "d9a17d",
+						"top_color": "c97c66",
+						"traits": [
+							"Creative",
+							"Outgoing",
+							"Foodie"
+						],
+						"world_state": {
+							"angle": 0.62,
+							"camera": [
+								0.0,
+								3.0,
+								0.0
+							],
+							"cutaway": true,
+							"elevation": 0.82,
+							"floor": "cfa97e",
+							"home_layout": [
+								{
+									"id": "item_0",
+									"kind": "fridge",
+									"rotation": 0.0,
+									"x": -5.28000020980835,
+									"z": -4.300000190734863
+								},
+								{
+									"id": "item_1",
+									"kind": "counter",
+									"rotation": 0.0,
+									"x": -4.179999828338623,
+									"z": -4.400000095367432
+								},
+								{
+									"id": "item_2",
+									"kind": "stove",
+									"rotation": 0.0,
+									"x": -3.0999999046325684,
+									"z": -4.400000095367432
+								},
+								{
+									"id": "item_3",
+									"kind": "sink",
+									"rotation": 0.0,
+									"x": -2.0199999809265137,
+									"z": -4.400000095367432
+								},
+								{
+									"id": "item_4",
+									"kind": "counter",
+									"rotation": 0.0,
+									"x": -0.9399999976158142,
+									"z": -4.400000095367432
+								},
+								{
+									"id": "item_5",
+									"kind": "dining",
+									"rotation": 0.0,
+									"x": -3.5,
+									"z": -1.850000023841858
+								},
+								{
+									"id": "item_6",
+									"kind": "chair",
+									"rotation": 0.0,
+									"x": -3.5,
+									"z": -2.799999952316284
+								},
+								{
+									"id": "item_7",
+									"kind": "chair",
+									"rotation": 180.0,
+									"x": -3.5,
+									"z": -0.9200000166893005
+								},
+								{
+									"id": "item_8",
+									"kind": "rug",
+									"rotation": 0.0,
+									"x": -2.9000000953674316,
+									"z": 2.430000066757202
+								},
+								{
+									"id": "item_9",
+									"kind": "sofa",
+									"rotation": 180.0,
+									"x": -3.4000000953674316,
+									"z": 3.75
+								},
+								{
+									"id": "item_10",
+									"kind": "table",
+									"rotation": 0.0,
+									"x": -3.0999999046325684,
+									"z": 2.1700000762939453
+								},
+								{
+									"id": "item_11",
+									"kind": "tv",
+									"rotation": 90.0,
+									"x": -4.949999809265137,
+									"z": 0.6499999761581421
+								},
+								{
+									"id": "item_12",
+									"kind": "lamp",
+									"rotation": 0.0,
+									"x": -5.099999904632568,
+									"z": 3.9000000953674316
+								},
+								{
+									"id": "item_13",
+									"kind": "plant",
+									"rotation": 0.0,
+									"x": -0.05000000074505806,
+									"z": 4.150000095367432
+								},
+								{
+									"id": "item_14",
+									"kind": "bookshelf",
+									"rotation": 0.0,
+									"x": -0.05000000074505806,
+									"z": -2.799999952316284
+								},
+								{
+									"id": "item_15",
+									"kind": "easel",
+									"rotation": -34.999996185302734,
+									"x": -0.05000000074505806,
+									"z": 0.0
+								},
+								{
+									"id": "item_16",
+									"kind": "bed",
+									"rotation": 0.0,
+									"x": 3.5,
+									"z": 1.5
+								},
+								{
+									"id": "item_17",
+									"kind": "nightstand",
+									"rotation": 0.0,
+									"x": 2.0299999713897705,
+									"z": 0.6499999761581421
+								},
+								{
+									"id": "item_18",
+									"kind": "nightstand",
+									"rotation": 0.0,
+									"x": 4.980000019073486,
+									"z": 0.6499999761581421
+								},
+								{
+									"id": "item_19",
+									"kind": "desk",
+									"rotation": 180.0,
+									"x": 3.4000000953674316,
+									"z": 4.300000190734863
+								},
+								{
+									"id": "item_20",
+									"kind": "chair",
+									"rotation": 0.0,
+									"x": 3.4000000953674316,
+									"z": 3.4800000190734863
+								},
+								{
+									"id": "item_21",
+									"kind": "plant",
+									"rotation": 180.0,
+									"x": 5.199999809265137,
+									"z": 4.199999809265137
+								},
+								{
+									"id": "item_22",
+									"kind": "shower",
+									"rotation": 0.0,
+									"x": 4.900000095367432,
+									"z": -4.130000114440918
+								},
+								{
+									"id": "item_23",
+									"kind": "toilet",
+									"rotation": 0.0,
+									"x": 2.3499999046325684,
+									"z": -4.099999904632568
+								},
+								{
+									"id": "item_24",
+									"kind": "sink",
+									"rotation": -90.0,
+									"x": 5.150000095367432,
+									"z": -2.130000114440918
+								},
+								{
+									"id": "item_25",
+									"kind": "painting",
+									"rotation": 0.0,
+									"x": -2.0999999046325684,
+									"z": -4.909999847412109
+								},
+								{
+									"id": "placed_7729313",
+									"kind": "bed",
+									"level": 1,
+									"rotation": 0.0,
+									"x": -4.25,
+									"z": -1.0
+								},
+								{
+									"floors": [
+										{
+											"d": 10.0,
+											"id": "legacy_starter_floor",
+											"level": 0.0,
+											"material": "cfa97e",
+											"w": 12.0,
+											"x": 0.0,
+											"z": 0.0
+										},
+										{
+											"d": 6.0,
+											"id": "floors_1",
+											"level": 1.0,
+											"material": "cfa97e",
+											"supports": [
+												"wall_4146552_1",
+												"wall_4146594_2"
+											],
+											"w": 12.0,
+											"x": 0.0,
+											"z": 0.0
+										}
+									],
+									"kind": "__construction",
+									"levels": [
+										0.0,
+										1.0
+									],
+									"next_serial": 4.0,
+									"openings": [
+										{
+											"d": 3.75,
+											"id": "openings_3",
+											"level": 1.0,
+											"stair": "stairs_2",
+											"w": 1.25,
+											"x": -1.5,
+											"z": -0.625
+										}
+									],
+									"revision": 2.0,
+									"roofs": [],
+									"stairs": [
+										{
+											"id": "stairs_2",
+											"lower": 0.0,
+											"opening": "openings_3",
+											"rotation": 0.0,
+											"upper": 1.0,
+											"x": -1.5,
+											"z": -2.5
+										}
+									],
+									"version": 2.0,
+									"walls": [
+										{
+											"cut": false,
+											"d": 0.1599999964237213,
+											"height": 2.6,
+											"id": "wall_4146476_0",
+											"level": 0.0,
+											"material": "eae7d7",
+											"w": 12.199999809265137,
+											"x": 0.0,
+											"z": -5.039999961853027
+										},
+										{
+											"cut": false,
+											"d": 10.100000381469728,
+											"height": 2.6,
+											"id": "wall_4146552_1",
+											"level": 0.0,
+											"material": "8faf9f",
+											"w": 0.1599999964237213,
+											"x": -6.039999961853027,
+											"z": 0.0
+										},
+										{
+											"cut": true,
+											"d": 10.100000381469728,
+											"height": 2.6,
+											"id": "wall_4146594_2",
+											"level": 0.0,
+											"material": "e6d8c5",
+											"w": 0.1599999964237213,
+											"x": 6.039999961853027,
+											"z": 0.0
+										},
+										{
+											"cut": true,
+											"d": 0.1599999964237213,
+											"height": 2.6,
+											"id": "wall_4146637_3",
+											"level": 0.0,
+											"material": "e6d8c5",
+											"w": 5.099999904632568,
+											"x": -3.549999952316284,
+											"z": 5.039999961853027
+										},
+										{
+											"cut": true,
+											"d": 0.1599999964237213,
+											"height": 2.6,
+											"id": "wall_4146675_4",
+											"level": 0.0,
+											"material": "e6d8c5",
+											"w": 5.099999904632568,
+											"x": 3.549999952316284,
+											"z": 5.039999961853027
+										},
+										{
+											"cut": true,
+											"d": 3.5999999046325684,
+											"height": 2.6,
+											"id": "wall_4146712_5",
+											"level": 0.0,
+											"material": "e4dfce",
+											"w": 0.12999999523162842,
+											"x": 1.0,
+											"z": -3.2200000286102295
+										},
+										{
+											"cut": true,
+											"d": 4.599999904632568,
+											"height": 2.6,
+											"id": "wall_4146757_6",
+											"level": 0.0,
+											"material": "e4dfce",
+											"w": 0.12999999523162842,
+											"x": 1.0,
+											"z": 2.700000047683716
+										},
+										{
+											"cut": true,
+											"d": 0.12999999523162842,
+											"height": 2.6,
+											"id": "wall_4146810_7",
+											"level": 0.0,
+											"material": "e4dfce",
+											"w": 1.7999999523162842,
+											"x": 1.899999976158142,
+											"z": -1.149999976158142
+										},
+										{
+											"cut": true,
+											"d": 0.12999999523162842,
+											"height": 2.6,
+											"id": "wall_4146858_8",
+											"level": 0.0,
+											"material": "e4dfce",
+											"w": 2.0999999046325684,
+											"x": 5.0,
+											"z": -1.149999976158142
+										}
+									]
+								}
+							],
+							"lot": 0,
+							"player": [
+								3.083451509475708,
+								0.1599999964237213,
+								-0.833451509475708
+							],
+							"player_rotation": 8.414798736572266,
+							"residents": {
+								"home_visit": {
+									"next_serial": 2,
+									"version": 2,
+									"visit": {}
+								},
+								"locations": {
+									"home": {
+										"leo": {
+											"direction": -1,
+											"phase": "home",
+											"position": [
+												8.5,
+												0.1599999964237213,
+												8.800000190734863
+											],
+											"rotation": 1.5707963705062866,
+											"wait": 9.000000000000323,
+											"waypoint": 0
+										},
+										"maya": {
+											"direction": 1,
+											"phase": "walking",
+											"position": [
+												2.1149914264678955,
+												0.1599999964237213,
+												8.0
+											],
+											"rotation": 1.5707963705062866,
+											"wait": 0.0,
+											"waypoint": 0
+										}
+									}
+								},
+								"version": 1
+							},
+							"resource_action_active": false,
+							"resource_wait_started": -1.0,
+							"sound": false,
+							"venue": "home",
+							"venue_layouts": {},
+							"view_level": 1,
+							"waiting_action_id": "shower",
+							"waiting_target_id": "item_22",
+							"zoom": 30.0
+						}
+					},
+					"day": 2,
+					"education": {
+						"attended": 0,
+						"enrolled_day": 0,
+						"first_class_day": 0,
+						"homework": 0,
+						"last_attendance_day": 0,
+						"last_day": 2,
+						"last_homework_day": 0,
+						"last_prepared_homework_day": 0,
+						"late_minutes": 0.0,
+						"missed": 0,
+						"prepared": 0,
+						"records": [],
+						"stage": "adult",
+						"version": 1
+					},
+					"funds": 1049,
+					"last_bill_day": 2,
+					"lifecycle": {
+						"auto_age": true,
+						"history": [],
+						"lifespan": "normal",
+						"progress": 0.03380952380952236
+					},
+					"memories": [
+						{
+							"day": 2,
+							"detail": "Finished work and earned a living.",
+							"label": "A productive day",
+							"minutes": 1020
+						},
+						{
+							"day": 2,
+							"detail": "Created and sold a painting.",
+							"label": "An original canvas",
+							"minutes": 450
+						},
+						{
+							"day": 2,
+							"detail": "You took time to get to know Ellis Vale.",
+							"label": "A new conversation",
+							"minutes": 433
+						},
+						{
+							"day": 1.0,
+							"detail": "You took time to get to know Maya Chen.",
+							"label": "A new conversation",
+							"minutes": 1107.0
+						},
+						{
+							"day": 1.0,
+							"detail": "You took time to get to know Leo Morgan.",
+							"label": "A new conversation",
+							"minutes": 1068.0
+						},
+						{
+							"day": 1.0,
+							"detail": "Finished work and earned a living.",
+							"label": "A productive day",
+							"minutes": 1020.0
+						}
+					],
+					"minutes": 1084.7999999998792,
+					"moodlets": [
+						{
+							"description": "You've earned a little time for yourself.",
+							"emotion": "Confident",
+							"label": "A job well done",
+							"remaining": 115.49999999999815,
+							"strength": 2
+						}
+					],
+					"needs": {
+						"bladder": 86.4887500000088,
+						"energy": 40.0624999999962,
+						"fun": 29.06249999999646,
+						"hunger": 45.64125000001122,
+						"hygiene": 1.4320000000017807,
+						"social": 70.3070000000379
+					},
+					"relationships": {
+						"housemate_1": {
+							"bond": "none",
+							"family_role": "none",
+							"friendship": 30.9,
+							"life_stage": "adult",
+							"milestones": [
+								"met"
+							],
+							"name": "Ellis Vale",
+							"romance": 0.0,
+							"status": "Acquaintance"
+						},
+						"housemate_2": {
+							"bond": "none",
+							"family_role": "none",
+							"friendship": 16.5,
+							"life_stage": "minor",
+							"milestones": [],
+							"name": "Morgan Vale",
+							"romance": 0.0,
+							"status": "Acquaintance"
+						},
+						"housemate_3": {
+							"bond": "none",
+							"family_role": "none",
+							"friendship": 16.5,
+							"life_stage": "minor",
+							"milestones": [],
+							"name": "Casey Vale",
+							"romance": 0.0,
+							"status": "Acquaintance"
+						},
+						"leo": {
+							"bond": "none",
+							"family_role": "none",
+							"friendship": 16.9,
+							"life_stage": "adult",
+							"milestones": [
+								"met"
+							],
+							"name": "Leo Morgan",
+							"romance": 0.0,
+							"status": "Acquaintance"
+						},
+						"maya": {
+							"bond": "none",
+							"family_role": "none",
+							"friendship": 24.9,
+							"life_stage": "adult",
+							"milestones": [
+								"met"
+							],
+							"name": "Maya Chen",
+							"romance": 0.0,
+							"status": "Acquaintance"
+						}
+					},
+					"romantic_partner": "",
+					"satisfaction": 60,
+					"skills": {
+						"charisma": {
+							"level": 2.0,
+							"xp": 0.400000000000027
+						},
+						"cooking": {
+							"level": 1.0,
+							"xp": 47.59999999999997
+						},
+						"creativity": {
+							"level": 2,
+							"xp": 55.543750000004366
+						},
+						"gardening": {
+							"level": 1.0,
+							"xp": 0.0
+						},
+						"logic": {
+							"level": 1.0,
+							"xp": 0.0
+						},
+						"parenting": {
+							"level": 1.0,
+							"xp": 0.0
+						}
+					},
+					"social_history": [
+						{
+							"day": 2,
+							"detail": "You took time to get to know Ellis Vale.",
+							"label": "A new conversation",
+							"minutes": 433,
+							"stage": "met",
+							"target_id": "housemate_1",
+							"target_name": "Ellis Vale"
+						},
+						{
+							"day": 1,
+							"detail": "You took time to get to know Maya Chen.",
+							"label": "A new conversation",
+							"minutes": 1107,
+							"stage": "met",
+							"target_id": "maya",
+							"target_name": "Maya Chen"
+						},
+						{
+							"day": 1,
+							"detail": "You took time to get to know Leo Morgan.",
+							"label": "A new conversation",
+							"minutes": 1068,
+							"stage": "met",
+							"target_id": "leo",
+							"target_name": "Leo Morgan"
+						}
+					],
+					"speed": 0,
+					"story_events": [
+						{
+							"context": {
+								"career_level": 1,
+								"creativity_level": 1,
+								"neighbor": "maya",
+								"skill": "creativity"
+							},
+							"day": 2,
+							"id": "story_day_2",
+							"kind": "neighbor_invitation"
+						}
+					],
+					"story_generated_day": 2,
+					"story_history": [],
+					"version": 1,
+					"wants": [
+						{
+							"complete": true,
+							"description": "Cook your first fresh meal.",
+							"id": "first_meal",
+							"label": "A taste of home",
+							"progress": 1.0,
+							"reward": 60,
+							"target": 1.0
+						},
+						{
+							"actions": [
+								"friendly",
+								"joke",
+								"deep_talk"
+							],
+							"complete": false,
+							"description": "Share a friendly chat, joke or heartfelt talk with someone at 35 friendship.",
+							"id": "friend",
+							"label": "A familiar face",
+							"metric": "familiar_chat",
+							"progress": 0.0,
+							"reward": 80,
+							"seen": [],
+							"seen_days": [],
+							"skill": "",
+							"target": 1.0
+						},
+						{
+							"complete": false,
+							"description": "Complete and sell three paintings.",
+							"id": "create",
+							"label": "Make your mark",
+							"progress": 1.0,
+							"reward": 180,
+							"target": 3.0
+						}
+					]
+				}
+			},
+			{
+				"id": "housemate_1",
+				"state": {
+					"action_queue": [
+						{
+							"autonomous": true,
+							"changes": {
+								"fun": 40.0,
+								"hygiene": -5.0
+							},
+							"cost": 20,
+							"description": "Create an original canvas; its value grows with your skill.",
+							"duration": 90.0,
+							"elapsed": 0.0,
+							"id": "paint",
+							"label": "Paint & sell a canvas",
+							"paid": false,
+							"phase": "approach",
+							"progress": 0.0,
+							"skill": "creativity",
+							"target_id": "item_15",
+							"target_position": [
+								-0.5,
+								0.1599999964237213,
+								1.0
+							],
+							"xp": 42.0
+						}
+					],
+					"aspiration_history": [],
+					"aspiration_next_day": 0,
+					"aspiration_stage": 1,
+					"autonomy": true,
+					"autonomy_state": {
+						"contacts": {
+							"player": {
+								"action": "friendly",
+								"at": 1873.199999999963,
+								"count": 1
+							}
+						},
+						"deferred": {},
+						"version": 1.0
+					},
+					"away_state": {},
+					"bills_paid": 0,
+					"bladder_grace": 0.0,
+					"career": {
+						"level": 1.0,
+						"performance": 42.069605195318985,
+						"salary": 180.0,
+						"schedule": {
+							"attended": 2,
+							"first_day": 1.0,
+							"last_attendance_day": 2,
+							"last_day": 2,
+							"late_minutes": 66.29999999994254,
+							"missed": 0,
+							"version": 1.0
+						},
+						"title": "Studio assistant",
+						"track": "studio",
+						"worked_day": 2
+					},
+					"character": {
+						"age_stage": "adult",
+						"aspiration": "Maker",
+						"body_scale": 1.0,
+						"bottom_color": "eadfc9",
+						"eye_color": "547365",
+						"frame": 0.0,
+						"hair": 1.0,
+						"hair_color": "54382a",
+						"height_scale": 1.0,
+						"life_stage": "adult",
+						"name": "Ellis Vale",
+						"outfit": 0.0,
+						"skin_color": "d9a17d",
+						"top_color": "7195b3",
+						"traits": [
+							"Creative",
+							"Outgoing",
+							"Foodie"
+						],
+						"world_state": {
+							"player": [
+								-0.73130202293396,
+								0.1599999964237213,
+								1.73130202293396
+							],
+							"player_rotation": -3.2973544597625732,
+							"resource_action_active": false,
+							"resource_wait_started": -1.0,
+							"waiting_action_id": "paint",
+							"waiting_target_id": "item_15"
+						}
+					},
+					"day": 2,
+					"education": {
+						"attended": 0,
+						"enrolled_day": 0,
+						"first_class_day": 0,
+						"homework": 0,
+						"last_attendance_day": 0,
+						"last_day": 2,
+						"last_homework_day": 0,
+						"last_prepared_homework_day": 0,
+						"late_minutes": 0.0,
+						"missed": 0,
+						"prepared": 0,
+						"records": [],
+						"stage": "adult",
+						"version": 1
+					},
+					"funds": 1049,
+					"last_bill_day": 2,
+					"lifecycle": {
+						"auto_age": true,
+						"history": [],
+						"lifespan": "normal",
+						"progress": 0.03380952380952236
+					},
+					"memories": [
+						{
+							"day": 2,
+							"detail": "Finished work and earned a living.",
+							"label": "A productive day",
+							"minutes": 1020
+						},
+						{
+							"day": 2,
+							"detail": "You took time to get to know Rowan Vale.",
+							"label": "A new conversation",
+							"minutes": 433
+						},
+						{
+							"day": 1,
+							"detail": "Created and sold a painting.",
+							"label": "An original canvas",
+							"minutes": 1250
+						},
+						{
+							"day": 1.0,
+							"detail": "Finished work and earned a living.",
+							"label": "A productive day",
+							"minutes": 1020.0
+						}
+					],
+					"minutes": 1084.7999999998792,
+					"moodlets": [
+						{
+							"description": "You've earned a little time for yourself.",
+							"emotion": "Confident",
+							"label": "A job well done",
+							"remaining": 115.49999999999815,
+							"strength": 2
+						}
+					],
+					"needs": {
+						"bladder": 89.28125000000779,
+						"energy": 51.90250000000098,
+						"fun": 5.757499999997179,
+						"hunger": 38.726250000009905,
+						"hygiene": 6.432000000001395,
+						"social": 47.59000000000518
+					},
+					"relationships": {
+						"housemate_2": {
+							"bond": "none",
+							"family_role": "none",
+							"friendship": 16.5,
+							"life_stage": "minor",
+							"milestones": [],
+							"name": "Morgan Vale",
+							"romance": 0.0,
+							"status": "Acquaintance"
+						},
+						"housemate_3": {
+							"bond": "none",
+							"family_role": "none",
+							"friendship": 16.5,
+							"life_stage": "minor",
+							"milestones": [],
+							"name": "Casey Vale",
+							"romance": 0.0,
+							"status": "Acquaintance"
+						},
+						"leo": {
+							"bond": "none",
+							"family_role": "none",
+							"friendship": 2.5,
+							"life_stage": "adult",
+							"milestones": [],
+							"name": "Leo Morgan",
+							"romance": 0.0,
+							"status": "Acquaintance"
+						},
+						"maya": {
+							"bond": "none",
+							"family_role": "none",
+							"friendship": 10.5,
+							"life_stage": "adult",
+							"milestones": [],
+							"name": "Maya Chen",
+							"romance": 0.0,
+							"status": "Acquaintance"
+						},
+						"player": {
+							"bond": "none",
+							"family_role": "none",
+							"friendship": 30.9,
+							"life_stage": "adult",
+							"milestones": [
+								"met"
+							],
+							"name": "Rowan Vale",
+							"romance": 0.0,
+							"status": "Acquaintance"
+						}
+					},
+					"romantic_partner": "",
+					"satisfaction": 0,
+					"skills": {
+						"charisma": {
+							"level": 1.0,
+							"xp": 25.199999999999935
+						},
+						"cooking": {
+							"level": 1.0,
+							"xp": 0.0
+						},
+						"creativity": {
+							"level": 2,
+							"xp": 58.80625000000387
+						},
+						"gardening": {
+							"level": 1.0,
+							"xp": 0.0
+						},
+						"logic": {
+							"level": 1.0,
+							"xp": 0.0
+						},
+						"parenting": {
+							"level": 1.0,
+							"xp": 0.0
+						}
+					},
+					"social_history": [
+						{
+							"day": 2,
+							"detail": "You took time to get to know Rowan Vale.",
+							"label": "A new conversation",
+							"minutes": 433,
+							"stage": "met",
+							"target_id": "player",
+							"target_name": "Rowan Vale"
+						}
+					],
+					"speed": 0,
+					"story_events": [
+						{
+							"context": {
+								"career_level": 1,
+								"creativity_level": 2,
+								"neighbor": "maya",
+								"skill": "creativity"
+							},
+							"day": 2,
+							"id": "story_day_2",
+							"kind": "neighbor_invitation"
+						}
+					],
+					"story_generated_day": 2,
+					"story_history": [],
+					"version": 1,
+					"wants": [
+						{
+							"complete": false,
+							"description": "Cook your first fresh meal.",
+							"id": "first_meal",
+							"label": "A taste of home",
+							"progress": 0.0,
+							"reward": 60,
+							"target": 1.0
+						},
+						{
+							"actions": [
+								"friendly",
+								"joke",
+								"deep_talk"
+							],
+							"complete": false,
+							"description": "Share a friendly chat, joke or heartfelt talk with someone at 35 friendship.",
+							"id": "friend",
+							"label": "A familiar face",
+							"metric": "familiar_chat",
+							"progress": 0.0,
+							"reward": 80,
+							"seen": [],
+							"seen_days": [],
+							"skill": "",
+							"target": 1.0
+						},
+						{
+							"complete": false,
+							"description": "Complete and sell three paintings.",
+							"id": "create",
+							"label": "Make your mark",
+							"progress": 1.0,
+							"reward": 180,
+							"target": 3.0
+						}
+					]
+				}
+			},
+			{
+				"id": "housemate_2",
+				"state": {
+					"action_queue": [
+						{
+							"autonomous": true,
+							"changes": {
+								"fun": 40.0,
+								"hygiene": -5.0
+							},
+							"cost": 20,
+							"description": "Create an original canvas; its value grows with your skill.",
+							"duration": 90.0,
+							"elapsed": 23.100000000000033,
+							"id": "paint",
+							"label": "Paint & sell a canvas",
+							"paid": true,
+							"phase": "active",
+							"progress": 0.25666666666666704,
+							"skill": "creativity",
+							"started_day": 2,
+							"started_minutes": 1061.6999999998827,
+							"target_id": "item_15",
+							"target_position": [
+								-0.5,
+								0.1599999964237213,
+								1.0
+							],
+							"xp": 42.0
+						}
+					],
+					"aspiration_history": [],
+					"aspiration_next_day": 0,
+					"aspiration_stage": 1,
+					"autonomy": true,
+					"autonomy_state": {
+						"contacts": {},
+						"deferred": {},
+						"version": 1.0
+					},
+					"away_state": {},
+					"bills_paid": 0,
+					"bladder_grace": 0.0,
+					"career": {
+						"level": 1.0,
+						"performance": 0.0,
+						"salary": 180.0,
+						"schedule": {
+							"attended": 0.0,
+							"first_day": 1.0,
+							"last_attendance_day": 0.0,
+							"last_day": 2,
+							"late_minutes": 0.0,
+							"missed": 0,
+							"version": 1.0
+						},
+						"title": "Studio assistant",
+						"track": "studio",
+						"worked_day": 0.0
+					},
+					"character": {
+						"age_stage": "teen",
+						"aspiration": "Maker",
+						"body_scale": 1.0,
+						"bottom_color": "eadfc9",
+						"eye_color": "547365",
+						"frame": 1.0,
+						"hair": 0.0,
+						"hair_color": "54382a",
+						"height_scale": 1.0,
+						"life_stage": "minor",
+						"name": "Morgan Vale",
+						"outfit": 0.0,
+						"skin_color": "d9a17d",
+						"top_color": "bd9b68",
+						"traits": [
+							"Creative",
+							"Outgoing",
+							"Foodie"
+						],
+						"world_state": {
+							"player": [
+								-0.5,
+								0.1599999964237213,
+								1.0
+							],
+							"player_rotation": -1.570796251296997,
+							"resource_action_active": true,
+							"resource_wait_started": -1.0,
+							"waiting_action_id": "paint",
+							"waiting_target_id": "item_15"
+						}
+					},
+					"day": 2,
+					"education": {
+						"attended": 2,
+						"enrolled_day": 1,
+						"first_class_day": 1,
+						"homework": 2,
+						"last_attendance_day": 2,
+						"last_day": 2,
+						"last_homework_day": 2,
+						"last_prepared_homework_day": 1,
+						"late_minutes": 0.0,
+						"missed": 0,
+						"prepared": 1,
+						"records": [],
+						"stage": "teen",
+						"version": 1
+					},
+					"funds": 1049,
+					"last_bill_day": 2,
+					"lifecycle": {
+						"auto_age": true,
+						"history": [],
+						"lifespan": "normal",
+						"progress": 0.06761904761904472
+					},
+					"memories": [
+						{
+							"day": 2,
+							"detail": "Finished today's lessons and came home with something new to learn.",
+							"label": "A day at school",
+							"minutes": 900
+						},
+						{
+							"day": 1,
+							"detail": "Created and sold a painting.",
+							"label": "An original canvas",
+							"minutes": 1153
+						},
+						{
+							"day": 1.0,
+							"detail": "Finished today's lessons and came home with something new to learn.",
+							"label": "A day at school",
+							"minutes": 900.0
+						}
+					],
+					"minutes": 1084.7999999998792,
+					"moodlets": [
+						{
+							"description": "The next assignment is prepared.",
+							"emotion": "Focused",
+							"label": "Ready for class",
+							"remaining": 39.300000000000765,
+							"strength": 1
+						}
+					],
+					"needs": {
+						"bladder": 72.06000000001175,
+						"energy": 32.1749999999989,
+						"fun": 23.140000000000047,
+						"hunger": 11.660000000009337,
+						"hygiene": 72.81316666668329,
+						"social": 72.32400000001114
+					},
+					"relationships": {
+						"housemate_1": {
+							"bond": "none",
+							"family_role": "none",
+							"friendship": 16.5,
+							"life_stage": "adult",
+							"milestones": [],
+							"name": "Ellis Vale",
+							"romance": 0.0,
+							"status": "Acquaintance"
+						},
+						"housemate_3": {
+							"bond": "none",
+							"family_role": "none",
+							"friendship": 16.5,
+							"life_stage": "minor",
+							"milestones": [],
+							"name": "Casey Vale",
+							"romance": 0.0,
+							"status": "Acquaintance"
+						},
+						"leo": {
+							"bond": "none",
+							"family_role": "none",
+							"friendship": 2.5,
+							"life_stage": "adult",
+							"milestones": [],
+							"name": "Leo Morgan",
+							"romance": 0.0,
+							"status": "Acquaintance"
+						},
+						"maya": {
+							"bond": "none",
+							"family_role": "none",
+							"friendship": 10.5,
+							"life_stage": "adult",
+							"milestones": [],
+							"name": "Maya Chen",
+							"romance": 0.0,
+							"status": "Acquaintance"
+						},
+						"player": {
+							"bond": "none",
+							"family_role": "none",
+							"friendship": 16.5,
+							"life_stage": "adult",
+							"milestones": [],
+							"name": "Rowan Vale",
+							"romance": 0.0,
+							"status": "Acquaintance"
+						}
+					},
+					"romantic_partner": "",
+					"satisfaction": 0,
+					"skills": {
+						"charisma": {
+							"level": 1.0,
+							"xp": 5.31000000000026
+						},
+						"cooking": {
+							"level": 1.0,
+							"xp": 0.0
+						},
+						"creativity": {
+							"level": 2,
+							"xp": 23.89200000000014
+						},
+						"gardening": {
+							"level": 1.0,
+							"xp": 0.0
+						},
+						"logic": {
+							"level": 1.0,
+							"xp": 44.702857142858
+						},
+						"parenting": {
+							"level": 1.0,
+							"xp": 0.0
+						}
+					},
+					"social_history": [],
+					"speed": 0,
+					"story_events": [
+						{
+							"context": {
+								"career_level": 1,
+								"creativity_level": 2,
+								"neighbor": "maya",
+								"skill": "creativity"
+							},
+							"day": 2,
+							"id": "story_day_2",
+							"kind": "neighbor_invitation"
+						}
+					],
+					"story_generated_day": 2,
+					"story_history": [],
+					"version": 1,
+					"wants": [
+						{
+							"complete": false,
+							"description": "Cook your first fresh meal.",
+							"id": "first_meal",
+							"label": "A taste of home",
+							"progress": 0.0,
+							"reward": 60,
+							"target": 1.0
+						},
+						{
+							"actions": [
+								"friendly",
+								"joke",
+								"deep_talk"
+							],
+							"complete": false,
+							"description": "Share a friendly chat, joke or heartfelt talk with someone at 35 friendship.",
+							"id": "friend",
+							"label": "A familiar face",
+							"metric": "familiar_chat",
+							"progress": 0.0,
+							"reward": 80,
+							"seen": [],
+							"seen_days": [],
+							"skill": "",
+							"target": 1.0
+						},
+						{
+							"complete": false,
+							"description": "Complete and sell three paintings.",
+							"id": "create",
+							"label": "Make your mark",
+							"progress": 1.0,
+							"reward": 180,
+							"target": 3.0
+						}
+					]
+				}
+			},
+			{
+				"id": "housemate_3",
+				"state": {
+					"action_queue": [
+						{
+							"autonomous": true,
+							"changes": {
+								"fun": 40.0,
+								"hygiene": -5.0
+							},
+							"cost": 20,
+							"description": "Create an original canvas; its value grows with your skill.",
+							"duration": 90.0,
+							"elapsed": 0.0,
+							"id": "paint",
+							"label": "Paint & sell a canvas",
+							"paid": false,
+							"phase": "approach",
+							"progress": 0.0,
+							"skill": "creativity",
+							"target_id": "item_15",
+							"target_position": [
+								-0.5,
+								0.1599999964237213,
+								1.0
+							],
+							"xp": 42.0
+						}
+					],
+					"aspiration_history": [],
+					"aspiration_next_day": 0,
+					"aspiration_stage": 1,
+					"autonomy": true,
+					"autonomy_state": {
+						"contacts": {},
+						"deferred": {},
+						"version": 1.0
+					},
+					"away_state": {},
+					"bills_paid": 0,
+					"bladder_grace": 0.0,
+					"career": {
+						"level": 1.0,
+						"performance": 0.0,
+						"salary": 180.0,
+						"schedule": {
+							"attended": 0.0,
+							"first_day": 1.0,
+							"last_attendance_day": 0.0,
+							"last_day": 2,
+							"late_minutes": 0.0,
+							"missed": 0,
+							"version": 1.0
+						},
+						"title": "Studio assistant",
+						"track": "studio",
+						"worked_day": 0.0
+					},
+					"character": {
+						"age_stage": "child",
+						"aspiration": "Maker",
+						"body_scale": 1.0,
+						"bottom_color": "eadfc9",
+						"eye_color": "547365",
+						"frame": 0.0,
+						"hair": 1.0,
+						"hair_color": "54382a",
+						"height_scale": 1.0,
+						"life_stage": "minor",
+						"name": "Casey Vale",
+						"outfit": 0.0,
+						"skin_color": "d9a17d",
+						"top_color": "efeadb",
+						"traits": [
+							"Creative",
+							"Outgoing",
+							"Foodie"
+						],
+						"world_state": {
+							"player": [
+								1.6206759214401245,
+								0.1599999964237213,
+								1.8706759214401245
+							],
+							"player_rotation": -2.35772967338562,
+							"resource_action_active": false,
+							"resource_wait_started": -1.0,
+							"waiting_action_id": "paint",
+							"waiting_target_id": "item_15"
+						}
+					},
+					"day": 2,
+					"education": {
+						"attended": 2,
+						"enrolled_day": 1,
+						"first_class_day": 1,
+						"homework": 2,
+						"last_attendance_day": 2,
+						"last_day": 2,
+						"last_homework_day": 2,
+						"last_prepared_homework_day": 1,
+						"late_minutes": 145.19999999993968,
+						"missed": 0,
+						"prepared": 1,
+						"records": [],
+						"stage": "child",
+						"version": 1
+					},
+					"funds": 1049,
+					"last_bill_day": 2,
+					"lifecycle": {
+						"auto_age": true,
+						"history": [],
+						"lifespan": "normal",
+						"progress": 0.10142857142855946
+					},
+					"memories": [
+						{
+							"day": 2,
+							"detail": "Finished today's lessons and came home with something new to learn.",
+							"label": "A day at school",
+							"minutes": 900
+						},
+						{
+							"day": 1.0,
+							"detail": "Finished today's lessons and came home with something new to learn.",
+							"label": "A day at school",
+							"minutes": 900.0
+						}
+					],
+					"minutes": 1084.7999999998792,
+					"moodlets": [
+						{
+							"description": "The next assignment is prepared.",
+							"emotion": "Focused",
+							"label": "Ready for class",
+							"remaining": 95.40000000000023,
+							"strength": 1
+						}
+					],
+					"needs": {
+						"bladder": 67.7800000000126,
+						"energy": 22.819999999997336,
+						"fun": 0.0,
+						"hunger": 35.960000000012,
+						"hygiene": 11.432000000000968,
+						"social": 57.62400000001099
+					},
+					"relationships": {
+						"housemate_1": {
+							"bond": "none",
+							"family_role": "none",
+							"friendship": 16.5,
+							"life_stage": "adult",
+							"milestones": [],
+							"name": "Ellis Vale",
+							"romance": 0.0,
+							"status": "Acquaintance"
+						},
+						"housemate_2": {
+							"bond": "none",
+							"family_role": "none",
+							"friendship": 16.5,
+							"life_stage": "minor",
+							"milestones": [],
+							"name": "Morgan Vale",
+							"romance": 0.0,
+							"status": "Acquaintance"
+						},
+						"leo": {
+							"bond": "none",
+							"family_role": "none",
+							"friendship": 2.5,
+							"life_stage": "adult",
+							"milestones": [],
+							"name": "Leo Morgan",
+							"romance": 0.0,
+							"status": "Acquaintance"
+						},
+						"maya": {
+							"bond": "none",
+							"family_role": "none",
+							"friendship": 10.5,
+							"life_stage": "adult",
+							"milestones": [],
+							"name": "Maya Chen",
+							"romance": 0.0,
+							"status": "Acquaintance"
+						},
+						"player": {
+							"bond": "none",
+							"family_role": "none",
+							"friendship": 16.5,
+							"life_stage": "adult",
+							"milestones": [],
+							"name": "Rowan Vale",
+							"romance": 0.0,
+							"status": "Acquaintance"
+						}
+					},
+					"romantic_partner": "",
+					"satisfaction": 60,
+					"skills": {
+						"charisma": {
+							"level": 1.0,
+							"xp": 4.260000000000433
+						},
+						"cooking": {
+							"level": 1.0,
+							"xp": 0.0
+						},
+						"creativity": {
+							"level": 1.0,
+							"xp": 0.0
+						},
+						"gardening": {
+							"level": 1.0,
+							"xp": 0.0
+						},
+						"logic": {
+							"level": 2,
+							"xp": 22.565714285715906
+						},
+						"parenting": {
+							"level": 1.0,
+							"xp": 0.0
+						}
+					},
+					"social_history": [],
+					"speed": 0,
+					"story_events": [
+						{
+							"context": {
+								"career_level": 1,
+								"creativity_level": 1,
+								"neighbor": "maya",
+								"skill": "creativity"
+							},
+							"day": 2,
+							"id": "story_day_2",
+							"kind": "neighbor_invitation"
+						}
+					],
+					"story_generated_day": 2,
+					"story_history": [],
+					"version": 1,
+					"wants": [
+						{
+							"actions": [
+								"snack"
+							],
+							"complete": true,
+							"description": "Get a snack from the fridge.",
+							"id": "first_snack",
+							"label": "A little independence",
+							"metric": "actions",
+							"progress": 1.0,
+							"reward": 60,
+							"seen": [],
+							"seen_days": [],
+							"skill": "",
+							"target": 1.0
+						},
+						{
+							"actions": [
+								"friendly",
+								"joke",
+								"deep_talk"
+							],
+							"complete": false,
+							"description": "Share a friendly chat, joke or heartfelt talk with someone at 35 friendship.",
+							"id": "friend",
+							"label": "A familiar face",
+							"metric": "familiar_chat",
+							"progress": 0.0,
+							"reward": 80,
+							"seen": [],
+							"seen_days": [],
+							"skill": "",
+							"target": 1.0
+						},
+						{
+							"complete": false,
+							"description": "Complete and sell three paintings.",
+							"id": "create",
+							"label": "Make your mark",
+							"progress": 0.0,
+							"reward": 180,
+							"target": 3.0
+						}
+					]
+				}
+			}
+		],
+		"minutes": 1084.7999999998792,
+		"sanitation": {
+			"puddles": [],
+			"serial": 0,
+			"version": 1
+		},
+		"selected_index": 0,
+		"speed": 0,
+		"world": [
+			{
+				"id": "item_0",
+				"kind": "fridge",
+				"rotation": 0.0,
+				"x": -5.28000020980835,
+				"z": -4.300000190734863
+			},
+			{
+				"id": "item_1",
+				"kind": "counter",
+				"rotation": 0.0,
+				"x": -4.179999828338623,
+				"z": -4.400000095367432
+			},
+			{
+				"id": "item_2",
+				"kind": "stove",
+				"rotation": 0.0,
+				"x": -3.0999999046325684,
+				"z": -4.400000095367432
+			},
+			{
+				"id": "item_3",
+				"kind": "sink",
+				"rotation": 0.0,
+				"x": -2.0199999809265137,
+				"z": -4.400000095367432
+			},
+			{
+				"id": "item_4",
+				"kind": "counter",
+				"rotation": 0.0,
+				"x": -0.9399999976158142,
+				"z": -4.400000095367432
+			},
+			{
+				"id": "item_5",
+				"kind": "dining",
+				"rotation": 0.0,
+				"x": -3.5,
+				"z": -1.850000023841858
+			},
+			{
+				"id": "item_6",
+				"kind": "chair",
+				"rotation": 0.0,
+				"x": -3.5,
+				"z": -2.799999952316284
+			},
+			{
+				"id": "item_7",
+				"kind": "chair",
+				"rotation": 180.0,
+				"x": -3.5,
+				"z": -0.9200000166893005
+			},
+			{
+				"id": "item_8",
+				"kind": "rug",
+				"rotation": 0.0,
+				"x": -2.9000000953674316,
+				"z": 2.430000066757202
+			},
+			{
+				"id": "item_9",
+				"kind": "sofa",
+				"rotation": 180.0,
+				"x": -3.4000000953674316,
+				"z": 3.75
+			},
+			{
+				"id": "item_10",
+				"kind": "table",
+				"rotation": 0.0,
+				"x": -3.0999999046325684,
+				"z": 2.1700000762939453
+			},
+			{
+				"id": "item_11",
+				"kind": "tv",
+				"rotation": 90.0,
+				"x": -4.949999809265137,
+				"z": 0.6499999761581421
+			},
+			{
+				"id": "item_12",
+				"kind": "lamp",
+				"rotation": 0.0,
+				"x": -5.099999904632568,
+				"z": 3.9000000953674316
+			},
+			{
+				"id": "item_13",
+				"kind": "plant",
+				"rotation": 0.0,
+				"x": -0.05000000074505806,
+				"z": 4.150000095367432
+			},
+			{
+				"id": "item_14",
+				"kind": "bookshelf",
+				"rotation": 0.0,
+				"x": -0.05000000074505806,
+				"z": -2.799999952316284
+			},
+			{
+				"id": "item_15",
+				"kind": "easel",
+				"rotation": -34.999996185302734,
+				"x": -0.05000000074505806,
+				"z": 0.0
+			},
+			{
+				"id": "item_16",
+				"kind": "bed",
+				"rotation": 0.0,
+				"x": 3.5,
+				"z": 1.5
+			},
+			{
+				"id": "item_17",
+				"kind": "nightstand",
+				"rotation": 0.0,
+				"x": 2.0299999713897705,
+				"z": 0.6499999761581421
+			},
+			{
+				"id": "item_18",
+				"kind": "nightstand",
+				"rotation": 0.0,
+				"x": 4.980000019073486,
+				"z": 0.6499999761581421
+			},
+			{
+				"id": "item_19",
+				"kind": "desk",
+				"rotation": 180.0,
+				"x": 3.4000000953674316,
+				"z": 4.300000190734863
+			},
+			{
+				"id": "item_20",
+				"kind": "chair",
+				"rotation": 0.0,
+				"x": 3.4000000953674316,
+				"z": 3.4800000190734863
+			},
+			{
+				"id": "item_21",
+				"kind": "plant",
+				"rotation": 180.0,
+				"x": 5.199999809265137,
+				"z": 4.199999809265137
+			},
+			{
+				"id": "item_22",
+				"kind": "shower",
+				"rotation": 0.0,
+				"x": 4.900000095367432,
+				"z": -4.130000114440918
+			},
+			{
+				"id": "item_23",
+				"kind": "toilet",
+				"rotation": 0.0,
+				"x": 2.3499999046325684,
+				"z": -4.099999904632568
+			},
+			{
+				"id": "item_24",
+				"kind": "sink",
+				"rotation": -90.0,
+				"x": 5.150000095367432,
+				"z": -2.130000114440918
+			},
+			{
+				"id": "item_25",
+				"kind": "painting",
+				"rotation": 0.0,
+				"x": -2.0999999046325684,
+				"z": -4.909999847412109
+			},
+			{
+				"id": "placed_7729313",
+				"kind": "bed",
+				"level": 1,
+				"rotation": 0.0,
+				"x": -4.25,
+				"z": -1.0
+			},
+			{
+				"floors": [
+					{
+						"d": 10.0,
+						"id": "legacy_starter_floor",
+						"level": 0.0,
+						"material": "cfa97e",
+						"w": 12.0,
+						"x": 0.0,
+						"z": 0.0
+					},
+					{
+						"d": 6.0,
+						"id": "floors_1",
+						"level": 1.0,
+						"material": "cfa97e",
+						"supports": [
+							"wall_4146552_1",
+							"wall_4146594_2"
+						],
+						"w": 12.0,
+						"x": 0.0,
+						"z": 0.0
+					}
+				],
+				"kind": "__construction",
+				"levels": [
+					0.0,
+					1.0
+				],
+				"next_serial": 4.0,
+				"openings": [
+					{
+						"d": 3.75,
+						"id": "openings_3",
+						"level": 1.0,
+						"stair": "stairs_2",
+						"w": 1.25,
+						"x": -1.5,
+						"z": -0.625
+					}
+				],
+				"revision": 2.0,
+				"roofs": [],
+				"stairs": [
+					{
+						"id": "stairs_2",
+						"lower": 0.0,
+						"opening": "openings_3",
+						"rotation": 0.0,
+						"upper": 1.0,
+						"x": -1.5,
+						"z": -2.5
+					}
+				],
+				"version": 2.0,
+				"walls": [
+					{
+						"cut": false,
+						"d": 0.1599999964237213,
+						"height": 2.6,
+						"id": "wall_4146476_0",
+						"level": 0.0,
+						"material": "eae7d7",
+						"w": 12.199999809265137,
+						"x": 0.0,
+						"z": -5.039999961853027
+					},
+					{
+						"cut": false,
+						"d": 10.100000381469728,
+						"height": 2.6,
+						"id": "wall_4146552_1",
+						"level": 0.0,
+						"material": "8faf9f",
+						"w": 0.1599999964237213,
+						"x": -6.039999961853027,
+						"z": 0.0
+					},
+					{
+						"cut": true,
+						"d": 10.100000381469728,
+						"height": 2.6,
+						"id": "wall_4146594_2",
+						"level": 0.0,
+						"material": "e6d8c5",
+						"w": 0.1599999964237213,
+						"x": 6.039999961853027,
+						"z": 0.0
+					},
+					{
+						"cut": true,
+						"d": 0.1599999964237213,
+						"height": 2.6,
+						"id": "wall_4146637_3",
+						"level": 0.0,
+						"material": "e6d8c5",
+						"w": 5.099999904632568,
+						"x": -3.549999952316284,
+						"z": 5.039999961853027
+					},
+					{
+						"cut": true,
+						"d": 0.1599999964237213,
+						"height": 2.6,
+						"id": "wall_4146675_4",
+						"level": 0.0,
+						"material": "e6d8c5",
+						"w": 5.099999904632568,
+						"x": 3.549999952316284,
+						"z": 5.039999961853027
+					},
+					{
+						"cut": true,
+						"d": 3.5999999046325684,
+						"height": 2.6,
+						"id": "wall_4146712_5",
+						"level": 0.0,
+						"material": "e4dfce",
+						"w": 0.12999999523162842,
+						"x": 1.0,
+						"z": -3.2200000286102295
+					},
+					{
+						"cut": true,
+						"d": 4.599999904632568,
+						"height": 2.6,
+						"id": "wall_4146757_6",
+						"level": 0.0,
+						"material": "e4dfce",
+						"w": 0.12999999523162842,
+						"x": 1.0,
+						"z": 2.700000047683716
+					},
+					{
+						"cut": true,
+						"d": 0.12999999523162842,
+						"height": 2.6,
+						"id": "wall_4146810_7",
+						"level": 0.0,
+						"material": "e4dfce",
+						"w": 1.7999999523162842,
+						"x": 1.899999976158142,
+						"z": -1.149999976158142
+					},
+					{
+						"cut": true,
+						"d": 0.12999999523162842,
+						"height": 2.6,
+						"id": "wall_4146858_8",
+						"level": 0.0,
+						"material": "e4dfce",
+						"w": 2.0999999046325684,
+						"x": 5.0,
+						"z": -1.149999976158142
+					}
+				]
+			}
+		]
+	},
+	"metadata": {
+		"day": 2,
+		"id": "life_1788966286736_90579531",
+		"members": [
+			"Rowan Vale",
+			"Ellis Vale",
+			"Morgan Vale",
+			"Casey Vale"
+		],
+		"minutes": 1084,
+		"name": "Vale household — actual easel approach",
+		"saved_at": "2026-09-09T15:04:46",
+		"saved_at_unix": 1788966286.736895
+	},
+	"save_library_version": 1
+}

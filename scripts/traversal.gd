@@ -7,6 +7,7 @@ const Building=preload("res://scripts/building_state.gd")
 const WALK_SPEED:float=1.6
 const BODY_GAP:float=.72
 const ROUTE_CLEARANCE:float=BODY_GAP+.06
+const REPLAN_OBSERVATION_TIME:float=.25
 var app:Node
 var routes:Dictionary={}
 var stairs:Dictionary={}
@@ -71,6 +72,7 @@ func request(id:String,destination:Vector3)->Dictionary:
 			old.legs=legs;old.cursor=index;old.generation=int(route.generation)
 			return {"ok":true,"points":route.points,"already_reached":false}
 	_remove_waiter(id)
+	if routes.get(id,{}).has("replan_observation"):courtesy.blocked.erase(id)
 	routes[id]={"identity":next_identity,"generation":int(route.generation),"destination":destination,"legs":legs,"cursor":0,"phase":"route","points":PackedVector3Array(),"point":0,"prepared":false,"wait":Vector3.INF,"ticket":0,"distance":0.0,"safety":false,"stair_id":"","exit":Vector3.INF,"clear":Vector3.INF,"error":""}
 	next_identity+=1
 	return {"ok":true,"points":route.points,"already_reached":bool(route.already_reached)}
@@ -159,6 +161,29 @@ func _exit_place(id:String,leg:Dictionary)->Dictionary:
 		if not points.is_empty():return {"point":point,"points":points}
 	return {}
 
+func _can_observe_replan(id:String,route:Dictionary)->bool:
+	# Keep this brief retry observation inside the existing ordinary activity
+	# donor contract. Walking intents, protected crossings and resource/food
+	# owners continue through their existing movement paths.
+	if not courtesy._eligible(self,id) or route.has("courtesy") or courtesy.beneficiary(self,id):return false
+	if int(route.ticket)!=0 or not str(route.stair_id).is_empty() or not str(route.get("custody","")).is_empty():return false
+	var action:Dictionary=app.household.member_sim(id).get_current_action()
+	if not str(action.get("cooperation_id","")).is_empty() or not app.household.meals.carried_by(id).is_empty():return false
+	var motion:Dictionary=courtesy._walk_intent(self,id)
+	return not bool(motion.get("walk",false)) and not bool(motion.get("waiting",false)) and not bool(motion.get("resume_active",false)) and float(motion.get("wait_started",-1.0))<0
+
+func _observe_replan(id:String,route:Dictionary,remaining:float,moved:bool)->bool:
+	var at:Vector3=app.world.actors[id].position
+	var observation:Dictionary=route.get("replan_observation",{})
+	if moved or observation.get("at",Vector3.INF)!=at or int(observation.get("identity",-1))!=int(route.identity) or int(observation.get("generation",-1))!=int(route.generation):observation={}
+	var age:float=float(observation.get("age",0.0))
+	route.replan_observation={"at":at,"identity":int(route.identity),"generation":int(route.generation),"age":minf(REPLAN_OBSERVATION_TIME,age+remaining)}
+	courtesy.note_block(self,id,remaining,moved)
+	# The threshold-reaching call returns with the blocked path intact so the
+	# end-of-household selector gets one opportunity. A later blocked call must
+	# requery, even if no anchor was found or its last alternative was empty.
+	return age<REPLAN_OBSERVATION_TIME
+
 func _walk(id:String,route:Dictionary,time:float,consider_courtesy:bool=true)->Dictionary:
 	var actor:LifeActor=app.world.actors[id]
 	var remaining:float=maxf(0,time);var moved:bool=false
@@ -171,13 +196,17 @@ func _walk(id:String,route:Dictionary,time:float,consider_courtesy:bool=true)->D
 		if not courtesy.step_allowed(self,id,actor.position,next):return {"time":0.0,"moved":moved,"blocked":true}
 		if not _step_clear(id,actor.position,next):
 			if courtesy.beneficiary(self,id):return {"time":0.0,"moved":moved,"blocked":true}
+			var observing:bool=consider_courtesy and _can_observe_replan(id,route)
+			if observing and _observe_replan(id,route,remaining,moved):return {"time":0.0,"moved":moved,"blocked":true}
 			if consider_courtesy and str(route.get("phase",""))=="clear":courtesy.note_block(self,id,time,moved)
 			var alternative:PackedVector3Array=_floor_route(actor.position,route.points[-1],id)
 			if not alternative.is_empty():route.points=alternative;route.point=0
-			elif consider_courtesy and str(route.get("phase",""))!="clear":courtesy.note_block(self,id,time,moved)
+			elif not observing and consider_courtesy and str(route.get("phase",""))!="clear":courtesy.note_block(self,id,time,moved)
 			return {"time":0.0,"moved":moved,"blocked":true}
 		actor.rotation.y=lerp_angle(actor.rotation.y,atan2(difference.x,difference.z),minf(1,remaining*12))
 		actor.position=next;remaining-=step/WALK_SPEED;moved=true
+		if route.has("replan_observation"):
+			route.erase("replan_observation");courtesy.blocked.erase(id)
 		if step>=distance-.000001:actor.position=goal;route.point+=1
 	return {"time":remaining,"moved":moved,"blocked":false}
 

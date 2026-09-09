@@ -160,6 +160,8 @@ func _ready() -> void:
 
 func _connect_live_nodes() -> void:
 	household.physical_snapshot_provider=_physical_snapshot_context
+	for member:Dictionary in household.members:
+		member.sim.autonomy_activity_available=_activity_available_for_member.bind(str(member.id))
 	var sender:LifeHousehold=household
 	household.notice.connect(show_notice)
 	household.member_action_started.connect(_member_action_started)
@@ -615,6 +617,7 @@ func setup_live(layout:Array) -> void:
 	for i in range(household.members.size()):
 		var member:Dictionary=household.members[i]
 		spawn_actor(member.id,member.sim.character,Vector3(-.7+(i%2)*.65,.16,2.8+(i/2)*.48))
+		member.sim.autonomy_activity_available=_activity_available_for_member.bind(str(member.id))
 		motion_states[member.id]=_empty_motion()
 	bound_member_id=household.selected_id()
 	_bind_member(bound_member_id)
@@ -1625,6 +1628,7 @@ func _bind_member(id:String) -> void:
 	if not member:return
 	bound_member_id=id
 	sim=member
+	sim.autonomy_activity_available=_activity_available_for_member.bind(id)
 	sim.meal_service=meal_flow
 	sim.sanitation_service=sanitation_flow
 	player=world.actors.get(id)
@@ -2393,7 +2397,7 @@ func _queue_near_busy_activity()->bool:
 	var destination:Vector3=action.target_position
 	var level:int=world.point_level(player.position)
 	if level<0 or level!=world.point_level(destination) or not traversal._free(bound_member_id,player.position):return false
-	var near_anchor:bool=player.position.distance_to(destination)<=1.0 and world.lot_navigation.segment_clear(level,player.position,destination)
+	var near_anchor:bool=player.position.distance_to(destination)<=1.0 and (world.lot_navigation.segment_clear(level,player.position,destination) or _near_active_resource_owner(action,level))
 	if not near_anchor and not _near_arrived_resource_waiter(action,level):return false
 	if _activity_available(action):return false
 	waiting_for_target=true
@@ -2426,27 +2430,49 @@ func _near_arrived_resource_waiter(action:Dictionary,level:int)->bool:
 		for resource:String in wanted:
 			if not resource.begins_with("standing:") and held.has(resource):shared=true;break
 		if not shared:continue
-		# Nearby access may bend around a corner. This witnesses queue proximity;
-		# the caller remains at its real body and has not traversed the witness.
-		var occupied:Array[Vector3]=traversal._occupied(bound_member_id)
-		occupied.erase(actor.position) # Exempt only this peer's occupied endpoint.
-		for moving_id:String in traversal.routes:
-			if moving_id==bound_member_id:continue
-			var stair_wait:Vector3=traversal.routes[moving_id].wait
-			if stair_wait.is_finite():occupied.append(stair_wait)
-		var reserved_body:bool=false
-		for queued:Dictionary in household.members:
-			var queued_id:String=str(queued.id)
-			if queued_id in [bound_member_id,id]:continue
-			var waiting:Dictionary=motion_states.get(queued_id,_empty_motion())
-			var point:Vector3=waiting.wait_destination
-			if bool(waiting.waiting) and point.is_finite():
-				occupied.append(point)
-				if traversal._same_floor(player.position,point) and player.position.distance_to(point)<.8:reserved_body=true
-		if reserved_body:continue
-		var witness:Dictionary=world.lot_navigation.route_avoiding(LifeLotNavigation.floor_location(level,player.position),LifeLotNavigation.floor_location(level,actor.position),occupied,LifeTraversal.ROUTE_CLEARANCE)
-		if bool(witness.ok) and float(witness.distance)<=1.0 and witness.segments.all(func(leg:Dictionary)->bool:return str(leg.kind)=="floor" and int(leg.level)==level):return true
+		if _near_resource_body(id,level):return true
 	return false
+
+func _near_active_resource_owner(action:Dictionary,level:int)->bool:
+	var wanted:Array[String]=_activity_resources(action)
+	var courtesy_owner:String=traversal.courtesy.owner(traversal)
+	for member:Dictionary in household.members:
+		var id:String=str(member.id)
+		if id==bound_member_id or not world.actors.has(id):continue
+		var other:Dictionary=member.sim.get_current_action()
+		if str(other.get("phase",""))!="active" or not bool(other.get("paid",false)) or not str(other.get("cooperation_id","")).is_empty() or str(other.get("id","")) in LifeSim.SOCIAL_ACTIONS:continue
+		if traversal.busy(id) or traversal.safety(id):continue
+		if not courtesy_owner.is_empty() and id in [courtesy_owner,str(traversal.routes[courtesy_owner].courtesy.beneficiary_id)]:continue
+		var actor:LifeActor=world.actors[id]
+		if not actor.visible or actor.position!=action.target_position or world.point_level(actor.position)!=level or player.position.distance_to(actor.position)>1.0:continue
+		var shared:bool=false
+		for resource:String in _activity_resources(other):
+			if not resource.begins_with("standing:") and wanted.has(resource):shared=true;break
+		if shared and _near_resource_body(id,level):return true
+	return false
+
+func _near_resource_body(id:String,level:int)->bool:
+	# Nearby access can bend around a corner; only its owner's endpoint is
+	# exempt. This proves queue proximity, never traversal or action arrival.
+	var actor:LifeActor=world.actors[id]
+	var occupied:Array[Vector3]=traversal._occupied(bound_member_id)
+	occupied.erase(actor.position) # Exempt only this peer's occupied endpoint.
+	for moving_id:String in traversal.routes:
+		if moving_id==bound_member_id:continue
+		var stair_wait:Vector3=traversal.routes[moving_id].wait
+		if stair_wait.is_finite():occupied.append(stair_wait)
+	var reserved_body:bool=false
+	for queued:Dictionary in household.members:
+		var queued_id:String=str(queued.id)
+		if queued_id in [bound_member_id,id]:continue
+		var waiting:Dictionary=motion_states.get(queued_id,_empty_motion())
+		var point:Vector3=waiting.wait_destination
+		if bool(waiting.waiting) and point.is_finite():
+			occupied.append(point)
+			if traversal._same_floor(player.position,point) and player.position.distance_to(point)<.8:reserved_body=true
+	if reserved_body:return false
+	var witness:Dictionary=world.lot_navigation.route_avoiding(LifeLotNavigation.floor_location(level,player.position),LifeLotNavigation.floor_location(level,actor.position),occupied,LifeTraversal.ROUTE_CLEARANCE)
+	return bool(witness.ok) and float(witness.distance)<=1.0 and witness.segments.all(func(leg:Dictionary)->bool:return str(leg.kind)=="floor" and int(leg.level)==level)
 
 func _set_route(destination:Vector3) -> bool:
 	path_index=0
@@ -2757,16 +2783,26 @@ func _resolve_activity_target(action:Dictionary) -> void:
 		action.target_position=world.approach(best)
 
 func _activity_available(action:Dictionary) -> bool:
+	return _activity_available_for_member(action,bound_member_id)
+
+func _activity_available_for_member(action:Dictionary,member_id:String) -> bool:
 	if action.is_empty():return false
 	if not residents.home_visit.welcome_start_allowed(action):return false
 	if str(action.get("id","")) in LifeSim.SOCIAL_ACTIONS and LifeResidents.PEOPLE.has(str(action.get("target_id",""))):
 		if not residents.present(str(action.target_id)) or not residents.home_visit.social_allowed(str(action.target_id),action):return false
-	if meal_flow.standing_place_blocks(bound_member_id,action) or meal_flow.guest_blocks(action):return false
+	if meal_flow.standing_place_blocks(member_id,action) or meal_flow.guest_blocks(action):return false
 	var wanted:Array[String]=_activity_resources(action)
 	var session_id:String=str(action.get("cooperation_id",""))
-	var resuming_owner:bool=resume_activity and is_instance_valid(sim) and action==sim.get_current_action()
+	# Read the requesting member without rebinding the movement controller
+	# while Household.tick is advancing another member. Live bound fields
+	# take precedence over its last stored motion; other members use that store.
+	var member_sim:LifeSim=household.member_sim(member_id)
+	var own_motion:Dictionary=motion_states.get(member_id,_empty_motion())
+	var own_wait_started:float=wait_started if member_id==bound_member_id else float(own_motion.get("wait_started",-1.0))
+	var own_resume:bool=resume_activity if member_id==bound_member_id else bool(own_motion.get("resume_active",false))
+	var resuming_owner:bool=own_resume and is_instance_valid(member_sim) and action==member_sim.get_current_action()
 	for member:Dictionary in household.members:
-		if member.id==bound_member_id:continue
+		if member.id==member_id:continue
 		var other:Dictionary=member.sim.get_current_action()
 		if other.is_empty():continue
 		var other_session:String=str(other.get("cooperation_id",""))
@@ -2781,8 +2817,8 @@ func _activity_available(action:Dictionary) -> bool:
 			if earlier<0:continue
 			# An arrived Lifelet keeps their place when an earlier actor in the
 			# household array finishes and immediately requests the same object.
-			if wait_started>=0 and earlier>wait_started:continue
-			if wait_started>=0 and is_equal_approx(earlier,wait_started) and str(member.id)>bound_member_id:continue
+			if own_wait_started>=0 and earlier>own_wait_started:continue
+			if own_wait_started>=0 and is_equal_approx(earlier,own_wait_started) and str(member.id)>member_id:continue
 		for resource_id:String in _activity_resources(other):
 			if wanted.has(resource_id):return false
 	return true
