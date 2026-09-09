@@ -8,15 +8,17 @@ var active_place:String=""
 var trip:Dictionary={}
 var car:Node3D
 var home_visit:LifeHomeVisit
+var sidewalk_routes:Dictionary={}
+const SIDEWALK_LANES={"maya":8.0,"leo":8.8}
 
 func _init(controller:Node) -> void:
  app=controller;home_visit=LifeHomeVisit.new(self)
 
 func reset() -> void:
- locations.clear();active_place="";trip.clear();home_visit.reset()
+ locations.clear();active_place="";trip.clear();home_visit.reset();sidewalk_routes.clear()
 
 func _default_state(id:String,place:String) -> Dictionary:
- var at:Vector3=Vector3(-8.25,.16,8.25) if id=="maya" else Vector3(8.25,.16,8.65)
+ var at:=Vector3(-8.25 if id=="maya" else 8.25,.16,float(SIDEWALK_LANES[id]))
  var phase:String="walking" if id=="maya" else "home"
  var wait:float=0 if id=="maya" else 24.0
  if place==str(PEOPLE[id].home):at=Vector3(-.5,.16,.1);phase="visiting";wait=5.0
@@ -25,6 +27,7 @@ func _default_state(id:String,place:String) -> Dictionary:
  return {"position":[at.x,at.y,at.z],"direction":1 if id=="maya" else -1,"phase":phase,"wait":wait,"rotation":PI*.5 if id=="maya" else -PI*.5,"waypoint":0}
 
 func attach(place:String) -> void:
+ sidewalk_routes.clear()
  active_place=place
  if not locations.has(place):locations[place]={}
  for id:String in PEOPLE:
@@ -66,6 +69,42 @@ func publish_targets() -> void:
  var targets:Array=app.world.simulation_targets()
  for member:Dictionary in app.household.members:member.sim.register_targets(targets.filter(func(t:Dictionary):return str(t.id)!=str(member.id) and home_visit.social_allowed(str(t.id),member.sim.get_current_action())))
 
+func _walk_sidewalk(id:String,state:Dictionary,time:float)->bool:
+ var actor:LifeActor=app.world.actors[id]
+ var goal:=Vector3(8.5*float(state.direction),.16,float(SIDEWALK_LANES[id]))
+ var now:float=float(app.household.day-1)*1440.0+app.household.minutes
+ var generation:int=app.world.lot_navigation.generation
+ if not sidewalk_routes.has(id) or sidewalk_routes[id].goal!=goal:
+  # Saved positions stay authoritative. An older narrow lane is joined on foot.
+  sidewalk_routes[id]={"goal":goal,"points":PackedVector3Array([actor.position,Vector3(actor.position.x,.16,goal.z),goal]),"point":0,"generation":generation,"retry_at":now}
+ var route:Dictionary=sidewalk_routes[id]
+ if int(route.generation)!=generation:
+  route.points=PackedVector3Array();route.point=0;route.generation=generation;route.retry_at=now
+ if route.points.is_empty():
+  if now<float(route.retry_at):return false
+  route.points=app.traversal._floor_route(actor.position,goal,id);route.point=0;route.retry_at=now+3.0
+ var budget:float=maxf(0,time)*1.1;var moving:bool=false
+ for iteration:int in range(128):
+  if int(route.point)>=route.points.size() or budget<=.0000001:break
+  var target:Vector3=route.points[int(route.point)]
+  var distance:float=actor.position.distance_to(target)
+  if distance<.000001:route.point+=1;continue
+  var step:float=minf(minf(distance,budget),.08)
+  var next:Vector3=actor.position.move_toward(target,step)
+  if not app.world.lot_navigation.segment_clear(0,actor.position,next) or not app.traversal._step_clear(id,actor.position,next):
+   # A stopped Lifelet keeps their body and walking intent. Retry is bounded.
+   if now>=float(route.retry_at):
+    route.points=app.traversal._floor_route(actor.position,goal,id);route.point=0;route.retry_at=now+3.0
+   break
+  var direction:Vector3=next-actor.position
+  actor.rotation.y=atan2(direction.x,direction.z)
+  actor.position=next;budget-=step;moving=true
+  if distance<=step+.000001:route.point+=1
+ if actor.position.distance_to(goal)<.00001:
+  state.phase="home";state.wait=48.0 if id=="maya" else 72.0;state.direction=-int(state.direction)
+  app.world.set_actor_away(id,true,true);sidewalk_routes.erase(id)
+ return moving
+
 func tick(delta:float) -> void:
  if active_place.is_empty() or not locations.has(active_place):return
  var speed:float=float(app.sim.speed)
@@ -73,7 +112,7 @@ func tick(delta:float) -> void:
   var actor:LifeActor=app.world.actors.get(id)
   if not is_instance_valid(actor):continue
   var state:Dictionary=locations[active_place][id]
-  if home_visit.owns(id):home_visit.tick(delta);continue
+  if home_visit.owns(id):sidewalk_routes.erase(id);home_visit.tick(delta);continue
   var speaker:Dictionary=_speaker(id)
   var moving:bool=false
   var talk:String=""
@@ -85,16 +124,10 @@ func tick(delta:float) -> void:
   elif speed>0:
    if str(state.phase)=="home":
     state.wait=maxf(0,float(state.wait)-delta*speed*LifeSim.GAME_MINUTES_PER_SECOND)
-    if float(state.wait)<=0 and active_place=="home":
-     state.phase="walking";app.world.set_actor_away(id,false,false)
+    if float(state.wait)<=0 and active_place=="home" and app.traversal._free(id,actor.position):
+     sidewalk_routes.erase(id);state.phase="walking";app.world.set_actor_away(id,false,false)
    elif str(state.phase)=="walking":
-    var before:Vector3=actor.position
-    actor.position.x=move_toward(actor.position.x,8.5*float(state.direction),delta*speed*1.1)
-    actor.rotation.y=PI*.5*float(state.direction)
-    moving=actor.position.distance_to(before)>.00001
-    if is_equal_approx(actor.position.x,8.5*float(state.direction)):
-     state.phase="home";state.wait=48.0 if id=="maya" else 72.0;state.direction=-int(state.direction)
-     app.world.set_actor_away(id,true,true)
+    moving=_walk_sidewalk(id,state,delta*speed)
    elif str(state.phase)=="visiting":
     state.wait=maxf(0,float(state.wait)-delta*speed)
     if float(state.wait)<=0:

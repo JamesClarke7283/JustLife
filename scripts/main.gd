@@ -1489,6 +1489,7 @@ func _refresh_sim_targets(replan:bool=true,reconcile_food:bool=true) -> void:
 		_refresh_member_targets(replan)
 		_store_motion()
 	_bind_member(prior)
+	traversal.courtesy.reconcile(traversal,replan)
 	meal_flow.sync_oven_presentations()
 	_reconstruct_paused_cooking()
 
@@ -1536,6 +1537,7 @@ func _refresh_member_targets(replan:bool=true) -> void:
 		if str(action.phase)=="active" and destination.distance_to(action.target_position)>.05:
 			if str(action.id)=="eat_meal":meal_flow.carry_diner_plate(action)
 			action.phase="approach"
+		if waiting_for_target and is_same(action,pending_action) and destination!=action.target_position:_clear_motion()
 		action.target_position=destination
 	reconciling_targets=false
 	if interrupted_social and not loading_game:
@@ -1686,7 +1688,11 @@ func on_action_started(action:Dictionary) -> void:
 	if str(action.id)=="arrive_home":adoption_flow.start_arrival(action);return
 	var social_admitted:bool=traversal.active(bound_member_id) or not path.is_empty() or str(action.phase)=="active"
 	var arrived_waiter:bool=traversal.active(bound_member_id) and str(traversal.routes[bound_member_id].phase)=="waiting" and is_same(action,pending_action)
-	_clear_motion(arrived_waiter)
+	var retained_courtesy:bool=traversal.courtesy.preserve_request(traversal,bound_member_id,action.target_position)
+	var resource_wait:Dictionary={}
+	if waiting_for_target and wait_started>=0 and is_same(action,pending_action) and str(action.phase)=="approach" and not walk_only and not resume_activity and not arrived_waiter and not retained_courtesy and str(action.get("cooperation_id","")).is_empty() and not str(action.id) in LifeSim.SOCIAL_ACTIONS and not _find_item(str(action.target_id)).is_empty():
+		resource_wait={"started":wait_started,"review":wait_review,"destination":wait_destination,"resources":_activity_resources(action),"plate":str(action.get("meal_plate","")),"source":str(action.get("meal_source","")),"stage":str(action.get("meal_stage",""))}
+	_clear_motion(arrived_waiter or retained_courtesy)
 	var resident_id:String=str(action.get("target_id",""))
 	if str(action.get("id","")) in LifeSim.SOCIAL_ACTIONS and LifeResidents.PEOPLE.has(resident_id) and not residents.present(resident_id):
 		show_notice(str(LifeResidents.PEOPLE[resident_id].name)+" has gone home. Catch them on their next walk, or arrange a visit.")
@@ -1707,6 +1713,20 @@ func on_action_started(action:Dictionary) -> void:
 	if not is_same(sim.get_current_action(),action):return
 	pending_action=action
 	if not pending_move.is_empty() and str(action.target_id)==str(pending_move.entry.id):return
+	if not resource_wait.is_empty() and resource_wait.resources==_activity_resources(action) and resource_wait.plate==str(action.get("meal_plate","")) and resource_wait.source==str(action.get("meal_source","")) and resource_wait.stage==str(action.get("meal_stage","")):
+		# A harmless Build replan retains this instruction's physical queue turn.
+		waiting_for_target=true;wait_started=float(resource_wait.started);wait_review=float(resource_wait.review)
+		var reserved:Vector3=resource_wait.destination
+		if _activity_available(action):
+			wait_destination=action.target_position
+			if not _set_route(wait_destination):
+				_clear_motion();show_notice("The way is blocked. Try moving a furnishing.")
+				_cancel_blocked_action.call_deferred(route_generation,action,bound_member_id,load_epoch)
+		elif reserved.is_finite() and world.point_level(reserved)==world.point_level(action.target_position) and _wait_position_clear(reserved,reserved==player.position):
+			wait_destination=reserved
+			if player.position!=reserved and not _set_route(reserved):_route_to_wait_position(action)
+		else:_route_to_wait_position(action)
+		refresh_hud();return
 	_set_route(action.target_position)
 	if path.is_empty():
 		show_notice("The way is blocked. Try moving a furnishing.")
@@ -1842,6 +1862,7 @@ func save_game(slot_id:String="",title:String="") -> bool:
 		title=active_save_name if not active_save_name.is_empty() else str(sim.character.name)+"'s story"
 	if not overlay_open:capture_save_preview()
 	cancel_placement()
+	traversal.courtesy.reconcile(traversal,true)
 	_store_motion()
 	if current_venue=="home":home_layout=world.serialize_items()
 	else:venue_layouts[current_venue]=world.serialize_items()
@@ -2119,13 +2140,19 @@ func _restore_journeys() -> Dictionary:
 		motion.wait_started=float(saved.get("resource_wait_started",-1.0))
 		motion.waiting=motion.wait_started>=0 and str(current.get("phase",""))=="approach"
 		motion.wait_review=motion.wait_started
+		if motion.waiting:
+			# An arrived resource waiter has no saved movement. Its existing
+			# body remains the reserved point until ordinary admission chooses
+			# a new route; never reconstruct a path to the occupied action.
+			var saved_motion:Dictionary=household.journeys.members[id].get("motion",{})
+			motion.wait_destination=LifeJourneyState.vector(saved_motion.destination) if not saved_motion.is_empty() else world.actors[id].position
 		motion.resume_active=bool(saved.get("resource_action_active",false)) and str(current.get("phase",""))=="approach"
 		member.sim.meal_service=meal_flow
 		member.sim.sanitation_service=sanitation_flow
 		if str(current.get("phase","")) in ["approach","active"] and str(current.get("id","")) in ["plant_wee","mop_puddle"]:
 			var target_error:String=sanitation_flow.restore_action_error(id,current)
 			if not target_error.is_empty():return {"ok":false,"error":"The saved sanitation activity cannot resume: "+target_error}
-		if not current.is_empty() and str(current.phase)=="approach" and not traversal.active(id) and not member.sim.is_away():
+		if not current.is_empty() and str(current.phase)=="approach" and not traversal.active(id) and not motion.waiting and not member.sim.is_away():
 			var built:Dictionary=traversal.request(id,current.target_position)
 			if not bool(built.ok):return built
 			motion.path=built.points;motion.index=0;motion.traversal=traversal.routes[id]
@@ -2262,6 +2289,7 @@ func _process(delta:float) -> void:
 		_bind_member(selected_id)
 		if away_targets_changed:_refresh_sim_targets(false)
 		residents.tick(delta)
+		traversal.courtesy.consider(traversal)
 		hud_refresh+=delta
 		if hud_refresh>.25:hud_refresh=0;refresh_hud()
 	if mode=="build":refresh_build_quote()
@@ -2323,6 +2351,7 @@ func _advance_movement(delta:float) -> bool:
 			if not wait_destination.is_finite() or wait_destination.distance_to(action.target_position)<.1:
 				_route_to_wait_position(action)
 		return _advance_path(delta)
+	if _queue_near_busy_activity():return _advance_path(delta)
 	var was_moving:bool=_advance_path(delta)
 	if was_moving and path_index>=path.size():
 		path.clear();path_index=0
@@ -2337,6 +2366,73 @@ func _advance_movement(delta:float) -> bool:
 				waiting_for_target=true
 				_route_to_wait_position(sim.get_current_action())
 	return was_moving
+
+func _queue_near_busy_activity()->bool:
+	# The occupied activity anchor cannot also hold the arriving body. Enter
+	# its queue from clear nearby floor with supported access to its anchor or waiter.
+	if walk_only or resume_activity or world.construction.building_state.is_empty():return false
+	var action:Dictionary=sim.get_current_action()
+	if str(action.get("phase",""))!="approach" or not str(action.get("cooperation_id","")).is_empty():return false
+	if str(action.get("id","")) in LifeSim.SOCIAL_ACTIONS or _find_item(str(action.get("target_id",""))).is_empty():return false
+	if traversal.busy(bound_member_id) or traversal.safety(bound_member_id):return false
+	if traversal.courtesy.preserve_request(traversal,bound_member_id,action.target_position):return false
+	var destination:Vector3=action.target_position
+	var level:int=world.point_level(player.position)
+	if level<0 or level!=world.point_level(destination) or not traversal._free(bound_member_id,player.position):return false
+	var near_anchor:bool=player.position.distance_to(destination)<=1.0 and world.lot_navigation.segment_clear(level,player.position,destination)
+	if not near_anchor and not _near_arrived_resource_waiter(action,level):return false
+	if _activity_available(action):return false
+	waiting_for_target=true
+	wait_started=(household.day-1)*1440.0+household.minutes
+	wait_review=-1.0
+	wait_destination=Vector3.INF
+	if near_anchor:_route_to_wait_position(action)
+	else:
+		# Joining behind a reached waiter owns this clear physical queue point.
+		wait_destination=player.position
+		traversal.cancel(bound_member_id);path.clear();path_index=0
+	return true
+
+func _near_arrived_resource_waiter(action:Dictionary,level:int)->bool:
+	var wanted:Array[String]=_activity_resources(action)
+	var courtesy_owner:String=traversal.courtesy.owner(traversal)
+	for member:Dictionary in household.members:
+		var id:String=str(member.id)
+		if id==bound_member_id or not world.actors.has(id):continue
+		var motion:Dictionary=motion_states.get(id,_empty_motion())
+		if not bool(motion.waiting) or float(motion.wait_started)<0 or bool(motion.walk) or bool(motion.resume_active):continue
+		var other:Dictionary=member.sim.get_current_action()
+		if str(other.get("phase",""))!="approach" or not is_same(other,motion.pending) or not str(other.get("cooperation_id","")).is_empty() or str(other.get("id","")) in LifeSim.SOCIAL_ACTIONS:continue
+		if traversal.busy(id) or traversal.safety(id):continue
+		if not courtesy_owner.is_empty() and id in [courtesy_owner,str(traversal.routes[courtesy_owner].courtesy.beneficiary_id)]:continue
+		var actor:LifeActor=world.actors[id];var reserved:Vector3=motion.wait_destination
+		if not actor.visible or not reserved.is_finite() or actor.position.distance_to(reserved)>=.01 or world.point_level(actor.position)!=level or player.position.distance_to(actor.position)>1.0:continue
+		var shared:bool=false
+		var held:Array[String]=_activity_resources(other)
+		for resource:String in wanted:
+			if not resource.begins_with("standing:") and held.has(resource):shared=true;break
+		if not shared:continue
+		# Nearby access may bend around a corner. This witnesses queue proximity;
+		# the caller remains at its real body and has not traversed the witness.
+		var occupied:Array[Vector3]=traversal._occupied(bound_member_id)
+		occupied.erase(actor.position) # Exempt only this peer's occupied endpoint.
+		for moving_id:String in traversal.routes:
+			if moving_id==bound_member_id:continue
+			var stair_wait:Vector3=traversal.routes[moving_id].wait
+			if stair_wait.is_finite():occupied.append(stair_wait)
+		var reserved_body:bool=false
+		for queued:Dictionary in household.members:
+			var queued_id:String=str(queued.id)
+			if queued_id in [bound_member_id,id]:continue
+			var waiting:Dictionary=motion_states.get(queued_id,_empty_motion())
+			var point:Vector3=waiting.wait_destination
+			if bool(waiting.waiting) and point.is_finite():
+				occupied.append(point)
+				if traversal._same_floor(player.position,point) and player.position.distance_to(point)<.8:reserved_body=true
+		if reserved_body:continue
+		var witness:Dictionary=world.lot_navigation.route_avoiding(LifeLotNavigation.floor_location(level,player.position),LifeLotNavigation.floor_location(level,actor.position),occupied,LifeTraversal.ROUTE_CLEARANCE)
+		if bool(witness.ok) and float(witness.distance)<=1.0 and witness.segments.all(func(leg:Dictionary)->bool:return str(leg.kind)=="floor" and int(leg.level)==level):return true
+	return false
 
 func _set_route(destination:Vector3) -> bool:
 	path_index=0
@@ -2384,12 +2480,14 @@ func _route_to_wait_position(action:Dictionary) -> void:
 	# A completely packed room keeps its existing position and reservation;
 	# autonomy can still reconsider another activity after the bounded wait.
 	wait_destination=player.position
+	traversal.cancel(bound_member_id)
 	path.clear();path_index=0
 
-func _wait_position_clear(destination:Vector3) -> bool:
+func _wait_position_clear(destination:Vector3,arrived_owner:bool=false) -> bool:
+	arrived_owner=arrived_owner and destination==player.position and not world.construction.building_state.is_empty()
 	if not world.construction.building_state.is_empty():
 		if not traversal._free(bound_member_id,destination):return false
-	for offset:Vector2 in [Vector2.ZERO,Vector2(.25,0),Vector2(-.25,0),Vector2(0,.25),Vector2(0,-.25)]:
+	for offset:Vector2 in [] if arrived_owner else [Vector2.ZERO,Vector2(.25,0),Vector2(-.25,0),Vector2(0,.25),Vector2(0,-.25)]:
 		if not world.construction.building_state.is_empty():
 			if not world.lot_navigation.point_clear(world.point_level(destination),destination+Vector3(offset.x,0,offset.y)):return false
 			continue
@@ -2397,14 +2495,15 @@ func _wait_position_clear(destination:Vector3) -> bool:
 		if not world.navigation.region.has_point(cell) or world.navigation.is_point_solid(cell):return false
 	for id:String in world.actors:
 		if id==bound_member_id:continue
-		if world.actors[id].position.distance_to(destination)<.8:return false
+		if world.actors[id].position.distance_to(destination)<(LifeTraversal.BODY_GAP if arrived_owner else .8):return false
 	for member:Dictionary in household.members:
 		var current:Dictionary=member.sim.get_current_action()
 		if not current.is_empty() and destination.distance_to(current.target_position)<.8:return false
 		if str(member.id)==bound_member_id:continue
 		var motion:Dictionary=motion_states.get(str(member.id),_empty_motion())
 		var reserved:Vector3=motion.get("wait_destination",Vector3.INF)
-		if bool(motion.waiting) and reserved.is_finite() and reserved.distance_to(destination)<.8:return false
+		var retained_peer:bool=arrived_owner and world.actors.has(str(member.id)) and world.actors[str(member.id)].position==reserved
+		if bool(motion.waiting) and reserved.is_finite() and reserved.distance_to(destination)<(LifeTraversal.BODY_GAP if retained_peer else .8):return false
 	return true
 
 func _reconsider_waiting_activity() -> void:

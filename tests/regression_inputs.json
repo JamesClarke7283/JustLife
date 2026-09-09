@@ -234,6 +234,8 @@
     "scripts/window_geometry.gd",
     "scripts/window_geometry.gd.uid",
     "scripts/world.gd",
-    "scripts/world.gd.uid"
+    "scripts/world.gd.uid",
+    "scripts/courtesy.gd",
+    "scripts/courtesy.gd.uid"
   ]
 }

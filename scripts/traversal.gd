@@ -12,11 +12,12 @@ var routes:Dictionary={}
 var stairs:Dictionary={}
 var next_ticket:int=1
 var next_identity:int=1
+var courtesy=preload("res://scripts/courtesy.gd").new()
 
 func _init(controller:Node)->void:app=controller
 
 func reset()->void:
-	routes.clear();stairs.clear();next_ticket=1;next_identity=1
+	routes.clear();stairs.clear();next_ticket=1;next_identity=1;courtesy.reset()
 
 func busy(id:String)->bool:
 	return routes.has(id) and str(routes[id].phase) in ["entry","transit","clear"]
@@ -31,12 +32,18 @@ func cancel(id:String)->bool:
 		return true
 	_remove_waiter(id)
 	routes.erase(id)
+	courtesy.reconcile(self)
 	return false
 
 func request(id:String,destination:Vector3)->Dictionary:
 	if busy(id):return {"ok":false,"error":"Finish the current stair crossing first."}
 	var actor:LifeActor=app.world.actors.get(id)
 	if not is_instance_valid(actor):return {"ok":false,"error":"Missing moving Lifelet."}
+	courtesy.reconcile(self)
+	if courtesy.preserve_request(self,id,destination):
+		var kept:Dictionary=routes[id]
+		if int(kept.generation)==app.world.lot_navigation.generation and courtesy.generation_current(self):return {"ok":true,"points":PackedVector3Array([actor.position,destination]),"already_reached":false}
+		if courtesy.rebuild(self):return {"ok":true,"points":PackedVector3Array([actor.position,destination]),"already_reached":false}
 	var route:Dictionary=app.world.route_to(actor.position,destination)
 	if not bool(route.ok):return route
 	var legs:Array=[]
@@ -81,6 +88,7 @@ func _lock(stair_id:String)->Dictionary:
 func _same_floor(a:Vector3,b:Vector3)->bool:return absf(a.y-b.y)<.1
 
 func _free(id:String,point:Vector3,include_waits:bool=true)->bool:
+	if not courtesy.point_allowed(self,id,point):return false
 	var level:int=app.world.point_level(point)
 	if level<0 or not app.world.lot_navigation.point_clear(level,point):return false
 	for other_id:String in app.world.actors:
@@ -98,6 +106,8 @@ func _free(id:String,point:Vector3,include_waits:bool=true)->bool:
 			if other_id==id:continue
 			var wait:Vector3=routes[other_id].wait
 			if wait.is_finite() and _same_floor(point,wait) and point.distance_to(wait)<BODY_GAP:return false
+	for reserved:Vector3 in courtesy.reservations(self,id):
+		if _same_floor(point,reserved) and point.distance_to(reserved)<BODY_GAP:return false
 	return true
 
 func _occupied(id:String)->Array[Vector3]:
@@ -107,6 +117,7 @@ func _occupied(id:String)->Array[Vector3]:
 	for lock:Dictionary in stairs.values():
 		if str(lock.owner).is_empty() or str(lock.owner)==id:continue
 		occupied.append(lock.exit);occupied.append(lock.clear)
+	occupied.append_array(courtesy.reservations(self,id))
 	return occupied
 
 func _floor_route(from:Vector3,to:Vector3,id:String="")->PackedVector3Array:
@@ -148,7 +159,7 @@ func _exit_place(id:String,leg:Dictionary)->Dictionary:
 		if not points.is_empty():return {"point":point,"points":points}
 	return {}
 
-func _walk(id:String,route:Dictionary,time:float)->Dictionary:
+func _walk(id:String,route:Dictionary,time:float,consider_courtesy:bool=true)->Dictionary:
 	var actor:LifeActor=app.world.actors[id]
 	var remaining:float=maxf(0,time);var moved:bool=false
 	while int(route.point)<route.points.size() and remaining>.0000001:
@@ -157,9 +168,12 @@ func _walk(id:String,route:Dictionary,time:float)->Dictionary:
 		if distance<.00001:route.point+=1;continue
 		var step:float=minf(distance,remaining*WALK_SPEED)
 		var next:Vector3=actor.position+difference/distance*step
+		if not courtesy.step_allowed(self,id,actor.position,next):return {"time":0.0,"moved":moved,"blocked":true}
 		if not _step_clear(id,actor.position,next):
+			if courtesy.beneficiary(self,id):return {"time":0.0,"moved":moved,"blocked":true}
 			var alternative:PackedVector3Array=_floor_route(actor.position,route.points[-1],id)
 			if not alternative.is_empty():route.points=alternative;route.point=0
+			elif consider_courtesy:courtesy.note_block(self,id,time,moved)
 			return {"time":0.0,"moved":moved,"blocked":true}
 		actor.rotation.y=lerp_angle(actor.rotation.y,atan2(difference.x,difference.z),minf(1,remaining*12))
 		actor.position=next;remaining-=step/WALK_SPEED;moved=true
@@ -167,6 +181,7 @@ func _walk(id:String,route:Dictionary,time:float)->Dictionary:
 	return {"time":remaining,"moved":moved,"blocked":false}
 
 func _step_clear(id:String,from:Vector3,to:Vector3)->bool:
+	if not courtesy.step_allowed(self,id,from,to):return false
 	var level:int=app.world.point_level(to)
 	if level<0 or not app.world.lot_navigation.point_clear(level,to):return false
 	for other_id:String in app.world.actors:
@@ -187,6 +202,11 @@ func _step_clear(id:String,from:Vector3,to:Vector3)->bool:
 			var step:Vector3=to-from
 			var part:float=clampf((reserved-from).dot(step)/maxf(.00000001,step.length_squared()),0.0,1.0)
 			if from.lerp(to,part).distance_to(reserved)<BODY_GAP:return false
+	for reserved:Vector3 in courtesy.reservations(self,id):
+		if not _same_floor(to,reserved):continue
+		var step:Vector3=to-from
+		var part:float=clampf((reserved-from).dot(step)/maxf(.00000001,step.length_squared()),0.0,1.0)
+		if from.lerp(to,part).distance_to(reserved)<BODY_GAP:return false
 	return true
 
 func _prepare(id:String,route:Dictionary)->bool:
@@ -211,7 +231,11 @@ func _prepare(id:String,route:Dictionary)->bool:
 func advance(id:String,delta:float,speed:int)->Dictionary:
 	var response:Dictionary={"moving":false,"finished":false,"cleared":false,"error":""}
 	if not routes.has(id) or speed<=0 or delta<=0:return response
+	courtesy.reconcile(self)
 	var route:Dictionary=routes[id]
+	if route.has("courtesy"):
+		if int(route.generation)!=app.world.lot_navigation.generation:courtesy.rebuild(self)
+		if route.has("courtesy"):return courtesy.advance(self,id,delta*float(speed))
 	if not str(route.error).is_empty():return response
 	var actor:LifeActor=app.world.actors[id]
 	var remaining:float=delta*float(speed)
@@ -301,6 +325,8 @@ func snapshot()->Dictionary:
 			var phase:String=str(route.phase)
 			if phase=="waiting" and int(route.ticket)==0:phase="to_wait"
 			motion={"phase":phase,"identity":int(route.identity),"ticket":int(route.ticket),"safety":bool(route.safety),"custody":str(route.get("custody","")),"destination":LifeJourneyState.packed(route.destination),"stair_id":str(leg.get("stair_id","")),"direction":int(leg.get("direction",0)),"distance":float(route.distance),"wait":LifeJourneyState.packed(route.wait) if Vector3(route.wait).is_finite() else [],"clear":LifeJourneyState.packed(route.clear) if Vector3(route.clear).is_finite() else [],"intent":intent}
+			if route.has("courtesy"):
+				motion.courtesy=route.courtesy.duplicate(true);motion.courtesy.anchor=LifeJourneyState.packed(route.courtesy.anchor)
 		people[id]={"position":LifeJourneyState.packed(actor.position),"yaw":actor.rotation.y,"motion":motion}
 	return {"version":LifeJourneyState.VERSION,"next_identity":next_identity,"next_ticket":next_ticket,"members":people}
 
@@ -352,6 +378,8 @@ func restore(data:Dictionary)->Dictionary:
 		motion.walk=str(saved.intent.kind)=="walk"
 		motion.destination=LifeJourneyState.vector(saved.intent.destination) if motion.walk else destination
 		motion.pending=app.household.member_sim(id).get_current_action()
+	for id:String in data.members:
+		if data.members[id].motion.has("courtesy"):courtesy.restore(self,id,data.members[id].motion.courtesy)
 	for lock:Dictionary in stairs.values():lock.queue.sort_custom(func(a:Dictionary,b:Dictionary)->bool:return int(a.ticket)<int(b.ticket))
 	next_identity=int(data.next_identity);next_ticket=int(data.next_ticket)
 	return {"ok":true}
@@ -376,5 +404,6 @@ func validate_occupancy()->Dictionary:
 		var lock:Dictionary=stairs[key];var owner:String=str(lock.owner)
 		if not owner.is_empty() and (not _free(owner,lock.exit,false) or not _free(owner,lock.clear,false)):return {"ok":false,"error":"A visible Lifelet blocks the saved staircase clearance."}
 	for id:String in routes:
+		if routes[id].has("courtesy") and (not courtesy._anchor_clear(self,id,routes[id].courtesy.anchor) or routes[id].courtesy_priority.is_empty()):return {"ok":false,"error":"A visible Lifelet blocks the saved courtesy anchor."}
 		if str(routes[id].phase)=="waiting" and not _free(id,app.world.actors[id].position,false):return {"ok":false,"error":"A visible Lifelet blocks a saved waiting place."}
 	return {"ok":true}

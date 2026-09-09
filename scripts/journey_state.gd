@@ -2,7 +2,7 @@ extends RefCounted
 class_name LifeJourneyState
 ## Saved physical facts, validated before adopting a household. Paths, gait
 ## schedules, temporary graph indices and runtime node references are derived.
-const VERSION:int=1
+const VERSION:int=2
 const Building=preload("res://scripts/building_state.gd")
 const Navigation=preload("res://scripts/lot_navigation.gd")
 const Gait=preload("res://scripts/stair_gait.gd")
@@ -111,7 +111,7 @@ static func _intent_error(intent:Variant,member:Dictionary,safety:bool)->String:
 	return ""
 
 static func validate(data:Variant,household:Dictionary)->Dictionary:
-	if not data is Dictionary or data.get("version")!=VERSION or not number(data.get("next_identity"),1,1e9,true) or not number(data.get("next_ticket"),1,1e9,true) or not data.get("members") is Dictionary:return {"ok":false,"error":"Invalid saved journey format."}
+	if not data is Dictionary or (data.get("version")!=1 and data.get("version")!=VERSION) or not number(data.get("next_identity"),1,1e9,true) or not number(data.get("next_ticket"),1,1e9,true) or not data.get("members") is Dictionary:return {"ok":false,"error":"Invalid saved journey format."}
 	var people:Dictionary={}
 	for member:Dictionary in household.members:people[str(member.id)]=member
 	if data.members.size()!=people.size():return {"ok":false,"error":"Journey locations do not match the household."}
@@ -146,6 +146,7 @@ static func validate(data:Variant,household:Dictionary)->Dictionary:
 		var record:Variant=data.members[id]
 		if not record is Dictionary or not vector_valid(record.get("position")) or not number(record.get("yaw"),-1000,1000) or not record.get("motion") is Dictionary:return {"ok":false,"error":"Invalid saved physical location."}
 		var at:Vector3=vector(record.position);var motion:Dictionary=record.motion
+		if int(data.version)==1 and motion.has("courtesy"):return {"ok":false,"error":"A legacy journey cannot contain courtesy ownership."}
 		var old:Variant=people[id].state.character.get("world_state",{})
 		if not old is Dictionary or not vector_valid(old.get("player")) or vector(old.player).distance_to(at)>.00001 or not number(old.get("player_rotation"),-1000,1000) or absf(float(old.player_rotation)-float(record.yaw))>.00001:return {"ok":false,"error":"Saved actor and journey locations disagree."}
 		if motion.is_empty():
@@ -221,7 +222,59 @@ static func validate(data:Variant,household:Dictionary)->Dictionary:
 		if owners.has(key):
 			var owner_ticket:int=int(data.members[owners[key].owner].motion.ticket)
 			if not queue.is_empty() and owner_ticket>=int(queue[0].ticket):return {"ok":false,"error":"A staircase owner bypasses an earlier arrived waiter."}
+	var courtesy_error:String=_courtesy_error(data,people,nav,reservations,(float(household.day)-1)*1440.0+float(household.minutes))
+	if not courtesy_error.is_empty():return {"ok":false,"error":courtesy_error}
 	return {"ok":true,"owners":owners,"queues":queues,"custody":custody,"context":checked,"venue":venue,"layouts":layouts}
+
+static func _courtesy_error(data:Dictionary,people:Dictionary,nav:LifeLotNavigation,reservations:Array,now:float)->String:
+	var count:int=0
+	for id:String in data.members:
+		var record:Dictionary=data.members[id];var motion:Dictionary=record.motion
+		if not motion.has("courtesy"):continue
+		count+=1
+		if count>1:return "Two household members claim courtesy movement."
+		var fact:Variant=motion.courtesy
+		if not fact is Dictionary or fact.size()!=6 or fact.get("version")!=1 or fact.get("phase") not in ["retreat","hold"] or not vector_valid(fact.get("anchor")) or not fact.get("beneficiary_id") is String or not number(fact.get("beneficiary_identity"),1,float(data.next_identity)-1,true) or not number(fact.get("expires_at"),now,now+60.0) or float(fact.expires_at)<=now:return "Invalid saved courtesy facts or deadline."
+		for key:Variant in fact:
+			if key not in ["version","phase","anchor","beneficiary_id","beneficiary_identity","expires_at"]:return "Unknown saved courtesy field."
+		var peer:String=str(fact.beneficiary_id)
+		if peer==id or not data.members.has(peer):return "Invalid saved courtesy beneficiary."
+		var other_motion:Dictionary=data.members[peer].motion
+		if other_motion.is_empty() or int(other_motion.identity)!=int(fact.beneficiary_identity):return "Saved courtesy ownership refers to a retired route."
+		var at:Vector3=vector(record.position);var anchor:Vector3=vector(fact.anchor)
+		if level(at)!=level(anchor) or level(at)!=level(vector(data.members[peer].position)) or not nav.point_clear(level(anchor),anchor) or at.distance_to(anchor)>2.0 or not _floor_route(nav,at,anchor):return "The saved courtesy anchor is not a supported local retreat."
+		if str(fact.phase)=="hold" and at.distance_to(anchor)>.00001:return "A saved courtesy hold is not at its anchor."
+		for member_id:String in [id,peer]:
+			var route:Dictionary=data.members[member_id].motion;var state:Dictionary=people[member_id].state
+			if route.phase!="route" or not str(route.stair_id).is_empty() or bool(route.safety) or str(route.intent.kind)!="action" or level(vector(route.destination))!=level(anchor):return "Courtesy movement conflicts with a protected journey."
+			if float(state.character.world_state.get("resource_wait_started",-1))>=0 or bool(state.character.world_state.get("resource_action_active",false)) or not str(state.action_queue[0].get("cooperation_role","")).is_empty():return "A resource owner cannot take courtesy movement."
+		for member_id:String in data.members:
+			if member_id==id or str(people[member_id].state.get("away_state",{}).get("phase",""))=="away":continue
+			var other:Vector3=vector(data.members[member_id].position)
+			if level(other)==level(anchor) and anchor.distance_to(other)<.78:return "Another Lifelet occupies the saved courtesy anchor."
+			var other_route:Dictionary=data.members[member_id].motion
+			if float(people[member_id].state.character.world_state.get("resource_wait_started",-1))>=0:
+				var reserved:Vector3=other if other_route.is_empty() else vector(other_route.destination)
+				if level(reserved)==level(anchor) and anchor.distance_to(reserved)<.8:return "Courtesy movement occupies an earlier resource waiting place."
+			if not other_route.is_empty() and not other_route.wait.is_empty():
+				var wait:Vector3=vector(other_route.wait)
+				if level(wait)==level(anchor) and anchor.distance_to(wait)<.78:return "Courtesy movement occupies a saved FIFO waiting place."
+		var occupied:Array[Vector3]=[]
+		for member_id:String in data.members:
+			if member_id==peer or str(people[member_id].state.get("away_state",{}).get("phase",""))=="away":continue
+			occupied.append(anchor if member_id==id else vector(data.members[member_id].position))
+			var other:Dictionary=data.members[member_id].motion
+			if not other.is_empty() and not other.wait.is_empty():occupied.append(vector(other.wait))
+			if float(people[member_id].state.character.world_state.get("resource_wait_started",-1))>=0:occupied.append(vector(other.destination) if not other.is_empty() else vector(data.members[member_id].position))
+		for reservation:Dictionary in reservations:
+			occupied.append(reservation.exit);occupied.append(reservation.clear)
+		var from:Vector3=vector(data.members[peer].position);var destination:Vector3=vector(other_motion.destination)
+		var priority:Dictionary=nav.route_avoiding(Navigation.floor_location(level(from),from),Navigation.floor_location(level(destination),destination),occupied,.78)
+		if not bool(priority.ok) or not priority.segments.all(func(leg:Dictionary)->bool:return str(leg.kind)=="floor"):return "The saved courtesy beneficiary has no supported priority route."
+		for reservation:Dictionary in reservations:
+			for point:Vector3 in [reservation.exit,reservation.clear]:
+				if level(point)==level(anchor) and anchor.distance_to(point)<.78:return "Courtesy movement occupies a reserved stair exit."
+	return ""
 
 static func validate_actions(household:Dictionary)->String:
 	# v2 restores exact phases instead of turning every action into a new

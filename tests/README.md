@@ -5,6 +5,10 @@ Run commands from the project root with Godot available on `PATH`. Use an existi
 | Area | Runner | Scope |
 | --- | --- | --- |
 | Construction, stairs and household ownership | `python tests/run_regressions.py --group architecture --group build --group protection` | Controlled state, routing and transaction checks; [groups and fresh-process cases](REGRESSIONS.md). |
+| Household step-aside movement | `python tests/run_courtesy.py` | Genuine crowded-meal continuation, fresh restart, ownership and exclusion controls; [contract](COURTESY.md). |
+| Shared furnishing queues | `python tests/run_busy_resources.py` | Genuine occupied-bed fixture, two-waiter order, restart, explicit interruption and Build reconciliation; [contract](BUSY_RESOURCES.md). |
+| Owned meal approaches | `python tests/run_owned_meals.py` | Walking with the same partial portion, fresh restart, meal-service and autonomy controls; [contract](OWNED_MEALS.md). |
+| Home sidewalk walkers | `python tests/run_pedestrian_checks.py` | Nine controlled lane, obstacle, old-position, re-entry and home-visit transfer cases. |
 | Public two-storey flow | `python tests/run_public_twofloor.py` | Creator, construction clicks, upstairs activity, named restart and car travel. |
 | Sanitation across floors | `python tests/run_sanitation_levels.py` | Wet-patch support, stair custody, named restart and car travel. Add `--capture` for separate rendered picking/paused-mop checks; `--only v2` or `--only car` narrows the run. See [the contract](../docs/SANITATION_API.md). |
 | Social conversation routing | `python tests/run_social_navigation.py` | Body-clear neighbor/household approaches, moving targets, protected stairs, later queues and three paused saves resumed in a fresh process. Controlled fixtures; [scope and limits](../docs/REVIEWS/iteration_31_social_routes.md). |

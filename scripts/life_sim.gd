@@ -1341,6 +1341,10 @@ func _reconsider_active_autonomy() -> void:
 	if not danger and not duty_ready and not preparation_ready:return
 	var next:Dictionary=_autonomous_choice()
 	if next.is_empty() or (str(next.id)==str(current.id) and str(next.target_id)==str(current.target_id)):return
+	# A carried portion can resolve many meal targets to the same owned plate.
+	# Let its real eating approach arrive instead of releasing and reclaiming
+	# that plate every hunger check. Different urgent recoveries still interrupt.
+	if str(current.phase)=="approach" and str(next.id)=="eat_meal" and _autonomy_eating_owned_portion(current):return
 	cancel_action()
 	if action_queue.is_empty():_choose_autonomous_action()
 
