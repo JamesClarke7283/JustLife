@@ -68,6 +68,7 @@ func _run()->void:
 	for index:int in member_ids.size():scene_world.actors[member_ids[index]].position=Vector3(2,Building.level_y(index),2.5)
 	await process_frame;await physics_frame
 	_floor_support_cases()
+	_floor_query_rebuild_cases()
 	_surface_and_standing_cases()
 	await _food_views_and_validation()
 	_seated_and_held_cases()
@@ -98,6 +99,60 @@ func _floor_support_cases()->void:
 	check(distinct.is_finite() and absf(distinct.y-3.162)<.00001 and Vector2(distinct.x-slot.x,distinct.z-slot.z).length()>.25,"Two dishes on the same upper floor receive distinct supported slots.")
 	check(not flow._floor_slot(Vector3(2,1.6,2.5),third).is_finite(),"Mid-stair set-down query has no floor slot.")
 	food_app.household.meals.clear()
+
+func _floor_query_rebuild_cases()->void:
+	# Return-value checks use real geometry/ledger changes, never cache fields.
+	# The upper actor forces grid fallback so a removed obstacle's newly free
+	# cells matter; an unblocked exact origin would bypass that regression.
+	var actor:LifeActor=scene_world.actors[member_ids[1]];var before_body:Vector3=actor.position
+	var origin:=Vector3(2.125,3.16,2.625)
+	var value:Dictionary=_floor_batch(origin);var generation:int=scene_world.lot_navigation.generation
+	var open:Vector3=flow._floor_slot(origin,value)
+	check(open.is_finite() and Vector2(open.x,open.z)==Vector2(origin.x,origin.z),"Clear off-grid origin is the preferred floor slot.")
+	actor.position=origin
+	var preferred:Vector3=flow._floor_slot(origin,value)
+	var mirror:=Vector3(2*origin.x-preferred.x,preferred.y,2*origin.z-preferred.z)
+	var gap:Vector2=LifeMeals.PLATTER_HALF_SIZE+Vector2(.30,.30)
+	check(preferred.is_finite() and preferred!=open and preferred!=mirror and preferred.distance_squared_to(origin)==mirror.distance_squared_to(origin),"Blocking the origin produces a genuinely tied grid fallback.")
+	check(flow._floor_navigation_clear(mirror) and is_finite(flow._floor_support(mirror,LifeMeals.PLATTER_HALF_SIZE)) and (absf(mirror.x-origin.x)>=gap.x or absf(mirror.z-origin.z)>=gap.y),"Distinct equidistant contender clears navigation, whole dish support and the blocking actor.")
+	check(flow._floor_slot(origin,value)==preferred,"Repeated floor search keeps the same tied choice.")
+	actor.position=before_body
+	check(flow._floor_slot(origin,value)==open and scene_world.lot_navigation.generation==generation,"Moving the body frees the origin immediately without a rebuild.")
+	var other:Dictionary=_floor_batch(open)
+	check(flow._floor_slot(origin,value)!=open,"New floor food immediately displaces a previously clear slot.")
+	food_app.household.meals.set_batch_location(str(other.id),"surface","",Vector3(3,3.162,4),480)
+	check(flow._floor_slot(origin,value)==open and scene_world.lot_navigation.generation==generation,"Moving food frees the same slot without a rebuild.")
+	food_app.household.meals.clear();actor.position=origin
+	var floors:Array=_floor_boxes(scene_world,1);var visibility:Array=[]
+	for node:MeshInstance3D in floors:visibility.append(node.visible);node.visible=false
+	check(not flow._floor_slot(origin,value).is_finite(),"Hidden upper floor meshes cannot support a cached upper slot.")
+	for i:int in floors.size():floors[i].visible=visibility[i]
+	check(flow._floor_slot(origin,value)==preferred and scene_world.lot_navigation.generation==generation,"Restored physical floor support is observed without a rebuild.")
+	var outward:=Vector3(preferred.x-origin.x,0,preferred.z-origin.z).normalized()
+	var obstacle:Vector3=preferred+outward*.35
+	scene_world.add_item({"id":"query_plant","kind":"plant","x":obstacle.x,"z":obstacle.z,"rotation":0.0,"level":1})
+	# Warm a fresh query while blocked; a formerly clear cached grid could
+	# otherwise hide a missed invalidation through the final clearance check.
+	var queries:=LifeMealFlow.new();food_app.add_child(queries);queries.app=food_app
+	var blocked:Vector3=queries._floor_slot(origin,value)
+	check(scene_world.lot_navigation.generation>generation and blocked.is_finite() and blocked!=preferred,"A real added furnishing and successful rebuild displace the old preferred grid cell.")
+	generation=scene_world.lot_navigation.generation
+	var state:Dictionary=scene_world.construction.building_state.duplicate(true)
+	var prior_error:String=scene_world.last_layout_error
+	scene_world.construction.building_state.version=999;scene_world.rebuild_navigation()
+	check(scene_world.lot_navigation.generation==generation and not scene_world.last_layout_error.is_empty() and queries._floor_slot(origin,value)==blocked,"Rejected world validation retains the old navigation's selected floor slot.")
+	scene_world.construction.building_state=state;scene_world.last_layout_error=prior_error
+	scene_world.remove_item("query_plant")
+	check(scene_world.lot_navigation.generation>generation and queries._floor_slot(origin,value)==preferred,"Removing the furnishing and rebuilding restores the newly free tied cell.")
+	# Warm while blocked again, then replace the navigation with the same
+	# generation reached by actual successful rebuilds, not a counter edit.
+	scene_world.add_item({"id":"query_plant","kind":"plant","x":obstacle.x,"z":obstacle.z,"rotation":0.0,"level":1})
+	check(queries._floor_slot(origin,value)!=preferred,"Replacement control starts from the blocked cached grid.")
+	var previous:LifeLotNavigation=scene_world.lot_navigation;generation=previous.generation
+	scene_world.remove_item("query_plant");scene_world.lot_navigation=LifeLotNavigation.new()
+	for i:int in generation:scene_world.rebuild_navigation()
+	check(scene_world.lot_navigation!=previous and scene_world.lot_navigation.generation==generation and queries._floor_slot(origin,value)==preferred,"A new navigation instance at the same generation restores its own clear tied cell.")
+	queries.free();actor.position=before_body;food_app.household.meals.clear()
 
 func _surface_and_standing_cases()->void:
 	for level:int in [0,1]:
@@ -238,6 +293,17 @@ func _legacy_ground_cases()->void:
 		check(flow.call("_settle_food",value,sample.at)==true and str(value.host).is_empty() and absf(_position(value).y-float(sample.height))<.00001,"Legacy "+str(sample.name)+" set-down measures its actual authored top.")
 		check(absf(flow._floor_support(_position(value),LifeMeals.PLATTER_HALF_SIZE)-float(sample.height))<.00001,"Saved physical "+str(sample.name)+" height retains floor identity below navigationY.")
 	check(_validate(_save()).is_empty(),"V2 layout validation accepts real legacy wood and lawn food supports.")
+	var lawn:Dictionary=food_app.household.meals.batches[-1];var origin:=Vector3(7.125,.16,2.125)
+	var actor:=LifeActor.new();scene_world.add_child(actor);actor.voice_enabled=false;actor.set_process(false);actor.position=origin
+	scene_world.actors["floor_query_legacy"]=actor
+	var slot:Vector3=flow._floor_slot(origin,lawn);var generation:int=scene_world.lot_navigation.generation
+	var cell:=Vector2i(roundi(slot.x*4),roundi(slot.z*4))
+	scene_world.navigation.set_point_solid(cell,true)
+	var queries:=LifeMealFlow.new();food_app.add_child(queries);queries.app=food_app
+	check(queries._floor_slot(origin,lawn)!=slot and scene_world.lot_navigation.generation==generation,"Legacy blocked-cell fixture starts with a different floor fallback.")
+	scene_world.navigation.set_point_solid(cell,false)
+	check(queries._floor_slot(origin,lawn)==slot,"Restoring a legacy cell without a generation change restores its preferred fallback.")
+	queries.free();scene_world.actors.erase("floor_query_legacy");actor.free()
 
 func _finish_food()->void:
 	check(checks>=86,"All intended floor, seated and held phases reached their assertions.")

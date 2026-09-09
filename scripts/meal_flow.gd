@@ -11,6 +11,13 @@ var views: Dictionary = {}
 var revision: String = ""
 var sync_due: bool = true
 var _carry_grips_cache:Dictionary={}
+# Static default-footprint candidates; bodies, food and visible floor support
+# remain live checks. Failed rebuilds keep their actual previous navigation.
+var _floor_grid_navigation:LifeLotNavigation
+var _floor_grid_generation:int=-1
+var _floor_grid_region:Rect2i
+var _floor_grid_candidates:Dictionary={}
+
 
 func food() -> LifeMeals:return app.household.meals
 func now() -> float:return (app.household.day-1)*1440.0+app.household.minutes
@@ -288,22 +295,32 @@ func _serving_surface(from:Vector3,except_id:String="") -> Dictionary:
 			if not app.world.path_to(from,app.world.approach(host)).is_empty():return host
 	return {}
 
-func _floor_height(at:Vector3) -> float:
-	var level:int=_floor_level(at)
-	if level<0:return INF
-	var surfaces:Array=app.world.house.get_children()
-	if is_instance_valid(app.world.construction):surfaces.append_array(app.world.construction.floor_nodes)
-	var height:float=-.15 if level==0 else -INF
-	for node:Node in surfaces:
+func _floor_surface_snapshot() -> Array:
+	# Reused only within a synchronous query, never across layout/view changes.
+	var nodes:Array=app.world.house.get_children()
+	if is_instance_valid(app.world.construction):nodes.append_array(app.world.construction.floor_nodes)
+	var surfaces:Array=[]
+	for node:Node in nodes:
 		if not node is MeshInstance3D or not node.mesh is BoxMesh or not node.visible:continue
 		var half:Vector3=node.mesh.size*.5
-		var local:Vector3=node.to_local(at)
-		var top:float=node.to_global(Vector3(0,half.y,0)).y
+		var transform:Transform3D=node.global_transform
+		surfaces.append({"half":half,"inverse":transform.affine_inverse(),"top":(transform*Vector3(0,half.y,0)).y})
+	return surfaces
+
+func _floor_height(at:Vector3,surfaces:Variant=null) -> float:
+	var level:int=_floor_level(at)
+	if level<0:return INF
+	if surfaces==null:surfaces=_floor_surface_snapshot()
+	var height:float=-.15 if level==0 else -INF
+	for surface:Dictionary in surfaces:
+		var half:Vector3=surface.half
+		var local:Vector3=surface.inverse*at
+		var top:float=surface.top
 		if top>Building.level_y(level)+.025 or top<Building.level_y(level)-.32 or top<height or absf(local.x)>half.x or absf(local.z)>half.z:continue
 		height=top
 	return height+.002 if is_finite(height) else INF
 
-func _floor_support(at:Vector3,half:Vector2) -> float:
+func _floor_support(at:Vector3,half:Vector2,surfaces:Variant=null) -> float:
 	var level:int=_floor_level(at)
 	if level<0:return INF
 	var bounds:Rect2=Rect2(Vector2(at.x,at.z)-half,half*2)
@@ -323,29 +340,47 @@ func _floor_support(at:Vector3,half:Vector2) -> float:
 		var body:Vector2=furnishing.size*.5
 		if absf(local.x)<body.x+extent.x+.002 and absf(local.z)<body.y+extent.y+.002:return INF
 	var low:float=INF;var high:float=-INF
+	if surfaces==null:surfaces=_floor_surface_snapshot()
 	for x:float in [-half.x,0.0,half.x]:
 		for z:float in [-half.y,0.0,half.y]:
-			var height:float=_floor_height(at+Vector3(x,0,z))
+			var height:float=_floor_height(at+Vector3(x,0,z),surfaces)
 			if not is_finite(height):return INF
 			low=minf(low,height);high=maxf(high,height)
 	# Small authored board/tile details differ by millimetres. A raised floor
 	# edge must support every corner/edge of the ceramic at the same level.
 	return high if high-low<=.012 else INF
 
+func _floor_grid(level:int,region:Rect2i) -> Array[Vector3]:
+	var navigation:LifeLotNavigation=app.world.lot_navigation
+	var cacheable:bool=not app.world.construction.building_state.is_empty()
+	if not cacheable:
+		# The legacy compatibility grid can change without a lot generation.
+		_floor_grid_candidates.clear();_floor_grid_navigation=null
+	elif navigation!=_floor_grid_navigation or navigation.generation!=_floor_grid_generation or region!=_floor_grid_region:
+		_floor_grid_candidates.clear();_floor_grid_navigation=navigation
+		_floor_grid_generation=navigation.generation;_floor_grid_region=region
+	if cacheable and _floor_grid_candidates.has(level):return _floor_grid_candidates[level].duplicate()
+	var result:Array[Vector3]=[]
+	for x:int in range(region.position.x,region.end.x):
+		for z:int in range(region.position.y,region.end.y):
+			var at:=Vector3(x*.25,Building.level_y(level),z*.25)
+			if _floor_navigation_clear(at):result.append(at)
+	if cacheable:_floor_grid_candidates[level]=result
+	return result.duplicate()
+
 func _floor_slot(from:Vector3,value:Dictionary) -> Vector3:
 	var level:int=_floor_level(from)
 	if level<0:return Vector3.INF
 	var candidates:Array[Vector3]=[Vector3(from.x,Building.level_y(level),from.z)]
 	var region:Rect2i=app.world.navigation.region
-	for x:int in range(region.position.x,region.end.x):
-		for z:int in range(region.position.y,region.end.y):
-			var at:=Vector3(x*.25,Building.level_y(level),z*.25)
-			if _floor_navigation_clear(at):candidates.append(at)
+	candidates.append_array(_floor_grid(level,region))
 	candidates.sort_custom(func(a:Vector3,b:Vector3)->bool:return a.distance_squared_to(from)<b.distance_squared_to(from))
+	var surfaces:Variant=null
 	for at:Vector3 in candidates:
 		var cell:Vector2i=Vector2i(roundi(at.x*4),roundi(at.z*4))
 		if not region.has_point(cell) or not _floor_navigation_clear(at):continue
-		var height:float=_floor_support(at,_footprint(value))
+		if surfaces==null:surfaces=_floor_surface_snapshot()
+		var height:float=_floor_support(at,_footprint(value),surfaces)
 		if not is_finite(height):continue
 		var clear:bool=true
 		# Leave the complete dish outside visible feet, including its carrier.
