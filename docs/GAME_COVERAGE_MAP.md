@@ -97,3 +97,7 @@ The stills connect map information, household selection, distinct eviction/move 
 ## Guest meal follow-up, 9 September 2026
 
 Five inspected [historical potluck screenshots](https://simscommunity.info/2025/12/29/sims-4-neighbourhood-potluck/) add participant-role, food-carrying and event-goal references in `topics/neighbourhood_potluck_legacy`. For Rent content is labelled separately. Complete guest dining, cancellation and reward delivery remain unpictured; JustLife guest meals are still in development.
+
+## Garden follow-up, 9 September 2026
+
+Nine new browser-exported images from [EA's June 2026 garden guide](https://careers.ea.com/es/games/the-sims/the-sims-4/news/gnomes-guide-to-garden-harmony) are saved in `topics/garden_harmony_official_2026`. All were inspected. They show planter work, layered planting, vertical gardens, oversized crops, winter and magical effects. One is an editorial collage. Mixed expansion content is labelled in the manifest; full gardening actions and plant lifecycles remain uncaptured.
