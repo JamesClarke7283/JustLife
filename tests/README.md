@@ -12,6 +12,7 @@ Run commands from the project root with Godot available on `PATH`. Use an existi
 | Oven preparation | `python tests/run_oven_playthrough.py` | Loading, closed baking, two paused fresh-process saves, one ingredient charge and later queued reading. |
 | Adoption | `python tests/run_playthrough.py --suite adoption --adoption-oven --timeout 300` | Public adoption during paid cooking, mid-arrival restart, school and homework. Add `--adoption-ui-only` for the focused 960×600 candidate/review/cancel flow. |
 | Save previews | `python tests/run_save_preview.py --capture` | Same-frame panel cancellation, direct save, public save-as-new, overwrite and deletion. Omit `--capture` for headless state checks; image freshness requires the rendered run. |
+| Household calendar | `python tests/run_calendar.py --capture` | Read-only school/work/birthday forecasts, eight-member phone flow, filtering, scrolling, queued-action preservation and pause restoration. Captures include a native 960×600 window. |
 
 Rendered fixtures require a display. Some grant skill XP, set needs, disable autonomy or invoke public button callbacks directly. They exercise the stated paths, not unscripted whole-game play or a general quality score. Individual assertions are not additional gameplay scenarios.
 

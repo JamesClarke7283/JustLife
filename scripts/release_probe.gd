@@ -90,7 +90,16 @@ func run(owner_app:Node) -> void:
 	press("Back to life")
 	app.select_household_member(1)
 	var before_adoption:Dictionary=app.household.get_state(app.world.serialize_items())
-	press("Phone");press("Adopt a child");await app.get_tree().process_frame
+	press("Phone");press("Household calendar");await app.get_tree().process_frame
+	check(is_instance_valid(app.find_child("CalendarAgenda",true,false)) and app.find_children("CalendarEntry_*","Control",true,false).size()==2,"Packaged calendar shows the child's school and the adult's work.")
+	check(app.overlay_open and app.overlay_pauses_sim and app.sim.speed==0,"The packaged calendar preserves the household pause.")
+	await capture("03bb_household_calendar")
+	var work_filter:Button=app.find_child("CalendarFilter_work",true,false)
+	if is_instance_valid(work_filter):work_filter.pressed.emit()
+	check(app.find_children("CalendarEntry_*","Control",true,false).size()==1,"The packaged work filter leaves the pupil's school plan visible.")
+	press("Back to phone")
+	check(app.household.get_state(app.world.serialize_items())==before_adoption,"Packaged calendar browsing preserves the complete household state.")
+	press("Adopt a child");await app.get_tree().process_frame
 	var candidates:int=0
 	for index:int in range(3):
 		var candidate:Button=app.find_child("AdoptionCandidate_%d" % index,true,false)

@@ -8,8 +8,11 @@ var confirming:bool=false
 var primary:String=""
 var choice:int=0
 var blocked:Dictionary={}
+var calendar:LifeCalendarPanel
 
-func _init(owner:Node) -> void:app=owner
+func _init(owner:Node) -> void:
+	app=owner
+	calendar=LifeCalendarPanel.new(owner)
 
 func _panel(title:String,subtitle:String) -> void:
 	app._begin_pause_overlay()
@@ -28,10 +31,13 @@ func show_phone() -> void:
 	_panel("A little room to grow.","Household services for the people who make this place home.")
 	var reason:String=context_error()
 	if reason.is_empty():reason=app.household.adoption_availability([primary])
-	var adopt:Button=app.button("Adopt a child",Vector2(302,370),Vector2(820,63),show_candidates,true,app.overlay)
+	var agenda:Button=app.button("Household calendar",Vector2(302,354),Vector2(820,55),calendar.open,true,app.overlay)
+	agenda.name="PhoneCalendar";agenda.disabled=app.mode!="live"
+	app.paragraph("See everyone's school, work and upcoming birthdays.",Vector2(307,420),Vector2(806,34),16,P.MUTED,app.overlay)
+	var adopt:Button=app.button("Adopt a child",Vector2(302,477),Vector2(820,55),show_candidates,false,app.overlay)
 	adopt.name="PhoneAdoptChild";adopt.disabled=not reason.is_empty();adopt.tooltip_text=reason
-	app.paragraph("Welcome a school-age Lifelet into your family. Choose one or two adult guardians. Adoption costs §1,000.",Vector2(307,459),Vector2(806,72),18,P.INK,app.overlay)
-	app.paragraph(reason,Vector2(307,554),Vector2(806,63),16,P.TEAL,app.overlay)
+	app.paragraph("Welcome a school-age Lifelet into your family. Choose one or two adult guardians. Adoption costs §1,000.",Vector2(307,544),Vector2(806,57),16,P.INK,app.overlay)
+	app.paragraph(reason,Vector2(307,607),Vector2(806,55),14,P.TEAL,app.overlay)
 	app.button("Back to life",Vector2(302,675),Vector2(820,47),app.close_overlay,false,app.overlay)
 
 func show_candidates() -> void:
