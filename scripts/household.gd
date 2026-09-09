@@ -377,9 +377,16 @@ func restore_state(data: Dictionary) -> Dictionary:
 	if not sanitation_error.is_empty():
 		for candidate:Dictionary in candidates:candidate.sim.free()
 		return {"ok":false,"error":sanitation_error}
+	var visit_error:String=LifeHomeVisit.validate_saved(data)
+	if not visit_error.is_empty():
+		for candidate:Dictionary in candidates:candidate.sim.free()
+		return {"ok":false,"error":visit_error}
+	var guest:Dictionary={}
+	var saved_visit:Variant=LifeHomeVisit.saved_visit(data)
+	if saved_visit!=null and not saved_visit.value.visit.is_empty():guest=saved_visit.value.visit
 	var meal_data: Variant = data.get("meals",LifeMeals.new().get_state())
-	var meal_error: String = LifeMeals.validate(meal_data,ids,(lead.day-1)*1440.0+lead.minutes)
-	if meal_error.is_empty():meal_error=LifeMeals.validate_actions(meal_data,data.members,journey_result.get("custody",{}),str(journey_result.get("venue","")))
+	var meal_error: String = LifeMeals.validate(meal_data,ids,(lead.day-1)*1440.0+lead.minutes,guest)
+	if meal_error.is_empty():meal_error=LifeMeals.validate_actions(meal_data,data.members,journey_result.get("custody",{}),str(journey_result.get("venue","")),guest)
 	if meal_error.is_empty():meal_error=LifeMeals.validate_layout(meal_data,data)
 	if not meal_error.is_empty():
 		for c in candidates:c.sim.free()

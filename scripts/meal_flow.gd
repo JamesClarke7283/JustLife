@@ -21,6 +21,53 @@ func member_id(sim:LifeSim) -> String:
 func item(id:String) -> Dictionary:return app._find_item(id)
 func actor(id:String) -> LifeActor:return app.world.actors.get(id)
 
+func _home_visit()->LifeHomeVisit:
+	var residents:Variant=app.get("residents")
+	return residents.home_visit if residents!=null else null
+
+func _reconcile_guest_offer()->void:
+	var visit:LifeHomeVisit=_home_visit()
+	if visit!=null:visit.meal.reconcile_source()
+
+func activity_for(person:String)->Dictionary:
+	var sim:LifeSim=app.household.member_sim(person)
+	if is_instance_valid(sim):return sim.get_current_action()
+	var visit:LifeHomeVisit=_home_visit()
+	if visit!=null and visit.owns(person) and visit.meal.owns_place():return visit.meal.activity()
+	return {}
+
+func activity_records()->Array:
+	var result:Array=[]
+	for member:Dictionary in app.household.members:
+		if not member.sim.is_away():result.append({"id":str(member.id),"action":member.sim.get_current_action()})
+	var visit:LifeHomeVisit=_home_visit()
+	if visit!=null and visit.meal.owns_place():result.append({"id":str(visit.state.guest),"action":visit.meal.activity()})
+	return result
+
+func guest_blocks(action:Dictionary)->bool:
+	var visit:LifeHomeVisit=_home_visit()
+	if visit==null or not visit.meal.owns_place():return false
+	var held:Array[String]=app._activity_resources(visit.meal.activity())
+	for resource:String in app._activity_resources(action):
+		if held.has(resource):return true
+	return false
+
+func guest_place_valid(action:Dictionary,restoring:bool=false)->bool:
+	var person:String=str(app.residents.home_visit.state.guest)
+	if bool(action.get("meal_standing",false)):
+		if not _standing_clear(person,action.target_position):return false
+	else:
+		var chair:Dictionary=item(str(action.get("meal_seat","")))
+		if chair.is_empty() or _host_level(chair)!=0 or action.target_position!=app.world.approach(chair):return false
+		var table:Dictionary=_chair_table(chair)
+		if table.is_empty() or not _surface_clear(table,_plate_offset(chair,table),LifeMeals.PLATE_HALF_SIZE,str(action.get("meal_plate",""))):return false
+		for member:Dictionary in app.household.members:
+			var other:Dictionary=member.sim.get_current_action()
+			if str(other.get("meal_seat",""))==str(chair.id):return false
+			if str(other.get("target_id",""))==str(chair.id) and (str(other.get("phase",""))=="active" or bool(app.motion_states.get(str(member.id),{}).get("resume_active",false))):return false
+	if not restoring and actor(person).position.distance_to(action.target_position)>.02:return false
+	return true
+
 func _pending_furniture(id:String) -> bool:
 	var pending:Variant=app.get("pending_move")
 	return not id.is_empty() and pending is Dictionary and not pending.is_empty() and str(pending.get("entry",{}).get("id",""))==id
@@ -114,6 +161,7 @@ func before_begin(sim:LifeSim,action:Dictionary) -> bool:
 			elif food().take_portion(str(action.meal_source),person,now()):plate=food().portion(str(action.meal_source))
 		if plate.is_empty():_stop(sim,"There is no fresh serving available.");return false
 		action.meal_plate=plate.id;action.meal_stage="eat"
+		_reconcile_guest_offer()
 		action.elapsed=float(plate.progress)*LifeMeals.EATING_MINUTES
 		action.progress=float(plate.progress)
 		if not _choose_seat(person,action):_stop(sim,"There is no clear place to enjoy this serving.");return false
@@ -135,7 +183,7 @@ func before_begin(sim:LifeSim,action:Dictionary) -> bool:
 	if action.id in ["store_meal","discard_meal"] and action.get("meal_stage")=="pickup":
 		var batch:Dictionary=food().batch(str(action.meal_source))
 		if batch.is_empty() or str(batch.storage) not in (["surface"] if action.id=="store_meal" else ["surface","fridge"]) or not str(batch.owner).is_empty() or (action.id=="store_meal" and now()>=float(batch.expires)) or not food().set_batch_location(str(batch.id),"carried","",actor(person).position,now(),person):_stop(sim,"That dish is no longer available.");return false
-		action.meal_stage="store" if action.id=="store_meal" else "discard";sim._emit_action_started(action);return false
+		action.meal_stage="store" if action.id=="store_meal" else "discard";_reconcile_guest_offer();sim._emit_action_started(action);return false
 	if action.id=="clean_plate" and action.get("meal_stage")=="pickup":
 		var plate:Dictionary=food().portion(str(action.meal_source))
 		if plate.is_empty() or not str(plate.owner).is_empty() or not food().carried_by(person).is_empty():_stop(sim,"That plate is no longer available.");return false
@@ -173,8 +221,8 @@ func _surface_clear(host:Dictionary,at:Vector3,half:Vector2,except_id:String="")
 		var offset:Array=value.get("offset",[0,0,0])
 		if absf(at.x-float(offset[0]))<half.x+other.x+.01 and absf(at.z-float(offset[2]))<half.y+other.y+.01:return false
 	# A diner walking to a free chair already reserves their reachable setting.
-	for member:Dictionary in app.household.members:
-		var action:Dictionary=member.sim.get_current_action()
+	for member:Dictionary in activity_records():
+		var action:Dictionary=member.action
 		if str(action.get("id",""))!="eat_meal" or str(action.get("meal_plate",""))==except_id:continue
 		var chair:Dictionary=item(str(action.get("meal_seat","")))
 		if chair.is_empty() or str(_chair_table(chair).get("id",""))!=str(host.id):continue
@@ -389,17 +437,16 @@ func standing_geometry_clear(at:Vector3) -> bool:
 
 func _standing_clear(person:String,at:Vector3) -> bool:
 	if not standing_geometry_clear(at):return false
-	var owner:LifeSim=app.household.member_sim(person)
-	var prior_reservation:bool=is_instance_valid(owner) and bool(owner.get_current_action().get("meal_standing",false))
+	var prior_reservation:bool=bool(activity_for(person).get("meal_standing",false))
 	for other_id:String in app.world.actors:
 		if other_id==person:continue
 		var other_actor:Node3D=app.world.actors[other_id]
 		if not is_instance_valid(other_actor) or not other_actor.visible:continue
 		var other_sim:LifeSim=app.household.member_sim(other_id)
-		var other:Dictionary=other_sim.get_current_action() if is_instance_valid(other_sim) else {}
+		var other:Dictionary=activity_for(other_id)
 		var clearance:float=1.15 if str(other.get("id","")) in ["nap","sleep"] else .85
 		if _same_floor_space(at,other_actor.position) and Vector2(at.x-other_actor.position.x,at.z-other_actor.position.z).length()<clearance:return false
-		if not other.is_empty() and not other_sim.is_away() and (not prior_reservation or str(other.get("phase",""))=="active" or bool(other.get("meal_standing",false))):
+		if not other.is_empty() and (not is_instance_valid(other_sim) or not other_sim.is_away()) and (not prior_reservation or str(other.get("phase",""))=="active" or bool(other.get("meal_standing",false))):
 			for target:Vector3 in _activity_places(other):
 				if _same_floor_space(at,target) and Vector2(at.x-target.x,at.z-target.z).length()<clearance:return false
 			var displayed:Variant=other_actor.get("_activity_anchor")
@@ -428,9 +475,9 @@ func _activity_places(action:Dictionary) -> Array[Vector3]:
 func standing_place_blocks(person:String,action:Dictionary) -> bool:
 	if bool(action.get("meal_standing",false)):return false
 	var clearance:float=1.15 if str(action.get("id","")) in ["nap","sleep"] else .85
-	for member:Dictionary in app.household.members:
-		if str(member.id)==person or member.sim.is_away():continue
-		var other:Dictionary=member.sim.get_current_action()
+	for member:Dictionary in activity_records():
+		if str(member.id)==person:continue
+		var other:Dictionary=member.action
 		if not bool(other.get("meal_standing",false)) or str(other.get("phase","")) not in ["approach","active"]:continue
 		var reserved:Vector3=other.target_position
 		for at:Vector3 in _activity_places(action):
@@ -439,8 +486,13 @@ func standing_place_blocks(person:String,action:Dictionary) -> bool:
 
 func _standing_route(person:String,at:Vector3) -> bool:
 	if not _standing_clear(person,at):return false
-	var route:PackedVector3Array=app.world.path_to(actor(person).position,at)
+	var route:PackedVector3Array=_dining_route(person,at)
 	return not route.is_empty() and route[-1].is_equal_approx(at)
+
+func _dining_route(person:String,at:Vector3)->PackedVector3Array:
+	var visit:LifeHomeVisit=_home_visit()
+	if app.household.member_sim(person)==null and visit!=null and visit.owns(person):return visit._route(actor(person).position,at,person)
+	return app.world.path_to(actor(person).position,at)
 
 func _standing_slot(person:String) -> Vector3:
 	var from:Vector3=actor(person).position
@@ -463,16 +515,17 @@ func _choose_seat(person:String,action:Dictionary) -> bool:
 	var chairs:Array=[]
 	for candidate:Dictionary in app.world.items:
 		if str(candidate.kind)!="chair" or _chair_table(candidate).is_empty():continue
+		if app.household.member_sim(person)==null and _host_level(candidate)!=0:continue
 		var occupied:bool=false
-		for member:Dictionary in app.household.members:
+		for member:Dictionary in activity_records():
 			if member.id==person:continue
-			var other:Dictionary=member.sim.get_current_action()
+			var other:Dictionary=member.action
 			if str(other.get("meal_seat",""))==str(candidate.id) or str(other.get("target_id",""))==str(candidate.id):occupied=true
 		for plate:Dictionary in food().portions:
 			if str(plate.seat)==str(candidate.id) and str(plate.owner)!=person:occupied=true
 		var table:Dictionary=_chair_table(candidate)
 		if not _surface_clear(table,_plate_offset(candidate,table),LifeMeals.PLATE_HALF_SIZE,str(action.get("meal_plate",""))):occupied=true
-		if not occupied and not app.world.path_to(actor(person).position,app.world.approach(candidate)).is_empty():chairs.append(candidate)
+		if not occupied and not _dining_route(person,app.world.approach(candidate)).is_empty():chairs.append(candidate)
 	chairs.sort_custom(func(a:Dictionary,b:Dictionary)->bool:return a.node.position.distance_squared_to(actor(person).position)<b.node.position.distance_squared_to(actor(person).position))
 	if not chairs.is_empty():
 		action.meal_seat=str(chairs[0].id);action.target_id=str(chairs[0].id);action.target_position=app.world.approach(chairs[0])
@@ -506,12 +559,16 @@ func consume(sim:LifeSim,action:Dictionary,minutes:float) -> void:
 	if plate.is_empty() or now()>=float(plate.expires):_stop(sim,"This meal has spoiled.");return
 	var gained:float=food().eat(str(plate.id),person,minutes,(sim.day-1)*1440.0+sim.minutes)
 	sim.needs.hunger=minf(100.0,float(sim.needs.hunger)+gained)
+	record_company(person,plate,minutes)
+
+func record_company(person:String,plate:Dictionary,minutes:float)->void:
 	if str(plate.host).is_empty():return
 	for other:Dictionary in food().portions:
 		if str(other.id)==str(plate.id) or str(other.storage)!="table" or str(other.host)!=str(plate.host) or str(other.owner).is_empty():continue
-		var partner:LifeSim=app.household.member_sim(str(other.owner))
-		if partner==null or str(partner.get_current_action().get("id",""))!="eat_meal" or str(partner.get_current_action().get("phase",""))!="active":continue
-		sim.needs.social=minf(100.0,float(sim.needs.social)+minutes*.35)
+		var current:Dictionary=activity_for(str(other.owner))
+		if str(current.get("id",""))!="eat_meal" or str(current.get("phase",""))!="active":continue
+		var sim:LifeSim=app.household.member_sim(person)
+		if is_instance_valid(sim):sim.needs.social=minf(100.0,float(sim.needs.social)+minutes*.35)
 		plate.shared_minutes=minf(LifeMeals.EATING_MINUTES,float(plate.shared_minutes)+minutes)
 		if not plate.company.has(str(other.owner)):plate.company.append(str(other.owner))
 		break
@@ -549,6 +606,7 @@ func finished(sim:LifeSim,action:Dictionary) -> void:
 		food().set_batch_location(str(action.meal_source),"surface","",actor(person).position,now())
 		food().discard_batch(str(action.meal_source))
 	elif action.id=="clean_plate":food().clean_portion(str(action.meal_source),person)
+	_reconcile_guest_offer()
 	sync_due=true
 
 func _prepend(sim:LifeSim,id:String,target:String,metadata:Dictionary) -> void:
@@ -598,6 +656,8 @@ func call_to_meal(target:String) -> int:
 		if not sim.action_queue.is_empty() or float(sim.needs.hunger)>85 or not is_instance_valid(actor(str(member.id))) or not actor(str(member.id)).visible:continue
 		if float(sim.needs.energy)<12 or float(sim.needs.bladder)<12:continue
 		if sim.queue_action("eat_meal",target,Vector3.ZERO):count+=1
+	var visit:LifeHomeVisit=_home_visit()
+	if visit!=null and visit.meal.offer(target):count+=1
 	return count
 
 func _mesh_view(value:Dictionary) -> Node3D:
@@ -613,7 +673,9 @@ func _mesh_view(value:Dictionary) -> Node3D:
 func sync_world(reconcile:bool=true) -> void:
 	if not is_instance_valid(app.world.house):return
 	sync_oven_presentations()
-	if reconcile:_reconcile_dining_furniture()
+	if reconcile:
+		_reconcile_guest_offer()
+		_reconcile_dining_furniture()
 	var present:Dictionary={}
 	var rebuilt:bool=false
 	for value:Dictionary in food().batches+food().portions:
@@ -775,7 +837,7 @@ func company_label(person:String) -> String:
 	for other:Dictionary in food().portions:
 		if str(other.owner).is_empty() or str(other.owner)==person or str(other.storage)!="table" or str(other.host)!=str(plate.host):continue
 		var companion:LifeSim=app.household.member_sim(str(other.owner))
-		if companion and companion.get_current_action().get("phase")=="active":names.append(str(companion.character.name))
+		if activity_for(str(other.owner)).get("phase")=="active":names.append(str(companion.character.name) if companion else str(LifeResidents.PEOPLE.get(str(other.owner),{}).get("name","Guest")))
 	return "AT THE TABLE WITH "+", ".join(names).to_upper() if not names.is_empty() else ""
 
 

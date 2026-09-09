@@ -1314,7 +1314,7 @@ func dismiss_layer() -> void:
 func show_interactions(item:Dictionary,screen:Vector2) -> void:
 	close_overlay();overlay_open=true;dismiss_layer()
 	var actions:Array=sim.get_actions_for(str(item.kind),str(item.id))
-	if str(item.kind)=="meal":actions.append({"id":"call_to_meal","label":"Call everyone to eat","cost":0,"duration":0,"available":true,"description":"Invite available hungry household members. Busy Lifelets keep their plans."})
+	if str(item.kind)=="meal":actions.append({"id":"call_to_meal","label":"Call everyone to eat","cost":0,"duration":0,"available":true,"description":"Invite available hungry household members and your welcomed guest. Busy Lifelets keep their plans."})
 	if str(item.kind) in ["desk","computer"] and str(sim.character.age_stage) in ["child","teen"]:
 		var availability:Dictionary=sim.get_action_availability("homework",str(item.id))
 		var reason:String=str(availability.reason)
@@ -1462,9 +1462,9 @@ func _find_item(id:String) -> Dictionary:
 		if str(item.id)==id:return item
 	return {}
 
-func _refresh_sim_targets(replan:bool=true) -> void:
+func _refresh_sim_targets(replan:bool=true,reconcile_food:bool=true) -> void:
 	if not is_instance_valid(household) or household.members.is_empty():return
-	meal_flow.sync_world()
+	meal_flow.sync_world(reconcile_food)
 	_store_motion()
 	var prior:String=bound_member_id
 	household.register_targets(world.simulation_targets())
@@ -1933,10 +1933,12 @@ func load_game(slot_id:String="") -> void:
 		_restore_journeys()
 	else:
 		loading_game=false
-		_refresh_sim_targets()
+		_refresh_sim_targets(true,false)
 		_restore_resource_waits()
 	loading_game=false
 	meal_flow.sync_oven_presentations()
+	residents.home_visit.meal.present(true)
+	meal_flow.sync_world(false)
 	_reconstruct_paused_cooking()
 	_sync_actor_sound()
 	show_notice("Welcome back, %s." % sim.character.name)
@@ -1976,7 +1978,10 @@ func _legacy_visit_error(data:Dictionary) -> String:
 		var away:Dictionary=member.sim.get_away_state()
 		candidate.world.set_actor_away(str(member.id),str(away.get("phase",""))=="away",not away.is_empty())
 	candidate.residents.attach("home")
+	candidate.meal_flow=LifeMealFlow.new();candidate.meal_flow.app=candidate;candidate.add_child(candidate.meal_flow)
+	candidate.meal_flow.sync_world(false)
 	var error:String=candidate.residents.home_visit.physical_error()
+	if error.is_empty():candidate.residents.home_visit.meal.present(true)
 	viewport.free();candidate.free()
 	return error
 
@@ -2025,6 +2030,8 @@ func _prepare_loaded_world(data:Dictionary) -> Dictionary:
 	if not bool(restored.ok):viewport.free();candidate.free();return restored
 	var guest_error:String=candidate.residents.home_visit.physical_error()
 	if not guest_error.is_empty():viewport.free();candidate.free();return {"ok":false,"error":guest_error}
+	candidate.residents.home_visit.meal.present(true)
+	candidate.meal_flow.sync_world(false)
 	candidate._reconstruct_paused_cooking()
 	return {"ok":true,"candidate":candidate,"viewport":viewport}
 
@@ -2190,7 +2197,7 @@ func _process(delta:float) -> void:
 	if mode not in ["live","build"]:return
 	if mode=="live":
 		residents.publish_targets()
-		meal_flow.sync_world()
+		meal_flow.sync_world(household.speed>0)
 		_store_motion()
 		var selected_id:String=household.selected_id()
 		var autonomy_values:Dictionary={}
@@ -2217,7 +2224,7 @@ func _process(delta:float) -> void:
 			_update_activity_facing(delta,action,action_id)
 			player.animate(delta,float(sim.speed),moving,action_id)
 			_store_motion()
-		meal_flow.sync_world()
+		meal_flow.sync_world(household.speed>0)
 		_bind_member(selected_id)
 		if away_targets_changed:_refresh_sim_targets(false)
 		residents.tick(delta)
@@ -2534,7 +2541,7 @@ func _activity_available(action:Dictionary) -> bool:
 	if not residents.home_visit.welcome_start_allowed(action):return false
 	if str(action.get("id","")) in LifeSim.SOCIAL_ACTIONS and LifeResidents.PEOPLE.has(str(action.get("target_id",""))):
 		if not residents.present(str(action.target_id)) or not residents.home_visit.social_allowed(str(action.target_id),action):return false
-	if meal_flow.standing_place_blocks(bound_member_id,action):return false
+	if meal_flow.standing_place_blocks(bound_member_id,action) or meal_flow.guest_blocks(action):return false
 	var wanted:Array[String]=_activity_resources(action)
 	var session_id:String=str(action.get("cooperation_id",""))
 	var resuming_owner:bool=resume_activity and is_instance_valid(sim) and action==sim.get_current_action()
@@ -3221,6 +3228,7 @@ func _refresh_guest_status()->void:
 	var label:String={"arriving":"Walking over","waiting":"At your door","entering":"Coming inside","inside":"Visiting your home","leaving":"Heading home"}.get(phase,"")
 	var welcoming:bool=phase=="waiting" and not visit.greeting.is_empty() and str(residents.home_visit._welcome_action.get("phase",""))=="active"
 	if welcoming:label="Being welcomed"
+	if residents.home_visit.meal.active():label=residents.home_visit.meal.label()
 	guest_status_text.text=str(LifeResidents.PEOPLE[str(visit.guest)].name)+" · "+label
 	if phase=="waiting" and not welcoming:
 		var remaining:int=maxi(0,ceili(float(visit.arrived_at)+LifeHomeVisit.WELCOME_MINUTES-residents.home_visit._now()))

@@ -16,8 +16,9 @@ var next_serial:int=1
 var _welcome_action:Dictionary={}
 var _departure_action:Dictionary={}
 var _notice_in:float=0.0
+var meal:LifeGuestMeal
 
-func _init(residents:RefCounted)->void:_owner=weakref(residents)
+func _init(residents:RefCounted)->void:_owner=weakref(residents);meal=LifeGuestMeal.new(self)
 func active()->bool:return not state.is_empty()
 func owns(id:String)->bool:return active() and str(state.guest)==id
 func _now()->float:return (app.household.day-1)*1440.0+app.household.minutes
@@ -29,6 +30,7 @@ func reset()->void:
 
 func social_allowed(id:String,action:Dictionary={})->bool:
 	if not owns(id):return true
+	if meal.active():return false
 	if str(state.phase) in ["waiting","inside"]:return true
 	return not _departure_action.is_empty() and is_same(action,_departure_action) and str(action.get("phase","")) in ["active","approach"] and bool(action.get("paid",false))
 
@@ -70,7 +72,7 @@ func invite(id:String)->bool:
 	if not inside.is_finite() or not exit.is_finite() or _route(inside,exit,id).is_empty():
 		app.show_notice("Make room for a clear ground-floor gathering place and a route back to the sidewalk.");return false
 	# All fallible layout/presence checks precede any queue, body or lifecycle change.
-	state={"serial":next_serial,"guest":id,"phase":"arriving","created_at":_now(),"arrived_at":-1.0,"admitted_at":-1.0,"phase_at":_now(),"welcome":welcome,"inside":inside,"exit":exit,"route":{"points":incoming,"point":0},"greeting":{},"next_greeting":1,"departure":{},"blocked":false}
+	state={"serial":next_serial,"guest":id,"phase":"arriving","created_at":_now(),"arrived_at":-1.0,"admitted_at":-1.0,"phase_at":_now(),"welcome":welcome,"inside":inside,"exit":exit,"route":{"points":incoming,"point":0},"greeting":{},"next_greeting":1,"departure":{},"blocked":false,"meal":{},"next_meal":1}
 	next_serial+=1
 	actor.position=start;app.world.set_actor_away(id,false,false)
 	var resident:Dictionary=app.residents.locations.home[id]
@@ -189,6 +191,7 @@ func goodbye(message:String="Your guest is heading home after the current conver
 	if not _departure_action.is_empty():
 		_departure_action.erase("home_visit_serial");_departure_action.erase("home_visit_token")
 	state.phase="leaving";state.phase_at=event_time if event_time>=0 else _now();state.route={"points":PackedVector3Array(),"point":0};state.greeting={};_welcome_action={}
+	meal.cancel("Your guest is heading home.")
 	app._cancel_guest_conversations(str(state.guest),_departure_action)
 	app.residents.publish_targets();app.show_notice(message)
 
@@ -213,8 +216,15 @@ func tick(delta:float)->void:
 			bounded=started>=0 and started<=float(state.arrived_at)+WELCOME_MINUTES and now<=started+GREETING_MINUTES+.001
 			if bounded:state.greeting.active_at=started
 		if now>=float(state.arrived_at)+WELCOME_MINUTES and not bounded:goodbye("Your guest waited for a welcome and is heading home.")
-	if str(state.phase)=="inside" and now>=float(state.phase_at)+STAY_MINUTES:goodbye("It is time for your guest to head home.")
+	if str(state.phase)=="inside" and now>=float(state.phase_at)+STAY_MINUTES:
+		meal.consume_until(float(state.phase_at)+STAY_MINUTES)
+		goodbye("It is time for your guest to head home.",float(state.phase_at)+STAY_MINUTES)
 	phase=str(state.phase)
+	if meal.active():
+		meal.tick(delta)
+		var location:Dictionary=app.residents.locations.home[id]
+		location.position=_packed(actor.position);location.rotation=actor.rotation.y
+		return
 	var moving:bool=false;var talk:String=""
 	if phase in ["arriving","entering","leaving"] and not (phase=="leaving" and _departure_held()):
 		var destination:Vector3=state.welcome if phase=="arriving" else (state.inside if phase=="entering" else state.exit)
@@ -246,6 +256,7 @@ func tick(delta:float)->void:
 	resident.position=_packed(actor.position);resident.rotation=actor.rotation.y
 
 func _finish()->void:
+	if meal.active() or not app.household.meals.carried_by(str(state.guest)).is_empty():return
 	var id:String=str(state.guest);var actor:LifeActor=_body(id)
 	var resident:Dictionary=app.residents.locations.home[id]
 	resident.phase="home";resident.position=_packed(actor.position);resident.rotation=actor.rotation.y;resident.wait=48.0 if id=="maya" else 72.0
@@ -260,11 +271,14 @@ func snapshot()->Dictionary:
 		saved.route.points=Array(saved.route.points).map(func(point:Vector3)->Array:return _packed(point))
 		var actor:LifeActor=_body(str(saved.guest))
 		saved.position=_packed(actor.position);saved.rotation=actor.rotation.y
-	return {"version":1,"next_serial":next_serial,"visit":saved}
+		if not saved.get("meal",{}).is_empty():saved.meal.target=_packed(saved.meal.target)
+	return {"version":2,"next_serial":next_serial,"visit":saved}
 
 func restore(value:Dictionary)->void:
 	state=value.get("visit",{}).duplicate(true);next_serial=int(value.get("next_serial",1));_welcome_action={};_departure_action={}
 	if state.is_empty():return
+	state.meal=state.get("meal",{});state.next_meal=int(state.get("next_meal",1))
+	if not state.meal.is_empty():state.meal.target=_vector(state.meal.target)
 	state.serial=int(state.serial);state.next_greeting=int(state.next_greeting)
 	if not state.greeting.is_empty():state.greeting.token=int(state.greeting.token)
 	for key:String in ["welcome","inside","exit"]:state[key]=_vector(state[key])
@@ -291,7 +305,7 @@ func physical_error()->String:
 	for index:int in range(1,points.size()):
 		if not app.world.lot_navigation.segment_clear(0,points[index-1],points[index]):return "The saved guest route crosses an obstruction."
 	if not app.traversal._free(id,actor.position,false):return "The saved guest overlaps another body or stair clearance."
-	return ""
+	return meal.physical_error() if meal.active() else ""
 
 static func _point(value:Variant)->bool:
 	if not value is Array or value.size()!=3:return false
@@ -314,9 +328,11 @@ static func validate_saved(data:Dictionary)->String:
 	var found:Variant=saved_visit(data)
 	if found==null:return ""
 	var value:Variant=found.value
-	if not value is Dictionary or not Building.number(value.get("version"),1,1,true) or not Building.number(value.get("next_serial"),1,1000000000,true) or not value.get("visit") is Dictionary:return "Save contains an invalid home-visit record."
+	if not value is Dictionary or not Building.number(value.get("version"),1,2,true) or not Building.number(value.get("next_serial"),1,1000000000,true) or not value.get("visit") is Dictionary:return "Save contains an invalid home-visit record."
 	var visit:Dictionary=value.visit
 	if visit.is_empty():return ""
+	if int(value.version)==1 and (visit.has("meal") or visit.has("next_meal")):return "A version-one visit cannot contain a guest meal."
+	if int(value.version)==2 and (not visit.get("meal") is Dictionary or not Building.number(visit.get("next_meal"),1,1000000,true)):return "Save contains an invalid guest meal envelope."
 	if not Building.number(found.residents.get("version"),1,1,true):return "An active home visit requires the supported resident state version."
 	if str(found.context.get("venue",""))!="home":return "An active home guest requires a physical home snapshot."
 	if not Building.number(visit.get("serial"),1,float(value.next_serial)-1,true) or not LifeResidents.PEOPLE.has(str(visit.get("guest",""))):return "Save contains an unknown guest or visit identity."
@@ -331,6 +347,8 @@ static func validate_saved(data:Dictionary)->String:
 	var now:float=(float(clock.day)-1)*1440.0+float(clock.minutes)
 	for key:String in ["created_at","arrived_at","admitted_at","phase_at"]:
 		if not Building.number(visit.get(key),-1,now):return "Save contains an invalid guest phase clock."
+	var meal_error:String=LifeGuestMeal.validate(visit,now)
+	if not meal_error.is_empty():return meal_error
 	if float(visit.created_at)<0 or float(visit.phase_at)<float(visit.created_at):return "Save contains inconsistent visit clocks."
 	if float(visit.arrived_at)>=0 and float(visit.arrived_at)<float(visit.created_at):return "Save contains an arrival before its invitation."
 	if float(visit.admitted_at)>=0 and (float(visit.arrived_at)<0 or float(visit.admitted_at)<float(visit.arrived_at)):return "Save contains an admission before its arrival."
@@ -350,6 +368,7 @@ static func validate_saved(data:Dictionary)->String:
 		if phase!="leaving":return "Save is missing an active guest route."
 	else:
 		var target:Array=visit.welcome if phase in ["arriving","waiting"] else (visit.exit if phase=="leaving" else visit.inside)
+		if not visit.get("meal",{}).is_empty():target=visit.meal.target
 		if route.points[-1]!=target:return "Save contains an inconsistent guest route destination."
 		var position:=Vector3(visit.position[0],visit.position[1],visit.position[2]);var cursor:int=int(route.point)
 		if cursor==0 and position.distance_to(Vector3(route.points[0][0],route.points[0][1],route.points[0][2]))>.00001:return "The guest is not at the saved route origin."
@@ -358,7 +377,8 @@ static func validate_saved(data:Dictionary)->String:
 			var a:=Vector3(route.points[cursor-1][0],route.points[cursor-1][1],route.points[cursor-1][2]);var b:=Vector3(route.points[cursor][0],route.points[cursor][1],route.points[cursor][2]);var segment:Vector3=b-a
 			var fraction:float=clampf((position-a).dot(segment)/maxf(segment.length_squared(),.00000001),0,1)
 			if position.distance_to(a+fraction*segment)>.00001:return "The guest position is not on the saved route segment."
-		if phase in ["waiting","inside"] and cursor!=route.points.size():return "A stationary guest has an unfinished route."
+		if phase in ["waiting","inside"] and visit.get("meal",{}).is_empty() and cursor!=route.points.size():return "A stationary guest has an unfinished route."
+		if not visit.get("meal",{}).is_empty() and str(visit.meal.phase) in ["eating","release"] and cursor!=route.points.size():return "The guest meal requires an arrived body."
 	var locations:Variant=found.residents.get("locations")
 	if not locations is Dictionary or not locations.get("home") is Dictionary:return "Save is missing the guest's home-lot presence."
 	var resident:Variant=locations.home.get(str(visit.guest))
@@ -399,6 +419,7 @@ static func validate_saved(data:Dictionary)->String:
 				if visit.greeting.is_empty() or member_id!=str(visit.greeting.member) or action.get("home_visit_serial")!=visit.serial or action.get("home_visit_token")!=visit.greeting.token:return "The saved welcome token has no matching visit owner."
 			if str(action.get("target_id",""))!=str(visit.guest) or str(action.get("id","")) not in LifeSim.SOCIAL_ACTIONS or str(action.get("phase",""))!="active":continue
 			active_hosts+=1
+			if not visit.get("meal",{}).is_empty():return "The guest has conflicting meal and conversation ownership."
 			if index!=0 or phase not in ["waiting","inside","leaving"]:return "The saved guest conversation is active in an incompatible phase."
 			if phase=="leaving" and (visit.departure.is_empty() or member_id!=str(visit.departure.member)):return "A departing guest has an unowned active conversation."
 	if active_hosts>1:return "Two household members cannot own the same guest conversation."
