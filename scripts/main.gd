@@ -17,6 +17,8 @@ var mode: String = "creator"
 var creator_tab: String = "Look"
 var panel_tab: String = "Needs"
 var catalog_category: String = "All"
+var catalog_search: String = ""
+var portrait_stale: bool = false
 var profile: Dictionary = {"name":"Mara Vale","frame":0,"hair":1,"skin_color":"d9a17d","hair_color":"54382a","top_color":"c97c66","bottom_color":"eadfc9","body_scale":1.0,"height_scale":1.0,"outfit":0,"eye_color":"547365","traits":["Creative","Outgoing","Foodie"],"aspiration":"Maker"}
 var selected_lot: int = 0
 var path: PackedVector3Array = []
@@ -550,7 +552,9 @@ func add_creator_member() -> void:
 	person.erase("world_state")
 	person.name=["Ellis Rowan","Jules Park","Noa Rivera","Robin Ash","Avery Woods","Morgan Bell","Jamie Reed"][household_profiles.size()-1]
 	person.frame=household_profiles.size()%2
-	person.hair=household_profiles.size()%3
+	person.hair=household_profiles.size()%6
+	person.outfit=household_profiles.size()%5
+	person.bottom=household_profiles.size()%2
 	person.top_color=["417a71","7195b3","bd9b68","efeadb"][household_profiles.size()%4]
 	household_profiles.append(person)
 	select_creator_member(household_profiles.size()-1)
@@ -894,7 +898,11 @@ func draw_household_bar() -> void:
 		button("School record →",Vector2(989,848),Vector2(230,24),show_school_record)
 	else:
 		career_labels["title"]=text_label(sim.career.title,Vector2(989,778),Vector2(235,28),19,P.INK,true)
-		career_labels["details"]=text_label("Level %d  ·  §%d / shift" % [sim.career.level,sim.career.salary],Vector2(990,814),Vector2(234,27),12,P.MUTED)
+		var requirement:Dictionary=sim.promotion_requirement()
+		var details_text:String="Level %d  ·  §%d / shift" % [sim.career.level,sim.career.salary]
+		if not requirement.is_empty() and not bool(requirement.met):details_text+="  ·  Next: %s %d" % [str(requirement.skill).capitalize(),int(requirement.level)]
+		career_labels["details"]=text_label(details_text,Vector2(990,814),Vector2(234,27),12,P.MUTED)
+		career_labels["details"].tooltip_text="" if requirement.is_empty() else ("Promotion to %s needs %s level %d and full performance." % [str(requirement.next_title),str(requirement.skill).capitalize(),int(requirement.level)])
 		career_labels["work"]=button("Go to work",Vector2(1241,779),Vector2(149,37),_go_to_work,true)
 		button("Career details",Vector2(1241,824),Vector2(149,32),show_career_record)
 
@@ -910,6 +918,11 @@ func draw_queue() -> void:
 	queue_box.mouse_filter=Control.MOUSE_FILTER_IGNORE
 
 func refresh_hud() -> void:
+	if portrait_stale and mode=="live" and not overlay_open:
+		# A changed top deserves a fresh portrait; redraw once, outside modal panels.
+		portrait_stale=false
+		draw_live()
+		return
 	_refresh_guest_status()
 	if household and bound_member_id!=household.selected_id():return
 	if mode not in ["live","build"]:return
@@ -921,7 +934,8 @@ func refresh_hud() -> void:
 		var mood=sim.get_mood()
 		mood_label.text=mood.label
 		mood_label.add_theme_color_override("font_color",mood.color)
-		mood_label.tooltip_text=mood.description
+		var effect:Dictionary=LifeSim.emotion_effect(str(mood.label))
+		mood_label.tooltip_text=str(mood.description)+("" if effect.is_empty() else "\n"+str(effect.summary))
 	for key in need_bars:
 		var value:float=sim.needs[key]
 		need_bars[key].value=value
@@ -1099,7 +1113,16 @@ func draw_build_catalog() -> void:
 	button("Undo",Vector2(1250,663),Vector2(144,35),undo_build)
 	button("Ground",Vector2(40,745),Vector2(105,37),func():set_build_level(0),world.view_level==0)
 	button("Upper",Vector2(153,745),Vector2(105,37),func():set_build_level(1),world.view_level==1)
-	paragraph("Click to place\nR  rotate   ·   Esc  cancel",Vector2(41,803),Vector2(230,54),14)
+	var search:=LineEdit.new();search.placeholder_text="Search furnishings";search.text=catalog_search
+	rect(search,Vector2(40,792),Vector2(232,34))
+	search.text_changed.connect(func(value:String):
+		catalog_search=value
+		draw_live()
+		var boxes:Array=ui.find_children("","LineEdit",true,false)
+		if not boxes.is_empty():
+			var box:LineEdit=boxes.front()
+			box.grab_focus();box.caret_column=box.text.length())
+	paragraph("Click to place  ·  R rotate  ·  Esc cancel",Vector2(41,834),Vector2(232,40),12)
 	if catalog_category=="Structure":
 		button("Wall",Vector2(305,725),Vector2(146,46),func():begin_construction("wall"))
 		button("Room",Vector2(461,725),Vector2(146,46),func():begin_construction("room"))
@@ -1129,6 +1152,7 @@ func draw_build_catalog() -> void:
 	for kind in LifeCatalog.ITEMS:
 		var data:Dictionary=LifeCatalog.ITEMS[kind]
 		if catalog_category!="All" and data.category!=catalog_category:continue
+		if not catalog_search.strip_edges().is_empty() and not (str(data.label).to_lower().contains(catalog_search.strip_edges().to_lower()) or str(kind).contains(catalog_search.strip_edges().to_lower())):continue
 		var cell=Control.new();cell.custom_minimum_size=Vector2(152,140);row.add_child(cell)
 		var b=button("",Vector2.ZERO,Vector2(152,137),func():begin_purchase(kind),false,cell)
 		b.tooltip_text=data.label+" · §"+str(data.price)
@@ -1223,7 +1247,7 @@ func on_construction(data:Dictionary) -> void:
 func on_placement(kind:String,p:Vector3,angle:float) -> void:
 	if mode!="build" or not LifeCatalog.ITEMS.has(kind):return
 	if not world.can_place(kind,p,angle):
-		show_notice("That space needs a little more room.");return
+		show_notice("Hang this against a wall." if kind in LifeCatalog.WALL_MOUNTED and not world.wall_behind(kind,p,angle) else "That space needs a little more room.");return
 	var moving:bool=not pending_move.is_empty() and str(pending_move.entry.kind)==kind
 	if not pending_move.is_empty() and not moving:cancel_placement()
 	var price:int=0 if moving else int(LifeCatalog.ITEMS[kind].price)
@@ -2333,7 +2357,9 @@ func _process(delta:float) -> void:
 				if bool(shared.get("ready",false)) and str(shared.get("role",""))=="learner":action_id="homework_wait"
 			meal_flow.present_actor(bound_member_id)
 			_update_activity_facing(delta,action,action_id)
-			if int(player.profile.get("outfit",0))!=int(sim.character.get("outfit",0)):player.set_outfit(int(sim.character.get("outfit",0)))
+			if int(player.profile.get("outfit",0))!=int(sim.character.get("outfit",0)):
+				player.set_outfit(int(sim.character.get("outfit",0)))
+				if member.id==selected_id and not overlay_open:portrait_stale=true
 			player.animate(delta,float(sim.speed),moving,action_id)
 			_store_motion()
 		meal_flow.sync_world(household.speed>0)

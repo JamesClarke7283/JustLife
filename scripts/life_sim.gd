@@ -71,11 +71,14 @@ var story_history: Array = []
 var _story_generated_day: int = 1
 const STORY_KINDS: Array[String] = ["neighbor_invitation", "career_opportunity", "hobby_exhibition", "garden_exchange", "learning_circle", "community_picnic"]
 const SOCIAL_ACTIONS: Array[String] = ["friendly", "joke", "deep_talk", "flirt", "argue", "ask_partner", "commit", "break_up"]
+const AGE_GATED_ACTIONS: Array[String] = ["jog", "play_toys"]
+const WEAR_ACTIONS: Dictionary = {"wear_casual":0, "wear_jacket":1, "wear_cardigan":2, "wear_tee":3, "wear_hoodie":4}
 const RELATIONSHIP_ACTIONS: Array[String] = ["ask_partner", "commit", "break_up"]
 const SOCIAL_STAGES: Array[String] = ["met", "friends", "close_friends", "spark", "partners", "committed", "separated"]
 var social_history: Array = []
 var romantic_partner: String = ""
 var _social_member_id: String = "player"
+var _promotion_notice_day: int = -1
 var _social_partners: Dictionary = {}
 var _social_adults: Dictionary = {}
 var _social_reciprocal: Dictionary = {}
@@ -193,6 +196,11 @@ func _build_actions() -> void:
 	_define("dance", "Dance to a record", 35.0, {"fun": 40.0, "energy": -8.0, "hygiene": -6.0}, 0, "fitness", 12.0, "Put a record on and move. Great fun, a little tiring.")
 	_define("play_toys", "Play with toys", 45.0, {"fun": 42.0, "social": 4.0}, 0, "creativity", 14.0, "Imaginative play for children. Builds a little Creativity.")
 	_define("change_outfit", "Change outfit", 4.0, {}, 0, "", 0.0, "Switch to the next outfit in your wardrobe.")
+	_define("wear_casual", "Wear the casual shirt", 4.0, {}, 0, "", 0.0, "Change into the short-sleeve shirt.")
+	_define("wear_jacket", "Wear the jacket", 4.0, {}, 0, "", 0.0, "Change into the cropped bomber jacket.")
+	_define("wear_cardigan", "Wear the cardigan", 4.0, {}, 0, "", 0.0, "Change into the open knit cardigan.")
+	_define("wear_tee", "Wear the tee", 4.0, {}, 0, "", 0.0, "Change into the plain crew tee.")
+	_define("wear_hoodie", "Wear the hoodie", 4.0, {}, 0, "", 0.0, "Change into the soft hoodie.")
 	_define("warm_up", "Warm up by the fire", 25.0, {"fun": 16.0, "energy": 8.0}, 0, "", 0.0, "A quiet moment by the hearth.")
 	_define("play_games", "Play video games", 45.0, {"fun": 40.0, "energy": -4.0}, 0, "logic", 10.0, "An hour of games at the computer. Great fun, a little Logic.")
 	_define("friendly", "Have a friendly chat", 25.0, {"social": 28.0, "fun": 6.0}, 0, "charisma", 18.0, "Say hello, catch up and grow your friendship.")
@@ -236,7 +244,9 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"yoga_mat": ids = ["stretch"]
 		"stereo": ids = ["dance"]
 		"toybox": ids = ["play_toys"] if str(character.age_stage) == "child" else []
-		"wardrobe": ids = ["change_outfit"]
+		"wardrobe":
+			for wear_id: String in WEAR_ACTIONS:
+				if int(WEAR_ACTIONS[wear_id]) != int(character.get("outfit", 0)): ids.append(wear_id)
 		"garden_bed": ids = ["water"]
 		"fireplace": ids = ["warm_up"]
 		"neighbor", "maya", "leo": ids = SOCIAL_ACTIONS
@@ -668,7 +678,24 @@ func _apply_continuous_effects(action: Dictionary, fraction: float) -> void:
 		var multiplier: float = 1.0
 		if (skill_name == "creativity" and _has_trait("Creative")) or (skill_name == "charisma" and _has_trait("Outgoing")) or (skill_name == "logic" and _has_trait("Bookworm")) or (skill_name == "cooking" and _has_trait("Foodie")):
 			multiplier = 1.4
+		var effect: Dictionary = emotion_effect(str(get_mood().label))
+		if not effect.is_empty() and (effect.skills.has("*") or effect.skills.has(skill_name)):
+			multiplier *= float(effect.multiplier)
 		_gain_skill(skill_name, float(action["xp"]) * fraction * multiplier)
+
+
+static func emotion_effect(emotion: String) -> Dictionary:
+	# Emotions change how quickly skills grow, so a mood is a reason to choose an activity, not only a label.
+	match emotion:
+		"Inspired": return {"skills":["creativity","music"], "multiplier":1.25, "summary":"Creative and musical skills grow 25% faster, and paintings sell for more."}
+		"Focused": return {"skills":["logic","cooking"], "multiplier":1.25, "summary":"Logic and Cooking grow 25% faster."}
+		"Energized": return {"skills":["fitness"], "multiplier":1.3, "summary":"Fitness grows 30% faster."}
+		"Playful": return {"skills":["charisma"], "multiplier":1.2, "summary":"Charisma grows 20% faster."}
+		"Confident": return {"skills":["charisma"], "multiplier":1.15, "summary":"Charisma grows 15% faster."}
+		"Happy": return {"skills":["*"], "multiplier":1.1, "summary":"Every skill grows 10% faster."}
+		"Tense": return {"skills":["*"], "multiplier":0.8, "summary":"Skills grow 20% slower until this passes."}
+		"Embarrassed": return {"skills":["charisma"], "multiplier":0.7, "summary":"Charisma grows 30% slower until this passes."}
+	return {}
 
 
 func _gain_skill(skill_name: String, amount: float) -> void:
@@ -692,6 +719,12 @@ func _finish_front() -> void:
 	var action: Dictionary = action_queue.pop_front()
 	var id: String = str(action["id"])
 	var earned: int = 0
+	if id in AGE_GATED_ACTIONS and not bool(get_action_availability(id, str(action.get("target_id",""))).available):
+		# A restored or edited queue cannot grant an activity this age may not do.
+		_emit_notice(str(get_action_availability(id, str(action.get("target_id",""))).reason))
+		_start_front()
+		_emit_changed()
+		return
 	if id in ["school","homework"]:
 		var target_error: String = _school_action_error(action)
 		if not target_error.is_empty():
@@ -713,6 +746,7 @@ func _finish_front() -> void:
 		if str(action.get("birthday_from_stage","")) == str(character.age_stage): celebrate_birthday(false)
 	elif id == "paint":
 		var sale: int = 55 + int(skills["creativity"]["level"]) * 35
+		if str(get_mood().label) == "Inspired": sale = int(sale * 1.25)
 		funds += sale
 		earned = sale
 		_emit_notice("Canvas sold for §%d. A little creativity goes a long way." % sale)
@@ -738,8 +772,8 @@ func _finish_front() -> void:
 		action["social_events"] = _recent_social_events.duplicate(true)
 	elif id == "water":
 		_emit_notice("The plants look happier. Gardening skill improved.")
-	elif id == "change_outfit":
-		character["outfit"] = (int(character.get("outfit", 0)) + 1) % 5
+	elif id == "change_outfit" or WEAR_ACTIONS.has(id):
+		character["outfit"] = int(WEAR_ACTIONS[id]) if WEAR_ACTIONS.has(id) else (int(character.get("outfit", 0)) + 1) % 5
 		_emit_notice("%s changed into the %s outfit." % [character["name"], ["casual", "jacket", "cardigan", "tee", "hoodie"][int(character["outfit"])]])
 	elif id == "cook" and _has_trait("Foodie"):
 		_emit_notice("A delicious homemade meal! Your Foodie trait made it extra satisfying.")
@@ -1008,8 +1042,24 @@ func _update_relationship_status(person: Dictionary) -> void:
 		person["status"] = "Acquaintance"
 
 
+func promotion_requirement() -> Dictionary:
+	# Promotion to the next level needs the track's skill at the current level, so careers reward learning.
+	var track:Dictionary=CAREER_TRACKS.get(str(career.get("track","studio")),CAREER_TRACKS.studio)
+	if int(career["level"]) >= 5: return {}
+	var required: int = int(career["level"])
+	var skill_name: String = str(track.skill)
+	return {"skill":skill_name, "level":required, "met":int(skills.get(skill_name,{"level":1}).level) >= required, "next_title":str(track.titles[int(career["level"])])}
+
+
 func _check_promotion() -> void:
 	if float(career["performance"]) < 100.0 or int(career["level"]) >= 5:
+		return
+	var requirement: Dictionary = promotion_requirement()
+	if not requirement.is_empty() and not bool(requirement.met):
+		career["performance"] = 100.0
+		if _promotion_notice_day != day:
+			_promotion_notice_day = day
+			_emit_notice("Performance is excellent. Reach %s level %d to become a %s." % [str(requirement.skill).capitalize(), int(requirement.level), str(requirement.next_title).to_lower()])
 		return
 	career["performance"] = float(career["performance"]) - 100.0
 	career["level"] = int(career["level"]) + 1
@@ -1881,6 +1931,9 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 	action_queue.clear()
 	for stored: Dictionary in state.get("action_queue", []):
 		var action: Dictionary = _actions[str(stored["id"])].duplicate(true)
+		if str(action.id) in AGE_GATED_ACTIONS and not bool(get_action_availability(str(action.id), str(stored.get("target_id",""))).available):
+			_emit_notice("%s: a saved activity no longer suits this age and was removed." % str(character.get("name","")))
+			continue
 		if str(action.id)=="cook":action=LifeMeals.cooking_definition(action,str(stored.get("recipe","garden_skillet")))
 		action["target_id"] = str(stored.get("target_id", ""))
 		action["target_position"] = _as_vector3(stored.get("target_position", [0.0, 0.0, 0.0]))

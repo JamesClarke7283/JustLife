@@ -21,7 +21,7 @@ def mat(name, hexcolor, rough=.65, metal=0, emit=0.0):
     M[name]=m; return m
 for n,h in [('oak','AB7951'),('oak_light','D7AE7E'),('walnut','624435'),('cream','EFE9DA'),('white','FAF6EA'),('teal','417A71'),('teal_light','86ADA0'),('coral','C97C66'),('gold','C8A562'),('dark','263E3C'),('black','1D292B'),('green','48794B'),('leaf_light','749752'),('soil','42352D'),('blue','7CA4AA'),('screen','406C72'),('linen','DECFAF'),('book','B6B29C'),('water','B7D9DB'),('rust','9A5A44'),('brick','8C5A4A'),('mustard','D2A24B'),('plum','6E5470'),('sky','9EC1CF'),('rose','D9A0A0'),('graphite','4A4F55'),('ivory','F6F1E4')]: mat(n,h)
 mat('flame','F2A93B',.9,0,6.0); mat('ember','E0602A',.9,0,2.5)
-mat('mirror_glass','DDE7EA',.04,1.0); mat('brass','C8A562',.35,.85); mat('steel','B9BEC2',.3,.9)
+mat('mirror_glass','F2F7FA',.3,0,1.0); mat('brass','C8A562',.4,.35); mat('steel','B9BEC2',.35,.45)
 M['gold'].node_tree.nodes.get('Principled BSDF').inputs['Metallic'].default_value=.65
 active=[]
 def xyz(p): return (p[0],-p[2],p[1])
@@ -106,8 +106,9 @@ def bathtub():
 
 # ---------------------------------------------------------------- Activities
 def mirror():
-    o=cyl('Mirror frame',(0,1.02,0),.36,.04,'brass',axis='Z'); o.scale=(1,1,1.5); bpy.ops.object.transform_apply(scale=True)
-    o=cyl('Mirror glass',(0,1.02,.012),.33,.02,'mirror_glass',axis='Z'); o.scale=(1,1,1.5); bpy.ops.object.transform_apply(scale=True)
+    # A round brass frame with the glass proud of its front face, so the glass is what the room sees.
+    cyl('Mirror frame',(0,1.02,0),.36,.03,'brass',axis='Z')
+    cyl('Mirror glass',(0,1.02,.021),.325,.012,'mirror_glass',axis='Z')
     for x in [-.22,.22]:rod('Stand upright',(x,.02,-.10),(x,1.15,-.06),.016,'brass')
     for x in [-.22,.22]:box('Stand foot',(x,.02,-.10),(.05,.04,.36),'brass',.01)
 def piano():

@@ -30,6 +30,8 @@ D=bpy.data
 def link(o,parent):
     if o.name not in bpy.context.scene.collection.objects:bpy.context.scene.collection.objects.link(o)
     o.parent=parent
+    # Meshes are authored in world metres; keep them there under pivots such as the Head.
+    o.matrix_parent_inverse=parent.matrix_world.inverted()
 def empty(name,parent):
     e=D.objects.new(name,None); link(e,parent); return e
 def new_mesh_object(name,bm,material,parent):
@@ -89,8 +91,9 @@ def author(family):
     for n,suffix in [('Outfit_Jacket_Cuff','Cuff'),('Outfit_Jacket_Cuff.001','Cuff.001'),('Outfit_Jacket_Waist_rib','Waist_rib')]:duplicate(D.objects[n],'Outfit_Hoodie_'+suffix,hood)
     neck=Vector((0,.015*scale,j_hi.z-.011))
     def cowl(u,v):
-        a=(u-.5)*math.radians(200); b=v*math.tau; R=(.100+.018*math.cos(a))*scale; r=.034*scale
-        return neck+Vector((math.sin(a)*(R+r*math.cos(b)),math.cos(a)*(R+r*math.cos(b))+.012*scale,r*math.sin(b)*1.1+.012*scale-.025*scale*abs(math.sin(a))))
+        # A hood lying down: a full soft roll behind the neck that thins toward the collarbones.
+        a=(u-.5)*math.radians(200); b=v*math.tau; back=max(0.0,math.cos(a)); R=(.098+.026*back)*scale; r=(.028+.030*back*back)*scale
+        return neck+Vector((math.sin(a)*(R+r*math.cos(b)),math.cos(a)*(R+r*math.cos(b))+.012*scale,r*math.sin(b)*1.1+(.012+.03*back)*scale-.025*scale*abs(math.sin(a))))
     c=new_mesh_object('Outfit_Hoodie_Hood',surface(cowl,28,14,False,True),'Top',hood); rigid_group(c,'Spine',rig)
     shell_pts=world_points(hshell); h=j_hi.z-j_lo.z
     def smooth_front_y(x0,z0,rad=.035*scale):
@@ -118,7 +121,13 @@ def author(family):
     t_lo,t_hi=bounds(trousers); knee=float(root.get('knee_height',0.548*scale)) if 'knee_height' in root.keys() else 0.548*scale
     cut=knee+.07*scale
     legs=duplicate(trousers,'Skin_Leg_continuous',root); legs.data.materials.clear(); legs.data.materials.append(D.materials['Skin'])
+    legs.shape_key_clear()   # bare legs need no cloth corrective, and this lets the live LOD decimate them
     shrink(legs,.013*scale); delete_where(legs,lambda p:p.z<t_lo.z-.005 or p.z>t_lo.z+(t_hi.z-t_lo.z)*.94)
+    bm=bmesh.new(); bm.from_mesh(legs.data)
+    for v in bm.verts:
+        wz=(legs.matrix_world@v.co).z; bulge=.007*scale*math.exp(-((wz-knee)/(.055*scale))**2)   # a gentle kneecap
+        v.co+=v.normal*bulge
+    bm.to_mesh(legs.data); bm.free()
     shorts=duplicate(trousers,'Bottom_Shorts',root)
     bm=bmesh.new(); bm.from_mesh(shorts.data); inv=shorts.matrix_world.inverted()
     bmesh.ops.bisect_plane(bm,geom=bm.verts[:]+bm.edges[:]+bm.faces[:],plane_co=inv@Vector((0,0,cut)),plane_no=(inv.to_3x3()@Vector((0,0,1))).normalized(),clear_inner=True,clear_outer=False)

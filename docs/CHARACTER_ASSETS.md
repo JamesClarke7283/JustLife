@@ -128,11 +128,11 @@ Every variant is included in each GLB. Hide all but the selected hair and outfit
 | Outfit 1 | `Outfit_Jacket` | Cropped bomber, long sleeves, stand collar, zipper and ribbed edges |
 | Outfit 2 | `Outfit_Cardigan` | Longer open V-neck knit over a cream tee, with patch pockets |
 | Outfit 3 | `Outfit_Tee` | Plain crew tee from the casual shirt body, cuffs and hem |
-| Outfit 4 | `Outfit_Hoodie` | The cropped shell with a soft down-hood cowl, kangaroo pocket and drawstrings |
+| Outfit 4 | `Outfit_Hoodie` | The cropped shell with a full down-hood roll behind the neck, kangaroo pocket and drawstrings |
 | Bottom 0 | `Bottom_Continuous_trousers` (+ `Bottom_Cuff` curves) | Shared tailored trousers |
 | Bottom 1 | `Bottom_Shorts` (+ `Bottom_Shorts_Cuff`) | The trousers cut above the knee with a folded cuff; `Skin_Leg_continuous` supplies the exposed legs |
 
-Brows also use the `Hair_` prefix. Keep them visible when switching hairstyles. All outfits share low-top sneakers with laces, sole and side accents, and either bottom. `Skin_Leg_continuous` is always present beneath the bottoms and recolors with the skin.
+Brows also use the `Hair_` prefix. Keep them visible when switching hairstyles. All outfits share low-top sneakers with laces, sole and side accents, and either bottom. `Skin_Leg_continuous` carries a gentle kneecap, recolors with the skin, has no morphs so the live LOD decimates it, and is shown only with shorts; under trousers the actor hides it so it costs nothing.
 
 The second wardrobe set (hair 3–5, outfits 3–4, shorts and leg skin) is added to every age family by `blender -b --python tools/create_wardrobe.py -- --family all --export`. It derives each addition from that family's own accepted geometry, never edits existing objects, removes and rebuilds only its own additions on a rerun, and exports the sixteen game models with the same rest-pose, zeroed-morph, broad-scale and live-LOD decimation steps as `tools/export_character_variant.py`. The earlier reproduction chains reproduce the accepted stages that precede this addition; they do not regenerate the second wardrobe set.
 

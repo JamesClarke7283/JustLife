@@ -381,6 +381,7 @@ func _apply_bottom_visibility(node: Node,shorts: bool) -> void:
 		var node_name: String = str(node.name)
 		if node_name.begins_with("Bottom_Shorts"): node.visible = shorts
 		elif node_name.begins_with("Bottom_Continuous") or node_name.begins_with("Bottom_Cuff"): node.visible = not shorts
+		elif node_name.begins_with("Skin_Leg"): node.visible = shorts  # hidden under trousers, so it costs nothing there
 	for child: Node in node.get_children():
 		_apply_bottom_visibility(child,shorts)
 

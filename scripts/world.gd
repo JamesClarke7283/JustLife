@@ -652,12 +652,17 @@ func can_place(kind:String,p:Vector3,angle:float) -> bool:
 	var size:Vector2=LifeCatalog.ITEMS[kind].size
 	if int(roundf(angle/90))%2:size=Vector2(size.y,size.x)
 	var rect=Rect2(Vector2(p.x,p.z)-size/2,size)
+	if kind in LifeCatalog.WALL_MOUNTED:
+		# Wall decor sits flush against a wall, so only its room-facing half must lie on the floor.
+		var forward:Vector3=Basis(Vector3.UP,deg_to_rad(angle))*Vector3(0,0,1)
+		rect.position+=Vector2(forward.x,forward.z)*(size.y*.5+.04)
 	if not construction.building_state.is_empty():
 		if not Building.footprint_supported(construction.building_state,level,rect):return false
 		if Building.blocked_rect(construction.building_state,level,rect):return false
 		if not construction.building_state.roofs.is_empty() and not RoofRules.obstruction(construction.building_state,furnishing_volume({"kind":kind,"x":p.x,"z":p.z,"rotation":angle,"level":level})).is_empty():return false
 	for corner in [rect.position,rect.end,Vector2(rect.position.x,rect.end.y),Vector2(rect.end.x,rect.position.y)]:
 		if not construction.floor_contains(corner,level):return false
+	if kind in LifeCatalog.WALL_MOUNTED and not wall_behind(kind,p,angle):return false
 	if LifeCatalog.passable(kind):return true
 	# Interior walls and doorways stay usable.
 	if construction.rect_blocked(rect,level):return false
@@ -669,6 +674,39 @@ func can_place(kind:String,p:Vector3,angle:float) -> bool:
 		var other=Rect2(Vector2(item.node.position.x,item.node.position.z)-s/2,s)
 		if rect.grow(.05).intersects(other):return false
 	return true
+
+func wall_snap(kind:String,p:Vector3,reach:float=1.0) -> Dictionary:
+	if not is_instance_valid(construction) or not LifeCatalog.ITEMS.has(kind):return {}
+	var size:Vector2=LifeCatalog.ITEMS[kind].size
+	var level:int=point_level(p)
+	var best:Dictionary={};var best_distance:float=reach
+	for e in construction.records:
+		if int(e.get("level",0))!=level:continue
+		var w:float=float(e.w);var d:float=float(e.d);var cx:float=float(e.x);var cz:float=float(e.z)
+		var along_x:bool=w>=d
+		var distance:float=absf(p.z-cz) if along_x else absf(p.x-cx)
+		var within:bool=absf(p.x-cx)<=w*.5+.1 if along_x else absf(p.z-cz)<=d*.5+.1
+		if not within or distance>=best_distance:continue
+		best_distance=distance
+		if along_x:
+			var side:float=1.0 if p.z>=cz else -1.0
+			best={"position":Vector3(clampf(p.x,cx-w*.5+size.x*.5,cx+w*.5-size.x*.5),p.y,cz+side*(d*.5+size.y*.5+.01)),"angle":0.0 if side>0 else 180.0}
+		else:
+			var side:float=1.0 if p.x>=cx else -1.0
+			best={"position":Vector3(cx+side*(w*.5+size.y*.5+.01),p.y,clampf(p.z,cz-d*.5+size.x*.5,cz+d*.5-size.x*.5)),"angle":90.0 if side>0 else -90.0}
+	return best
+
+func wall_behind(kind:String,p:Vector3,angle:float) -> bool:
+	# Wall-mounted decor needs a wall directly behind its back face on the same floor.
+	if not is_instance_valid(construction) or not LifeCatalog.ITEMS.has(kind):return false
+	var size:Vector2=LifeCatalog.ITEMS[kind].size
+	var forward:Vector3=Basis(Vector3.UP,deg_to_rad(angle))*Vector3(0,0,1)
+	var back:Vector3=p-forward*(size.y*.5+.06)
+	var level:int=point_level(p)
+	for e in construction.records:
+		if int(e.get("level",0))!=level:continue
+		if construction.wall_rect(e).grow(.06).has_point(Vector2(back.x,back.z)):return true
+	return false
 
 func floor_point(screen:Vector2) -> Vector3:
 	var origin=camera.project_ray_origin(screen)
@@ -722,6 +760,10 @@ func _process(delta:float) -> void:
 	if build_enabled and is_instance_valid(ghost):
 		var p=floor_point(get_viewport().get_mouse_position())
 		p.x=snappedf(p.x,.25);p.z=snappedf(p.z,.25)
+		if placement_kind in LifeCatalog.WALL_MOUNTED:
+			# Wall decor slides along the nearest wall and faces into the room.
+			var snap:Dictionary=wall_snap(placement_kind,p)
+			if not snap.is_empty():p=snap.position;placement_angle=float(snap.angle)
 		ghost.position=p
 		ghost.rotation_degrees.y=placement_angle
 		ghost_position=p
