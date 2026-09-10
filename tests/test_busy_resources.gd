@@ -265,7 +265,9 @@ func _build_independent()->void:
 		check(not app.pending_move.is_empty() and before.waits==_busy_record().waits,"Lifting an unrelated plant retains the same reservation before "+operation)
 		if operation=="cancel":app.cancel_placement();await frames(2)
 		else:
-			var point:=Vector3(4,.16,-3)
+			# A bathroom spot that keeps the shower's standing place reachable; the
+			# doorway rule refuses the old (4, -3) because it boxed that place in.
+			var point:=Vector3(3.5,.16,-3.5)
 			check(app.world.can_place("plant",point,0),"Independent commit uses a real supported production quote.")
 			app.world.placement_requested.emit("plant",point,0.0);await frames(2)
 			check(app.pending_move.is_empty() and app._find_item(str(plant.id)).node.position==point,"Independent commit moves the actual plant.")

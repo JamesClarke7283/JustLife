@@ -74,8 +74,8 @@ const SOCIAL_ACTIONS: Array[String] = ["friendly", "joke", "deep_talk", "flirt",
 const AGE_GATED_ACTIONS: Array[String] = ["jog", "play_toys"]
 const LEISURE_ACTIONS: Array[String] = ["paint", "read", "watch", "relax", "play_piano", "play_chess", "dance", "play_games", "practice_speech", "stretch", "warm_up", "jog", "play_toys"]
 const PRE_DUTY_LEISURE: Array[String] = ["relax", "read", "watch", "stretch", "warm_up", "paint"]  # brief pastimes before a school or work day; the short ones sit ahead of the canvas
-const DEPARTURE_WALK: float = 10.0  # game minutes allowed for the walk from a pastime to the lot exit
-const LEISURE_APPROACH: float = 5.0  # game minutes allowed for the walk to a pastime before it starts
+const DEPARTURE_WALK: float = 15.0  # game minutes allowed for the walk from a pastime to the lot exit in a busy home
+const LEISURE_APPROACH: float = 10.0  # game minutes allowed for the walk to a pastime before it starts
 const WEAR_ACTIONS: Dictionary = {"wear_casual":0, "wear_jacket":1, "wear_cardigan":2, "wear_tee":3, "wear_hoodie":4}
 const RELATIONSHIP_ACTIONS: Array[String] = ["ask_partner", "commit", "break_up"]
 const SOCIAL_STAGES: Array[String] = ["met", "friends", "close_friends", "spark", "partners", "committed", "separated"]
@@ -632,7 +632,9 @@ func _step(game_minutes: float) -> void:
 			_finish_front()
 	elif action_queue.is_empty():
 		_idle_minutes += game_minutes
-		if autonomy and _idle_minutes >= 15.0:
+		# An idle Lifelet pauses a quarter hour between pastimes, but not while a
+		# school or work day is open: then the next choice follows within a minute.
+		if autonomy and (_idle_minutes >= 15.0 or (_idle_minutes >= 1.0 and not _autonomy_duty_id().is_empty())):
 			_choose_autonomous_action()
 	_tick_bladder(game_minutes,bladder_before)
 	_check_need_notices()
