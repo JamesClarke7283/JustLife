@@ -650,12 +650,14 @@ func can_place(kind:String,p:Vector3,angle:float) -> bool:
 	var level:int=point_level(p)
 	if level<0:return false
 	var size:Vector2=LifeCatalog.ITEMS[kind].size
+	var depth:float=size.y
 	if int(roundf(angle/90))%2:size=Vector2(size.y,size.x)
 	var rect=Rect2(Vector2(p.x,p.z)-size/2,size)
 	if kind in LifeCatalog.WALL_MOUNTED:
-		# Wall decor sits flush against a wall, so only its room-facing half must lie on the floor.
+		# Wall decor sits flush against a wall, so only its room-facing half must
+		# lie on the floor; the shift uses the unrotated depth at every angle.
 		var forward:Vector3=Basis(Vector3.UP,deg_to_rad(angle))*Vector3(0,0,1)
-		rect.position+=Vector2(forward.x,forward.z)*(size.y*.5+.04)
+		rect.position+=Vector2(forward.x,forward.z)*(depth*.5+.04)
 	if not construction.building_state.is_empty():
 		if not Building.footprint_supported(construction.building_state,level,rect):return false
 		if Building.blocked_rect(construction.building_state,level,rect):return false
@@ -690,10 +692,12 @@ func wall_snap(kind:String,p:Vector3,reach:float=1.0) -> Dictionary:
 		best_distance=distance
 		if along_x:
 			var side:float=1.0 if p.z>=cz else -1.0
-			best={"position":Vector3(clampf(p.x,cx-w*.5+size.x*.5,cx+w*.5-size.x*.5),p.y,cz+side*(d*.5+size.y*.5+.01)),"angle":0.0 if side>0 else 180.0}
+			# Keep clear of the perpendicular walls that meet this one in the corners
+			# (wall thickness plus the floor inset), so a snapped ghost is always placeable.
+			best={"position":Vector3(clampf(p.x,cx-w*.5+size.x*.5+.3,cx+w*.5-size.x*.5-.3),p.y,cz+side*(d*.5+size.y*.5+.01)),"angle":0.0 if side>0 else 180.0}
 		else:
 			var side:float=1.0 if p.x>=cx else -1.0
-			best={"position":Vector3(cx+side*(w*.5+size.y*.5+.01),p.y,clampf(p.z,cz-d*.5+size.x*.5,cz+d*.5-size.x*.5)),"angle":90.0 if side>0 else -90.0}
+			best={"position":Vector3(cx+side*(w*.5+size.y*.5+.01),p.y,clampf(p.z,cz-d*.5+size.x*.5+.3,cz+d*.5-size.x*.5-.3)),"angle":90.0 if side>0 else -90.0}
 	return best
 
 func wall_behind(kind:String,p:Vector3,angle:float) -> bool:
@@ -809,8 +813,22 @@ func _desk_surface(node:Node3D) -> Dictionary:
 		"desk_front_edge":node.to_global(Vector3(0,.87,.385)),
 		"desk_forward":-node.global_basis.z.normalized()}
 
-func activity_resource_ids(item:Dictionary) -> Array[String]:
-	var resources:Array[String]=[str(item.id)]
+const TWO_SEATERS: Array[String] = ["loveseat"]
+
+func seat_slot_offset(item:Dictionary,slot:String) -> Vector3:
+	# Local offset of a named seat on a two-seater; single seats return zero.
+	if str(item.kind) not in TWO_SEATERS:return Vector3.ZERO
+	return Vector3(-.45 if slot=="left" else .45,0,0)
+
+func slot_approach(item:Dictionary,slot:String) -> Vector3:
+	var n:Node3D=item.node
+	var p:Vector3=n.to_global(seat_slot_offset(item,slot)+Vector3(0,0,item.size.y*.5+.55))
+	if not construction.building_state.is_empty():return nearest_clear_point(p,item_level(item))
+	var c=nearest_free(p)
+	return Vector3(c.x*.25,.16,c.y*.25)
+
+func activity_resource_ids(item:Dictionary,slot:String="") -> Array[String]:
+	var resources:Array[String]=[str(item.id)+(":"+slot if str(item.kind) in TWO_SEATERS and not slot.is_empty() else "")]
 	if str(item.kind) in ["desk","computer"]:
 		var chair:Dictionary=closest_item("chair",item.node.to_global(Vector3(0,0,.88)),1.25)
 		if not chair.is_empty():resources.append(str(chair.id))
@@ -892,7 +910,7 @@ func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -
 		"armchair":
 			local=Vector3(0,.50,.06);yaw=node.rotation.y;kind="seat"
 		"loveseat":
-			local=Vector3(0,.62,.08);yaw=node.rotation.y;kind="seat"
+			local=Vector3(0,.62,.08)+seat_slot_offset(item,str(landmarks.get("seat_slot","left")));yaw=node.rotation.y;kind="seat"
 		"stool":
 			local=Vector3(0,.755,0);yaw=node.rotation.y;kind="seat"
 		"bathtub":

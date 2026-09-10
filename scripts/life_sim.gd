@@ -72,6 +72,7 @@ var _story_generated_day: int = 1
 const STORY_KINDS: Array[String] = ["neighbor_invitation", "career_opportunity", "hobby_exhibition", "garden_exchange", "learning_circle", "community_picnic"]
 const SOCIAL_ACTIONS: Array[String] = ["friendly", "joke", "deep_talk", "flirt", "argue", "ask_partner", "commit", "break_up"]
 const AGE_GATED_ACTIONS: Array[String] = ["jog", "play_toys"]
+const LEISURE_ACTIONS: Array[String] = ["paint", "read", "watch", "relax", "play_piano", "play_chess", "dance", "play_games", "practice_speech", "stretch", "warm_up", "jog", "play_toys"]
 const WEAR_ACTIONS: Dictionary = {"wear_casual":0, "wear_jacket":1, "wear_cardigan":2, "wear_tee":3, "wear_hoodie":4}
 const RELATIONSHIP_ACTIONS: Array[String] = ["ask_partner", "commit", "break_up"]
 const SOCIAL_STAGES: Array[String] = ["met", "friends", "close_friends", "spark", "partners", "committed", "separated"]
@@ -79,6 +80,7 @@ var social_history: Array = []
 var romantic_partner: String = ""
 var _social_member_id: String = "player"
 var _promotion_notice_day: int = -1
+var _leisure_history: Array[String] = []  # the last few leisure choices, so autonomy varies its pastimes
 var _social_partners: Dictionary = {}
 var _social_adults: Dictionary = {}
 var _social_reciprocal: Dictionary = {}
@@ -240,10 +242,10 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"mirror": ids = ["practice_speech"]
 		"piano": ids = ["play_piano"]
 		"chess": ids = ["play_chess"]
-		"treadmill": ids = [] if str(character.age_stage) == "child" else ["jog"]
+		"treadmill": ids = ["jog"]  # children see the disabled entry with its reason
 		"yoga_mat": ids = ["stretch"]
 		"stereo": ids = ["dance"]
-		"toybox": ids = ["play_toys"] if str(character.age_stage) == "child" else []
+		"toybox": ids = ["play_toys"]  # adults see the disabled entry with its reason
 		"wardrobe":
 			for wear_id: String in WEAR_ACTIONS:
 				if int(WEAR_ACTIONS[wear_id]) != int(character.get("outfit", 0)): ids.append(wear_id)
@@ -474,6 +476,10 @@ func begin_current_action() -> void:
 	if action.has("cooperation_id"):
 		if is_instance_valid(cooperation_owner): cooperation_owner.mark_cooperative_ready(cooperation_member_id)
 		return
+	if str(action.id) in AGE_GATED_ACTIONS:
+		var age_reason:Dictionary=get_action_availability(str(action.id),str(action.get("target_id","")))
+		if not bool(age_reason.available):
+			_emit_notice(str(age_reason.reason));cancel_action();return
 	if str(action.id) in ["plant_wee","mop_puddle"]:
 		var sanitation_reason:String=_sanitation_reason(str(action.id),str(action.target_id),bool(action.paid) and float(action.elapsed)>0.0)
 		if not sanitation_reason.is_empty():
@@ -719,6 +725,9 @@ func _finish_front() -> void:
 	var action: Dictionary = action_queue.pop_front()
 	var id: String = str(action["id"])
 	var earned: int = 0
+	if id in LEISURE_ACTIONS:
+		_leisure_history.erase(id);_leisure_history.push_front(id)
+		while _leisure_history.size()>3:_leisure_history.pop_back()
 	if id in AGE_GATED_ACTIONS and not bool(get_action_availability(id, str(action.get("target_id",""))).available):
 		# A restored or edited queue cannot grant an activity this age may not do.
 		_emit_notice(str(get_action_availability(id, str(action.get("target_id",""))).reason))
@@ -1244,7 +1253,7 @@ func _autonomy_decay(need:String) -> float:
 	if need=="energy" and _has_trait("Active"):amount*=.8
 	return amount
 
-func _autonomy_projection_need(id:String,travel_minutes:float=60.0) -> String:
+func _autonomy_projection_need(id:String,travel_minutes:float=60.0,include_fun:bool=false) -> String:
 	if id not in ["school","school_day","career_day","homework","job"]:return ""
 	var action:Dictionary=_actions[id]
 	var changes:Dictionary=action.changes.duplicate()
@@ -1266,8 +1275,15 @@ func _autonomy_projection_need(id:String,travel_minutes:float=60.0) -> String:
 		# A school morning prepares physical needs for time away. Moderate
 		# boredom or untidiness affects mood, but should not consume the day
 		# in optional home activities before a physically safe departure.
-		if id in ["school_day","career_day"] and need not in ["hunger","energy","bladder"]:continue
+		if id in ["school_day","career_day"] and need not in ["hunger","energy","bladder","fun"]:continue
+		if need=="fun" and id in ["school_day","career_day"] and not include_fun:continue
 		var projected:float=float(needs[need])-_autonomy_decay(need)*duration/60.0+float(changes.get(need,0.0))
+		# While a day away is still being prepared, a Fun projection under 20 at
+		# the evening return earns a brief break first; at departure time moderate
+		# boredom never delays leaving.
+		if need=="fun" and id in ["school_day","career_day"]:
+			if projected<20.0 and projected<lowest:lowest=projected;problem=need
+			continue
 		if projected<lowest:lowest=projected;problem=need
 	return problem
 
@@ -1301,7 +1317,7 @@ func _autonomy_target_for(id:String,excluded_target_ids:Array=[]) -> Dictionary:
 		# A bookshelf can host homework without blocking classes or shifts.
 		if id=="homework" and str(target.kind) in ["desk","computer"]:cost+=60.0
 		if cost<lowest:
-			lowest=cost;selected={"id":id,"target_id":str(target.id),"position":target.position}
+			lowest=cost;selected={"id":id,"target_id":str(target.id),"position":target.position,"load":cost}
 	return selected
 
 func _record_autonomy_contact(target:String,id:String) -> void:
@@ -1348,21 +1364,38 @@ func _autonomy_need_choice(need:String,excluded_target_ids:Array=[],preparing:bo
 		"hygiene":candidates=["shower","bath"]
 		"bladder":candidates=["toilet"]
 		"fun":
-			if _has_trait("Bookworm"):candidates=["read","play_chess","watch","relax"]
+			if _has_trait("Bookworm"):candidates=["read","play_chess","practice_speech","watch","play_games","relax"]
 			else:
 				var leisure_duty:String=_autonomy_preparation_duty_id()
 				# Keep critical Fun recovery brief while an available school/work day is being prepared.
-				if leisure_duty in ["school_day","career_day"] and not _autonomy_target_for(leisure_duty,excluded_target_ids).is_empty():candidates=["relax","read","watch","paint"]
-				elif _has_trait("Active"):candidates=["jog","dance","stretch","paint","read","watch","relax"]
-				else:candidates=["paint","read","watch","play_piano","play_chess","dance","relax"]
+				if leisure_duty in ["school_day","career_day"] and not _autonomy_target_for(leisure_duty,excluded_target_ids).is_empty():candidates=["relax","read","watch","paint","stretch","warm_up"]
+				elif _has_trait("Active"):candidates=["jog","dance","stretch","paint","read","watch","play_games","relax"]
+				else:candidates=["paint","read","watch","play_piano","play_chess","dance","play_games","practice_speech","stretch","warm_up","relax"]
 			# Children reach for their toys first on a free day, and last when a school morning needs brief recovery.
 			if str(character.age_stage)=="child":
 				if candidates[0]=="relax":candidates.append("play_toys")
 				else:candidates.insert(0,"play_toys")
-	for id:String in candidates:
-		var chosen:Dictionary=_autonomy_target_for(id,excluded_target_ids)
-		if not chosen.is_empty():return chosen
-	return {}
+	if need!="fun":
+		# Physical needs keep their preference order and fair waiting: a bed is
+		# worth queueing for even when a sofa nap is free.
+		for id:String in candidates:
+			var chosen:Dictionary=_autonomy_target_for(id,excluded_target_ids)
+			if not chosen.is_empty():return chosen
+		return {}
+	# Leisure takes the favourite when it is free and fresh. Otherwise the
+	# least-loaded candidate wins, with a small preference for the earlier
+	# ones and a penalty for pastimes done recently: in a crowded home an idle
+	# piano beats a queue at the easel, and nobody paints all week.
+	var best:Dictionary={}
+	var best_score:float=INF
+	for index:int in range(candidates.size()):
+		var chosen:Dictionary=_autonomy_target_for(candidates[index],excluded_target_ids)
+		if chosen.is_empty():continue
+		var load:float=float(chosen.get("load",0.0))
+		if index==0 and load<=0.0 and not _leisure_history.has(candidates[index]):return chosen
+		var score:float=load+float(index)*5.0+(25.0 if _leisure_history.has(candidates[index]) else 0.0)
+		if score<best_score:best_score=score;best=chosen
+	return best
 
 func _autonomous_choice(excluded_target_ids:Array=[]) -> Dictionary:
 	var duty:String=_autonomy_duty_id()
@@ -1380,7 +1413,7 @@ func _autonomous_choice(excluded_target_ids:Array=[]) -> Dictionary:
 		if not urgent.is_empty():return urgent
 	var preparing:String=_autonomy_preparation_duty_id()
 	if not preparing.is_empty() and not _autonomy_target_for(preparing,excluded_target_ids).is_empty():
-		var preparation:String=_autonomy_projection_need(preparing)
+		var preparation:String=_autonomy_projection_need(preparing,60.0,duty.is_empty())
 		if not preparation.is_empty():
 			var recovery:Dictionary=_autonomy_need_choice(preparation,excluded_target_ids,true)
 			if not recovery.is_empty():return recovery
@@ -1946,7 +1979,7 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 		if stored.has("started_day"): action["started_day"] = int(stored.started_day)
 		if stored.has("started_minutes"): action["started_minutes"] = float(stored.started_minutes)
 		if stored.has("target_kind"): action["target_kind"] = str(stored.target_kind)
-		for key: String in ["cooperation_id","cooperation_role","meal_source","meal_stage","meal_plate","meal_seat"]:
+		for key: String in ["cooperation_id","cooperation_role","meal_source","meal_stage","meal_plate","meal_seat","seat_slot"]:
 			if stored.has(key): action[key] = str(stored[key])
 		if stored.has("meal_standing"): action["meal_standing"] = stored.meal_standing
 		if stored.has("adoption_serial"): action["adoption_serial"]=int(stored.adoption_serial)

@@ -66,9 +66,21 @@ func _run()->void:
 		if str(event.action)=="play_toys" and stage!="child":adult_toys+=1
 		if str(event.action)=="jog" and stage=="child":child_jogs+=1
 	check(adult_toys==0 and child_jogs==0,"Age rules hold under autonomy: no adult toy play and no child treadmill runs.")
-	var total_new:int=0
-	for value:int in counts.values():total_new+=value
-	check(total_new>=8,"The household completes at least eight second-collection activities over the week.")
+	var by_action:Dictionary={}
+	for key:String in counts:by_action[key.split(":")[1]]=int(by_action.get(key.split(":")[1],0))+int(counts[key])
+	audit["completions_by_new_action"]=by_action
+	for expected:Array in [["treadmill","jog"],["toybox","play_toys"],["piano","play_piano"],["bathtub","bath"],["stereo","dance"],["yoga_mat","stretch"],["mirror","practice_speech"]]:
+		check(int(by_action.get(str(expected[1]),0))>=1,"The purchased %s is used at least once during the week (%s ×%d)." % [str(expected[0]),str(expected[1]),int(by_action.get(str(expected[1]),0))])
+	var varied_adult:bool=false
+	for member:Dictionary in app.household.members:
+		if str(member.id)==active_id or str(member.sim.character.age_stage)=="child":continue
+		for leisure:String in ["dance","stretch","play_piano","practice_speech"]:
+			if int(counts.get(str(member.id)+":"+leisure,0))>0:varied_adult=true
+	check(varied_adult,"At least one non-Active adult dances, stretches, plays the piano or practices a speech during the week.")
+	for member:Dictionary in app.household.members:
+		var stats:Dictionary=audit.members[str(member.id)]
+		check(float(stats.waiting_minutes)<=6.0*60.0,"Weekly resource waiting stays at or under six hours: %s (%.1f h)." % [str(member.sim.character.name),float(stats.waiting_minutes)/60.0])
+		check(float(stats.minimum_needs.fun)>=10.0,"Fun never falls below 10 during the week: %s (minimum %.1f)." % [str(member.sim.character.name),float(stats.minimum_needs.fun)])
 	var file:=FileAccess.open(screenshot_dir.path_join("audit_first.json"),FileAccess.WRITE)
 	file.store_string(JSON.stringify(audit,"  "));file.close()
 	_write_report();app.queue_free();await frames(3)

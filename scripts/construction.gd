@@ -25,6 +25,7 @@ var roof_nodes:Dictionary={}
 var roofs_visible:bool=false
 var roof_pitch:float=.5
 var roof_material:String="57736a"
+var paint_material:String="8faf9f"
 var roof_edit_id:String=""
 var build_level:int=0
 var last_error:String=""
@@ -336,9 +337,10 @@ func make_proposal(p: Vector3) -> Dictionary:
 		if tool in ["wall","room"]:
 			if not anchored:return {}
 			operation.merge({"ax":anchor.x,"az":anchor.z,"bx":p.x,"bz":p.z})
-		elif tool in ["door","erase"]:
+		elif tool in ["door","erase","paint"]:
 			if not data.has("remove_id"):return {"valid":false,"error":"Point at a wall on this level."}
 			operation["id"]=str(data.remove_id)
+			if tool=="paint":operation["material"]=paint_material
 			if tool=="door":
 				var wall:Dictionary={}
 				for record:Dictionary in records:
@@ -447,7 +449,7 @@ func _convert_proposal(data:Dictionary) -> Dictionary:
 	return {"ok":true,"state":state} if error.is_empty() else {"ok":false,"error":error}
 
 func _make_legacy_proposal(p: Vector3) -> Dictionary:
-	if tool in ["door","erase"]:
+	if tool in ["door","erase","paint"]:
 		var nearest:Dictionary={}
 		var best:float=.55
 		for e in records:
@@ -458,6 +460,7 @@ func _make_legacy_proposal(p: Vector3) -> Dictionary:
 			if distance<best:best=distance;nearest=e
 		if nearest.is_empty():return {}
 		if tool=="erase":return {"op":"erase","remove_id":nearest.id,"walls":[],"cost":-int(maxf(nearest.w,nearest.d)*20),"valid":true}
+		if tool=="paint":return {"op":"paint","remove_id":nearest.id,"walls":[],"cost":int(maxf(nearest.w,nearest.d)*6),"valid":true}
 		var horizontal:bool=float(nearest.w)>float(nearest.d)
 		var length:float=maxf(nearest.w,nearest.d)
 		if length<1.55:return {}

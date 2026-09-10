@@ -61,6 +61,8 @@ func _save_wait()->void:
 	for i:int in range(5):_exclude_inputs();app._process(.05);await frames(1)
 	check(before==_busy_record(),"Natural waiting remains exactly paused after the saved checkpoint.")
 	await press("▶")
+## Normal speed runs one game minute per real second since the clock pacing
+## change, so the thirty-minute waiting rule needs 900 of these .05 s steps.
 func _natural_busy()->void:
 	if not await _load_busy(BUSY_SLOT):return
 	var sim:LifeSim=app.household.member_sim(WAITER);var original:Dictionary=sim.get_current_action();var origin:Vector3=app.world.actors[WAITER].position
@@ -68,7 +70,7 @@ func _natural_busy()->void:
 	check(origin.distance_to(original.target_position)==.75 and not bool(original.paid) and float(original.elapsed)==0.0,"The waiting body is genuinely near the occupied anchor, with no early payment/progress.")
 	audit.initial=_busy_record();var first_wait:float=-1.0;var switch_at:float=-1.0;var saved:bool=false;var minimum:float=INF;var wait_identity:bool=true;var no_early_progress:bool=true
 	await press("▶")
-	for i:int in range(350):
+	for i:int in range(900):
 		_exclude_inputs();app._process(.05);await frames(1)
 		var row:Dictionary=_busy_record();row.step=i;row.clearance=_clearance_pairs();audit.steps.append(row);minimum=minf(minimum,float(row.clearance.household_minimum))
 		var current:Dictionary=sim.get_current_action();var motion:Dictionary=app.motion_states.get(WAITER,{})
@@ -97,7 +99,7 @@ func _fresh_wait()->void:
 	check(bool(original_wait.waiting) and float(original_wait.started)>=0 and not bool(action.paid),"Fresh load retains original resource FIFO time and unpaid queued ownership.")
 	audit.initial=_busy_record();var switched:float=-1.0;var minimum:float=INF
 	await press("▶")
-	for i:int in range(350):
+	for i:int in range(900):
 		_exclude_inputs();app._process(.05);await frames(1)
 		var row:Dictionary=_busy_record();row.step=i;row.clearance=_clearance_pairs();audit.steps.append(row);minimum=minf(minimum,float(row.clearance.household_minimum))
 		var next:Dictionary=sim.get_current_action()
@@ -135,7 +137,7 @@ func _explicit_queue()->void:
 	check(sim.action_queue.size()==2 and later.id=="read" and not bool(later.get("autonomous",false)),"A public directed reading instruction is queued behind the naturally waiting sleep.")
 	audit.initial=_busy_record();var start:float=app.motion_states[WAITER].wait_started;var original:Dictionary=sim.get_current_action();var switch_at:float=-1.0;var preserved:bool=true
 	await press("▶")
-	for i:int in range(350):
+	for i:int in range(900):
 		_exclude_inputs();app._process(.05);await frames(1)
 		var row:Dictionary=_busy_record();row.step=i;audit.steps.append(row)
 		preserved=preserved and sim.action_queue.has(later) and is_same(sim.action_queue.back(),later) and later==later_facts
@@ -207,7 +209,7 @@ func _fifo_busy()->void:
 	check(late_action.id=="sleep" and not bool(late_action.get("autonomous",false)),"A second Lifelet publicly requests the same occupied bed.")
 	audit.initial=_busy_record();var minimum:float=INF;var both_waiting:bool=false;var before_pay:bool=true;var preserved:bool=true
 	await press("▶")
-	for i:int in range(400):
+	for i:int in range(1200):
 		_exclude_inputs();app._process(.05);await frames(1)
 		var row:Dictionary=_busy_record();row.step=i;row.clearance=_clearance_pairs();audit.steps.append(row);minimum=minf(minimum,float(row.clearance.household_minimum))
 		preserved=preserved and early.action_queue.has(later) and is_same(early.action_queue.back(),later) and later==later_facts
@@ -298,7 +300,7 @@ func _fifo_resume()->void:
 	audit.first_turn=_busy_record();await _select_busy(WAITER);await press("Cancel action")
 	check(is_same(early.get_current_action(),later) and later.id=="read" and later.target_id==later_facts.target_id and later.elapsed==0.0 and not bool(later.paid),"Public cancellation releases the first bed turn and starts the preserved later reading approach.")
 	var second_started:bool=false;await press("▶")
-	for i:int in range(350):
+	for i:int in range(900):
 		_exclude_inputs();app._process(.05);await frames(1)
 		var row:Dictionary=_busy_record();row.step=i;row.clearance=_clearance_pairs();audit.steps.append(row);minimum=minf(minimum,float(row.clearance.household_minimum))
 		if late_action.phase=="active" and float(late_action.elapsed)>.6:second_started=true;break

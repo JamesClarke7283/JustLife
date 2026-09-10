@@ -103,6 +103,15 @@ func _run()->void:
 	var finish_purchase:Dictionary=tx.commit(finish_quote)
 	check(bool(finish_purchase.ok) and int(finish_quote.cost)==0 and app.world.construction.building_state.floors[0].material=="896953","A floor finish is a zero-cost validated structural history entry.")
 	check(bool(tx.undo(finish_purchase.receipt).ok) and app.world.construction.building_state.floors[0].material=="cfa97e","Finish undo restores material without invalidating earlier geometry history.")
+	var painted_wall:Dictionary=app.world.construction.building_state.walls[0]
+	var wall_before:String=str(painted_wall.material)
+	var paint_colour:String="8faf9f" if wall_before!="8faf9f" else "e6d8c5"
+	var paint_quote:Dictionary=tx.prepare({"op":"structure","tool":"paint","level":0,"id":str(painted_wall.id),"material":paint_colour})
+	var paint_purchase:Dictionary=tx.commit(paint_quote)
+	check(bool(paint_purchase.ok) and int(paint_quote.cost)==int(maxf(float(painted_wall.w),float(painted_wall.d))*6) and str(app.world.construction.building_state.walls[0].material)==paint_colour,"Painting one wall charges by its length and records the colour in the validated building state.")
+	check(not bool(tx.prepare({"op":"structure","tool":"paint","level":0,"id":str(painted_wall.id),"material":paint_colour}).ok),"Repainting a wall with its current colour is refused.")
+	check(not bool(tx.prepare({"op":"structure","tool":"paint","level":0,"id":"wall_missing","material":paint_colour}).ok),"Painting an unknown wall is refused.")
+	check(bool(tx.undo(paint_purchase.receipt).ok) and str(app.world.construction.building_state.walls[0].material)==wall_before,"Paint undo restores the previous wall colour.")
 	check(bool(tx.undo(room_purchase.receipt).ok) and app.sim.funds==original_funds,"Room undo still works after doorway and finish undos, refunding only its own cost.")
 	check(app.sim.action_queue==queue and app.sim.needs==needs and app.sim.minutes==minutes,"Wall, room, door and finish commits preserve paid current action, later instruction and time.")
 	var upper_state:Dictionary=after_floor.duplicate(true)

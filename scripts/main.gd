@@ -792,7 +792,8 @@ func _refresh_progress_labels() -> void:
 			career_labels.homework.disabled=sim.is_away() or not sim.get_action_availability("homework").available
 		else:
 			career_labels.title.text=sim.career.title
-			career_labels.details.text="Weekdays 09–17 · §%d full day" % sim.career.salary
+			var requirement:Dictionary=sim.promotion_requirement()
+			career_labels.details.text="Weekdays 09–17 · §%d full day" % sim.career.salary+("" if requirement.is_empty() or bool(requirement.met) else "  ·  Next: %s %d" % [str(requirement.skill).capitalize(),int(requirement.level)])
 			career_labels.work.disabled=not sim.get_action_availability("career_day").available
 			career_labels.work.tooltip_text=str(sim.get_action_availability("career_day").reason)
 	if not goal_labels.is_empty():
@@ -1130,11 +1131,20 @@ func draw_build_catalog() -> void:
 		button("Floor",Vector2(773,725),Vector2(146,46),func():begin_construction("floor"))
 		button("Stairs",Vector2(929,725),Vector2(146,46),func():begin_construction("stairs"))
 		button("Remove floor / stairs",Vector2(1085,725),Vector2(294,46),func():begin_construction("remove_structure"))
-		button("Warm oak",Vector2(305,784),Vector2(200,47),func():change_floor("cfa97e"))
-		button("Pale stone",Vector2(520,784),Vector2(200,47),func():change_floor("dcd6c6"))
-		button("Walnut",Vector2(735,784),Vector2(200,47),func():change_floor("896953"))
-		button("Toggle wall view",Vector2(950,784),Vector2(200,47),func():world.set_cutaway(not world.cutaway))
-		button("Remove wall",Vector2(1160,784),Vector2(219,47),func():begin_construction("erase"))
+		button("Warm oak",Vector2(305,784),Vector2(150,47),func():change_floor("cfa97e"))
+		button("Pale stone",Vector2(465,784),Vector2(150,47),func():change_floor("dcd6c6"))
+		button("Walnut",Vector2(625,784),Vector2(150,47),func():change_floor("896953"))
+		button("Wall view",Vector2(785,784),Vector2(130,47),func():world.set_cutaway(not world.cutaway))
+		button("Remove wall",Vector2(925,784),Vector2(140,47),func():begin_construction("erase"))
+		var paint=button("Paint wall",Vector2(1075,784),Vector2(120,47),func():begin_construction("paint"),world.construction.tool=="paint")
+		paint.tooltip_text="Choose a colour, then click a wall to repaint that segment."
+		for i in range(5):
+			var colour:String=["eae7d7","8faf9f","e6d8c5","c8d7e0","d9b7a3"][i]
+			var swatch=button("",Vector2(1205+i*36,791),Vector2(32,32),func():world.construction.paint_material=colour;draw_live())
+			swatch.tooltip_text=["Cream","Sage","Blush","Sky","Clay"][i]+" wall paint"
+			swatch.add_theme_stylebox_override("normal",P.panel(Color(colour),16,P.TEAL if world.construction.paint_material==colour else Color("ffffff"),3))
+			swatch.add_theme_stylebox_override("hover",P.panel(Color(colour).lightened(.1),16,P.TEAL,3))
+			if world.construction.paint_material==colour:swatch.text="•";swatch.add_theme_color_override("font_color",Color.WHITE)
 		button("New roof",Vector2(305,841),Vector2(146,31),func():begin_construction("roof"))
 		button("Edit roof",Vector2(461,841),Vector2(146,31),func():begin_construction("roof_edit"))
 		button("Remove roof",Vector2(617,841),Vector2(146,31),func():begin_construction("roof_remove"))
@@ -2741,6 +2751,7 @@ func _update_activity_facing(delta:float,action:Dictionary,action_id:String) -> 
 		var landmarks:Dictionary=player.get_body_landmarks() if player.has_method("get_body_landmarks") else {}
 		if action_id=="cook":landmarks.merge({"recipe":str(action.get("recipe","")),"cooking_position":action.target_position})
 		if action_id=="mop_puddle":landmarks["standing_position"]=action.target_position
+		if action.has("seat_slot"):landmarks["seat_slot"]=str(action.seat_slot)
 		var anchor:Dictionary=world.activity_anchor(item,action_id,landmarks)
 		if attention is Vector3:anchor["attention_target"]=attention
 		if player.has_method("set_activity_anchor"):
@@ -2833,20 +2844,43 @@ func _resolve_activity_target(action:Dictionary) -> void:
 		action.target_position=world.actors[str(action.target_id)].position+Vector3(0,0,.9)
 		return
 	var item:Dictionary=_find_item(str(action.target_id))
+	if not item.is_empty() and str(item.kind) in world.TWO_SEATERS:_assign_seat_slot(action,item)
 	var wanted:String=""
 	if action.id=="cook" and not item.is_empty() and item.kind=="fridge":wanted="stove"
 	if action.id=="watch" and not item.is_empty() and item.kind=="tv":wanted="sofa"
 	if wanted.is_empty():return
 	var best:Dictionary=world.closest_item(wanted,item.node.position)
 	if wanted=="sofa":
-		# Any lounge seat works for television: the nearest sofa, loveseat or armchair.
-		for alternative:String in ["loveseat","armchair"]:
-			var candidate:Dictionary=world.closest_item(alternative,item.node.position)
-			if candidate.is_empty():continue
-			if best.is_empty() or candidate.node.position.distance_to(item.node.position)<best.node.position.distance_to(item.node.position):best=candidate
+		# Any lounge seat works for television. Prefer the nearest seat nobody is
+		# using, so two Lifelets can watch the same set from different seats.
+		var seats:Array=[]
+		for lounge:String in ["sofa","loveseat","armchair"]:
+			for candidate:Dictionary in world.items:
+				if str(candidate.kind)==lounge and world.item_level(candidate)==world.item_level(item) and candidate.node.position.distance_to(item.node.position)<=5.0:seats.append(candidate)
+		seats.sort_custom(func(a:Dictionary,b:Dictionary)->bool:return a.node.position.distance_to(item.node.position)<b.node.position.distance_to(item.node.position))
+		var free_seat:Dictionary={}
+		for seat:Dictionary in seats:
+			var trial:Dictionary=action.duplicate(true)
+			trial.target_id=seat.id;trial.target_position=world.approach(seat)
+			if _activity_available_for_member(trial,bound_member_id):free_seat=seat;break
+		if not free_seat.is_empty():best=free_seat
+		elif not seats.is_empty():best=seats.front()
 	if not best.is_empty():
 		action.target_id=best.id
 		action.target_position=world.approach(best)
+		if str(best.kind) in world.TWO_SEATERS:_assign_seat_slot(action,best)
+
+func _assign_seat_slot(action:Dictionary,item:Dictionary) -> void:
+	# A two-seater keeps its own seat per Lifelet: take the left seat unless a
+	# housemate already holds it, then the right. The approach point follows.
+	var taken:Array=[]
+	for member:Dictionary in household.members:
+		if member.id==bound_member_id:continue
+		var other:Dictionary=member.sim.get_current_action()
+		if not other.is_empty() and str(other.get("target_id",""))==str(item.id) and other.has("seat_slot"):taken.append(str(other.seat_slot))
+	if not action.has("seat_slot") or taken.has(str(action.seat_slot)):
+		action["seat_slot"]="right" if taken.has("left") and not taken.has("right") else "left"
+	action.target_position=world.slot_approach(item,str(action.seat_slot))
 
 func _activity_available(action:Dictionary) -> bool:
 	return _activity_available_for_member(action,bound_member_id)
@@ -2895,7 +2929,7 @@ func _activity_resources(action:Dictionary) -> Array[String]:
 	var item:Dictionary=_find_item(target_id)
 	var resources:Array[String]=[]
 	if item.is_empty():resources.append(target_id)
-	else:resources=world.activity_resource_ids(item)
+	else:resources=world.activity_resource_ids(item,str(action.get("seat_slot","")))
 	if action.has("target_position"):
 		var at:Vector3=action.target_position
 		var cell:Vector2i=Vector2i(roundi(at.x*2),roundi(at.z*2))

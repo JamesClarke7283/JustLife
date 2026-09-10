@@ -12,7 +12,7 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 	if not operation is Dictionary or operation.get("op")!="structure" or not Building.number(funds,0,1e9,true):return _error("Invalid structure edit.")
 	if int(current.revision)>=1000000000:return _error("Building revision limit reached.")
 	var tool:Variant=operation.get("tool");var level:Variant=operation.get("level")
-	if not tool is String or tool not in ["wall","room","door","erase","finish"] or not Building.number(level,0,1,true):return _error("Invalid structure tool or level.")
+	if not tool is String or tool not in ["wall","room","door","erase","finish","paint"] or not Building.number(level,0,1,true):return _error("Invalid structure tool or level.")
 	var after:Dictionary=current.duplicate(true);var cost:int=0
 	if tool=="finish":
 		if not Building._material(operation.get("material")):return _error("Choose a valid floor finish.")
@@ -54,6 +54,15 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 		for wall:Dictionary in walls:
 			wall.merge({"id":Building._new_id(after,"walls"),"level":int(level),"height":2.6,"cut":true,"material":"eae7d7"});after.walls.append(wall)
 		cost=int(length*55+floor_cost) # Preserve legacy whole-quote currency truncation.
+	elif tool=="paint":
+		# Repaint one wall segment; the colour is a wall material like the floor finishes.
+		if not Building.identifier(operation.get("id")):return _error("Choose an existing wall on this level.")
+		if not Building._material(operation.get("material")):return _error("Choose a valid wall colour.")
+		var wall:Dictionary=Building.find(after,str(operation.id))
+		if wall.is_empty() or Building._group_of(after,str(operation.id))!="walls" or int(wall.level)!=int(level):return _error("The selected wall has changed.")
+		if str(wall.material)==str(operation.material):return _error("That wall already has this colour.")
+		wall.material=str(operation.material)
+		cost=int(maxf(float(wall.w),float(wall.d))*6)
 	else:
 		if not Building.identifier(operation.get("id")):return _error("Choose an existing wall on this level.")
 		var wall:Dictionary=Building.find(after,str(operation.id))
