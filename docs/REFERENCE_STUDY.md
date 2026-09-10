@@ -135,3 +135,15 @@ Six creator views and an edited menu image from [the July patch overview](https:
 Three browser downloads from [EA's wills and heirlooms guide](https://help.ea.com/en/articles/the-sims/the-sims-4/wills-and-heirloom-items/) are archived in `topics/legacy_inheritance_official_2026`. Root inspected all three: an owner portrait and personal note above a world object, a will in personal inventory, and heirloom eligibility in a Build product card. The 800×450 images contain editorial annotations. Original AVIF bytes and pixel-exact PNG display copies are retained; only the three original hashes count as references.
 
 The written guide separates the author's death from loss of the entire household, and describes beneficiaries receiving a will before reading it to execute transfers. This suggests distinct pending and completed inheritance states for future JustLife design. It is expansion evidence; death and inheritance remain unimplemented.
+
+### Gameplay UI harvest, 10 September 2026
+
+The browser discovered and archived 104 gameplay screenshots from five Carl's Sims 4 guide pages (building 19, interior decoration 12, sim needs/identity 10, emotions 10, traits 53) into `research/sims4/gameplay/` with per-image hashes in `gameplay_manifest.json` and contact sheets under `gameplay/contact_sheets/`. They join the 35 official interface captures archived on 7 September. Reference-only; shipped artwork stays original.
+
+Inspected findings that inform this iteration:
+
+- **Needs panel**: a white translucent rounded card on the right with a 2×3 grid of labelled bars (Bladder/Fun, Hunger/Social, Energy/Hygiene); hovering a need explains it and offers "Click To Auto-Solve" — clicking directs the Sim to the fix. JustLife's HUD rows lack per-need hover explanation and one-click solution.
+- **Portrait cluster**: petal-shaped portrait bottom-left; a green plumbob ring reflects mood; an emotion pill with intensity ("Happy +2"); a strip of square moodlet tiles with hover explanations; a vertical emotion label. Emotion colors: teal happy/inspired, gold embarrassed, red tense, purple playful.
+- **Emotion mechanics on display**: moodlets boost each other ("Happy +1 … Boosting: Playful"); environment moodlets ("Decorated (From Good Environment)"); emotion tints the interaction menu; objects radiate emotion auras.
+- **Build mode**: rooms render as enclosed floor regions with grid floors bounded by wall panels; near-camera walls cut away translucent; actively drawn rooms show green outlines with drag-arrow resize handles and a move gizmo; wall paint catalogs are swatch grids; roofline friezes/trim and railings carry prices.
+- **Identity breadth**: traits panels show six traits in two columns per Sim; aspirations have hour-based milestone tasks with checkmarks; whims award satisfaction points that fund aspirations.
