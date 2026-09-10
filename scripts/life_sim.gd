@@ -1260,7 +1260,11 @@ func _autonomy_need_choice(need:String,excluded_target_ids:Array=[],preparing:bo
 		"bladder":candidates=["toilet"]
 		"fun":
 			if _has_trait("Bookworm"):candidates=["read","watch","relax"]
-			else:candidates=["paint","read","watch","relax"]
+			else:
+				var leisure_duty:String=_autonomy_preparation_duty_id()
+				# Keep critical Fun recovery brief while an available school/work day is being prepared.
+				if leisure_duty in ["school_day","career_day"] and not _autonomy_target_for(leisure_duty,excluded_target_ids).is_empty():candidates=["relax","read","watch","paint"]
+				else:candidates=["paint","read","watch","relax"]
 	for id:String in candidates:
 		var chosen:Dictionary=_autonomy_target_for(id,excluded_target_ids)
 		if not chosen.is_empty():return chosen

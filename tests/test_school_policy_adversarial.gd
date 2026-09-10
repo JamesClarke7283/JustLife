@@ -6,7 +6,7 @@ func run() -> void:
 	_late_grade_archives()
 	_invalid_late_records()
 	_expiring_queued_departure()
-	_dual_critical_paid_recovery()
+	_dual_critical_paid_cooking()
 	_school_preparation_boundaries()
 	_enrollment_cutoff()
 	for sim: LifeSim in owned: sim.free()
@@ -101,26 +101,26 @@ func _expiring_queued_departure() -> void:
 	sim.begin_current_action()
 	check(not sim.is_away(), "A delayed arrival callback cannot revive an expired departure.")
 
-func _dual_critical_paid_recovery() -> void:
+func _dual_critical_paid_cooking() -> void:
 	var sim: LifeSim = setup("adult", 0.0)
 	sim.needs.hunger = 0.0
 	sim.needs.energy = 0.0
 	sim.needs.bladder = 0.0
-	check(sim.queue_action("cook", "fridge"), "An adult may prepare a fresh meal with multiple critical needs.")
+	check(sim.queue_action("cook", "fridge"), "An adult may cook with multiple critical needs.")
 	sim.get_current_action().autonomous = true
 	sim.begin_current_action()
 	var paid_funds: int = sim.funds
 	advance(sim, 20.0)
-	check(sim.get_current_action().id == "cook" and sim.get_current_action().elapsed == 20.0 and sim.funds == paid_funds, "Critical competing needs do not cancel and repurchase an unfinished paid meal.")
+	check(sim.get_current_action().id == "cook" and sim.get_current_action().elapsed == 20.0 and sim.funds == paid_funds, "Critical competing needs do not cancel and repurchase an unfinished paid cooking.")
 	var resumed: LifeSim = setup("adult", 0.0)
 	check(resumed.restore_state(snapshot(sim)).ok, "Partly cooked recovery with critical competing needs saves.")
 	resumed.begin_current_action()
 	advance(sim, 25.0)
 	advance(resumed, 25.0)
-	check(sim.action_queue.is_empty() and resumed.action_queue.is_empty() and sim.funds == paid_funds and resumed.funds == paid_funds, "Paid meal resumes and finishes without a second purchase or interruption.")
-	check(sim.needs.hunger > 65.0 and is_equal_approx(sim.needs.hunger, resumed.needs.hunger), "Useful hunger recovery matches after loading a paid meal.")
+	check(sim.action_queue.is_empty() and resumed.action_queue.is_empty() and sim.funds == paid_funds and resumed.funds == paid_funds, "Paid cooking resumes and finishes without a second purchase or interruption.")
+	check(sim.needs.hunger == 0.0 and resumed.needs.hunger == 0.0, "Paid cooking preserves empty hunger through save/resume; eating is still required.")
 	sim._choose_autonomous_action()
-	check(sim.get_current_action().id in ["sleep", "toilet"], "After committed meal completion, remaining critical needs get their turn.")
+	check(sim.get_current_action().id == "snack", "After committed cooking, a snack addresses the still-most-urgent hunger need.")
 
 func _school_preparation_boundaries() -> void:
 	for need: String in ["hygiene", "fun", "social"]:
