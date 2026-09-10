@@ -162,8 +162,8 @@ func new_household(profile: Dictionary) -> void:
 
 func _build_actions() -> void:
 	_define("arrive_home","Arriving home",1.0,{},0,"",0.0,"Walk into your new home. Canceling the walk keeps this Lifelet in the family.")
-	_define("career_day", "Go to work", LifeCareerSchedule.LENGTH, {"hunger":30.0,"bladder":38.0,"social":24.0,"energy":-12.0,"fun":-12.0}, 0, "", 0.0, "Weekday work, 09:00–17:00. Arrive by 10:00; late arrivals until noon reduce pay and performance. Lunch and bathroom breaks are included.")
-	_define("school_day", "Go to school", 420.0, {"hunger":22.0,"bladder":28.0,"social":35.0,"energy":-7.0,"fun":-10.0}, 0, "", 0.0, "Leave for school on weekdays from 08:00. Arrive by 09:00 to be on time; late arrival is possible until 12:00. Return at 15:00. Lunch and bathroom breaks are part of the school day.")
+	_define("career_day", "Go to work", LifeCareerSchedule.LENGTH, {"hunger":30.0,"bladder":38.0,"social":24.0,"energy":-12.0,"fun":-4.0}, 0, "", 0.0, "Weekday work, 09:00–17:00. Arrive by 10:00; late arrivals until noon reduce pay and performance. Lunch and bathroom breaks are included.")
+	_define("school_day", "Go to school", 420.0, {"hunger":22.0,"bladder":28.0,"social":35.0,"energy":-7.0,"fun":-3.0}, 0, "", 0.0, "Leave for school on weekdays from 08:00. Arrive by 09:00 to be on time; late arrival is possible until 12:00. Return at 15:00. Lunch and bathroom breaks are part of the school day.")
 	_define("help_homework", "Help with homework", 45.0, {}, 0, "", 0.0, "Support a child or teen through one assignment and build Parenting skill.")
 	_define("school", "Attend online classes", 180.0, {}, 0, "", 0.0, "Weekday lessons at your desk, 08:00–14:00. Prepared homework improves learning and grades.")
 	_define("homework", "Do homework", 45.0, {}, 0, "", 0.0, "Complete a weekday assignment and prepare for the next attended class.")
@@ -684,10 +684,26 @@ func _apply_continuous_effects(action: Dictionary, fraction: float) -> void:
 		var multiplier: float = 1.0
 		if (skill_name == "creativity" and _has_trait("Creative")) or (skill_name == "charisma" and _has_trait("Outgoing")) or (skill_name == "logic" and _has_trait("Bookworm")) or (skill_name == "cooking" and _has_trait("Foodie")):
 			multiplier = 1.4
-		var effect: Dictionary = emotion_effect(str(get_mood().label))
-		if not effect.is_empty() and (effect.skills.has("*") or effect.skills.has(skill_name)):
-			multiplier *= float(effect.multiplier)
-		_gain_skill(skill_name, float(action["xp"]) * fraction * multiplier)
+		# The strongest moodlet and the activity's own emotion both count: the best
+		# bonus applies once, and any penalty applies once, even while a nagging
+		# need keeps the mood label at "Unsettled".
+		var bonus: float = 1.0
+		var penalty: float = 1.0
+		for effect: Dictionary in [emotion_effect(str(get_mood().label)), emotion_effect(_activity_emotion(str(action["id"])))]:
+			if effect.is_empty() or not (effect.skills.has("*") or effect.skills.has(skill_name)): continue
+			if float(effect.multiplier) >= 1.0: bonus = maxf(bonus, float(effect.multiplier))
+			else: penalty = minf(penalty, float(effect.multiplier))
+		multiplier *= bonus * penalty
+		_gain_skill(skill_name, float(action["xp"]) * fraction * multiplier, float(action["xp"]) * fraction)
+
+
+func _activity_emotion(id: String) -> String:
+	# The feeling an activity carries on its own, matching the live mood labels.
+	match id:
+		"paint": return "Inspired" if _has_trait("Creative") else ""
+		"read", "study", "work", "job", "school", "homework", "play_chess", "play_games": return "Focused"
+		"jog", "stretch", "dance": return "Energized"
+	return ""
 
 
 static func emotion_effect(emotion: String) -> Dictionary:
@@ -704,8 +720,9 @@ static func emotion_effect(emotion: String) -> Dictionary:
 	return {}
 
 
-func _gain_skill(skill_name: String, amount: float) -> void:
-	_record_practice(skill_name, amount)
+func _gain_skill(skill_name: String, amount: float, practice: float = -1.0) -> void:
+	# Chapter practice counts the effort put in; emotion and trait bonuses only speed the skill.
+	_record_practice(skill_name, amount if practice < 0.0 else practice)
 	var skill: Dictionary = skills[skill_name]
 	if int(skill["level"]) >= 10:
 		return
@@ -784,6 +801,7 @@ func _finish_front() -> void:
 	elif id == "change_outfit" or WEAR_ACTIONS.has(id):
 		character["outfit"] = int(WEAR_ACTIONS[id]) if WEAR_ACTIONS.has(id) else (int(character.get("outfit", 0)) + 1) % 5
 		_emit_notice("%s changed into the %s outfit." % [character["name"], ["casual", "jacket", "cardigan", "tee", "hoodie"][int(character["outfit"])]])
+		add_moodlet("Freshly changed", "Confident", "A new outfit, a new outlook.", 120, 1)
 	elif id == "cook" and _has_trait("Foodie"):
 		_emit_notice("A delicious homemade meal! Your Foodie trait made it extra satisfying.")
 	_activity_memory(id)
@@ -1371,17 +1389,26 @@ func _autonomy_need_choice(need:String,excluded_target_ids:Array=[],preparing:bo
 				if leisure_duty in ["school_day","career_day"] and not _autonomy_target_for(leisure_duty,excluded_target_ids).is_empty():candidates=["relax","read","watch","paint","stretch","warm_up"]
 				elif _has_trait("Active"):candidates=["jog","dance","stretch","paint","read","watch","play_games","relax"]
 				else:candidates=["paint","read","watch","play_piano","play_chess","dance","play_games","practice_speech","stretch","warm_up","relax"]
+				# Outgoing Lifelets rehearse at the mirror early; Creative ones keep the easel first.
+				if _has_trait("Outgoing") and candidates.has("practice_speech"):candidates.erase("practice_speech");candidates.insert(mini(3,candidates.size()),"practice_speech")
 			# Children reach for their toys first on a free day, and last when a school morning needs brief recovery.
 			if str(character.age_stage)=="child":
 				if candidates[0]=="relax":candidates.append("play_toys")
 				else:candidates.insert(0,"play_toys")
 	if need!="fun":
 		# Physical needs keep their preference order and fair waiting: a bed is
-		# worth queueing for even when a sofa nap is free.
+		# worth a short queue even when a sofa nap is free. A queue longer than
+		# forty-five minutes sends the Lifelet to the next candidate instead, so
+		# eight people do not all stand beside one occupied bed.
+		var fallback:Dictionary={}
+		var fallback_load:float=INF
 		for id:String in candidates:
 			var chosen:Dictionary=_autonomy_target_for(id,excluded_target_ids)
-			if not chosen.is_empty():return chosen
-		return {}
+			if chosen.is_empty():continue
+			var load:float=float(chosen.get("load",0.0))
+			if load<=45.0:return chosen
+			if load<fallback_load:fallback_load=load;fallback=chosen
+		return fallback
 	# Leisure takes the favourite when it is free and fresh. Otherwise the
 	# least-loaded candidate wins, with a small preference for the earlier
 	# ones and a penalty for pastimes done recently: in a crowded home an idle
@@ -1393,7 +1420,9 @@ func _autonomy_need_choice(need:String,excluded_target_ids:Array=[],preparing:bo
 		if chosen.is_empty():continue
 		var load:float=float(chosen.get("load",0.0))
 		if index==0 and load<=0.0 and not _leisure_history.has(candidates[index]):return chosen
-		var score:float=load+float(index)*5.0+(25.0 if _leisure_history.has(candidates[index]) else 0.0)
+		# Any queue costs at least forty minutes of preference, so a free pastime
+		# always beats a busy one; recent pastimes cost twenty-five more.
+		var score:float=(load+40.0 if load>0.0 else 0.0)+float(index)*5.0+(25.0 if _leisure_history.has(candidates[index]) else 0.0)
 		if score<best_score:best_score=score;best=chosen
 	return best
 

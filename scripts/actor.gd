@@ -1168,13 +1168,15 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 				offset.y += absf(sin(run_cycle)) * 0.035
 				lean = Vector3(0.10, 0.02 * stride, -0.01 * stride)
 			"stretch":
+				# A slow reach up and out in a V, kept short of a full overhead raise so
+				# the long-sleeved shells keep their shoulders through the stretch.
 				var rise: float = 0.5 + 0.5 * sin(t * 0.9)
-				pose["Arm_L"] = Vector3(-1.2 - 1.6 * rise, 0, -0.12)
-				pose["Arm_R"] = Vector3(-1.2 - 1.6 * rise, 0, 0.12)
-				pose["Forearm_L"] = Vector3(-0.25 * rise, 0, 0)
-				pose["Forearm_R"] = Vector3(-0.25 * rise, 0, 0)
-				pose["Head"] = Vector3(-0.18 * rise, 0, 0)
-				lean = Vector3(-0.04 * rise, 0, 0.06 * sin(t * 0.45))
+				pose["Arm_L"] = Vector3(-1.0 - 1.2 * rise, 0, -0.2 - 0.15 * rise)
+				pose["Arm_R"] = Vector3(-1.0 - 1.2 * rise, 0, 0.2 + 0.15 * rise)
+				pose["Forearm_L"] = Vector3(-0.12 * rise, 0, 0)
+				pose["Forearm_R"] = Vector3(-0.12 * rise, 0, 0)
+				pose["Head"] = Vector3(-0.15 * rise, 0, 0)
+				lean = Vector3(-0.03 * rise, 0, 0.05 * sin(t * 0.45))
 			"dance":
 				var beat: float = sin(t * 6.0)
 				pose["Arm_L"] = Vector3(-0.9 + 0.3 * beat, 0, -0.55)

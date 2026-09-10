@@ -175,7 +175,9 @@ def author(family):
     lcap=D.objects['Hair_Long_Cap']; lpts=world_points(lcap); centre=sum(lpts,Vector())/len(lpts)
     rear=[p for p in lpts if p.y>centre.y+.02*hs]; rim_z=min(p.z for p in rear); rim_r=max(((p-centre).xy.length for p in rear if p.z<rim_z+.03*hs))
     def back_sheet(u,v):
-        a=(u-.5)*math.radians(150); R=rim_r*(1.0+.06*v)*(1-.10*v*v); z=rim_z+.02*hs-.24*hs*v; taper=1-.25*v
+        # The sheet stands a little off the cap and flares as it falls, so it drapes
+        # over a hood roll instead of passing through it.
+        a=(u-.5)*math.radians(150); R=rim_r*(1.0+.06*v)*(1-.10*v*v)+.035*hs+.05*hs*v; z=rim_z+.02*hs-.24*hs*v; taper=1-.25*v
         return Vector((centre.x+math.sin(a)*R*taper,centre.y+math.cos(a)*R+.01*hs*v,z))
     bs=new_mesh_object('Hair_Long_Back',surface(back_sheet,22,10),'Hair',longh)
     bm=bmesh.new(); bm.from_mesh(bs.data); res=bmesh.ops.extrude_edge_only(bm,edges=[e for e in bm.edges if e.is_boundary])
