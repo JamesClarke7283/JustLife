@@ -44,6 +44,7 @@ var placement_kind: String = ""
 var placement_angle: float = 0.0
 var ghost: Node3D
 var ghost_valid: bool = false
+var placement_reach_check: Callable  # set by the app: (kind, position, angle) -> bool, the same doorway rule a click applies
 var ghost_position = Vector3.ZERO
 var cutaway: bool = true
 var grid: Node3D
@@ -814,6 +815,8 @@ func _process(delta:float) -> void:
 		ghost.rotation_degrees.y=placement_angle
 		ghost_position=p
 		ghost_valid=can_place(placement_kind,p,placement_angle)
+		# The preview turns red for a spot the purchase would refuse for sealing a way.
+		if ghost_valid and placement_reach_check.is_valid():ghost_valid=bool(placement_reach_check.call(placement_kind,p,placement_angle))
 		for n in ghost.find_children("*","MeshInstance3D",true,false):n.material_override.albedo_color=Color(.4,.85,.6,.48) if ghost_valid else Color(.9,.3,.25,.48)
 
 func daylight(minutes:float) -> void:

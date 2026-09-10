@@ -84,6 +84,10 @@ var romantic_partner: String = ""
 var _social_member_id: String = "player"
 var _promotion_notice_day: int = -1
 var _leisure_history: Array[String] = []  # the last few leisure choices, so autonomy varies its pastimes
+var _recent_target_use: Dictionary = {}  # target id -> game minute of this Lifelet's last completed action there
+const LEISURE_HISTORY: int = 5
+const NOVELTY_FRESH_MINUTES: float = 720.0  # a furnishing nobody used for twelve hours draws the household
+const NOVELTY_RECENT_MINUTES: float = 120.0  # one used in the last two hours is a little less tempting
 var _social_partners: Dictionary = {}
 var _social_adults: Dictionary = {}
 var _social_reciprocal: Dictionary = {}
@@ -309,7 +313,9 @@ func _begin_school_departure(action: Dictionary) -> void:
 	for need: String in ["hunger","energy","bladder"]:
 		if float(needs[need]) < 12.0: problem = "Take care of urgent needs before leaving for school."
 	if bool(action.get("autonomous",false)):
-		if not _autonomy_projection_need("school_day",0.0).is_empty(): problem = "Get ready for the school day before leaving."
+		# The same projection the chooser used: with the commute counted, so a
+		# pupil sent to the exit is not turned back there by a stricter re-check.
+		if not _autonomy_projection_need("school_day",60.0).is_empty(): problem = "Get ready for the school day before leaving."
 		for later: Dictionary in action_queue.slice(1):
 			if not bool(later.get("autonomous",false)): problem = "Following your plans before leaving for school."
 	if not problem.is_empty():
@@ -749,10 +755,11 @@ func _finish_front() -> void:
 	var action: Dictionary = action_queue.pop_front()
 	var id: String = str(action["id"])
 	var earned: int = 0
-	if id in LEISURE_ACTIONS:
+	if id in LEISURE_ACTIONS or id=="bath":
 		_leisure_history.erase(id);_leisure_history.push_front(id)
-		while _leisure_history.size()>3:_leisure_history.pop_back()
+		while _leisure_history.size()>LEISURE_HISTORY:_leisure_history.pop_back()
 		autonomy_state["leisure"]=_leisure_history.duplicate()
+	if not str(action.get("target_id","")).is_empty():_recent_target_use[str(action.target_id)]=_autonomy_now()
 	if id in AGE_GATED_ACTIONS and not bool(get_action_availability(id, str(action.get("target_id",""))).available):
 		# A restored or edited queue cannot grant an activity this age may not do.
 		_emit_notice(str(get_action_availability(id, str(action.get("target_id",""))).reason))
@@ -1422,6 +1429,8 @@ func _autonomy_need_choice(need:String,excluded_target_ids:Array=[],preparing:bo
 				if briefing:candidates=PRE_DUTY_LEISURE.duplicate()
 				elif _has_trait("Active"):candidates=["jog","dance","stretch","paint","read","watch","play_games","relax"]
 				else:candidates=["paint","read","watch","play_piano","play_chess","dance","play_games","practice_speech","stretch","warm_up","relax"]
+				# A long soak counts as a pastime once the tub is worth it.
+				if not briefing and float(needs.hygiene)<70.0:candidates.insert(3,"bath")
 				# Outgoing Lifelets rehearse at the mirror early; Creative ones keep the easel first.
 				if _has_trait("Outgoing") and candidates.has("practice_speech"):candidates.erase("practice_speech");candidates.insert(mini(3,candidates.size()),"practice_speech")
 			# Children reach for their toys first on a free day, and last when a school morning needs brief recovery.
@@ -1469,9 +1478,23 @@ func _autonomy_need_choice(need:String,excluded_target_ids:Array=[],preparing:bo
 		if index==0 and load<=0.0 and not _leisure_history.has(candidates[index]):return chosen
 		# Any queue costs at least forty minutes of preference, so a free pastime
 		# always beats a busy one; recent pastimes cost twenty-five more.
-		var score:float=(load+40.0 if load>0.0 else 0.0)+float(index)*5.0+(25.0 if _leisure_history.has(candidates[index]) else 0.0)
+		# A furnishing nobody in the home has touched for half a day draws the
+		# household to it; one everybody used in the last two hours is a little
+		# less tempting, so a crowded home spreads over its whole catalogue.
+		var score:float=(load+40.0 if load>0.0 else 0.0)+float(index)*5.0+(25.0 if _leisure_history.has(candidates[index]) else 0.0)+_novelty_score(str(chosen.get("target_id","")))
 		if score<best_score:best_score=score;best=chosen
 	return best
+
+func _novelty_score(target_id:String) -> float:
+	var last:float=-INF
+	var members:Array=_autonomy_household_members()
+	if members.is_empty():last=float(_recent_target_use.get(target_id,-INF))
+	for member:Dictionary in members:
+		if is_instance_valid(member.sim):last=maxf(last,float(member.sim._recent_target_use.get(target_id,-INF)))
+	var age:float=_autonomy_now()-last
+	if age>=NOVELTY_FRESH_MINUTES:return -15.0
+	if age<=NOVELTY_RECENT_MINUTES:return 10.0
+	return 0.0
 
 func _autonomous_choice(excluded_target_ids:Array=[]) -> Dictionary:
 	var duty:String=_autonomy_duty_id()
@@ -2096,9 +2119,9 @@ func _validate_autonomy_state(state:Dictionary) -> String:
 	for id:Variant in value.deferred:
 		if str(id) not in ["school","school_day","career_day","homework","job"] or not _number_in_range(value.deferred[id],0.0,now+1440.0):return "Save contains an invalid postponed responsibility."
 	var leisure:Variant=value.get("leisure",[])
-	if not leisure is Array or leisure.size()>3:return "Save contains an invalid pastime history."
+	if not leisure is Array or leisure.size()>LEISURE_HISTORY:return "Save contains an invalid pastime history."
 	for id:Variant in leisure:
-		if not id is String or id not in LEISURE_ACTIONS:return "Save contains an unknown recent pastime."
+		if not id is String or (id not in LEISURE_ACTIONS and id!="bath"):return "Save contains an unknown recent pastime."
 	return ""
 
 
@@ -2721,7 +2744,7 @@ func _begin_career_departure(action:Dictionary) -> void:
 	for need:String in ["hunger","energy","bladder"]:
 		if float(needs[need])<12.0:problem="Take care of urgent needs before leaving for work."
 	if bool(action.get("autonomous",false)):
-		if not _autonomy_projection_need("career_day",0.0).is_empty():problem="Get ready for the workday before leaving."
+		if not _autonomy_projection_need("career_day",60.0).is_empty():problem="Get ready for the workday before leaving."
 		for later:Dictionary in action_queue.slice(1):
 			if not bool(later.get("autonomous",false)):problem="Following your plans before leaving for work."
 	if not problem.is_empty():cancel_action();_emit_notice(problem);return

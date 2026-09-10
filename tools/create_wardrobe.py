@@ -169,21 +169,48 @@ def author(family):
         bm=bmesh.new(); bm.from_mesh(o.data); zs=[v.co.z for v in bm.verts]; top=max(zs); span=max(top-min(zs),1e-4)
         cx=sum(v.co.x for v in bm.verts)/len(bm.verts); cy=sum(v.co.y for v in bm.verts)/len(bm.verts)
         for v in bm.verts:
-            f=(top-v.co.z)/span; v.co.z-=f*.17*hs; v.co.y+=f*.015*hs; v.co.x=cx+(v.co.x-cx)*(1-.35*f); v.co.y=cy+(v.co.y-cy)*(1-.35*f)
+            f=(top-v.co.z)/span; v.co.z-=f*.12*hs; v.co.y+=f*.012*hs; v.co.x=cx+(v.co.x-cx)*(1-.45*f); v.co.y=cy+(v.co.y-cy)*(1-.45*f)
         bm.to_mesh(o.data); bm.free()
-    # A rear sheet turns the lengthened Bob into long hair, falling from the cap rim to the shoulder blades.
+    # Long hair drapes as a full wrapped mass: it hugs the cap rim, draws in at
+    # the neck, flares over the shoulder line, then settles against the back and
+    # tapers to an irregular, lock-separated hem. Two thick front locks fall from
+    # the swept cap sides, bow over the cheeks and taper to rounded tips.
     lcap=D.objects['Hair_Long_Cap']; lpts=world_points(lcap); centre=sum(lpts,Vector())/len(lpts)
     rear=[p for p in lpts if p.y>centre.y+.02*hs]; rim_z=min(p.z for p in rear); rim_r=max(((p-centre).xy.length for p in rear if p.z<rim_z+.03*hs))
-    def back_sheet(u,v):
-        # The sheet stands a little off the cap and flares as it falls, so it drapes
-        # over a hood roll instead of passing through it.
-        a=(u-.5)*math.radians(150); R=rim_r*(1.0+.06*v)*(1-.10*v*v)+.035*hs+.05*hs*v; z=rim_z+.02*hs-.24*hs*v; taper=1-.25*v
-        return Vector((centre.x+math.sin(a)*R*taper,centre.y+math.cos(a)*R+.01*hs*v,z))
-    bs=new_mesh_object('Hair_Long_Back',surface(back_sheet,22,10),'Hair',longh)
-    bm=bmesh.new(); bm.from_mesh(bs.data); res=bmesh.ops.extrude_edge_only(bm,edges=[e for e in bm.edges if e.is_boundary])
-    for v in [g for g in res['geom'] if isinstance(g,bmesh.types.BMVert)]:v.co=centre+(v.co-centre)*.94
-    bmesh.ops.recalc_face_normals(bm,faces=bm.faces); bm.to_mesh(bs.data); bm.free()
-    for f in bs.data.polygons:f.use_smooth=True
+    def wrap(u,v):
+        a=(u-.5)*math.radians(300)                                   # face opening of 60 degrees at the front
+        lobes=1+.08*math.sin(3*a+.9)*v                               # three gentle locks, strongest toward the hem
+        neck=.018*hs*math.exp(-(((v-.15)/.12)**2))                   # a light draw-in under the rim
+        flare=.07*hs*math.exp(-(((v-.45)/.26)**2))                   # volume over the shoulder line
+        R=(rim_r+.048*hs-neck+flare)*lobes
+        taper=1-(.30+.08*math.sin(3*a+.9))*v                         # per-lock width taper
+        ang=abs(math.atan2(math.sin(a),math.cos(a)))                 # 0 at the back centre, pi at the front
+        hem=.215*hs+.055*hs*math.sin(min(ang,math.pi*.62))           # side curtains fall lowest
+        z=rim_z+.02*hs-hem*v
+        settle=.04*hs*v*v*v                                          # the ends rest against the back
+        return Vector((centre.x+math.sin(a)*R*taper,centre.y+math.cos(a)*R+settle,z))
+    ws=new_mesh_object('Hair_Long_Back',surface(wrap,48,16),'Hair',longh)
+    bm=bmesh.new(); bm.from_mesh(ws.data); res=bmesh.ops.extrude_edge_only(bm,edges=[e for e in bm.edges if e.is_boundary])
+    for vtx in [g for g in res['geom'] if isinstance(g,bmesh.types.BMVert)]:vtx.co+=Vector((0,0,.010*hs))
+    bmesh.ops.recalc_face_normals(bm,faces=bm.faces); bm.to_mesh(ws.data); bm.free()
+    for f in ws.data.polygons:f.use_smooth=True
+    front_rim=[p for p in lpts if p.y<centre.y+.005*hs]
+    side_r=max((abs(p.x) for p in front_rim),default=0.0)
+    z_top=max(p.z for p in lpts)
+    for side,sgn in (('L',1),('R',-1)):
+        crown=[p for p in lpts if abs(p.x)>.45*side_r and p.x*sgn>0 and p.z>centre.z+.12*(z_top-centre.z) and p.y<centre.y+.02*hs]
+        if not crown:crown=sorted(front_rim,key=lambda p:-(p.z+.3*abs(p.x)))[6:]
+        anchor=sum(crown,Vector())/len(crown)
+        start=anchor+(centre-anchor)*.12
+        end_z=rim_z-.205*hs
+        def strand(u,v,start=start,end_z=end_z):
+            t=v; q=u*math.tau
+            bow=sgn*.009*hs*math.sin(math.pi*min(t*1.25,1.0))        # clears the cheek and ear
+            back=.018*hs*t*t                                         # eases toward the body as it falls
+            axis=start+Vector((bow,back,(end_z-start.z)*t))
+            rr=.0165*hs*(1-.78*t)**1.1
+            return axis+Vector((math.cos(q)*rr*.66,math.sin(q)*rr,0))
+        new_mesh_object('Hair_Long_Front'+('' if side=='L' else '.001'),surface(strand,14,22,True,True),'Hair',longh)
     buzz,bmade=dup_group('Hair_Crop','Hair_Buzz')
     for o in bmade:
         if not o.name.endswith('_Cap'):D.objects.remove(o)

@@ -175,6 +175,41 @@ func route(from:Variant,to:Variant) -> Dictionary:
 	if not points[-1].is_equal_approx(finish.point):segments.append({"kind":"floor","stair_id":"","level":int(finish.level),"from":points[-1],"to":finish.point});points.append(finish.point)
 	return {"ok":true,"already_reached":false,"points":points,"segments":segments,"distance":best_distance,"generation":generation}
 
+func reachable_from(level:int,point:Vector3,excluded:Dictionary={}) -> Dictionary:
+	# Every graph point a walker can reach from here, across stairs, as a set of
+	# point ids. One flood fill answers reachability for every furnishing at once;
+	# `excluded` point ids are treated as gone, so a candidate furnishing can be
+	# tested against the live graph without rebuilding it.
+	var start:Dictionary=_endpoint(floor_location(level,point))
+	var seen:Dictionary={}
+	if not bool(start.ok):return seen
+	var frontier:Array=[]
+	for id:int in start.ids:
+		if excluded.has(id):continue
+		seen[id]=true;frontier.append(id)
+	while not frontier.is_empty():
+		var id:int=int(frontier.pop_back())
+		for next:int in _graph.get_point_connections(id):
+			if seen.has(next) or excluded.has(next):continue
+			seen[next]=true;frontier.append(next)
+	return seen
+
+func points_touching(level:int,area:Rect2) -> Dictionary:
+	# Floor point ids whose walking clearance would intersect a new obstacle.
+	var grown:Rect2=area.grow(RADIUS+CELL*.5)
+	var found:Dictionary={}
+	for x:int in range(floori(grown.position.x/CELL),ceili(grown.end.x/CELL)+1):
+		for z:int in range(floori(grown.position.y/CELL),ceili(grown.end.y/CELL)+1):
+			var key:String=_cell_key(level,Vector2i(x,z))
+			if not _floor_ids.has(key):continue
+			var at:Vector3=_graph.get_point_position(int(_floor_ids[key]))
+			if area.grow(RADIUS).has_point(Vector2(at.x,at.z)):found[int(_floor_ids[key])]=true
+	return found
+
+func point_reachable(reach:Dictionary,level:int,point:Vector3) -> bool:
+	var key:String=_cell_key(level,Vector2i(roundi(point.x/CELL),roundi(point.z/CELL)))
+	return _floor_ids.has(key) and reach.has(int(_floor_ids[key]))
+
 func state_snapshot() -> Dictionary:return _state.duplicate(true)
 
 func route_avoiding(from:Dictionary,to:Dictionary,occupied:Array[Vector3],radius:float) -> Dictionary:

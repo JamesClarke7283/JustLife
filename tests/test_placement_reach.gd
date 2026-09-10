@@ -23,6 +23,16 @@ func _run()->void:
 	var blocked:Array=world.serialize_items();blocked.append({"id":"probe","kind":"treadmill","x":2.3,"z":-0.5,"rotation":90.0})
 	var reason:String=app.build_transactions.furnishing_error(blocked)
 	check(reason.begins_with("That would block the way"),"A treadmill beside the bedroom doorway is refused with a reason: '"+reason+"'")
+	check(world.placement_reach_check.is_valid() and not bool(world.placement_reach_check.call("treadmill",Vector3(2.3,0.16,-0.5),90.0)),"The placement preview applies the same rule, so the ghost is red where the click refuses.")
+	var state:Dictionary=app.build_transactions.current().state
+	var fresh_total:int=0
+	for i:int in range(6):
+		var fresh:Array=world.serialize_items();fresh.append({"id":"probe","kind":"treadmill","x":2.3+i*.25,"z":-0.75,"rotation":90.0})
+		var started:int=Time.get_ticks_msec();app.build_transactions._reach_error(state,fresh);fresh_total+=Time.get_ticks_msec()-started
+	var started_again:int=Time.get_ticks_msec()
+	for i:int in range(5):app.build_transactions._reach_error(state,blocked)
+	var repeat_ms:float=float(Time.get_ticks_msec()-started_again)/5.0
+	check(repeat_ms<5.0 and fresh_total/6<80,"The reach rule answers a hovering ghost fast: %d ms per new spot on the live graph, %.1f ms from the cache." % [fresh_total/6,repeat_ms])
 	app.on_placement("treadmill",Vector3(2.3,0.16,-0.5),90.0)
 	check(world.items.size()==before,"The public purchase path refuses the doorway treadmill.")
 	var clear:Array=world.serialize_items();clear.append({"id":"probe","kind":"treadmill","x":4.75,"z":-0.5,"rotation":90.0})

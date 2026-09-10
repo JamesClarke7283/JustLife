@@ -171,6 +171,10 @@ func _connect_live_nodes() -> void:
 	household.member_action_finished.connect(_member_action_finished)
 	household.member_age_changed.connect(func(id: String, _previous: String, _current: String): _refresh_aged_member.call_deferred(id,load_epoch,sender))
 	world.object_clicked.connect(on_object_clicked)
+	world.placement_reach_check=func(kind:String,p:Vector3,angle:float)->bool:
+		if not is_instance_valid(build_transactions):return true
+		var proposed:Array=world.serialize_items();proposed.append({"id":"ghost","kind":kind,"x":p.x,"z":p.z,"rotation":angle,"level":world.view_level})
+		return build_transactions.furnishing_error(proposed).is_empty()
 	world.ground_clicked.connect(on_ground_clicked)
 	world.placement_requested.connect(on_placement)
 	world.construction_requested.connect(on_construction)
@@ -968,6 +972,9 @@ func refresh_hud() -> void:
 		action_label.text="Enjoying a moment" if action.is_empty() else ((("Waiting for " if waiting_for_target else "Walking to ") if action.phase=="approach" else "")+str(action.label))
 		if str(action.get("id","")) in ["school_day","career_day"] and str(action.get("phase",""))=="approach":action_label.text="Walking to work" if str(action.id)=="career_day" else "Walking to school"
 		if str(action.get("id",""))=="arrive_home":action_label.text="Waiting for a clear path" if bool(adoption_flow.blocked.get(bound_member_id,false)) else "Walking home"
+		# A Lifelet stepping back for somebody, or squeezing past a crowd, says so.
+		if str(action.get("phase",""))=="approach" and traversal.standing_off(bound_member_id):action_label.text="Making way, then "+str(action.label).to_lower()
+		elif str(action.get("phase",""))=="approach" and traversal.squeezing(bound_member_id):action_label.text="Squeezing past to "+str(action.label).to_lower()
 		if partner:
 			if str(together.get("phase",""))=="active":
 				action_label.text="Learning together" if str(together.role)=="learner" else "Helping with homework"
@@ -1767,7 +1774,9 @@ func on_action_started(action:Dictionary) -> void:
 	if str(action.id) in LifeSim.SOCIAL_ACTIONS:
 		var destination:Vector3=_social_destination(action,social_admitted)
 		if not destination.is_finite():
-			show_notice(_social_refusal_message(action))
+			# Only the selected Lifelet's refusals reach the notice card; a
+			# housemate's autonomous small talk failing is not the player's news.
+			if bound_member_id==household.selected_id() or not bool(action.get("autonomous",false)):show_notice(_social_refusal_message(action))
 			_cancel_blocked_action.call_deferred(route_generation,action,bound_member_id,load_epoch)
 			return
 		action.target_position=destination

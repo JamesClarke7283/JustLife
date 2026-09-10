@@ -36,6 +36,7 @@ func safety(id:String)->bool:return routes.has(id) and bool(routes[id].safety)
 func active(id:String)->bool:return routes.has(id)
 func making_way(id:String)->bool:return routes.has(id) and bool(routes[id].get("make_way",false))
 func standing_off(id:String)->bool:return routes.has(id) and routes[id].has("standoff")
+func squeezing(id:String)->bool:return routes.has(id) and bool(routes[id].get("squeeze",false))
 
 func cancel(id:String)->bool:
 	if not routes.has(id):return false

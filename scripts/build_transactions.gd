@@ -127,6 +127,9 @@ func furnishing_error(layout:Array)->String:
 	if not candidate.is_empty():return candidate
 	return _reach_error(state.state,layout)
 
+var _reach_cache:Dictionary={}   # layout signature -> reach error, so a hovering ghost asks once per spot
+var _live_reach:Dictionary={}    # the live graph's flood fill and standing spots for the current navigation generation
+
 func _reach_error(state:Dictionary,layout:Array)->String:
 	# A furnishing must not seal a doorway: every furnishing that the household
 	# can reach from the front sidewalk today stays reachable afterwards. The
@@ -142,21 +145,77 @@ func _reach_error(state:Dictionary,layout:Array)->String:
 			var area:Rect2=app.world.furnishing_rect(entry)
 			obstacles.append({"id":str(entry.id),"level":int(entry.get("level",0)),"x":area.get_center().x,"z":area.get_center().y,"w":area.size.x,"d":area.size.y})
 		checked.append(entry)
-	var candidate=load("res://scripts/lot_navigation.gd").new()
-	if not bool(candidate.rebuild(state,obstacles).ok):return ""
+	var signature:String=str(int(state.get("revision",0)))+"|"+str(obstacles.hash())+"|"+str(checked.hash())
+	if _reach_cache.has(signature):return str(_reach_cache[signature])
 	var live=app.world.lot_navigation
 	var origin:Vector3=app.world.lot_exit_position(0)
-	if not candidate.point_clear(0,origin) or not live.point_clear(0,origin):return ""
-	var start:Dictionary=candidate.floor_location(0,origin)
+	if not live.point_clear(0,origin):return ""
+	# A layout that only adds one furnishing to the live home (a purchase, or a
+	# hovering ghost) is tested on the live graph with the new obstacle's cells
+	# removed; anything else (a move, a sale) rebuilds a candidate graph.
+	var added:Dictionary=_single_addition(layout)
+	var candidate=live
+	var excluded:Dictionary={}
+	if not added.is_empty():
+		if not LifeCatalog.passable(str(added.kind)):excluded=live.points_touching(int(added.get("level",0)),app.world.furnishing_rect(added))
+	else:
+		candidate=load("res://scripts/lot_navigation.gd").new()
+		if not bool(candidate.rebuild(state,obstacles).ok):return ""
+		if not candidate.point_clear(0,origin):return ""
+	# One flood fill per graph instead of a route per furnishing; the live
+	# graph's flood and standing spots are kept per navigation generation, so a
+	# hovering ghost only pays for the flood with its own cells removed.
+	var after_reach:Dictionary=candidate.reachable_from(0,origin,excluded)
+	if int(_live_reach.get("generation",-1))!=int(live.generation) or _live_reach.get("origin",Vector3.INF)!=origin:
+		_live_reach={"generation":int(live.generation),"origin":origin,"reach":live.reachable_from(0,origin),"spots":{}}
+	var before_reach:Dictionary=_live_reach.reach
+	var error:String=""
 	for entry:Dictionary in checked:
 		var level:int=int(entry.get("level",0))
-		var spot:Vector3=_clear_near(candidate,level,app.world.layout_approach(entry))
-		var before:Vector3=_clear_near(live,level,app.world.layout_approach(entry))
-		if not spot.is_finite() or not before.is_finite():continue
-		if not bool(live.route(start,live.floor_location(level,before)).ok):continue
-		if not bool(candidate.route(start,candidate.floor_location(level,spot)).ok):
-			return "That would block the way to the %s. Leave the doorway clear." % str(LifeCatalog.ITEMS[str(entry.kind)].label).to_lower()
-	return ""
+		var spot_key:String=str(entry.get("id",""))+"|"+str(entry.get("kind",""))+"|%.3f|%.3f|%.1f|%d" % [float(entry.get("x",0)),float(entry.get("z",0)),float(entry.get("rotation",0)),level]
+		if not _live_reach.spots.has(spot_key):_live_reach.spots[spot_key]=_clear_near(live,level,app.world.layout_approach(entry))
+		var before:Vector3=_live_reach.spots[spot_key]
+		if not before.is_finite() or not live.point_reachable(before_reach,level,before):continue
+		var spot:Vector3=before if candidate==live else _clear_near(candidate,level,app.world.layout_approach(entry))
+		if candidate==live and excluded.has(int(live._floor_ids.get(live._cell_key(level,Vector2i(roundi(spot.x/live.CELL),roundi(spot.z/live.CELL))),-1))):
+			spot=_clear_near_excluding(live,level,app.world.layout_approach(entry),excluded)
+		if not spot.is_finite() or not candidate.point_reachable(after_reach,level,spot):
+			error="That would block the way to the %s. Leave a way to it open." % str(LifeCatalog.ITEMS[str(entry.kind)].label).to_lower()
+			break
+	if _reach_cache.size()>64:_reach_cache.clear()
+	_reach_cache[signature]=error
+	return error
+
+func _single_addition(layout:Array)->Dictionary:
+	# The one entry of `layout` that is not in the live home, when everything
+	# else is unchanged; empty for moves, sales or several changes.
+	var live:Dictionary={}
+	for entry:Dictionary in app.world.serialize_items():
+		if str(entry.get("kind",""))!="__construction":live[str(entry.get("id",""))]=entry
+	var added:Dictionary={};var seen:int=0
+	for entry:Dictionary in layout:
+		if str(entry.get("kind",""))=="__construction":continue
+		var id:String=str(entry.get("id",""))
+		if live.has(id):
+			var current:Dictionary=live[id]
+			if str(current.get("kind",""))!=str(entry.get("kind","")) or not is_equal_approx(float(current.get("x",0)),float(entry.get("x",0))) or not is_equal_approx(float(current.get("z",0)),float(entry.get("z",0))) or not is_equal_approx(float(current.get("rotation",0)),float(entry.get("rotation",0))) or int(current.get("level",0))!=int(entry.get("level",0)):return {}
+			seen+=1
+		elif added.is_empty():added=entry
+		else:return {}
+	if seen!=live.size():return {}
+	return added
+
+func _clear_near_excluding(navigation,level:int,wanted:Vector3,excluded:Dictionary)->Vector3:
+	var best:Vector3=Vector3.INF;var best_distance:float=INF
+	for dx:int in range(-2,3):
+		for dz:int in range(-2,3):
+			var point:Vector3=Vector3(snappedf(wanted.x,.25)+dx*.25,Building.level_y(level),snappedf(wanted.z,.25)+dz*.25)
+			if not navigation.point_clear(level,point):continue
+			var key:String=navigation._cell_key(level,Vector2i(roundi(point.x/navigation.CELL),roundi(point.z/navigation.CELL)))
+			if excluded.has(int(navigation._floor_ids.get(key,-1))):continue
+			var distance:float=point.distance_to(wanted)
+			if distance<best_distance:best_distance=distance;best=point
+	return best
 
 func _clear_near(navigation,level:int,wanted:Vector3)->Vector3:
 	var best:Vector3=Vector3.INF;var best_distance:float=INF
