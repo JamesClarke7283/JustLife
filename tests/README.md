@@ -5,6 +5,7 @@ Run commands from the project root with Godot available on `PATH`. Use an existi
 | Area | Runner | Scope |
 | --- | --- | --- |
 | Construction, stairs and household ownership | `python tests/run_regressions.py --group architecture --group build --group protection` | Controlled state, routing and transaction checks; [groups and fresh-process cases](REGRESSIONS.md). |
+| Short leisure before school/work | `python3 tests/run_prework_recovery.py` | Forty focused preference, urgency, Bookworm, availability and paid-recovery checks; [scope and actual-day tradeoffs](../docs/REVIEWS/iteration_51_brief_leisure.md). |
 | Household step-aside movement | `python tests/run_courtesy.py` | Genuine crowded-meal continuation, fresh restart, ownership and exclusion controls; [contract](COURTESY.md). |
 | Clearing stairs and walking past household members | `python tests/run_courtesy_beneficiaries.py` | Protected stair exits, explicit floor walks, real retreat/hold saves, cancellation and compatibility; [contract](COURTESY_BENEFICIARIES.md). Use `--group stair` or `--group walk` for a focused run. |
 | Passing before taking the stairs | `python tests/run_current_floor.py` | Genuine furnishing-return passage and original upstairs arrival, actual retreat/hold saves and fresh loads, FIFO validation and Build edits; [contract](CURRENT_FLOOR_CONTRACT.md). |

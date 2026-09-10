@@ -15,11 +15,12 @@ Production artwork is original JustLife work. The runtime loads exported GLBs fr
 - `../tools/child_bob_v36/`: current child Bob grouping and taper from the accepted shirt source, with pinned input extraction, exact native protection and guarded standard-LOD export transfer. Its README records the real lower-detail hem limitations.
 - `source/character_production_hashes.json`: current sixteen GLB and four editable-source hashes.
 - `source/character_v18_production_hashes.json`: historical v18 provenance, preserved unchanged.
-- `source/clothing_v22/`: immutable adult input and current garment reproduction guide. The adjacent tools author the shirt, continuous trousers and corrected cardigan hem while preserving other character geometry.
+- `source/clothing_v22/`: immutable adult input and historical garment reproduction guide. The adjacent tools author the shirt, continuous trousers and corrected cardigan hem while preserving other character geometry.
 - `source/face_v23/`: immutable accepted clothing input and reproduction guide for the earlier adult eyelid/lip stage. `tools/sculpt_face.py` reproduces that stage, which predates the current eye and Crop refinements.
 - `../tools/adult_eyes/`: accepted adult eye depth and lid attachment stage, retained with its pinned inputs and native/export guards.
 - `../tools/adult_face_volume/`: accepted adult chin and mouth support, Smile and mouth-anchor stage, retained as the input to the current lip refinement.
-- `../tools/adult_lip_volume/`: current fuller adult lips from the pinned chin/support stage. It reproduces all four model exports and exact recorded native object/material values; native container path provenance is recorded separately. The editable `characters.blend` can also be edited directly.
+- `../tools/adult_lip_volume/`: current fuller adult lips from the pinned chin/support stage. It reproduces all four model exports and exact recorded native object/material values; native container path provenance is recorded separately. This is the input stage for the current casual-clothing pass.
+- `../tools/adult_casual_drape/`: current adult casual hem/trouser contours and shoulder weights. Its compact pinned chain retrieves the earlier lip source from Git and regenerates native facts and four exact exports locally. The editable `characters.blend` can also be edited directly.
 - `experiments/hair_v19/`: editable, unpromoted hairstyle research. Its README explains how to regenerate the study.
 - `ICON_PROMPT.md`, `SPLASH_PROMPT.md`, `BRANDING_PROMPTS.md`: provenance for the original home/heart/sprout icon and JustLife wordmark splash in `assets/ui/`.
 

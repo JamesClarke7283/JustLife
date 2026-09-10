@@ -17,6 +17,7 @@ The repository contains the game and its authoring inputs. Rendered evidence, do
 | `tools/` | Asset generation and Linux export scripts. |
 | `tools/adult_face_volume/` | Adult chin/mouth and Smile authoring, native verification and four model exports; reuses the adult-eye source helpers. |
 | `tools/adult_lip_volume/` | Current adult lip-height authoring from the accepted chin/support source; reuses the native/export and Smile helpers with exact geometry and export guards. |
+| `tools/adult_casual_drape/` | Current adult casual drape and shoulder weights, with a compact reproducible chain and four pinned exports. |
 | `tests/` | Simulation, model, controller and rendered playthrough checks. |
 | `docs/` | Controls, APIs, reference findings and concise independent reviews. |
 | `addons/` | Vendored Godot MCP development toolkit, retained with its notices. The release exporter excludes it. |

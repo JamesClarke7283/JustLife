@@ -1,0 +1,41 @@
+{
+  "baseline": {
+    "commit": "94bcbf363c4a8834b73cb06298b5c805d84414f8",
+    "path": "art/characters.blend",
+    "sha256": "2a181222579a14efebf1cbe4bc99ea7719cbe3d53152e7127192c9f7b1820933"
+  },
+  "blender": "5.2.1 LTS",
+  "stages": {
+    "drape": {
+      "reviewed_native_container_sha256": "6ae31251b0396861f49f16275ea87ee73ccd12e8cfd47fcfa6b0585e9c9bb1c7",
+      "object_facts_sha256": "0c5e100d9a07b549d0925743076fa5420c9776d05eb8d0957d0627282ad1ee1d",
+      "author_report_sha256": "ac645add38b1a3b5260ed7d9658ddbdecc052eb555ccbb4c2d6e2e7378d6fbba",
+      "reviewed_author_sha256": "3bbb996675b60cdd65550eb24abf678b3d72e56eebb3ebea6bf5ddcf96260b9b",
+      "reviewed_field_sha256": "17e0feceedc02127954b14c7281237e3d2e769d58e7ddb901212eb716868c8d8"
+    },
+    "weights": {
+      "reviewed_native_container_sha256": "088a3ed30153f6eea27082d2e8f81506467de8808c274e7e56225e5784b779f7",
+      "object_facts_sha256": "b24134608c4f8951e3424b3fe1e865a9781a701dce984058cb47d3e65a6df025",
+      "author_report_sha256": "68347515a40983090d6b7bf42178353cc91f7af4a6dce173ac0e9870a1ed1d52",
+      "reviewed_author_sha256": "38035943b8346925a0a245daa29c21f6c23aa71d9450ab53ec24d6d84930bcb2",
+      "report_provenance_field": "source_sha256 must equal the actual intermediate Blend hash; all remaining report bytes compare to the reviewed report after replacing only this field with its historical input hash."
+    }
+  },
+  "native": {
+    "objects": 362,
+    "material_sha256": "78d2727a1f7cd7faac5dbf33b2347f0740b477e2d411b6a71a5514e75ca74c2e"
+  },
+  "expected_exports": {
+    "character": "9d6182e369651aed2cf9dcfe95a009f972007836fd5451c8a344478a2035f8eb",
+    "character_broad": "508d06bbf9571f5bd3e1161693ff78bb6245f165d67e6b37a51f466bad9fe3fe",
+    "character_lod": "6f5a8f6d706611de2f32188975db98592dee08bc3298e8f8c92dd15f6091087c",
+    "character_broad_lod": "f2b037f198963c4ed85a2801e5c6b6d12e895d583ebf69a52e04ad9f44579033"
+  },
+  "shared_tools": {
+    "adult_eyes/source_facts.py": "495d216ce051409f61a618f548df150893ea8603581547b77cdf85012a5862ae",
+    "adult_eyes/verify_native.py": "6b2414c77855961d7bde3833fcb5a62ca58ed66c0037e0534a4d890d07e97333",
+    "adult_eyes/export_variant.py": "9dfa501e55001815f401570338a584425a6c481d4941389da54b4c11555e297a",
+    "adult_face_volume/generate.py": "fd903fb12dc92b6c2adf380f220be26cd7d7ced73354ccc7ac26b464260b3fc8"
+  },
+  "native_container_policy": "Record each actual saved container hash and preserve it throughout later stages. Relocation may alter Blender relative weak-library filepath metadata. Exact object facts, report payloads, fresh native/material values and four GLB bytes remain required."
+}

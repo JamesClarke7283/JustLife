@@ -4,7 +4,7 @@ Original geometry and artwork authored in Blender for JustLife. The exported ass
 
 ## Files and integration status
 
-The four adult game models and their editable source include the accepted clothing, lip and Crop revisions, eye-depth and lid-attachment refinement, chin/mouth support and current fuller lip surfaces. They retain the revision 18 rig, surface revision 2 and accepted hands. The eight teen and elder GLBs and their two editable sources remain v18. The child source and four child GLBs retain that rig and anatomy with the bounded casual-shirt, Bob grouping and lower-detail hem refinements. The repository keeps the production assets, editable sources and required generator inputs. Duplicate `*_surface_grip*`, older `*_rig*` and age `*_grip*` candidates, renders and historical `art/iterations` archives remain local and are excluded from Git:
+The four adult game models and their editable source include the accepted clothing, lip and Crop revisions, eye-depth and lid-attachment refinement, chin/mouth support, fuller lip surfaces and the current casual hem/trouser and shoulder-weight refinement. They retain the revision 18 rig, surface revision 2 and accepted hands. The eight teen and elder GLBs and their two editable sources remain v18. The child source and four child GLBs retain that rig and anatomy with the bounded casual-shirt, Bob grouping and lower-detail hem refinements. The repository keeps the production assets, editable sources and required generator inputs. Duplicate `*_surface_grip*`, older `*_rig*` and age `*_grip*` candidates, renders and historical `art/iterations` archives remain local and are excluded from Git:
 
 | File | Intended use |
 | --- | --- |
@@ -13,10 +13,11 @@ The four adult game models and their editable source include the accepted clothi
 | `assets/models/character_lod.glb` | Standard frame for the live camera |
 | `assets/models/character_broad_lod.glb` | Broad frame for the live camera |
 | `art/characters.blend` | Editable current rig, garments, hair, expressions and portrait studio |
-| `tools/adult_lip_volume/` | Current fuller adult lips from the pinned chin/support stage, with native/material and exact export guards |
+| `tools/adult_casual_drape/` | Current adult garment stage from the pinned fuller-lip source; reproduces the two native stages and all four model exports |
+| `tools/adult_lip_volume/` | Accepted fuller adult lips from the pinned chin/support stage, with native/material and exact export guards |
 | `tools/adult_face_volume/` | Accepted adult chin/support and Smile stage from the pinned eye source |
 | `tools/adult_eyes/` | Accepted adult eye/lid authoring stage and shared native/export helpers |
-| `tools/sculpt_clothing.py` | Current adult garment authoring from immutable v18 input; uses the adjacent trouser helper, per-variant export worker and exact output verifier |
+| `tools/sculpt_clothing.py` | Earlier adult garment authoring from immutable v18 input; uses the adjacent trouser helper, per-variant export worker and exact output verifier |
 | `tools/create_characters.py` | Historical v18 generator and unchanged teen/elder authoring pipeline |
 | `tools/child_shirt_v31/` | Accepted child casual-shirt stage, retained as historical authoring and preservation tooling |
 | `tools/child_bob_v36/` | Current child Bob source from the accepted shirt stage, fresh native protection, pinned input extraction and guarded Bob-only standard-LOD transfer |
