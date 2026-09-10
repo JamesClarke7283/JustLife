@@ -564,6 +564,14 @@ func nearest_clear_point(point:Vector3,level:int,radius:int=13) -> Vector3:
 	options.sort_custom(func(a:Vector3,b:Vector3)->bool:return a.distance_squared_to(point)<b.distance_squared_to(point))
 	return Vector3.INF if options.is_empty() else options[0]
 
+func layout_approach(entry:Dictionary) -> Vector3:
+	# The standing spot in front of a furnishing described by its layout record
+	# alone (kind, x, z, rotation, level), for placement checks before a node exists.
+	var size:Vector2=LifeCatalog.ITEMS.get(str(entry.get("kind","")),{}).get("size",Vector2(1,1))
+	var level:int=int(entry.get("level",0))
+	var forward:Vector3=Basis(Vector3.UP,deg_to_rad(float(entry.get("rotation",0.0))))*Vector3(0,0,size.y*.5+.55)
+	return Vector3(float(entry.x),Building.level_y(level),float(entry.z))+forward
+
 func approach(item:Dictionary) -> Vector3:
 	var n:Node3D=item.node
 	if bool(item.get("transient_puddle",false)):
@@ -582,12 +590,31 @@ func approach(item:Dictionary) -> Vector3:
 
 func lot_exit_position(member_index:int=0) -> Vector3:
 	# The front sidewalk belongs to the navigable lot, beyond the front door.
-	var cell:Vector2i=nearest_free(Vector3((member_index-3.5)*.75,.16,8.5))
+	var cell:Vector2i=nearest_outdoor(Vector3((member_index-3.5)*.75,.16,8.5))
 	return Vector3(cell.x*.25,.16,cell.y*.25)
 
 func lot_return_position(member_index:int=0) -> Vector3:
-	var cell:Vector2i=nearest_free(Vector3((member_index%4-1.5)*.75,.16,6.5+(member_index/4)*.75))
+	var cell:Vector2i=nearest_outdoor(Vector3((member_index%4-1.5)*.75,.16,6.5+(member_index/4)*.75))
 	return Vector3(cell.x*.25,.16,cell.y*.25)
+
+func outdoor_cell(cell:Vector2i) -> bool:
+	# A garden room's interior is free floor, but a lot exit or return spot
+	# must stay in the open so departures never walk into somebody's bedroom.
+	if navigation.is_point_solid(cell):return false
+	return not construction.floor_contains(Vector2(cell.x*.25,cell.y*.25),0)
+
+func nearest_outdoor(p:Vector3) -> Vector2i:
+	var cell=Vector2i(roundi(p.x*4),roundi(p.z*4))
+	cell.x=clampi(cell.x,-36,36)
+	cell.y=clampi(cell.y,-28,36)
+	if outdoor_cell(cell):return cell
+	for radius in range(1,14):
+		for x in range(-radius,radius+1):
+			for z in range(-radius,radius+1):
+				if absi(x)!=radius and absi(z)!=radius:continue
+				var c=cell+Vector2i(x,z)
+				if navigation.region.has_point(c) and outdoor_cell(c):return c
+	return nearest_free(p)
 
 func set_actor_away(id:String,away:bool,unavailable:bool) -> bool:
 	var actor:LifeActor=actors.get(id)

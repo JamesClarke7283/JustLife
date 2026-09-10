@@ -87,7 +87,7 @@ func _run_days(target:float)->void:
 
 func _sample()->void:
 	var at:float=_now();var step:float=maxf(0,at-sample_time);sample_time=at
-	var record:Dictionary={"at":at,"day":app.household.day,"minutes":app.household.minutes,"funds":app.sim.funds,"members":[]}
+	var record:Dictionary={"at":at,"day":app.household.day,"minutes":app.household.minutes,"funds":app.sim.funds,"members":[],"standoffs":app.traversal.standoff_count,"make_ways":app.traversal.make_way_count,"squeezes":app.traversal.squeeze_count}
 	for member:Dictionary in app.household.members:
 		var id:String=str(member.id);var sim:Node=member.sim;var action:Dictionary=sim.get_current_action()
 		var motion:Dictionary=app.motion_states.get(id,{})
@@ -106,7 +106,7 @@ func _sample()->void:
 		stats.max_stationary_approach_minutes=maxf(stats.max_stationary_approach_minutes,float(still_minutes[id]))
 		sample_positions[id]=position;last_actions[id]=signature
 		var wait_position:Vector3=motion.get("wait_destination",Vector3.INF)
-		record.members.append({"id":id,"needs":sim.needs.duplicate(true),"action":action.duplicate(true),"away_state":sim.get_away_state(),"actor_visible":app.world.actors[id].visible,"waiting":waiting,"wait_started":motion.get("wait_started",-1.0),"wait_destination":vec(wait_position) if wait_position.is_finite() else [],"path_size":motion.get("path",[]).size(),"path_index":motion.get("index",0),"position":vec(position),"mood":sim.get_mood()})
+		record.members.append({"id":id,"needs":sim.needs.duplicate(true),"action":action.duplicate(true),"away_state":sim.get_away_state(),"actor_visible":app.world.actors[id].visible,"waiting":waiting,"wait_started":motion.get("wait_started",-1.0),"idle_minutes":sim._idle_minutes,"queue":sim.action_queue.size(),"route_failures":app.route_failures.get(id,{}).duplicate(true),"route":({"phase":str(app.traversal.routes[id].get("phase","")),"point":int(app.traversal.routes[id].get("point",-1)),"points":app.traversal.routes[id].get("points",PackedVector3Array()).size(),"standoff":app.traversal.routes[id].has("standoff"),"make_way":bool(app.traversal.routes[id].get("make_way",false)),"destination":app.traversal.routes[id].get("destination",Vector3.INF)} if app.traversal.routes.has(id) else {}),"wait_destination":vec(wait_position) if wait_position.is_finite() else [],"path_size":motion.get("path",[]).size(),"path_index":motion.get("index",0),"position":vec(position),"mood":sim.get_mood()})
 	audit.samples.append(record)
 
 func _daily_capture()->void:

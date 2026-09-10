@@ -1801,9 +1801,14 @@ func on_action_started(action:Dictionary) -> void:
 		_cancel_blocked_action.call_deferred(route_generation,action,bound_member_id,load_epoch)
 	refresh_hud()
 
+var route_failures:Dictionary={}   # member id -> {"count", "action", "target"} for the last blocked-route cancellation (diagnostics)
+
 func _cancel_blocked_action(generation:int,action:Dictionary,member_id:String="",epoch:int=-1) -> void:
 	if loading_game or (epoch>=0 and epoch!=load_epoch):return
 	if member_id.is_empty():member_id=bound_member_id
+	var record:Dictionary=route_failures.get(member_id,{"count":0})
+	record.count=int(record.count)+1;record.action=str(action.get("id",""));record.target=str(action.get("target_id",""));record.at=household.minutes
+	route_failures[member_id]=record
 	var prior:String=bound_member_id
 	_store_motion()
 	_bind_member(member_id)
@@ -2418,6 +2423,11 @@ func _advance_movement(delta:float) -> bool:
 	var current_arrival:Dictionary=sim.get_current_action()
 	if str(current_arrival.get("id",""))=="arrive_home":return adoption_flow.advance_arrival(delta,current_arrival)
 	if not walk_only and sim.action_queue.is_empty():
+		# An idle Lifelet asked to step aside for somebody blocked on it keeps
+		# that short walk; anything else idle releases its route.
+		if traversal.making_way(bound_member_id):
+			var aside:Dictionary=traversal.advance(bound_member_id,delta,sim.speed)
+			return bool(aside.moving)
 		_clear_motion();return false
 	if waiting_for_target:
 		var action:Dictionary=sim.get_current_action()
@@ -2563,7 +2573,25 @@ func _advance_path(delta:float) -> bool:
 	if traversal.active(bound_member_id):
 		var result:Dictionary=traversal.advance(bound_member_id,delta,sim.speed)
 		if bool(result.finished):path_index=path.size()
-		if not str(result.error).is_empty():show_notice(str(result.error))
+		if not str(result.error).is_empty():
+			show_notice(str(result.error))
+			# A walk that stays blocked by bodies is abandoned for autonomous
+			# actions, and the Lifelet chooses again shortly rather than in
+			# fifteen minutes; a player's own instruction keeps its notice.
+			var current:Dictionary=sim.get_current_action()
+			if str(result.error)==traversal.STANDOFF_ERROR:
+				if not current.is_empty() and bool(current.get("autonomous",false)):
+					sim.retry_autonomy_soon()
+					_cancel_blocked_action.call_deferred(route_generation,current,bound_member_id,load_epoch)
+				elif current.is_empty() and walk_only:
+					# A plain walk that cannot get through is dropped, so the Lifelet's
+					# autonomy is not left suspended behind an unfinished stroll.
+					walk_only=false;_clear_motion()
+				elif not current.is_empty():
+					# A player's instruction or an arrival tries a fresh route from here
+					# instead of standing on a dead one.
+					traversal.cancel(bound_member_id)
+					_set_route(current.target_position)
 		return bool(result.moving) or bool(result.finished)
 	var was_moving:bool=path_index<path.size()
 	var distance_left:float=maxf(0.0,delta)*1.6*float(sim.speed)

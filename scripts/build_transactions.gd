@@ -123,7 +123,50 @@ func furnishing_error(layout:Array)->String:
 		for original:Dictionary in app.world.serialize_items():
 			var target:String=str(original.get("id",""))
 			if target in targets and original!=by_id.get(target,{}):return "Let the carried dish reach its landing before moving or selling its destination."
-	return _layout_candidate_error(state.state,state.state,layout)
+	var candidate:String=_layout_candidate_error(state.state,state.state,layout)
+	if not candidate.is_empty():return candidate
+	return _reach_error(state.state,layout)
+
+func _reach_error(state:Dictionary,layout:Array)->String:
+	# A furnishing must not seal a doorway: every furnishing that the household
+	# can reach from the front sidewalk today stays reachable afterwards. The
+	# legacy grid used to squeeze past such a placement while the room-aware
+	# navigation refused it, which stranded a household the moment any structural
+	# change converted the home.
+	var obstacles:Array=[]
+	var checked:Array=[]
+	for entry:Dictionary in layout:
+		if str(entry.get("kind",""))=="__construction" or not LifeCatalog.ITEMS.has(str(entry.get("kind",""))):continue
+		if str(entry.kind) in ["meal","plate","puddle"]:continue
+		if not LifeCatalog.passable(str(entry.kind)):
+			var area:Rect2=app.world.furnishing_rect(entry)
+			obstacles.append({"id":str(entry.id),"level":int(entry.get("level",0)),"x":area.get_center().x,"z":area.get_center().y,"w":area.size.x,"d":area.size.y})
+		checked.append(entry)
+	var candidate=load("res://scripts/lot_navigation.gd").new()
+	if not bool(candidate.rebuild(state,obstacles).ok):return ""
+	var live=app.world.lot_navigation
+	var origin:Vector3=app.world.lot_exit_position(0)
+	if not candidate.point_clear(0,origin) or not live.point_clear(0,origin):return ""
+	var start:Dictionary=candidate.floor_location(0,origin)
+	for entry:Dictionary in checked:
+		var level:int=int(entry.get("level",0))
+		var spot:Vector3=_clear_near(candidate,level,app.world.layout_approach(entry))
+		var before:Vector3=_clear_near(live,level,app.world.layout_approach(entry))
+		if not spot.is_finite() or not before.is_finite():continue
+		if not bool(live.route(start,live.floor_location(level,before)).ok):continue
+		if not bool(candidate.route(start,candidate.floor_location(level,spot)).ok):
+			return "That would block the way to the %s. Leave the doorway clear." % str(LifeCatalog.ITEMS[str(entry.kind)].label).to_lower()
+	return ""
+
+func _clear_near(navigation,level:int,wanted:Vector3)->Vector3:
+	var best:Vector3=Vector3.INF;var best_distance:float=INF
+	for dx:int in range(-2,3):
+		for dz:int in range(-2,3):
+			var point:Vector3=Vector3(snappedf(wanted.x,.25)+dx*.25,Building.level_y(level),snappedf(wanted.z,.25)+dz*.25)
+			if not navigation.point_clear(level,point):continue
+			var distance:float=point.distance_to(wanted)
+			if distance<best_distance:best_distance=distance;best=point
+	return best
 
 func furnishing_rebuilt(context:Dictionary)->void:
 	var state:Dictionary=current()

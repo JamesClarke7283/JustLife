@@ -1,16 +1,18 @@
 extends "res://tests/test_autonomy_week.gd"
 ## Rendered week with the second furnishing collection: the eight-member Reed
 ## family in Willow Cottage gains a treadmill, toy chest, piano, bathtub,
-## stereo, yoga mat, mirror and armchair, one adult is made Active, and the
-## household runs autonomously for seven days (five weekdays and a weekend).
-## With JUSTLIFE_WEEK_ANNEX=1 the family also builds a garden annex with a
-## second bed and fridge through the public build and purchase paths. Harness
-## mutations are limited to the granted budget, those paths and that trait;
-## needs, time and completions are observed, never edited.
-const EXTRA_FURNISHINGS: Array = [["treadmill",2.3,-.5,90],["toybox",-1.7,1.2,0],["piano",-1.7,-1.4,0],["bathtub",2.4,-2.6,0],["stereo",-5.5,-2.5,90],["yoga_mat",-1.6,3.3,0],["mirror",-5.5,-1.0,90],["armchair",-1.4,3.2,0],["bed",5.3,7.3,0],["fridge",3.3,8.1,180]]
-# A four-by-three garden annex holds the second bed and fridge; the cottage's own
-# kitchen walkway is too narrow for another fridge without jamming the household.
-const ANNEX: Dictionary = {"ax":2.6,"az":5.8,"bx":6.6,"bz":8.8,"door_center":6.6}
+## stereo, yoga mat, mirror and armchair, builds a garden annex with a second
+## bed, fridge and bookcase through the public build and purchase paths
+## (JUSTLIFE_WEEK_ANNEX=0 keeps the advertised one-bed cottage), one adult is
+## made Active, and the household runs autonomously for seven days (five
+## weekdays and a weekend). Harness mutations are limited to the granted
+## budget, those paths and that trait; needs, time and completions are
+## observed, never edited.
+const EXTRA_FURNISHINGS: Array = [["treadmill",4.75,-.5,90],["toybox",-1.7,1.2,0],["piano",-1.7,-1.4,0],["bathtub",2.4,-2.6,0],["stereo",-5.5,-2.5,90],["yoga_mat",-1.6,3.3,0],["mirror",-5.5,-1.0,90],["armchair",-1.4,3.2,0],["bed",6.4,6.9,0],["fridge",3.2,8.3,180],["bookshelf",4.3,5.85,0]]
+# A five-by-three-and-a-half garden annex holds the second bed, a second fridge
+# and a second bookcase for homework, with its doorway on the west wall; the
+# cottage's own rooms have no floor left for them.
+const ANNEX: Dictionary = {"ax":2.6,"az":5.5,"bx":7.6,"bz":8.9,"door_center":6.3}
 const NEW_ACTIONS: Array = ["jog","play_toys","play_piano","bath","dance","stretch","practice_speech","play_chess","play_games","warm_up","change_outfit"]
 
 func _run()->void:
@@ -35,13 +37,16 @@ func _run()->void:
 	app.household.set_funds(app.sim.funds+9000)
 	await press("Build & buy")
 	# The one-bed cottage cannot hold a second bed, so the family builds a
-	# four-by-three annex in the garden with a doorway facing the path.
-	# JUSTLIFE_WEEK_ANNEX=1 adds the garden annex with a second bed and fridge.
-	# It is opt-in: a room built across the front garden strands departures and
-	# returns at the lot edge (iteration 58 runs 7 and C), which is a navigation
-	# defect to repair before the annex can be part of the contract.
-	var with_annex:bool=OS.get_environment("JUSTLIFE_WEEK_ANNEX")=="1"
-	var purchases:Array=EXTRA_FURNISHINGS if with_annex else EXTRA_FURNISHINGS.filter(func(entry:Array)->bool:return str(entry[0]) not in ["bed","fridge"])
+	# five-by-three-and-a-half annex in the garden with a doorway facing the path.
+	# The garden annex with a second bed, fridge and bookcase is part of the
+	# contract fixture; JUSTLIFE_WEEK_ANNEX=0 keeps the advertised one-bed
+	# cottage for comparison. Iteration 58's annex runs froze because the
+	# treadmill beside the bedroom doorway sealed the bedroom for room-aware
+	# navigation once the annex converted the home; placement now refuses such
+	# spots, the treadmill stands along the east wall, and crowded walkers yield
+	# or squeeze past each other instead of standing still.
+	var with_annex:bool=OS.get_environment("JUSTLIFE_WEEK_ANNEX")!="0"
+	var purchases:Array=EXTRA_FURNISHINGS if with_annex else EXTRA_FURNISHINGS.filter(func(entry:Array)->bool:return str(entry[0]) not in ["bed","fridge","bookshelf"])
 	if with_annex:
 		var tx=app.build_transactions
 		var annex:Dictionary=tx.prepare({"op":"structure","tool":"room","level":0,"ax":ANNEX.ax,"az":ANNEX.az,"bx":ANNEX.bx,"bz":ANNEX.bz})
@@ -57,7 +62,7 @@ func _run()->void:
 		app.on_placement(str(entry[0]),Vector3(float(entry[1]),0.16,float(entry[2])),float(entry[3]))
 		if app.world.items.size()>before:placed+=1
 		else:check(false,"Catalogue furnishing could not be placed in Willow Cottage: "+str(entry[0]))
-	check(placed==purchases.size(),"All %d purchases land: eight second-collection furnishings%s." % [purchases.size(),", the annex bed and the annex fridge" if with_annex else ""])
+	check(placed==purchases.size(),"All %d purchases land: eight second-collection furnishings%s." % [purchases.size(),", the annex bed, fridge and bookcase" if with_annex else ""])
 	await press("Live")
 	await screenshot("00_catalogue_cottage",false,false)
 	for member:Dictionary in app.household.members:member.sim.autonomy=true

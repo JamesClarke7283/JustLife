@@ -546,7 +546,8 @@ func cancel_action(index: int = 0) -> void:
 	action_queue.remove_at(index)
 	if index == 0:
 		_start_front()
-	_idle_minutes = 0.0
+	_idle_minutes = 12.0 if _retry_soon else 0.0
+	_retry_soon = false
 	_emit_changed()
 
 
@@ -1263,6 +1264,13 @@ func _autonomy_preparation_duty_id() -> String:
 	if id.is_empty() or minutes<start-180.0 or minutes>=start:return ""
 	if float(autonomy_state.deferred.get(id,-1.0))>_autonomy_now():return ""
 	return id
+
+var _retry_soon: bool = false  # the next cancellation leaves only a short idle wait
+
+func retry_autonomy_soon() -> void:
+	# A blocked walk should not cost the usual fifteen idle minutes before the
+	# next autonomous choice; the Lifelet reconsiders within three.
+	_retry_soon=true
 
 func defer_autonomous_responsibility(id:String,for_minutes:float=120.0) -> void:
 	if id not in ["school","school_day","career_day","homework","job"] or not is_finite(for_minutes):return

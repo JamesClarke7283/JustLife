@@ -8,12 +8,21 @@ const WALK_SPEED:float=1.6
 const BODY_GAP:float=.72
 const ROUTE_CLEARANCE:float=BODY_GAP+.06
 const REPLAN_OBSERVATION_TIME:float=.25
+const STANDOFF_TIME:float=2.0   # scaled seconds stuck on one step before somebody yields
+const STANDOFF_HOLD:float=2.5   # scaled seconds a yielder waits at its anchor for the other body to pass
+const STANDOFF_LIMIT:int=3      # retreats on one route before the walker squeezes past bodies
+const STANDOFF_ERROR:String="Somebody is in the way."
+var squeeze_count:int=0   # routes that finished by squeezing past bodies after repeated standoffs
+const ASIDE_DISTANCES:Array=[.5,.75,1.0,1.5]
+const ASIDE_DIRECTIONS:Array=[Vector2(1,0),Vector2(-1,0),Vector2(0,1),Vector2(0,-1),Vector2(.7071,.7071),Vector2(-.7071,.7071),Vector2(.7071,-.7071),Vector2(-.7071,-.7071)]
 var app:Node
 var routes:Dictionary={}
 var stairs:Dictionary={}
 var next_ticket:int=1
 var next_identity:int=1
 var courtesy=preload("res://scripts/courtesy.gd").new()
+var standoff_count:int=0   # retreats started because a step stayed refused
+var make_way_count:int=0   # idle Lifelets asked to step aside
 
 func _init(controller:Node)->void:app=controller
 
@@ -25,6 +34,8 @@ func busy(id:String)->bool:
 
 func safety(id:String)->bool:return routes.has(id) and bool(routes[id].safety)
 func active(id:String)->bool:return routes.has(id)
+func making_way(id:String)->bool:return routes.has(id) and bool(routes[id].get("make_way",false))
+func standing_off(id:String)->bool:return routes.has(id) and routes[id].has("standoff")
 
 func cancel(id:String)->bool:
 	if not routes.has(id):return false
@@ -194,7 +205,7 @@ func _walk(id:String,route:Dictionary,time:float,consider_courtesy:bool=true)->D
 		var step:float=minf(distance,remaining*WALK_SPEED)
 		var next:Vector3=actor.position+difference/distance*step
 		if not courtesy.step_allowed(self,id,actor.position,next):return {"time":0.0,"moved":moved,"blocked":true}
-		if not _step_clear(id,actor.position,next):
+		if not _step_clear(id,actor.position,next) and not (bool(route.get("squeeze",false)) and _step_clear_of_structure(id,actor.position,next)):
 			if courtesy.beneficiary(self,id):return {"time":0.0,"moved":moved,"blocked":true}
 			var observing:bool=consider_courtesy and _can_observe_replan(id,route)
 			if observing and _observe_replan(id,route,remaining,moved):return {"time":0.0,"moved":moved,"blocked":true}
@@ -209,6 +220,17 @@ func _walk(id:String,route:Dictionary,time:float,consider_courtesy:bool=true)->D
 			route.erase("replan_observation");courtesy.blocked.erase(id)
 		if step>=distance-.000001:actor.position=goal;route.point+=1
 	return {"time":remaining,"moved":moved,"blocked":false}
+
+func _step_clear_of_structure(id:String,from:Vector3,to:Vector3)->bool:
+	# The step test without other bodies: walls, floors and stair reservations.
+	if not courtesy.step_allowed(self,id,from,to):return false
+	var level:int=app.world.point_level(to)
+	if level<0 or not app.world.lot_navigation.point_clear(level,to):return false
+	for lock:Dictionary in stairs.values():
+		if str(lock.owner).is_empty() or str(lock.owner)==id:continue
+		for reserved:Vector3 in [lock.exit,lock.clear]:
+			if reserved.is_finite() and _same_floor(to,reserved) and to.distance_to(reserved)<BODY_GAP:return false
+	return true
 
 func _step_clear(id:String,from:Vector3,to:Vector3)->bool:
 	if not courtesy.step_allowed(self,id,from,to):return false
@@ -282,8 +304,19 @@ func advance(id:String,delta:float,speed:int)->Dictionary:
 		var leg:Dictionary=route.legs[int(route.cursor)]
 		if not bool(route.prepared) and not _prepare(id,route):break
 		if str(route.phase) in ["route","to_wait","entry","clear"]:
+			if route.has("standoff"):
+				response.moving=_advance_standoff(id,route,remaining) or bool(response.moving)
+				break
+			var attempted:float=remaining
 			var result:Dictionary=_walk(id,route,remaining)
 			remaining=result.time;response.moving=bool(response.moving) or bool(result.moved)
+			# A step refused for the same body long enough is a standoff: somebody
+			# yields, so two Lifelets meeting in a doorway or at a shared use point
+			# never stand facing each other for the rest of the day.
+			if bool(result.blocked) and not bool(result.moved):
+				route.standoff_age=float(route.get("standoff_age",0.0))+attempted
+				if float(route.standoff_age)>=STANDOFF_TIME and str(route.phase)=="route" and not route.has("courtesy") and courtesy.owner(self).is_empty():_resolve_standoff(id,route)
+			elif bool(result.moved):route.standoff_age=0.0
 			if int(route.point)<route.points.size():break
 			match str(route.phase):
 				"route":route.cursor+=1;route.prepared=false
@@ -341,7 +374,7 @@ func snapshot()->Dictionary:
 	for member:Dictionary in app.household.members:
 		var id:String=str(member.id);var actor:LifeActor=app.world.actors[id]
 		var motion:Dictionary={}
-		if routes.has(id):
+		if routes.has(id) and not bool(routes[id].get("make_way",false)):
 			var route:Dictionary=routes[id];var leg:Dictionary={}
 			for index:int in range(int(route.cursor),route.legs.size()):
 				if str(route.legs[index].kind)=="stair":leg=route.legs[index];break
@@ -440,3 +473,145 @@ func validate_occupancy()->Dictionary:
 		if routes[id].has("courtesy") and (not courtesy._anchor_clear(self,id,routes[id].courtesy.anchor) or routes[id].courtesy_priority.is_empty()):return {"ok":false,"error":"A visible Lifelet blocks the saved courtesy anchor."}
 		if str(routes[id].phase)=="waiting" and not _free(id,app.world.actors[id].position,false):return {"ok":false,"error":"A visible Lifelet blocks a saved waiting place."}
 	return {"ok":true}
+
+# --- Standoffs: yielding in doorways and at shared use points ---------------
+
+func _blocking_bodies(id:String,from:Vector3,to:Vector3)->Array:
+	# The same body test as _step_clear, returning who refuses the step.
+	var found:Array=[]
+	for other_id:String in app.world.actors:
+		if other_id==id:continue
+		var actor:LifeActor=app.world.actors[other_id]
+		if not actor.visible or not _same_floor(to,actor.position):continue
+		var before:float=from.distance_to(actor.position);var after:float=to.distance_to(actor.position)
+		var step:Vector3=to-from
+		var part:float=clampf((actor.position-from).dot(step)/maxf(.00000001,step.length_squared()),0.0,1.0)
+		var closest:float=from.lerp(to,part).distance_to(actor.position)
+		if before<BODY_GAP:
+			if after<=before+.000001 or closest<before-.000001:found.append(other_id)
+		elif closest<BODY_GAP-.000001:found.append(other_id)
+	return found
+
+func _corridor_points(route:Dictionary)->PackedVector3Array:
+	var points:PackedVector3Array=PackedVector3Array()
+	for index:int in range(int(route.point),route.points.size()):points.append(route.points[index])
+	if Vector3(route.destination).is_finite():points.append(route.destination)
+	return points
+
+func _corridor_distance(point:Vector3,corridor:PackedVector3Array)->float:
+	if corridor.is_empty():return INF
+	var best:float=point.distance_to(corridor[0])
+	for index:int in range(1,corridor.size()):best=minf(best,courtesy._point_distance(point,corridor[index-1],corridor[index]))
+	return best
+
+func _sweep_clear(id:String,from:Vector3,to:Vector3)->bool:
+	var level:int=app.world.point_level(to)
+	if level<0 or not app.world.lot_navigation.segment_clear(level,from,to):return false
+	return _blocking_bodies(id,from,to).is_empty()
+
+func _remaining_length(route:Dictionary)->float:
+	var length:float=0.0
+	var previous:Vector3=Vector3.INF
+	for point:Vector3 in _corridor_points(route):
+		if previous.is_finite():length+=previous.distance_to(point)
+		previous=point
+	return length
+
+func _floor_only(route:Dictionary)->bool:
+	for leg:Dictionary in route.legs:
+		if str(leg.kind)!="floor":return false
+	return int(route.ticket)==0 and str(route.stair_id).is_empty() and not bool(route.safety)
+
+func _aside_anchor(id:String,start:Vector3,corridor:PackedVector3Array,away_from:Vector3)->Vector3:
+	# The nearest free cell clear of the other body's corridor, preferring cells
+	# that lead away from the refused step so the yielder backs off rather than
+	# squeezing past.
+	var best:Vector3=Vector3.INF;var best_score:float=INF
+	for distance:float in ASIDE_DISTANCES:
+		for direction:Vector2 in ASIDE_DIRECTIONS:
+			var anchor:Vector3=start+Vector3(direction.x,0,direction.y)*distance
+			anchor.x=snappedf(anchor.x,.25);anchor.z=snappedf(anchor.z,.25);anchor.y=start.y
+			if anchor.distance_to(start)<.2 or not _free(id,anchor) or not _sweep_clear(id,start,anchor):continue
+			if _corridor_distance(anchor,corridor)<ROUTE_CLEARANCE:continue
+			var score:float=distance-(anchor.distance_to(away_from) if away_from.is_finite() else 0.0)*.5
+			if score<best_score:best_score=score;best=anchor
+	return best
+
+func _resolve_standoff(id:String,route:Dictionary)->void:
+	if int(route.point)>=route.points.size() or not _floor_only(route):return
+	# After several fruitless retreats the walker squeezes past the bodies in its
+	# way for the rest of this route, the way people do in a crowded hallway,
+	# rather than shuffling back and forth all evening. Walls, stairs and
+	# courtesy corridors are still respected.
+	if int(route.get("standoffs",0))>=STANDOFF_LIMIT:
+		if not bool(route.get("squeeze",false)):route.squeeze=true;squeeze_count+=1
+		return
+	var actor:LifeActor=app.world.actors[id]
+	var next:Vector3=route.points[int(route.point)]
+	var blockers:Array=_blocking_bodies(id,actor.position,next)
+	if blockers.is_empty():return
+	blockers.sort()
+	for other_id:String in blockers:
+		if routes.has(other_id) and not bool(routes[other_id].get("make_way",false)):
+			var other:Dictionary=routes[other_id]
+			if other.has("standoff") or other.has("courtesy"):continue
+			# Two walkers: the one with the longer way to go steps aside.
+			var mine:float=_remaining_length(route);var theirs:float=_remaining_length(other)
+			var i_yield:bool=mine>theirs+.001 or (absf(mine-theirs)<=.001 and id>other_id)
+			if i_yield and _retreat(id,route,other_id):return
+			continue
+		if not routes.has(other_id) and _make_way(other_id,id,route):return
+	# Nobody else could move: back off anyway and try again shortly.
+	_retreat(id,route,"")
+
+func _retreat(id:String,route:Dictionary,peer:String)->bool:
+	var actor:LifeActor=app.world.actors[id]
+	var corridor:PackedVector3Array=_corridor_points(routes[peer]) if not peer.is_empty() and routes.has(peer) else PackedVector3Array()
+	if not peer.is_empty() and app.world.actors.has(peer) and corridor.is_empty():corridor.append(app.world.actors[peer].position)
+	var next:Vector3=route.points[int(route.point)]
+	var anchor:Vector3=_aside_anchor(id,actor.position,corridor,next)
+	if not anchor.is_finite():return false
+	route.standoff={"anchor":anchor,"points":PackedVector3Array([actor.position,anchor]),"point":0,"hold":STANDOFF_HOLD,"peer":peer}
+	route.standoff_age=0.0;standoff_count+=1;route.standoffs=int(route.get("standoffs",0))+1
+	return true
+
+func _make_way(other_id:String,walker_id:String,route:Dictionary)->bool:
+	# An idle Lifelet standing on somebody's path or use point steps aside.
+	var person:LifeSim=app.household.member_sim(other_id)
+	if not is_instance_valid(person) or person.is_away() or not person.get_current_action().is_empty():return false
+	var actor:LifeActor=app.world.actors.get(other_id)
+	if not is_instance_valid(actor) or not actor.visible:return false
+	var anchor:Vector3=_aside_anchor(other_id,actor.position,_corridor_points(route),app.world.actors[walker_id].position)
+	if not anchor.is_finite():return false
+	var start:Vector3=actor.position
+	routes[other_id]={"identity":next_identity,"generation":app.world.lot_navigation.generation,"destination":anchor,"legs":[{"key":"floor:","kind":"floor","stair_id":"","points":PackedVector3Array([start,anchor]),"from":start,"to":anchor}],"cursor":0,"phase":"route","points":PackedVector3Array([start,anchor]),"point":0,"prepared":true,"wait":Vector3.INF,"ticket":0,"distance":0.0,"safety":false,"stair_id":"","error":"","make_way":true}
+	next_identity+=1;make_way_count+=1
+	return true
+
+func _advance_standoff(id:String,route:Dictionary,time:float)->bool:
+	var standoff:Dictionary=route.standoff
+	if int(standoff.point)<standoff.points.size():
+		var walking:Dictionary={"points":standoff.points,"point":standoff.point}
+		var result:Dictionary=_walk(id,walking,time,false)
+		standoff.points=walking.points;standoff.point=walking.point
+		if bool(result.blocked) and not bool(result.moved):
+			standoff.hold-=time
+			if float(standoff.hold)<=0.0:_finish_standoff(id,route)
+		return bool(result.moved)
+	standoff.hold-=time
+	var peer:String=str(standoff.peer)
+	var passed:bool=peer.is_empty() or not app.world.actors.has(peer) or not routes.has(peer)
+	if not passed:
+		var next:Vector3=route.points[int(route.point)] if int(route.point)<route.points.size() else route.destination
+		passed=app.world.actors[peer].position.distance_to(next)>BODY_GAP+.2 and app.world.actors[peer].position.distance_to(app.world.actors[id].position)>BODY_GAP+.2
+	if float(standoff.hold)<=0.0 or (passed and float(standoff.hold)<=STANDOFF_HOLD-.5):_finish_standoff(id,route)
+	return false
+
+func _finish_standoff(id:String,route:Dictionary)->void:
+	route.erase("standoff");route.standoff_age=0.0
+	var from:Vector3=app.world.actors[id].position
+	var points:PackedVector3Array=_floor_route(from,route.destination,id)
+	if points.is_empty():points=_floor_route(from,route.destination)
+	if points.is_empty():return
+	route.legs=[{"key":"floor:","kind":"floor","stair_id":"","points":points,"from":from,"to":route.destination}]
+	route.cursor=0;route.prepared=false;route.points=PackedVector3Array();route.point=0
