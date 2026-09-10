@@ -3,8 +3,9 @@ class_name LifeActor
 ## Articulated original character. The parent world owns all navigation/movement.
 
 const JOINT_NAMES: Array[String] = ["Head", "Arm_L", "Arm_R", "Forearm_L", "Forearm_R", "Leg_L", "Leg_R", "Shin_L", "Shin_R"]
-const HAIR_NAMES: Array[String] = ["Hair_Crop", "Hair_Bob", "Hair_Curls"]
-const OUTFIT_NAMES: Array[String] = ["Outfit_Casual", "Outfit_Jacket", "Outfit_Cardigan"]
+const HAIR_NAMES: Array[String] = ["Hair_Crop", "Hair_Bob", "Hair_Curls", "Hair_Pony", "Hair_Long", "Hair_Buzz"]
+const OUTFIT_NAMES: Array[String] = ["Outfit_Casual", "Outfit_Jacket", "Outfit_Cardigan", "Outfit_Tee", "Outfit_Hoodie"]
+const BOTTOM_NAMES: Array[String] = ["Trousers", "Shorts"]
 const VERIFIED_AGE_ASSETS: Array[String] = ["child","teen","elder"]
 const IDENTITY_KEYS: Array[String] = ["face_round", "jaw_strong", "nose_wide", "eye_spacing"]
 
@@ -242,7 +243,9 @@ func configure(new_profile: Dictionary) -> void:
 	_blink_wait = 1.5 + _phase_offset * 0.45
 	_blink_elapsed = -1.0
 	_voice.position.y = (_authored_height-.26) * _height
-	var hair_index: int = clampi(int(profile.get("hair", 0)), 0, 2)
+	var hair_index: int = clampi(int(profile.get("hair", 0)), 0, HAIR_NAMES.size() - 1)
+	# Older exports lack the later styles; fall back to the first authored style rather than showing no hair.
+	if _model.find_child(HAIR_NAMES[hair_index], true, false) == null: hair_index = 0
 	for index: int in range(HAIR_NAMES.size()):
 		var group: Node3D = _model.find_child(HAIR_NAMES[index], true, false) as Node3D
 		if group != null:
@@ -277,7 +280,8 @@ func configure(new_profile: Dictionary) -> void:
 	for key: String in IDENTITY_KEYS:
 		var value: Variant = profile.get(key, 0.0)
 		set_face_feature(key, float(value) if value is float or value is int else 0.0)
-	set_outfit(clampi(int(profile.get("outfit",0)),0,2))
+	set_outfit(clampi(int(profile.get("outfit",0)),0,OUTFIT_NAMES.size()-1))
+	set_bottom(clampi(int(profile.get("bottom",0)),0,BOTTOM_NAMES.size()-1))
 	_recolor(_model)
 	_create_props()
 	_marker.position.y = (_authored_height+.21) * _height
@@ -358,9 +362,27 @@ func _landmark_vector(value: Variant, fallback: Vector3) -> Vector3:
 
 
 func set_outfit(index: int) -> void:
-	profile["outfit"] = clampi(index,0,2)
+	profile["outfit"] = clampi(index,0,OUTFIT_NAMES.size()-1)
 	if _model != null:
-		_apply_outfit_visibility(_model,OUTFIT_NAMES[int(profile["outfit"])])
+		var selected: String = OUTFIT_NAMES[int(profile["outfit"])]
+		if _model.find_child(selected, true, false) == null: selected = OUTFIT_NAMES[0]
+		_apply_outfit_visibility(_model,selected)
+
+
+func set_bottom(index: int) -> void:
+	profile["bottom"] = clampi(index,0,BOTTOM_NAMES.size()-1)
+	if _model != null:
+		var shorts: bool = int(profile["bottom"]) == 1 and _model.find_child("Bottom_Shorts", true, false) != null
+		_apply_bottom_visibility(_model,shorts)
+
+
+func _apply_bottom_visibility(node: Node,shorts: bool) -> void:
+	if node is Node3D:
+		var node_name: String = str(node.name)
+		if node_name.begins_with("Bottom_Shorts"): node.visible = shorts
+		elif node_name.begins_with("Bottom_Continuous") or node_name.begins_with("Bottom_Cuff"): node.visible = not shorts
+	for child: Node in node.get_children():
+		_apply_bottom_visibility(child,shorts)
 
 
 func set_face_feature(feature: String, value: float) -> void:
@@ -1002,11 +1024,11 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 					pose["Forearm_R"] = Vector3(-0.55, 0, 0)
 					pose["Leg_L"] = Vector3(-0.08, 0, 0)
 					pose["Shin_L"] = Vector3(0.12, 0, 0)
-			"relax", "watch", "toilet", "work", "study", "job", "school", "homework":
+			"relax", "watch", "toilet", "work", "study", "job", "school", "homework", "play_games":
 				if anchor_kind != "standing":
 					_seated_pose(pose)
 					offset.y -= 0.43 * _height * _proportion
-				if action_id in ["work", "study", "job", "school", "homework"]:
+				if action_id in ["work", "study", "job", "school", "homework", "play_games"]:
 					pose["Arm_L"] = Vector3(-0.42, 0, 0.05)
 					pose["Arm_R"] = Vector3(-0.42, 0, -0.05)
 					pose["Forearm_L"] = Vector3(-0.85 + sin(t * 9.0) * 0.05, 0, 0)
@@ -1102,6 +1124,87 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 				pose["Forearm_R"] = Vector3(-0.33 + sin(t * 1.5) * 0.13, 0, -0.08)
 				pose["Head"] = Vector3(0.24, 0.05, 0)
 				_watering_can.visible = true
+			"bath":
+				if anchor_kind != "standing":
+					_seated_pose(pose)
+					offset.y -= 0.43 * _height * _proportion
+				pose["Arm_L"] = Vector3(-0.15, 0, -0.38)
+				pose["Arm_R"] = Vector3(-0.15, 0, 0.38)
+				pose["Forearm_L"] = Vector3(-0.50, 0, 0)
+				pose["Forearm_R"] = Vector3(-0.50, 0, 0)
+				pose["Head"] = Vector3(-0.16 + 0.03 * sin(t * 0.8), 0.05 * sin(t * 0.4), 0)
+			"play_piano":
+				if anchor_kind != "standing":
+					_seated_pose(pose)
+					offset.y -= 0.43 * _height * _proportion
+				pose["Arm_L"] = Vector3(-0.40, 0, 0.10)
+				pose["Arm_R"] = Vector3(-0.40, 0, -0.10)
+				pose["Forearm_L"] = Vector3(-0.95 + sin(t * 6.0) * 0.07, 0, 0)
+				pose["Forearm_R"] = Vector3(-0.95 + cos(t * 5.0) * 0.07, 0, 0)
+				pose["Head"] = Vector3(0.12 + 0.04 * sin(t * 1.3), 0.08 * sin(t * 0.9), 0)
+			"play_chess":
+				if anchor_kind != "standing":
+					_seated_pose(pose)
+					offset.y -= 0.43 * _height * _proportion
+				var think: float = 0.5 + 0.5 * sin(t * 0.7)
+				pose["Arm_L"] = Vector3(-0.30, 0, 0.10)
+				pose["Forearm_L"] = Vector3(-0.90, 0, 0)
+				pose["Arm_R"] = Vector3(-0.45 - 0.25 * think, 0, -0.05)
+				pose["Forearm_R"] = Vector3(-0.70 - 0.30 * think, 0, 0)
+				pose["Head"] = Vector3(0.30 - 0.10 * think, 0.05 * sin(t * 0.5), 0)
+			"jog":
+				var run_cycle: float = t * 10.5
+				var stride: float = sin(run_cycle)
+				pose["Leg_L"] = Vector3(stride * 0.62, 0, 0)
+				pose["Leg_R"] = Vector3(-stride * 0.62, 0, 0)
+				pose["Shin_L"] = Vector3(maxf(0.0, -cos(run_cycle)) * 0.95, 0, 0)
+				pose["Shin_R"] = Vector3(maxf(0.0, cos(run_cycle)) * 0.95, 0, 0)
+				pose["Arm_L"] = Vector3(-0.35 - stride * 0.45, 0, -0.06)
+				pose["Arm_R"] = Vector3(-0.35 + stride * 0.45, 0, 0.06)
+				pose["Forearm_L"] = Vector3(-1.25, 0, 0)
+				pose["Forearm_R"] = Vector3(-1.25, 0, 0)
+				pose["Head"] = Vector3(0.05, 0, 0)
+				offset.y += absf(sin(run_cycle)) * 0.035
+				lean = Vector3(0.10, 0.02 * stride, -0.01 * stride)
+			"stretch":
+				var rise: float = 0.5 + 0.5 * sin(t * 0.9)
+				pose["Arm_L"] = Vector3(-1.2 - 1.6 * rise, 0, -0.12)
+				pose["Arm_R"] = Vector3(-1.2 - 1.6 * rise, 0, 0.12)
+				pose["Forearm_L"] = Vector3(-0.25 * rise, 0, 0)
+				pose["Forearm_R"] = Vector3(-0.25 * rise, 0, 0)
+				pose["Head"] = Vector3(-0.18 * rise, 0, 0)
+				lean = Vector3(-0.04 * rise, 0, 0.06 * sin(t * 0.45))
+			"dance":
+				var beat: float = sin(t * 6.0)
+				pose["Arm_L"] = Vector3(-0.9 + 0.3 * beat, 0, -0.55)
+				pose["Arm_R"] = Vector3(-0.9 - 0.3 * beat, 0, 0.55)
+				pose["Forearm_L"] = Vector3(-1.0 + 0.25 * beat, 0, 0)
+				pose["Forearm_R"] = Vector3(-1.0 - 0.25 * beat, 0, 0)
+				pose["Leg_L"] = Vector3(0.06 * beat, 0, 0)
+				pose["Leg_R"] = Vector3(-0.06 * beat, 0, 0)
+				pose["Head"] = Vector3(0.05 * beat, 0.12 * sin(t * 3.0), 0)
+				offset.y += absf(beat) * 0.018
+				lean = Vector3(0.03, 0, 0.06 * sin(t * 3.0))
+			"play_toys":
+				var play: float = 0.5 + 0.5 * sin(t * 2.4)
+				_reach_hand(pose,"L",Vector3(-.14*_proportion,_hip_height+(.22+.05*play)*_proportion,.30*_proportion),Vector3(-.7,-.8,-.1))
+				_reach_hand(pose,"R",Vector3(.14*_proportion,_hip_height+(.20+.08*(1.0-play))*_proportion,.32*_proportion),Vector3(.7,-.8,-.1))
+				pose["Head"] = Vector3(0.30, 0.06 * sin(t * 1.5), 0)
+				lean.x = 0.12
+			"practice_speech":
+				_conversation_pose(pose, "friendly" if fmod(t, 8.0) < 4.0 else "joke", t)
+			"change_outfit":
+				pose["Arm_L"] = Vector3(-1.1, 0, 0.12)
+				pose["Forearm_L"] = Vector3(-1.3, 0, 0)
+				pose["Arm_R"] = Vector3(-1.1, 0, -0.12)
+				pose["Forearm_R"] = Vector3(-1.3 + 0.1 * sin(t * 5.0), 0, 0)
+				pose["Head"] = Vector3(0.12, 0, 0)
+			"warm_up":
+				pose["Arm_L"] = Vector3(-0.75, 0, 0.15)
+				pose["Arm_R"] = Vector3(-0.75, 0, -0.15)
+				pose["Forearm_L"] = Vector3(-0.55 + 0.05 * sin(t * 1.5), 0, 0)
+				pose["Forearm_R"] = Vector3(-0.55 + 0.05 * cos(t * 1.5), 0, 0)
+				pose["Head"] = Vector3(0.06, 0.05 * sin(t * 0.5), 0)
 			"friendly", "joke", "deep_talk", "flirt", "argue", "ask_partner", "commit", "break_up":
 				var gesture_aliases: Dictionary = {"ask_partner":"deep_talk", "commit":"flirt", "break_up":"deep_talk"}
 				_conversation_pose(pose, str(gesture_aliases.get(action_id, action_id)), t)
@@ -1116,7 +1219,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		var direction:Vector3=_model.to_local(_activity_anchor.attention_target)-_model.to_local(_joints.Head.global_position)
 		var gaze:Vector3=Vector3(clampf(-atan2(direction.y,Vector2(direction.x,direction.z).length()),-.38,.4),clampf(atan2(direction.x,direction.z),-.72,.72),0)
 		pose["Head"]=Vector3(pose.Head).lerp(gaze,attention_weight)
-	if anchored and anchor_kind == "seat" and _activity_anchor.has("hand_center") and action_id in ["work","study","job","school","homework"]:
+	if anchored and anchor_kind == "seat" and _activity_anchor.has("hand_center") and action_id in ["work","study","job","school","homework","play_games"]:
 		lean.x = _desk_lean()
 		# Keep thighs horizontal while the torso leans from its supported hips.
 		pose["Leg_L"].x -= lean.x
@@ -1186,7 +1289,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		var shoe:Node3D=rest.shoe
 		if not moving and ((action_id=="cook" and _has_oven()) or (anchored and action_id in ["plant_wee","mop_puddle"])):shoe.global_basis=Basis(Vector3.UP,float(_activity_anchor.yaw))*Basis(rest.shoe_basis)
 		else:shoe.basis=Basis.IDENTITY
-	var seated: bool = not moving and ((action_id in ["relax", "watch", "toilet", "work", "study", "job", "school", "homework", "homework_wait", "eat_meal"] and anchor_kind != "standing") or (action_id in ["sleep", "nap"] and anchor_kind == "seat"))
+	var seated: bool = not moving and ((action_id in ["relax", "watch", "toilet", "work", "study", "job", "school", "homework", "play_games", "homework_wait", "eat_meal", "bath", "play_piano", "play_chess"] and anchor_kind != "standing") or (action_id in ["sleep", "nap"] and anchor_kind == "seat"))
 	_sit_amount = lerpf(_sit_amount, 1.0 if seated else 0.0, blend)
 	for entry: Dictionary in _sit_shapes:
 		entry.mesh.set_blend_shape_value(int(entry.index), _sit_amount)

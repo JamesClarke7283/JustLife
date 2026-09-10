@@ -329,7 +329,7 @@ func _floor_support(at:Vector3,half:Vector2,surfaces:Variant=null) -> float:
 	if app.world.construction.rect_blocked(bounds.grow(.002),level):return INF
 	for furnishing:Dictionary in app.world.items:
 		if _host_level(furnishing)!=level:continue
-		if str(furnishing.kind) in ["rug","painting","meal","plate","puddle"]:continue
+		if str(furnishing.kind) in ["meal","plate","puddle"] or LifeCatalog.passable(str(furnishing.kind)):continue
 		# Project the whole dish footprint into the furnishing's local axes.
 		# This conservative rectangle also covers furnishings at arbitrary yaw.
 		var inverse:Basis=furnishing.node.global_basis.inverse()

@@ -19,7 +19,7 @@ static func candidate(serial:int,choice:int) -> Dictionary:
 	# Appearance and personality use independent fixed cycles, without any
 	# demographic inference or mutation of the game's random generator.
 	var index:int=(serial-1)*CANDIDATE_COUNT+choice
-	return {"name":NAMES[index%NAMES.size()],"age_stage":"child","life_stage":"minor","frame":index%2,"hair":(index+1)%3,"skin_color":["d9a17d","925c40","f2d1b1","b77e58","e7b98f","613e30"][index%6],"hair_color":["54382a","2a2420","89563a","c2a16b"][index%4],"top_color":["7195b3","417a71","c97c66"][index%3],"bottom_color":"eadfc9","eye_color":"547365","outfit":index%3,"body_scale":1.0,"height_scale":1.0,"traits":[["Creative","Bookworm"],["Outgoing","Active"],["Neat","Foodie"]][choice].duplicate(),"aspiration":["Maker","Connected","Balanced"][choice]}
+	return {"name":NAMES[index%NAMES.size()],"age_stage":"child","life_stage":"minor","frame":index%2,"hair":(index+1)%6,"skin_color":["d9a17d","925c40","f2d1b1","b77e58","e7b98f","613e30"][index%6],"hair_color":["54382a","2a2420","89563a","c2a16b"][index%4],"top_color":["7195b3","417a71","c97c66"][index%3],"bottom_color":"eadfc9","eye_color":"547365","outfit":index%5,"bottom":index%2,"body_scale":1.0,"height_scale":1.0,"traits":[["Creative","Bookworm"],["Outgoing","Active"],["Neat","Foodie"]][choice].duplicate(),"aspiration":["Maker","Connected","Balanced"][choice]}
 
 static func request_error(value:Variant) -> String:
 	if not value is Dictionary or value.size()!=5 or not integer(value.get("serial"),1,7) or not integer(value.get("choice"),0,CANDIDATE_COUNT-1) or not integer(value.get("member_count"),1,7) or not integer(value.get("fee"),FEE,FEE) or not value.get("guardians") is Array:

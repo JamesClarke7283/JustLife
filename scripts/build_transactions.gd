@@ -93,7 +93,7 @@ func _obstacles()->Array:
 func _layout_obstacles(layout:Array)->Array:
 	var obstacles:Array=[]
 	for entry:Dictionary in layout:
-		if str(entry.get("kind","")) in ["__construction","rug","painting","meal","plate"]:continue
+		if str(entry.get("kind","")) in ["__construction","meal","plate"] or LifeCatalog.passable(str(entry.get("kind",""))):continue
 		var area:Rect2=app.world.furnishing_rect(entry)
 		obstacles.append({"id":str(entry.id),"level":int(entry.get("level",0)),"x":area.get_center().x,"z":area.get_center().y,"w":area.size.x,"d":area.size.y})
 	return obstacles

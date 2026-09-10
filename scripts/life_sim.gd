@@ -24,7 +24,7 @@ const NEED_NAMES: Array[String] = ["hunger", "energy", "hygiene", "bladder", "fu
 const TRAIT_NAMES: Array[String] = ["Creative", "Outgoing", "Active", "Bookworm", "Foodie", "Neat"]
 const ASPIRATION_NAMES: Array[String] = ["Maker", "Connected", "Successful", "Balanced"]
 const NEED_DECAY: Dictionary = {"hunger": 3.5, "energy": 3.0, "hygiene": 2.1, "bladder": 4.0, "fun": 2.5, "social": 2.0}
-const SKILL_NAMES: Array[String] = ["cooking", "creativity", "charisma", "logic", "gardening", "parenting"]
+const SKILL_NAMES: Array[String] = ["cooking", "creativity", "charisma", "logic", "gardening", "parenting", "fitness", "music"]
 const CAREER_TRACKS: Dictionary = {
 	"studio":{"label":"Creative studio","skill":"creativity","base_salary":180,"titles":["Studio assistant","Project coordinator","Creative specialist","Studio lead","Creative director"]},
 	"culinary":{"label":"Culinary arts","skill":"cooking","base_salary":160,"titles":["Kitchen assistant","Prep cook","Line chef","Sous chef","Head chef"]},
@@ -184,6 +184,17 @@ func _build_actions() -> void:
 	_define("study", "Study a skill", 90.0, {"fun": 12.0, "energy": -5.0}, 0, "logic", 40.0, "Practice Logic and prepare for career advancement.")
 	_define("job", "Work a shift from home", 360.0, {"hunger": -12.0, "energy": -18.0, "fun": -15.0, "social": 12.0}, 0, "logic", 30.0, "Optional six-hour home shift. Shares today’s paid attendance with going to work.")
 	_define("water", "Tend the plants", 25.0, {"fun": 15.0, "hygiene": -4.0}, 0, "gardening", 28.0, "Care for greenery and learn Gardening.")
+	_define("bath", "Take a long bath", 40.0, {"hygiene": 90.0, "fun": 14.0, "energy": 8.0}, 0, "", 0.0, "Sink into warm water. Slower than a shower, but restful.")
+	_define("practice_speech", "Practice a speech", 40.0, {"fun": 10.0, "social": 6.0}, 0, "charisma", 30.0, "Rehearse in front of the mirror and build Charisma.")
+	_define("play_piano", "Play the piano", 60.0, {"fun": 36.0}, 0, "music", 38.0, "Practice scales and songs. Music skill grows with every session.")
+	_define("play_chess", "Play chess", 60.0, {"fun": 30.0}, 0, "logic", 36.0, "Think a few moves ahead and build Logic.")
+	_define("jog", "Go for a run", 45.0, {"fun": 18.0, "energy": -14.0, "hygiene": -18.0}, 0, "fitness", 40.0, "A steady run builds Fitness. Expect to need a shower afterwards.")
+	_define("stretch", "Stretch and breathe", 30.0, {"fun": 12.0, "energy": 10.0}, 0, "fitness", 24.0, "Gentle stretching restores a little energy and builds Fitness.")
+	_define("dance", "Dance to a record", 35.0, {"fun": 40.0, "energy": -8.0, "hygiene": -6.0}, 0, "fitness", 12.0, "Put a record on and move. Great fun, a little tiring.")
+	_define("play_toys", "Play with toys", 45.0, {"fun": 42.0, "social": 4.0}, 0, "creativity", 14.0, "Imaginative play for children. Builds a little Creativity.")
+	_define("change_outfit", "Change outfit", 4.0, {}, 0, "", 0.0, "Switch to the next outfit in your wardrobe.")
+	_define("warm_up", "Warm up by the fire", 25.0, {"fun": 16.0, "energy": 8.0}, 0, "", 0.0, "A quiet moment by the hearth.")
+	_define("play_games", "Play video games", 45.0, {"fun": 40.0, "energy": -4.0}, 0, "logic", 10.0, "An hour of games at the computer. Great fun, a little Logic.")
 	_define("friendly", "Have a friendly chat", 25.0, {"social": 28.0, "fun": 6.0}, 0, "charisma", 18.0, "Say hello, catch up and grow your friendship.")
 	_define("joke", "Tell a joke", 20.0, {"social": 22.0, "fun": 16.0}, 0, "charisma", 16.0, "Share a laugh and strengthen your friendship.")
 	_define("deep_talk", "Have a heartfelt talk", 45.0, {"social": 45.0, "fun": 8.0}, 0, "charisma", 28.0, "A deeper conversation works best with someone you know.")
@@ -208,17 +219,29 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"bed": ids = ["sleep", "nap"]
 		"shower", "bath": ids = ["shower"]
 		"toilet": ids = ["toilet"]
-		"sofa", "chair": ids = ["relax", "nap"]
+		"sofa", "chair", "armchair", "loveseat", "stool": ids = ["relax", "nap"]
 		"bench": ids = ["relax", "read", "nap"]
 		"tv": ids = ["watch"]
 		"bookshelf": ids = ["read", "study"]
 		"easel": ids = ["paint"]
-		"desk", "computer": ids = ["work", "study", "job"]
+		"desk": ids = ["work", "study", "job"]
+		"computer": ids = ["work", "study", "job", "play_games"]
 		"plant": ids = ["water","plant_wee"] if float(needs.bladder)<=BLADDER_DESPERATE else ["water"]
 		"puddle": ids = ["mop_puddle"]
+		"bathtub": ids = ["bath"]
+		"mirror": ids = ["practice_speech"]
+		"piano": ids = ["play_piano"]
+		"chess": ids = ["play_chess"]
+		"treadmill": ids = [] if str(character.age_stage) == "child" else ["jog"]
+		"yoga_mat": ids = ["stretch"]
+		"stereo": ids = ["dance"]
+		"toybox": ids = ["play_toys"] if str(character.age_stage) == "child" else []
+		"wardrobe": ids = ["change_outfit"]
+		"garden_bed": ids = ["water"]
+		"fireplace": ids = ["warm_up"]
 		"neighbor", "maya", "leo": ids = SOCIAL_ACTIONS
 	if str(character.age_stage) in LifeEducation.SCHOOL_STAGES:
-		if kind in ["desk","computer"]: ids = ["school","homework","study"]
+		if kind in ["desk","computer"]: ids = ["school","homework","study"] + (["play_games"] if kind == "computer" else [])
 		elif kind == "bookshelf": ids = ["read","homework","study"]
 	var result: Array = []
 	for id: String in ids:
@@ -399,7 +422,7 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 	if id in ["job","career_day"] and int(career["worked_day"]) == day:
 		_emit_notice("Today's shift is complete. You can work again tomorrow.")
 		return false
-	if id in SOCIAL_ACTIONS or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal"]:
+	if id in SOCIAL_ACTIONS or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "jog", "play_toys"]:
 		var availability: Dictionary = get_action_availability(id, target_id)
 		if not bool(availability.available):
 			_emit_notice(str(availability.reason))
@@ -715,6 +738,9 @@ func _finish_front() -> void:
 		action["social_events"] = _recent_social_events.duplicate(true)
 	elif id == "water":
 		_emit_notice("The plants look happier. Gardening skill improved.")
+	elif id == "change_outfit":
+		character["outfit"] = (int(character.get("outfit", 0)) + 1) % 5
+		_emit_notice("%s changed into the %s outfit." % [character["name"], ["casual", "jacket", "cardigan", "tee", "hoodie"][int(character["outfit"])]])
 	elif id == "cook" and _has_trait("Foodie"):
 		_emit_notice("A delicious homemade meal! Your Foodie trait made it extra satisfying.")
 	_activity_memory(id)
@@ -793,6 +819,10 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 		reason = "Full-time careers and freelance work are available to adults."
 	elif id == "cook" and str(character.age_stage) == "child":
 		reason = "Children can grab a snack. An older Lifelet can use the stove."
+	elif id == "jog" and str(character.age_stage) == "child":
+		reason = "The treadmill is for teens and adults."
+	elif id == "play_toys" and str(character.age_stage) != "child":
+		reason = "The toy chest is for children."
 	elif funds < int(_actions[id].cost):
 		reason = "Requires §%d." % int(_actions[id].cost)
 	elif id == "job" and int(career.worked_day) == day:
@@ -1033,6 +1063,15 @@ func _activity_memory(id:String) -> void:
 			add_moodlet("A job well done","Confident","You've earned a little time for yourself.",180,2)
 			remember("A productive day","Finished work and earned a living.")
 		"water":add_moodlet("Growing together","Happy","Looking after something living feels rewarding.",120,1)
+		"bath":add_moodlet("Soaked and serene","Happy","A long bath washes the day away.",180,2)
+		"practice_speech":add_moodlet("Finding your voice","Confident","Every rehearsal makes the next conversation easier.",150,2)
+		"play_piano":add_moodlet("Music in the air","Inspired","A melody is still playing in your head.",180,3)
+		"play_chess":add_moodlet("Sharp mind","Focused","A few moves ahead of everyone.",150,2)
+		"jog","stretch":add_moodlet("Body in motion","Energized","Your body feels awake and strong.",180,2)
+		"dance":add_moodlet("Still humming","Playful","That song is still going round.",150,3)
+		"play_toys":add_moodlet("Made-up worlds","Playful","Imagination made the afternoon fly by.",150,3)
+		"warm_up":add_moodlet("Hearthside calm","Happy","Warm hands and a quiet mind.",120,1)
+		"play_games":add_moodlet("One more level","Playful","That game is still on your mind.",120,2)
 
 
 func _new_day() -> void:
@@ -1256,15 +1295,20 @@ func _autonomy_need_choice(need:String,excluded_target_ids:Array=[],preparing:bo
 		"energy":
 			if preparing or (LifeEducation.weekday(day) and minutes>=240.0 and minutes<=960.0):candidates=["nap","sleep"]
 			else:candidates=["sleep","nap"]
-		"hygiene":candidates=["shower"]
+		"hygiene":candidates=["shower","bath"]
 		"bladder":candidates=["toilet"]
 		"fun":
-			if _has_trait("Bookworm"):candidates=["read","watch","relax"]
+			if _has_trait("Bookworm"):candidates=["read","play_chess","watch","relax"]
 			else:
 				var leisure_duty:String=_autonomy_preparation_duty_id()
 				# Keep critical Fun recovery brief while an available school/work day is being prepared.
 				if leisure_duty in ["school_day","career_day"] and not _autonomy_target_for(leisure_duty,excluded_target_ids).is_empty():candidates=["relax","read","watch","paint"]
-				else:candidates=["paint","read","watch","relax"]
+				elif _has_trait("Active"):candidates=["jog","dance","stretch","paint","read","watch","relax"]
+				else:candidates=["paint","read","watch","play_piano","play_chess","dance","relax"]
+			# Children reach for their toys first on a free day, and last when a school morning needs brief recovery.
+			if str(character.age_stage)=="child":
+				if candidates[0]=="relax":candidates.append("play_toys")
+				else:candidates.insert(0,"play_toys")
 	for id:String in candidates:
 		var chosen:Dictionary=_autonomy_target_for(id,excluded_target_ids)
 		if not chosen.is_empty():return chosen
@@ -1761,8 +1805,10 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 	state = state.duplicate(true)
 	state["action_queue"]=state.get("action_queue",[]) # Legacy idle saves may omit this optional list.
 	if not state.action_queue is Array:return {"ok":false,"error":"Save contains an invalid action queue."}
-	if state.get("skills") is Dictionary and not state.skills.has("parenting"):
-		state.skills.parenting = {"level":1,"xp":0.0}
+	if state.get("skills") is Dictionary:
+		# Older saves predate later skills; they begin those at level 1.
+		for skill_name: String in SKILL_NAMES:
+			if not state.skills.has(skill_name): state.skills[skill_name] = {"level":1,"xp":0.0}
 	for action: Variant in state.get("action_queue",[]):
 		if action is Dictionary and (action.has("cooperation_id") or str(action.get("id","")) == "help_homework") and not allow_cooperation:
 			return {"ok":false,"error":"Cooperative homework must be restored with its complete household."}

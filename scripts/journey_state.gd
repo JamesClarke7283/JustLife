@@ -81,7 +81,7 @@ static func layout_context(layout:Array)->Dictionary:
 		else:items[str(record.id)]=record
 	if building.is_empty():inspector.free();return {"ok":false,"error":"A journey save requires its complete construction record."}
 	for record:Dictionary in items.values():
-		if str(record.kind) in ["rug","painting","meal","plate"]:continue
+		if str(record.kind) in ["meal","plate"] or LifeCatalog.passable(str(record.kind)):continue
 		var bounds:Rect2=inspector.furnishing_rect(record)
 		obstacles.append({"id":str(record.id),"level":int(record.get("level",0)),"x":bounds.get_center().x,"z":bounds.get_center().y,"w":bounds.size.x,"d":bounds.size.y})
 	inspector.free()

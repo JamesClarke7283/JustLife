@@ -121,11 +121,20 @@ Every variant is included in each GLB. Hide all but the selected hair and outfit
 | Hair 0 | `Hair_Crop` | Asymmetric swept crop with crown locks and subtle directional surface grooves |
 | Hair 1 | `Hair_Bob` | Jaw-length layered bob with swept fringe |
 | Hair 2 | `Hair_Curls` | Rounded irregular coils with sculpted ridges |
+| Hair 3 | `Hair_Pony` | The Bob cap and fringe with a swept tail and band at the nape |
+| Hair 4 | `Hair_Long` | The Bob with its locks lengthened and tapered toward the shoulder blades |
+| Hair 5 | `Hair_Buzz` | The Crop cap alone, drawn in tight |
 | Outfit 0 | `Outfit_Casual` | Short sleeve shirt, light collar/cuffs and button placket |
 | Outfit 1 | `Outfit_Jacket` | Cropped bomber, long sleeves, stand collar, zipper and ribbed edges |
 | Outfit 2 | `Outfit_Cardigan` | Longer open V-neck knit over a cream tee, with patch pockets |
+| Outfit 3 | `Outfit_Tee` | Plain crew tee from the casual shirt body, cuffs and hem |
+| Outfit 4 | `Outfit_Hoodie` | The cropped shell with a soft down-hood cowl, kangaroo pocket and drawstrings |
+| Bottom 0 | `Bottom_Continuous_trousers` (+ `Bottom_Cuff` curves) | Shared tailored trousers |
+| Bottom 1 | `Bottom_Shorts` (+ `Bottom_Shorts_Cuff`) | The trousers cut above the knee with a folded cuff; `Skin_Leg_continuous` supplies the exposed legs |
 
-Brows also use the `Hair_` prefix. Keep them visible when switching hairstyles. All outfits share tailored trousers and low-top sneakers with laces, sole and side accents.
+Brows also use the `Hair_` prefix. Keep them visible when switching hairstyles. All outfits share low-top sneakers with laces, sole and side accents, and either bottom. `Skin_Leg_continuous` is always present beneath the bottoms and recolors with the skin.
+
+The second wardrobe set (hair 3–5, outfits 3–4, shorts and leg skin) is added to every age family by `blender -b --python tools/create_wardrobe.py -- --family all --export`. It derives each addition from that family's own accepted geometry, never edits existing objects, removes and rebuilds only its own additions on a rerun, and exports the sixteen game models with the same rest-pose, zeroed-morph, broad-scale and live-LOD decimation steps as `tools/export_character_variant.py`. The earlier reproduction chains reproduce the accepted stages that precede this addition; they do not regenerate the second wardrobe set.
 
 ## Facial and corrective morphs
 

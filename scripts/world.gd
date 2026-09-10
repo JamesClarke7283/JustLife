@@ -256,7 +256,7 @@ func validate_home_layout(layout:Variant) -> String:
 		if canonical.is_empty():continue # Preserve old ground layout migration behavior.
 		var area:Rect2=furnishing_rect(entry)
 		if not Building.footprint_supported(canonical,level,area):return "A furnishing crosses unsupported floor or a stair opening."
-		if str(entry.kind) not in ["rug","painting"] and Building.blocked_rect(canonical,level,area):return "A furnishing intersects a wall or stair run."
+		if not LifeCatalog.passable(str(entry.kind)) and Building.blocked_rect(canonical,level,area):return "A furnishing intersects a wall or stair run."
 		if not canonical.roofs.is_empty():
 			var roof_error:String=RoofRules.obstruction(canonical,furnishing_volume(entry))
 			if not roof_error.is_empty():return roof_error
@@ -493,7 +493,7 @@ func rebuild_navigation() -> void:
 			var solid:bool = construction.point_blocked(p)
 			for item in items:
 				if item_level(item)!=0:continue
-				if item.kind in ["rug","painting","meal","plate","puddle"]:continue
+				if item.kind in ["meal","plate","puddle"] or LifeCatalog.passable(str(item.kind)):continue
 				var local:Vector3=item.node.to_local(Vector3(p.x,.16,p.y))
 				var extent:Vector2=item.size*.5+Vector2(.16,.16)
 				if absf(local.x)<extent.x and absf(local.z)<extent.y:solid=true;break
@@ -502,7 +502,7 @@ func rebuild_navigation() -> void:
 	if not bool(result.ok):last_layout_error=str(result.error);return
 	var obstacles:Array=[]
 	for item:Dictionary in items:
-		if str(item.kind) in ["rug","painting","meal","plate","puddle"]:continue
+		if str(item.kind) in ["meal","plate","puddle"] or LifeCatalog.passable(str(item.kind)):continue
 		var source:Dictionary={"kind":str(item.kind),"x":item.node.position.x,"z":item.node.position.z,"rotation":item.node.rotation_degrees.y}
 		var area:Rect2=furnishing_rect(source)
 		obstacles.append({"id":str(item.id),"level":item_level(item),"x":area.get_center().x,"z":area.get_center().y,"w":area.size.x,"d":area.size.y})
@@ -658,12 +658,12 @@ func can_place(kind:String,p:Vector3,angle:float) -> bool:
 		if not construction.building_state.roofs.is_empty() and not RoofRules.obstruction(construction.building_state,furnishing_volume({"kind":kind,"x":p.x,"z":p.z,"rotation":angle,"level":level})).is_empty():return false
 	for corner in [rect.position,rect.end,Vector2(rect.position.x,rect.end.y),Vector2(rect.end.x,rect.position.y)]:
 		if not construction.floor_contains(corner,level):return false
-	if kind in ["rug","painting"]:return true
+	if LifeCatalog.passable(kind):return true
 	# Interior walls and doorways stay usable.
 	if construction.rect_blocked(rect,level):return false
 	for item in items:
 		if item_level(item)!=level:continue
-		if item.kind in ["rug","painting","meal","plate","puddle"]:continue
+		if item.kind in ["meal","plate","puddle"] or LifeCatalog.passable(str(item.kind)):continue
 		var s:Vector2=item.size
 		if int(roundf(item.node.rotation_degrees.y/90))%2:s=Vector2(s.y,s.x)
 		var other=Rect2(Vector2(item.node.position.x,item.node.position.z)-s/2,s)
@@ -769,7 +769,7 @@ func _desk_surface(node:Node3D) -> Dictionary:
 
 func activity_resource_ids(item:Dictionary) -> Array[String]:
 	var resources:Array[String]=[str(item.id)]
-	if str(item.kind)=="desk":
+	if str(item.kind) in ["desk","computer"]:
 		var chair:Dictionary=closest_item("chair",item.node.to_global(Vector3(0,0,.88)),1.25)
 		if not chair.is_empty():resources.append(str(chair.id))
 	return resources
@@ -810,7 +810,7 @@ func _clear_coaching_space(at:Vector3) -> bool:
 		if construction.point_blocked(Vector2(at.x,at.z)+offset,level):return false
 	for other:Dictionary in items:
 		if item_level(other)!=level:continue
-		if str(other.kind) in ["rug","painting","puddle"]:continue
+		if str(other.kind)=="puddle" or LifeCatalog.passable(str(other.kind)):continue
 		var local:Vector3=other.node.to_local(at)
 		var extent:Vector2=other.size*.5+Vector2(.29,.29)
 		if absf(local.x)<extent.x and absf(local.z)<extent.y:return false
@@ -847,7 +847,24 @@ func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -
 			local=Vector3(-.43,.80,.015);yaw=node.rotation.y;kind="bed"
 		"shower":
 			local=Vector3(0,.166,.01);yaw=node.rotation.y+PI
-		"desk":
+		"armchair":
+			local=Vector3(0,.50,.06);yaw=node.rotation.y;kind="seat"
+		"loveseat":
+			local=Vector3(0,.62,.08);yaw=node.rotation.y;kind="seat"
+		"stool":
+			local=Vector3(0,.755,0);yaw=node.rotation.y;kind="seat"
+		"bathtub":
+			# Sit facing along the tub with legs stretched beneath the water.
+			local=Vector3(-.30,.30,0);yaw=node.rotation.y+PI*.5;kind="seat"
+		"piano":
+			local=Vector3(0,.535,.40);yaw=node.rotation.y+PI;kind="seat"
+		"chess":
+			local=Vector3(0,.50,.62);yaw=node.rotation.y+PI;kind="seat"
+		"treadmill":
+			local=Vector3(0,.16,.30);yaw=node.rotation.y+PI
+		"yoga_mat":
+			local=Vector3(0,.02,0);yaw=node.rotation.y
+		"desk","computer":
 			var chair:Dictionary=closest_item("chair",node.to_global(Vector3(0,0,.88)),1.25)
 			if not chair.is_empty():
 				var seat:Vector3=chair.node.to_global(Vector3(0,.52,.02))
@@ -867,7 +884,7 @@ func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -
 				return seated
 			local=Vector3(0,0,.75)
 	var anchor: Dictionary={"position":node.to_global(local),"yaw":yaw,"kind":kind}
-	if str(item.kind)=="desk":
+	if str(item.kind) in ["desk","computer"]:
 		anchor.merge(_desk_surface(node))
 	return anchor
 

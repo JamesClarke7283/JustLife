@@ -249,7 +249,7 @@ static func _saved_floor_error(value:Dictionary,layout:Array) -> String:
 	elif not Building.footprint_supported(state,level,bounds):return "A saved floor dish extends beyond its supporting floor."
 	if Building.blocked_rect(state,level,bounds.grow(.002)):return "A saved floor dish overlaps the building."
 	for entry:Variant in layout:
-		if not entry is Dictionary or not LifeCatalog.ITEMS.has(str(entry.get("kind",""))) or str(entry.kind) in ["rug","painting"]:continue
+		if not entry is Dictionary or not LifeCatalog.ITEMS.has(str(entry.get("kind",""))) or LifeCatalog.passable(str(entry.kind)):continue
 		if not _number(entry.get("level",0),0,1,true):return "A saved floor dish has an invalid furniture level."
 		if int(entry.get("level",0))!=level:continue
 		for axis:String in ["x","z","rotation"]:

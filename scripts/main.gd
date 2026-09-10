@@ -373,35 +373,37 @@ func draw_creator() -> void:
 		var tab_button=button(tab_name,Vector2(1100+i*97,144),Vector2(89,40),func():set_creator_tab(tab_name),creator_tab==tab_name)
 		compact_button(tab_button);tab_button.size=Vector2(89,40)
 	if creator_tab=="Look":
-		small_caps("Gender",Vector2(1102,202))
+		small_caps("Gender",Vector2(1102,200))
 		var gender_group := ButtonGroup.new()
 		# Keep the existing saved model choice: 0 = female, 1 = male.
 		for i in range(2):
 			var gender_name:String=["Female","Male"][i]
 			var selected:bool=int(profile.get("frame",0))==i
-			var choice=button(gender_name,Vector2(1100+i*146,232),Vector2(137,39),func():profile.frame=i;refresh_preview(),selected)
+			var choice=button(gender_name,Vector2(1100+i*146,228),Vector2(137,36),func():profile.frame=i;refresh_preview(),selected)
 			choice.name="Creator"+gender_name
 			choice.toggle_mode=true
 			choice.button_group=gender_group
 			choice.set_pressed_no_signal(selected)
 			choice.tooltip_text="Create a %s Lifelet" % gender_name.to_lower()
-		small_caps("Skin tone",Vector2(1102,292))
-		swatches(["f2d1b1","e7b98f","d9a17d","b77e58","925c40","613e30"],"skin_color",Vector2(1100,326),40,7)
-		small_caps("Hairstyle",Vector2(1102,385))
-		for i in range(3):
-			var b=button(["Crop","Bob","Curls"][i],Vector2(1100+i*97,417),Vector2(89,52),func():profile.hair=i;refresh_preview(),profile.hair==i)
-			b.tooltip_text=["A relaxed swept crop","A softly sculpted bob","Natural rounded curls"][i]
-		small_caps("Hair color",Vector2(1102,490))
-		swatches(["2a2420","54382a","89563a","c2a16b","dfccb0","784e49"],"hair_color",Vector2(1100,523),40,7)
-		small_caps("Eyes",Vector2(1102,574))
-		swatches(["547365","55738f","704b36","b18d54","77797c"],"eye_color",Vector2(1100,605),28,12)
-		small_caps("Build",Vector2(1102,642))
+		small_caps("Skin tone",Vector2(1102,278))
+		swatches(["f2d1b1","e7b98f","d9a17d","b77e58","925c40","613e30"],"skin_color",Vector2(1100,308),36,7)
+		small_caps("Hairstyle",Vector2(1102,358))
+		var hair_names:Array=["Crop","Bob","Curls","Pony","Long","Buzz"]
+		var hair_tips:Array=["A relaxed swept crop","A softly sculpted bob","Natural rounded curls","A swept-back ponytail","Long layered lengths","A close buzz cut"]
+		for i in range(hair_names.size()):
+			var b=button(hair_names[i],Vector2(1100+(i%3)*97,388+(i/3)*42),Vector2(89,36),func():profile.hair=i;refresh_preview(),int(profile.get("hair",0))==i)
+			b.tooltip_text=hair_tips[i]
+		small_caps("Hair color",Vector2(1102,486))
+		swatches(["2a2420","54382a","89563a","c2a16b","dfccb0","784e49"],"hair_color",Vector2(1100,514),36,7)
+		small_caps("Eyes",Vector2(1102,562))
+		swatches(["547365","55738f","704b36","b18d54","77797c"],"eye_color",Vector2(1100,590),28,12)
+		small_caps("Build",Vector2(1102,630))
 		var slider=HSlider.new()
 		slider.min_value=.85;slider.max_value=1.15;slider.step=.01;slider.value=profile.body_scale
-		rect(slider,Vector2(1105,674),Vector2(270,30))
+		rect(slider,Vector2(1105,658),Vector2(270,30))
 		slider.value_changed.connect(set_body_scale)
-		text_label("Slender",Vector2(1102,704),Vector2(120,25),12,P.MUTED)
-		var l=text_label("Fuller",Vector2(1290,704),Vector2(85,25),12,P.MUTED);l.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT
+		text_label("Slender",Vector2(1102,688),Vector2(120,25),12,P.MUTED)
+		var l=text_label("Fuller",Vector2(1290,688),Vector2(85,25),12,P.MUTED);l.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT
 	elif creator_tab=="Face":
 		text_label("A face of your own",Vector2(1100,207),Vector2(287,37),25,P.INK,true)
 		paragraph("Small changes give each Lifelet a familiar face. Turn your Lifelet to see their profile.",Vector2(1102,264),Vector2(274,72),15)
@@ -418,20 +420,26 @@ func draw_creator() -> void:
 			for key:String in features:profile[key]=0.0
 			refresh_preview())
 	else:
-		small_caps("Everyday collection",Vector2(1102,204))
-		text_label("Easy, everyday style",Vector2(1100,236),Vector2(290,36),24,P.INK,true)
-		paragraph("Soft tailoring, natural textures, and colors that feel like you.",Vector2(1102,282),Vector2(269,55),15)
-		small_caps("Outfit",Vector2(1102,345))
-		for i in range(3):
-			button(["Casual","Jacket","Cardigan"][i],Vector2(1100+i*97,376),Vector2(89,40),func():profile.outfit=i;refresh_preview(),int(profile.get("outfit",0))==i)
-		small_caps("Top",Vector2(1102,438))
-		swatches(["c97c66","417a71","efeadb","7195b3","bd9b68","3d4145"],"top_color",Vector2(1100,469),40,7)
-		small_caps("Trousers",Vector2(1102,532))
-		swatches(["eadfc9","3e5955","51697c","493e37","b88a72","292f32"],"bottom_color",Vector2(1100,564),40,7)
-		paragraph("Choose a complete palette",Vector2(1102,626),Vector2(275,25),13)
-		button("Coastal",Vector2(1100,665),Vector2(88,41),func():profile.top_color="efeadb";profile.bottom_color="51697c";refresh_preview())
-		button("Earthy",Vector2(1197,665),Vector2(88,41),func():profile.top_color="c97c66";profile.bottom_color="eadfc9";refresh_preview())
-		button("Sage",Vector2(1294,665),Vector2(88,41),func():profile.top_color="417a71";profile.bottom_color="493e37";refresh_preview())
+		small_caps("Everyday collection",Vector2(1102,200))
+		text_label("Easy, everyday style",Vector2(1100,230),Vector2(290,36),24,P.INK,true)
+		paragraph("Soft tailoring, natural textures, and colors that feel like you.",Vector2(1102,272),Vector2(269,50),15)
+		small_caps("Top",Vector2(1102,326))
+		var outfit_names:Array=["Casual","Jacket","Cardigan","Tee","Hoodie"]
+		var outfit_tips:Array=["Short-sleeve shirt with a light collar and placket","Cropped bomber with a stand collar and zip","Open knit cardigan over a cream tee","Plain crew-neck tee","Soft hoodie with a kangaroo pocket"]
+		for i in range(outfit_names.size()):
+			var b=button(outfit_names[i],Vector2(1100+(i%3)*97,354+(i/3)*42),Vector2(89,36),func():profile.outfit=i;refresh_preview(),int(profile.get("outfit",0))==i)
+			b.tooltip_text=outfit_tips[i]
+		small_caps("Bottoms",Vector2(1102,448))
+		for i in range(2):
+			button(["Trousers","Shorts"][i],Vector2(1100+i*146,476),Vector2(137,36),func():profile.bottom=i;refresh_preview(),int(profile.get("bottom",0))==i)
+		small_caps("Top color",Vector2(1102,524))
+		swatches(["c97c66","417a71","efeadb","7195b3","bd9b68","3d4145"],"top_color",Vector2(1100,552),36,7)
+		small_caps("Bottom color",Vector2(1102,600))
+		swatches(["eadfc9","3e5955","51697c","493e37","b88a72","292f32"],"bottom_color",Vector2(1100,628),36,7)
+		small_caps("Complete palette",Vector2(1102,676))
+		button("Coastal",Vector2(1100,702),Vector2(88,34),func():profile.top_color="efeadb";profile.bottom_color="51697c";refresh_preview())
+		button("Earthy",Vector2(1197,702),Vector2(88,34),func():profile.top_color="c97c66";profile.bottom_color="eadfc9";refresh_preview())
+		button("Sage",Vector2(1294,702),Vector2(88,34),func():profile.top_color="417a71";profile.bottom_color="493e37";refresh_preview())
 	icon_button("rotate_left","Turn Lifelet left",Vector2(626,726),Vector2(48,42),func():creator_spin-=.5;preview.rotation.y=creator_spin).name="CreatorTurnLeft"
 	icon_button("rotate_right","Turn Lifelet right",Vector2(769,726),Vector2(48,42),func():creator_spin+=.5;preview.rotation.y=creator_spin).name="CreatorTurnRight"
 	text_label("DRAG TO ROTATE",Vector2(657,782),Vector2(160,24),11,P.MUTED)
@@ -486,7 +494,7 @@ func set_body_scale(value:float) -> void:
 
 func randomize_person() -> void:
 	profile.name=["Mara Vale","Alex Rowan","Ellis Park","Jules Rivera","Noa Ellis","Robin Ash"][randi()%6]
-	profile.frame=randi()%2;profile.hair=randi()%3;profile.outfit=randi()%3
+	profile.frame=randi()%2;profile.hair=randi()%6;profile.outfit=randi()%5;profile.bottom=randi()%2
 	for feature:String in ["face_round","jaw_strong","nose_wide","eye_spacing"]:profile[feature]=randf_range(0,.75)
 	profile.skin_color=["f2d1b1","e7b98f","d9a17d","b77e58","925c40","613e30"][randi()%6]
 	profile.hair_color=["2a2420","54382a","89563a","c2a16b","dfccb0"][randi()%5]
@@ -858,16 +866,16 @@ func draw_household_bar() -> void:
 			need_bars[key]=b
 			need_values[key]=text_label("80",p+Vector2(181,0),Vector2(24,22),10,P.MUTED)
 	elif panel_tab=="Skills":
-		for i in range(mini(6,sim.skills.size())):
+		for i in range(mini(8,sim.skills.size())):
 			var key:String=sim.skills.keys()[i]
-			var p=Vector2(989+(i%2)*208,781+(i/2)*28)
+			var p=Vector2(989+(i%2)*208,779+(i/2)*25)
 			text_label(key.capitalize(),p,Vector2(87,22),12)
 			var progress_text:Label=text_label("0%",p+Vector2(89,0),Vector2(44,22),10,P.MUTED)
 			progress_text.mouse_filter=Control.MOUSE_FILTER_PASS
 			skill_progress_labels[key]=progress_text
 			skill_labels[key]=text_label("Level %d" % sim.skills[key].level,p+Vector2(137,0),Vector2(62,22),12,P.TEAL)
 			var progress_bar:=ProgressBar.new();progress_bar.show_percentage=false
-			rect(progress_bar,p+Vector2(0,22),Vector2(196,3))
+			rect(progress_bar,p+Vector2(0,20),Vector2(196,3))
 			skill_bars[key]=progress_bar
 	elif panel_tab=="People":
 		var ids:Array=sim.relationship_order()
@@ -1022,7 +1030,9 @@ func model_thumbnail(kind:String,p:Vector2,s:Vector2,portrait:bool=false,parent:
 	if portrait:
 		model=LifeActor.new();root.add_child(model);model.configure(sim.character if appearance.is_empty() else appearance)
 	else:
-		model=load("res://assets/models/%s.glb" % kind).instantiate();root.add_child(model)
+		var model_path:String="res://assets/models/%s.glb" % kind
+		if not ResourceLoader.exists(model_path):return
+		model=load(model_path).instantiate();root.add_child(model)
 	var cam=Camera3D.new();root.add_child(cam)
 	cam.projection=Camera3D.PROJECTION_ORTHOGONAL
 	if portrait:
@@ -2323,6 +2333,7 @@ func _process(delta:float) -> void:
 				if bool(shared.get("ready",false)) and str(shared.get("role",""))=="learner":action_id="homework_wait"
 			meal_flow.present_actor(bound_member_id)
 			_update_activity_facing(delta,action,action_id)
+			if int(player.profile.get("outfit",0))!=int(sim.character.get("outfit",0)):player.set_outfit(int(sim.character.get("outfit",0)))
 			player.animate(delta,float(sim.speed),moving,action_id)
 			_store_motion()
 		meal_flow.sync_world(household.speed>0)
@@ -2801,6 +2812,12 @@ func _resolve_activity_target(action:Dictionary) -> void:
 	if action.id=="watch" and not item.is_empty() and item.kind=="tv":wanted="sofa"
 	if wanted.is_empty():return
 	var best:Dictionary=world.closest_item(wanted,item.node.position)
+	if wanted=="sofa":
+		# Any lounge seat works for television: the nearest sofa, loveseat or armchair.
+		for alternative:String in ["loveseat","armchair"]:
+			var candidate:Dictionary=world.closest_item(alternative,item.node.position)
+			if candidate.is_empty():continue
+			if best.is_empty() or candidate.node.position.distance_to(item.node.position)<best.node.position.distance_to(item.node.position):best=candidate
 	if not best.is_empty():
 		action.target_id=best.id
 		action.target_position=world.approach(best)

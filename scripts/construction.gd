@@ -501,7 +501,7 @@ func _make_legacy_proposal(p: Vector3) -> Dictionary:
 		var r=wall_rect(e)
 		for item in world.items:
 			if world.item_level(item)!=build_level:continue
-			if item.kind in ["rug","painting"]:continue
+			if LifeCatalog.passable(str(item.kind)):continue
 			var s:Vector2=item.size
 			if int(roundf(item.node.rotation_degrees.y/90))%2:s=Vector2(s.y,s.x)
 			if r.intersects(Rect2(Vector2(item.node.position.x,item.node.position.z)-s/2,s)):is_valid=false
