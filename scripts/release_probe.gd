@@ -3,6 +3,21 @@ extends RefCounted
 var app:Node
 var failures:int=0
 var checks:int=0
+var native_focus_guard:LineEdit
+func disable_node_input(node:Node) -> void:
+	node.set_process_input(false);node.set_process_unhandled_input(false)
+	node.set_process_unhandled_key_input(false);node.set_process_shortcut_input(false)
+func exclude_native_input() -> void:
+	if not is_instance_valid(app):return
+	app.get_viewport().gui_disable_input=true
+	app.set_process(false);app.world.set_process(false)
+	for node:Node in [app]+app.find_children("*","Node",true,false):disable_node_input(node)
+	if is_instance_valid(native_focus_guard):native_focus_guard.grab_focus()
+func native_input_excluded() -> bool:
+	if not app.get_viewport().gui_disable_input or app.get_viewport().gui_get_focus_owner()!=native_focus_guard:return false
+	for node:Node in [app]+app.find_children("*","Node",true,false):
+		if node.is_processing_input() or node.is_processing_unhandled_input() or node.is_processing_unhandled_key_input() or node.is_processing_shortcut_input():return false
+	return not app.is_processing() and not app.world.is_processing()
 func check(value:bool,message:String) -> void:
 	checks+=1
 	if not value:failures+=1;push_error("RELEASE_CHECK "+message)
@@ -12,6 +27,8 @@ func press(value:String) -> void:
 	check(false,"Missing public control "+value)
 func capture(name:String) -> void:
 	for i in range(3):await app.get_tree().process_frame
+	exclude_native_input()
+	check(native_input_excluded(),"Capture "+name+" excludes native input and direct camera polling.")
 	# Private verification windows may have automatic redraw suspended when hidden.
 	RenderingServer.force_draw(false,0.0)
 	var directory:String="user://release_check"
@@ -42,6 +59,11 @@ func run(owner_app:Node) -> void:
 		printerr("Release check requires an isolated justlife-release-check-* XDG_DATA_HOME and JUSTLIFE_DATA_DIR set to its save_data folder.")
 		app.get_tree().quit(2);return
 	app.get_viewport().gui_disable_input=true
+	app.get_tree().node_added.connect(disable_node_input)
+	app.get_tree().process_frame.connect(exclude_native_input)
+	native_focus_guard=LineEdit.new();native_focus_guard.position=Vector2(-9000,-9000)
+	app.get_tree().root.add_child(native_focus_guard)
+	exclude_native_input()
 	app.set_process(false);app.set_sound(false)
 	check(app.mode=="menu","Packaged main menu starts.")
 	check(is_instance_valid(app.ambience_player.stream) and is_instance_valid(app.audio_player.stream),"Imported ambience and click audio load from the PCK.")
@@ -143,6 +165,9 @@ func run(owner_app:Node) -> void:
 	await capture("06_library")
 	var tree:SceneTree=app.get_tree()
 	print("JUSTLIFE_RELEASE_CHECK ",checks," checks, ",failures," failures")
+	tree.process_frame.disconnect(exclude_native_input)
+	tree.node_added.disconnect(disable_node_input)
+	native_focus_guard.queue_free()
 	# Schedule through SceneTree: freeing app also releases this RefCounted probe.
 	app.queue_free()
 	tree.create_timer(.2).timeout.connect(tree.quit.bind(0 if failures==0 else 1), CONNECT_ONE_SHOT)

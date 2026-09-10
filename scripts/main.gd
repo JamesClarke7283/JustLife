@@ -111,6 +111,7 @@ func _ready() -> void:
 		printerr("Release check requires isolated XDG_DATA_HOME and JUSTLIFE_DATA_DIR before game startup.")
 		get_tree().quit(2)
 		return
+	get_tree().set_auto_accept_quit(false)
 	DisplayServer.window_set_title("JustLife — make room for your story")
 	world=LifeWorld.new()
 	world.name="World"
@@ -2269,6 +2270,13 @@ func _sync_actor_sound() -> void:
 func play_click() -> void:
 	if sound_enabled and audio_player and audio_player.stream:audio_player.play()
 
+func quit_game() -> void:
+	if is_queued_for_deletion():return
+	var tree:SceneTree=get_tree()
+	queue_free()
+	# Let the audio server release stopped playbacks before engine teardown.
+	tree.create_timer(.2).timeout.connect(tree.quit,CONNECT_ONE_SHOT)
+
 func _exit_tree() -> void:
 	for audio:AudioStreamPlayer in [audio_player,ambience_player]:
 		if is_instance_valid(audio):
@@ -2584,6 +2592,7 @@ func _clear_pointer_drags() -> void:
 
 func _notification(what:int) -> void:
 	if what==NOTIFICATION_WM_WINDOW_FOCUS_OUT:_clear_pointer_drags()
+	elif what==NOTIFICATION_WM_CLOSE_REQUEST:quit_game()
 
 func _camera_input_allowed() -> bool:
 	var focus=get_viewport().gui_get_focus_owner()
