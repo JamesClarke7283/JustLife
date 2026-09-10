@@ -1131,20 +1131,27 @@ func draw_build_catalog() -> void:
 		button("Floor",Vector2(773,725),Vector2(146,46),func():begin_construction("floor"))
 		button("Stairs",Vector2(929,725),Vector2(146,46),func():begin_construction("stairs"))
 		button("Remove floor / stairs",Vector2(1085,725),Vector2(294,46),func():begin_construction("remove_structure"))
-		button("Warm oak",Vector2(305,784),Vector2(150,47),func():change_floor("cfa97e"))
-		button("Pale stone",Vector2(465,784),Vector2(150,47),func():change_floor("dcd6c6"))
-		button("Walnut",Vector2(625,784),Vector2(150,47),func():change_floor("896953"))
+		if world.construction.tool=="paint":
+			# While the paint tool is active the floor finishes give way to the wall swatches.
+			for i in range(8):
+				var colour:String=["eae7d7","8faf9f","e6d8c5","c8d7e0","d9b7a3","7d8a99","efd9a0","a3ad7a"][i]
+				var swatch=button("",Vector2(305+i*58,791),Vector2(50,32),func():world.construction.paint_material=colour;draw_live())
+				swatch.tooltip_text=["Cream","Sage","Blush","Sky","Clay","Dusk","Butter","Moss"][i]+" wall paint"
+				swatch.add_theme_stylebox_override("normal",P.panel(Color(colour),16,P.TEAL if world.construction.paint_material==colour else Color("ffffff"),3))
+				swatch.add_theme_stylebox_override("hover",P.panel(Color(colour).lightened(.1),16,P.TEAL,3))
+				if world.construction.paint_material==colour:swatch.text="•";swatch.add_theme_color_override("font_color",Color.WHITE)
+		else:
+			button("Warm oak",Vector2(305,784),Vector2(150,47),func():change_floor("cfa97e"))
+			button("Pale stone",Vector2(465,784),Vector2(150,47),func():change_floor("dcd6c6"))
+			button("Walnut",Vector2(625,784),Vector2(150,47),func():change_floor("896953"))
 		button("Wall view",Vector2(785,784),Vector2(130,47),func():world.set_cutaway(not world.cutaway))
 		button("Remove wall",Vector2(925,784),Vector2(140,47),func():begin_construction("erase"))
-		var paint=button("Paint wall",Vector2(1075,784),Vector2(120,47),func():begin_construction("paint"),world.construction.tool=="paint")
-		paint.tooltip_text="Choose a colour, then click a wall to repaint that segment."
-		for i in range(5):
-			var colour:String=["eae7d7","8faf9f","e6d8c5","c8d7e0","d9b7a3"][i]
-			var swatch=button("",Vector2(1205+i*36,791),Vector2(32,32),func():world.construction.paint_material=colour;draw_live())
-			swatch.tooltip_text=["Cream","Sage","Blush","Sky","Clay"][i]+" wall paint"
-			swatch.add_theme_stylebox_override("normal",P.panel(Color(colour),16,P.TEAL if world.construction.paint_material==colour else Color("ffffff"),3))
-			swatch.add_theme_stylebox_override("hover",P.panel(Color(colour).lightened(.1),16,P.TEAL,3))
-			if world.construction.paint_material==colour:swatch.text="•";swatch.add_theme_color_override("font_color",Color.WHITE)
+		var paint=button("Paint wall",Vector2(1075,784),Vector2(150,47),func():begin_construction("paint"),world.construction.tool=="paint")
+		paint.tooltip_text="Pick the tool, choose a swatch, then click a wall to repaint that segment."
+		var whole=button("Whole room",Vector2(1235,784),Vector2(144,47),func():
+			world.construction.paint_scope="wall" if world.construction.paint_scope=="room" else "room"
+			draw_live(),world.construction.paint_scope=="room")
+		whole.tooltip_text="Paint every wall joined to the clicked one, corner to corner, in one go."
 		button("New roof",Vector2(305,841),Vector2(146,31),func():begin_construction("roof"))
 		button("Edit roof",Vector2(461,841),Vector2(146,31),func():begin_construction("roof_edit"))
 		button("Remove roof",Vector2(617,841),Vector2(146,31),func():begin_construction("roof_remove"))
@@ -2862,6 +2869,8 @@ func _resolve_activity_target(action:Dictionary) -> void:
 		for seat:Dictionary in seats:
 			var trial:Dictionary=action.duplicate(true)
 			trial.target_id=seat.id;trial.target_position=world.approach(seat)
+			# A two-seater is tested per seat, so a full loveseat does not look free.
+			if str(seat.kind) in world.TWO_SEATERS:_assign_seat_slot(trial,seat)
 			if _activity_available_for_member(trial,bound_member_id):free_seat=seat;break
 		if not free_seat.is_empty():best=free_seat
 		elif not seats.is_empty():best=seats.front()

@@ -65,7 +65,15 @@ func _speaker(id:String) -> Dictionary:
   if str(action.get("target_id",""))==id and str(action.get("id","")) in LifeSim.SOCIAL_ACTIONS and str(action.get("phase","")) in ["approach","active"]:return member
  return {}
 
-func publish_targets() -> void:
+var _publish_msec:int=-1000
+var _publish_generation:int=-1
+func publish_targets(force:bool=false) -> void:
+ # Autonomy reads targets at most ten times a second; navigation changes and
+ # explicit callers publish at once. Positions of moving people refresh with it.
+ var generation:int=app.world.lot_navigation.generation if is_instance_valid(app.world.lot_navigation) else -1
+ var now:int=Time.get_ticks_msec()
+ if not force and generation==_publish_generation and now-_publish_msec<100:return
+ _publish_msec=now;_publish_generation=generation
  var targets:Array=app.world.simulation_targets()
  for member:Dictionary in app.household.members:member.sim.register_targets(targets.filter(func(t:Dictionary):return str(t.id)!=str(member.id) and home_visit.social_allowed(str(t.id),member.sim.get_current_action())))
 
@@ -141,7 +149,7 @@ func tick(delta:float) -> void:
      if actor.position.distance_to(destination)<.35 or route.size()<2:state.waypoint=(int(state.waypoint)+1)%destinations.size();state.wait=8.0
   actor.animate(delta,speed,moving,talk)
   state.position=[actor.position.x,actor.position.y,actor.position.z];state.rotation=actor.rotation.y
- publish_targets()
+ publish_targets(true)
 
 func snapshot() -> Dictionary:
  var captured:Dictionary=locations.duplicate(true)

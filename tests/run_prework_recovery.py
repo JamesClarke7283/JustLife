@@ -76,12 +76,12 @@ def main():
                  for label, base, pins in [('source', source, source_pins), ('copy', project, copy_pins)]}
         summaries = re.findall(r'^PREWORK_RECOVERY (\d+) checks, (\d+) failures$', output, re.M)
         # The unchanged test prints one final counter and exits; it writes no JSON report.
-        # Exact final count guards against a partial run being accepted as this 40-check suite.
-        report_ok = phase == 'import' or summaries == [('40', '0')]
+        # Exact final count guards against a partial run being accepted as this 58-check suite.
+        report_ok = phase == 'import' or summaries == [('58', '0')]
         ok = code == 0 and not error and not diagnostics and not any(drift.values()) and report_ok
         record = {'phase': phase, 'command': command, 'exit_code': code, 'error': error,
                   'seconds': time.monotonic() - started, 'diagnostics': diagnostics, 'drift': drift,
-                  'summaries': summaries, 'expected_checks': 40 if phase == 'checks' else None,
+                  'summaries': summaries, 'expected_checks': 58 if phase == 'checks' else None,
                   'terminal_summary_matches': report_ok, 'log_sha256': digest(log), 'ok': ok}
         receipt['runs'].append(record)
         receipt['ok'] = all(run['ok'] for run in receipt['runs'])

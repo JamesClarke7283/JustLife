@@ -177,6 +177,7 @@ func _ensure_nodes() -> void:
 
 func configure(new_profile: Dictionary) -> void:
 	_ensure_nodes()
+	if has_meta("layer_cache"): remove_meta("layer_cache")  # a new model needs its view layers and pick bodies assigned again
 	profile = new_profile.duplicate(true)
 	if _model != null:
 		visual.remove_child(_model)

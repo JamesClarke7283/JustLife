@@ -339,14 +339,29 @@ func set_view_level(level:int) -> bool:
 	return true
 
 func refresh_actor_layers() -> void:
+	# Runs every frame for every Lifelet, so only touch the scene when a body's
+	# floor or presence changes, and keep each actor's pick bodies cached rather
+	# than searching hundreds of model nodes per frame.
 	for id:String in actors:
 		var actor:Node3D=actors[id]
 		if not is_instance_valid(actor):continue
 		var level:int=point_level(actor.position)
+		var away:bool=bool(actor.get_meta("away",false))
+		var cache:Dictionary=actor.get_meta("layer_cache",{})
+		var bodies:Array=cache.get("bodies",[])
+		var bodies_valid:bool=not bodies.is_empty()
+		for body in bodies:
+			if not is_instance_valid(body):bodies_valid=false;break
+		if not bodies_valid:
+			bodies=actor.find_children("*","CollisionObject3D",true,false)
+			cache={"bodies":bodies}
+		if int(cache.get("level",-99))==level and bool(cache.get("away",not away))==away and bodies_valid and bool(cache.get("visuals_assigned",false)):continue
 		var visual_mask:int=VIEW_ACTOR_GROUND|VIEW_ACTOR_UPPER if level<0 else (VIEW_ACTOR_GROUND if level==0 else VIEW_ACTOR_UPPER)
 		_assign_layers(actor,visual_mask)
-		for body:Node in actor.find_children("*","CollisionObject3D",true,false):
-			body.collision_layer=0 if bool(actor.get_meta("away",false)) else (PICK_GROUND|PICK_UPPER if level<0 else (PICK_GROUND if level==0 else PICK_UPPER))
+		for body:Node in bodies:
+			body.collision_layer=0 if away else (PICK_GROUND|PICK_UPPER if level<0 else (PICK_GROUND if level==0 else PICK_UPPER))
+		cache["level"]=level;cache["away"]=away;cache["visuals_assigned"]=true
+		actor.set_meta("layer_cache",cache)
 
 func wall(p: Vector3, dimensions: Vector3, color: String, adjustable: bool) -> void:
 	construction.add_wall({"x":p.x,"z":p.z,"w":dimensions.x,"d":dimensions.z,"height":2.6,"color":color,"cut":adjustable})

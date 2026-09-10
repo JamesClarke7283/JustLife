@@ -77,7 +77,7 @@ func invite(id:String)->bool:
 	actor.position=start;app.world.set_actor_away(id,false,false)
 	var resident:Dictionary=app.residents.locations.home[id]
 	resident.phase="walking";resident.position=_packed(start)
-	app.residents.publish_targets()
+	app.residents.publish_targets(true)
 	app.show_notice(str(LifeResidents.PEOPLE[id].name)+" is coming over. Welcome them when they arrive.")
 	return true
 
@@ -193,7 +193,7 @@ func goodbye(message:String="Your guest is heading home after the current conver
 	state.phase="leaving";state.phase_at=event_time if event_time>=0 else _now();state.route={"points":PackedVector3Array(),"point":0};state.greeting={};_welcome_action={}
 	meal.cancel("Your guest is heading home.")
 	app._cancel_guest_conversations(str(state.guest),_departure_action)
-	app.residents.publish_targets();app.show_notice(message)
+	app.residents.publish_targets(true);app.show_notice(message)
 
 func _departure_held()->bool:
 	if state.departure.is_empty() or _departure_action.is_empty():return false
@@ -261,7 +261,7 @@ func _finish()->void:
 	var resident:Dictionary=app.residents.locations.home[id]
 	resident.phase="home";resident.position=_packed(actor.position);resident.rotation=actor.rotation.y;resident.wait=48.0 if id=="maya" else 72.0
 	app.world.set_actor_away(id,true,true);state={};_welcome_action={};_departure_action={}
-	app.residents.publish_targets();app.show_notice(str(LifeResidents.PEOPLE[id].name)+" has headed home.")
+	app.residents.publish_targets(true);app.show_notice(str(LifeResidents.PEOPLE[id].name)+" has headed home.")
 
 func snapshot()->Dictionary:
 	var saved:Dictionary=state.duplicate(true)

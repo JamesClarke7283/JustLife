@@ -55,14 +55,20 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 			wall.merge({"id":Building._new_id(after,"walls"),"level":int(level),"height":2.6,"cut":true,"material":"eae7d7"});after.walls.append(wall)
 		cost=int(length*55+floor_cost) # Preserve legacy whole-quote currency truncation.
 	elif tool=="paint":
-		# Repaint one wall segment; the colour is a wall material like the floor finishes.
+		# Repaint one wall segment, or every wall joined to it corner to corner;
+		# the colour is a wall material like the floor finishes.
 		if not Building.identifier(operation.get("id")):return _error("Choose an existing wall on this level.")
 		if not Building._material(operation.get("material")):return _error("Choose a valid wall colour.")
+		var scope:String=str(operation.get("scope","wall"))
+		if scope not in ["wall","room"]:return _error("Choose whether to paint one wall or the whole room.")
 		var wall:Dictionary=Building.find(after,str(operation.id))
 		if wall.is_empty() or Building._group_of(after,str(operation.id))!="walls" or int(wall.level)!=int(level):return _error("The selected wall has changed.")
-		if str(wall.material)==str(operation.material):return _error("That wall already has this colour.")
-		wall.material=str(operation.material)
-		cost=int(maxf(float(wall.w),float(wall.d))*6)
+		var changed:int=0
+		for target:Dictionary in (_joined_walls(after,wall,int(level)) if scope=="room" else [wall]):
+			if str(target.material)==str(operation.material):continue
+			target.material=str(operation.material)
+			cost+=int(maxf(float(target.w),float(target.d))*6);changed+=1
+		if changed==0:return _error("That wall already has this colour." if scope=="wall" else "Those walls already have this colour.")
 	else:
 		if not Building.identifier(operation.get("id")):return _error("Choose an existing wall on this level.")
 		var wall:Dictionary=Building.find(after,str(operation.id))
@@ -90,3 +96,26 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 	if int(funds)-cost>1000000000:return _error("This refund exceeds the wallet limit.")
 	after.revision=int(current.revision)+1
 	return {"ok":true,"operation":operation.duplicate(true),"before":Building.fingerprint(current),"after":after,"cost":cost,"funds_before":int(funds),"funds_after":int(funds)-cost}
+
+static func _wall_ends(wall:Dictionary) -> Array:
+	var horizontal:bool=float(wall.w)>=float(wall.d)
+	var half:float=maxf(float(wall.w),float(wall.d))*.5
+	if horizontal:return [Vector2(float(wall.x)-half,float(wall.z)),Vector2(float(wall.x)+half,float(wall.z))]
+	return [Vector2(float(wall.x),float(wall.z)-half),Vector2(float(wall.x),float(wall.z)+half)]
+
+static func _joined_walls(state:Dictionary,start:Dictionary,level:int) -> Array:
+	# Walls joined end to end form one room for whole-room paint: a drawn room
+	# is its four walls, a doorway keeps both portions, and a partition that
+	# meets another wall mid-segment stays a separate choice.
+	var room:Array=[start]
+	var frontier:Array=[start]
+	while not frontier.is_empty():
+		var wall:Dictionary=frontier.pop_back()
+		for other:Dictionary in state.walls:
+			if int(other.level)!=level or room.has(other):continue
+			var joined:bool=false
+			for a:Vector2 in _wall_ends(wall):
+				for b:Vector2 in _wall_ends(other):
+					if a.distance_to(b)<=.2:joined=true
+			if joined:room.append(other);frontier.append(other)
+	return room

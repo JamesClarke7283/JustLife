@@ -32,7 +32,9 @@ func flow(speed:int)->void:
  app.household.set_speed(speed)
  var minimum:float=gap();var visible:Dictionary={"maya":app.residents.present("maya"),"leo":app.residents.present("leo")}
  var appeared:Dictionary={"maya":0,"leo":0};var left:Dictionary={"maya":0,"leo":0};var swept_ok:bool=true;var speed_ok:bool=true
- for index:int in range(ceili(100.0/(float(speed)*.05))):
+ # Walkers rest 48-72 game minutes at home between passes and normal speed runs one game
+ # minute per real second, so three hundred game minutes are needed to see two cycles each.
+ for index:int in range(ceili(300.0/(float(speed)*.05))):
   var before:Dictionary={}
   for id:String in ["maya","leo"]:before[id]=app.world.actors[id].position
   step();minimum=minf(minimum,gap())

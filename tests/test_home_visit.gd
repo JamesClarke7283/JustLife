@@ -16,7 +16,9 @@ func check(ok:bool,message:String)->void:
 func _step(count:int=1,delta:float=.05)->void:
 	for index:int in count:app._process(delta)
 func _phase()->String:return str(app.residents.home_visit.state.get("phase","absent"))
-func _until(phase:String,limit:int=600)->bool:
+## Budgets are .05 s steps at normal speed, which advances one game minute per real
+## second, so a 120-minute welcome needs 2,400 steps and a 360-minute stay 7,200.
+func _until(phase:String,limit:int=3000)->bool:
 	for index:int in limit:
 		if _phase()==phase:return true
 		_step()

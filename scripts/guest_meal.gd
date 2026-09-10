@@ -30,7 +30,7 @@ func offer(source:String)->bool:
 	var token:int=int(visit.state.next_meal);visit.state.next_meal=token+1
 	visit.state.meal={"token":token,"source":source,"plate":"","phase":"pickup","target":target,"seat":"","standing":false,"last_at":visit._now(),"retry_at":0.0,"reason":""}
 	visit.state.route={"points":route,"point":0}
-	app.residents.publish_targets()
+	app.residents.publish_targets(true)
 	return true
 func reconcile_source()->void:
 	if not active() or str(state.phase)!="pickup":return

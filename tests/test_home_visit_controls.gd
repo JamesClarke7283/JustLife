@@ -54,7 +54,7 @@ func _run()->void:
 		if app.sim.action_queue.is_empty():break
 		_step()
 	check(_phase()=="waiting" and app.residents.home_visit.state.admitted_at==-1,"Untagged friendly completion cannot admit a home guest")
-	check(_until("absent",1000),"Unwelcomed guest times out and physically leaves")
+	check(_until("absent",4000),"Unwelcomed guest times out and physically leaves")
 	await _load_phase("waiting")
 	var before:Dictionary=_facts()
 	check(not app.residents.home_visit.invite("leo") and _facts()==before,"A second simultaneous invitation leaves the live state unchanged")
@@ -85,7 +85,7 @@ func _run()->void:
 	_reject(raw,"Inconsistent waiting phase clock")
 	await _load_phase("inside")
 	var created:float=app.residents.home_visit.state.phase_at
-	check(_until("leaving",1400),"An admitted guest begins departure after a bounded stay")
+	check(_until("leaving",9000),"An admitted guest begins departure after a bounded stay")
 	check(app.residents.home_visit._now()>=created+LifeHomeVisit.STAY_MINUTES,"The stay deadline is measured from actual indoor arrival")
 	check(_until("absent"),"Stay expiry walks to the sidewalk before absence")
 	var out:=FileAccess.open("user://home_visit_departure_slot.json",FileAccess.WRITE)

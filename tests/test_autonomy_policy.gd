@@ -463,7 +463,10 @@ func _early_preparation() -> void:
 func _moderate_departure_needs() -> void:
 	for stage:String in ["teen","adult"]:
 		for need:String in ["hygiene","fun","social"]:
-			var sim:LifeSim=setup(stage,480.0 if stage=="teen" else 540.0)
+			# Moderate boredom takes a fitting break while arrival can still be on
+			# time; the clock here is past the last fitting pastime, so all three
+			# needs yield to the open duty.
+			var sim:LifeSim=setup(stage,520.0 if stage=="teen" else 570.0)
 			var duty:String="school_day" if stage=="teen" else "career_day"
 			sim.needs[need]=17.0
 			check(str(sim._autonomous_choice().get("id",""))==duty,"Moderate "+need+" yields to physically safe "+duty+".")

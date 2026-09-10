@@ -26,6 +26,7 @@ var roofs_visible:bool=false
 var roof_pitch:float=.5
 var roof_material:String="57736a"
 var paint_material:String="8faf9f"
+var paint_scope:String="wall"  # "wall" repaints one segment; "room" repaints every wall joined to it corner to corner
 var roof_edit_id:String=""
 var build_level:int=0
 var last_error:String=""
@@ -340,7 +341,7 @@ func make_proposal(p: Vector3) -> Dictionary:
 		elif tool in ["door","erase","paint"]:
 			if not data.has("remove_id"):return {"valid":false,"error":"Point at a wall on this level."}
 			operation["id"]=str(data.remove_id)
-			if tool=="paint":operation["material"]=paint_material
+			if tool=="paint":operation["material"]=paint_material;operation["scope"]=paint_scope
 			if tool=="door":
 				var wall:Dictionary={}
 				for record:Dictionary in records:
@@ -427,6 +428,9 @@ func _make_level_proposal(p:Vector3)->Dictionary:
 	return view
 
 func _convert_proposal(data:Dictionary) -> Dictionary:
+	# The unquoted legacy path never repaints: a paint proposal carries the wall as
+	# remove_id for the quote, so converting it here would knock the wall down.
+	if str(data.get("op",""))=="paint":return {"ok":false,"error":"Painting a wall needs a build quote."}
 	var state:Dictionary=building_state.duplicate(true)
 	if data.has("remove_id"):state.walls=state.walls.filter(func(record:Dictionary)->bool:return str(record.id)!=str(data.remove_id))
 	for wall:Dictionary in data.get("walls",[]):

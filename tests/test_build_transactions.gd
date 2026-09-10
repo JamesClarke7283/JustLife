@@ -112,7 +112,19 @@ func _run()->void:
 	check(not bool(tx.prepare({"op":"structure","tool":"paint","level":0,"id":str(painted_wall.id),"material":paint_colour}).ok),"Repainting a wall with its current colour is refused.")
 	check(not bool(tx.prepare({"op":"structure","tool":"paint","level":0,"id":"wall_missing","material":paint_colour}).ok),"Painting an unknown wall is refused.")
 	check(bool(tx.undo(paint_purchase.receipt).ok) and str(app.world.construction.building_state.walls[0].material)==wall_before,"Paint undo restores the previous wall colour.")
-	check(bool(tx.undo(room_purchase.receipt).ok) and app.sim.funds==original_funds,"Room undo still works after doorway and finish undos, refunding only its own cost.")
+	var room_wall:Dictionary={}
+	for wall:Dictionary in app.world.construction.building_state.walls:
+		if is_equal_approx(float(wall.x),2.0) and is_equal_approx(float(wall.z),-2.0):room_wall=wall
+	var room_colour:String="c8d7e0"
+	var room_paint:Dictionary=tx.prepare({"op":"structure","tool":"paint","level":0,"id":str(room_wall.get("id","")),"material":room_colour,"scope":"room"})
+	var room_paint_purchase:Dictionary=tx.commit(room_paint)
+	var painted_count:int=app.world.construction.building_state.walls.filter(func(wall:Dictionary)->bool:return str(wall.material)==room_colour).size()
+	check(bool(room_paint_purchase.ok) and int(room_paint.get("cost",0))==48 and painted_count==4,"Whole-room paint repaints the four walls joined corner to corner for §%d (%d walls)." % [int(room_paint.get("cost",0)),painted_count])
+	check(str(app.world.construction.building_state.walls[0].material)==wall_before,"Whole-room paint leaves walls outside that room alone.")
+	check(not bool(tx.prepare({"op":"structure","tool":"paint","level":0,"id":str(room_wall.get("id","")),"material":room_colour,"scope":"room"}).ok),"Repainting a room in its current colour is refused.")
+	check(not bool(tx.prepare({"op":"structure","tool":"paint","level":0,"id":str(room_wall.get("id","")),"material":"8faf9f","scope":"house"}).ok),"An unknown paint scope is refused.")
+	check(bool(tx.undo(room_paint_purchase.receipt).ok) and app.world.construction.building_state.walls.filter(func(wall:Dictionary)->bool:return str(wall.material)==room_colour).is_empty(),"Whole-room paint undo restores all four walls in one step.")
+	check(bool(tx.undo(room_purchase.receipt).ok) and app.sim.funds==original_funds,"Room undo still works after doorway, finish and room-paint undos, refunding only its own cost.")
 	check(app.sim.action_queue==queue and app.sim.needs==needs and app.sim.minutes==minutes,"Wall, room, door and finish commits preserve paid current action, later instruction and time.")
 	var upper_state:Dictionary=after_floor.duplicate(true)
 	var unsupported:Dictionary=LifeBuildingEdits.propose(upper_state,{"op":"structure","tool":"wall","level":1,"ax":-4.0,"az":-4.0,"bx":-4.0,"bz":4.0},10000)

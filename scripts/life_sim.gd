@@ -73,6 +73,9 @@ const STORY_KINDS: Array[String] = ["neighbor_invitation", "career_opportunity",
 const SOCIAL_ACTIONS: Array[String] = ["friendly", "joke", "deep_talk", "flirt", "argue", "ask_partner", "commit", "break_up"]
 const AGE_GATED_ACTIONS: Array[String] = ["jog", "play_toys"]
 const LEISURE_ACTIONS: Array[String] = ["paint", "read", "watch", "relax", "play_piano", "play_chess", "dance", "play_games", "practice_speech", "stretch", "warm_up", "jog", "play_toys"]
+const PRE_DUTY_LEISURE: Array[String] = ["relax", "read", "watch", "stretch", "warm_up", "paint"]  # brief pastimes before a school or work day; the short ones sit ahead of the canvas
+const DEPARTURE_WALK: float = 10.0  # game minutes allowed for the walk from a pastime to the lot exit
+const LEISURE_APPROACH: float = 5.0  # game minutes allowed for the walk to a pastime before it starts
 const WEAR_ACTIONS: Dictionary = {"wear_casual":0, "wear_jacket":1, "wear_cardigan":2, "wear_tee":3, "wear_hoodie":4}
 const RELATIONSHIP_ACTIONS: Array[String] = ["ask_partner", "commit", "break_up"]
 const SOCIAL_STAGES: Array[String] = ["met", "friends", "close_friends", "spark", "partners", "committed", "separated"]
@@ -155,6 +158,7 @@ func new_household(profile: Dictionary) -> void:
 	last_bill_day = 0
 	_idle_minutes = 0.0
 	autonomy_state = {"version":1,"contacts":{},"deferred":{}}
+	_leisure_history.clear()
 	_warned_needs.clear()
 	_create_wants()
 	_emit_changed()
@@ -745,6 +749,7 @@ func _finish_front() -> void:
 	if id in LEISURE_ACTIONS:
 		_leisure_history.erase(id);_leisure_history.push_front(id)
 		while _leisure_history.size()>3:_leisure_history.pop_back()
+		autonomy_state["leisure"]=_leisure_history.duplicate()
 	if id in AGE_GATED_ACTIONS and not bool(get_action_availability(id, str(action.get("target_id",""))).available):
 		# A restored or edited queue cannot grant an activity this age may not do.
 		_emit_notice(str(get_action_availability(id, str(action.get("target_id",""))).reason))
@@ -1371,6 +1376,23 @@ func _autonomy_social_choice(excluded_target_ids:Array=[]) -> Dictionary:
 		if score>best:best=score;selected={"id":id,"target_id":target_id,"position":target.position}
 	return selected
 
+func _duty_deadline(id:String) -> float:
+	# The latest minute a Lifelet can reach the lot exit and still arrive on time.
+	if id=="career_day":return LifeCareerSchedule.ON_TIME
+	if id=="school_day":return 540.0
+	return INF
+
+func _leisure_fits(id:String,duty:String) -> bool:
+	if not _actions.has(id):return false
+	return minutes+LEISURE_APPROACH+float(_actions[id].duration)+DEPARTURE_WALK<=_duty_deadline(duty)
+
+func _brief_leisure_fits(duty:String,excluded_target_ids:Array=[]) -> bool:
+	# A Fun break before a due day away is worth projecting only when some
+	# pastime on offer ends in time for an on-time arrival.
+	for id:String in PRE_DUTY_LEISURE:
+		if _leisure_fits(id,duty) and not _autonomy_target_for(id,excluded_target_ids).is_empty():return true
+	return false
+
 func _autonomy_need_choice(need:String,excluded_target_ids:Array=[],preparing:bool=false) -> Dictionary:
 	if need=="social":return _autonomy_social_choice(excluded_target_ids)
 	var candidates:Array[String]=[]
@@ -1382,11 +1404,12 @@ func _autonomy_need_choice(need:String,excluded_target_ids:Array=[],preparing:bo
 		"hygiene":candidates=["shower","bath"]
 		"bladder":candidates=["toilet"]
 		"fun":
+			var leisure_duty:String=_autonomy_preparation_duty_id()
+			var briefing:bool=leisure_duty in ["school_day","career_day"] and not _autonomy_target_for(leisure_duty,excluded_target_ids).is_empty()
 			if _has_trait("Bookworm"):candidates=["read","play_chess","practice_speech","watch","play_games","relax"]
 			else:
-				var leisure_duty:String=_autonomy_preparation_duty_id()
 				# Keep critical Fun recovery brief while an available school/work day is being prepared.
-				if leisure_duty in ["school_day","career_day"] and not _autonomy_target_for(leisure_duty,excluded_target_ids).is_empty():candidates=["relax","read","watch","paint","stretch","warm_up"]
+				if briefing:candidates=PRE_DUTY_LEISURE.duplicate()
 				elif _has_trait("Active"):candidates=["jog","dance","stretch","paint","read","watch","play_games","relax"]
 				else:candidates=["paint","read","watch","play_piano","play_chess","dance","play_games","practice_speech","stretch","warm_up","relax"]
 				# Outgoing Lifelets rehearse at the mirror early; Creative ones keep the easel first.
@@ -1395,6 +1418,20 @@ func _autonomy_need_choice(need:String,excluded_target_ids:Array=[],preparing:bo
 			if str(character.age_stage)=="child":
 				if candidates[0]=="relax":candidates.append("play_toys")
 				else:candidates.insert(0,"play_toys")
+			if briefing:
+				# Before a day away only pastimes that end in time for the walk to
+				# the lot exit are offered, so the rotation cannot pick a canvas
+				# that makes the Lifelet late. A critically bored Lifelet keeps
+				# the shortest pastimes even when that costs a few late minutes.
+				var fitting:Array[String]=[]
+				var overflow:Array[String]=[]
+				for id:String in candidates:
+					if _leisure_fits(id,leisure_duty):fitting.append(id)
+					else:overflow.append(id)
+				if float(needs.fun)<12.0:
+					overflow.sort_custom(func(a:String,b:String)->bool:return float(_actions[a].duration)<float(_actions[b].duration))
+					fitting.append_array(overflow)
+				candidates=fitting
 	if need!="fun":
 		# Physical needs keep their preference order and fair waiting: a bed is
 		# worth a short queue even when a sofa nap is free. A queue longer than
@@ -1442,7 +1479,9 @@ func _autonomous_choice(excluded_target_ids:Array=[]) -> Dictionary:
 		if not urgent.is_empty():return urgent
 	var preparing:String=_autonomy_preparation_duty_id()
 	if not preparing.is_empty() and not _autonomy_target_for(preparing,excluded_target_ids).is_empty():
-		var preparation:String=_autonomy_projection_need(preparing,60.0,duty.is_empty())
+		# Fun counts while the day is still being prepared, and once it is due for
+		# as long as a brief pastime still ends in time for an on-time arrival.
+		var preparation:String=_autonomy_projection_need(preparing,60.0,duty.is_empty() or _brief_leisure_fits(preparing,excluded_target_ids))
 		if not preparation.is_empty():
 			var recovery:Dictionary=_autonomy_need_choice(preparation,excluded_target_ids,true)
 			if not recovery.is_empty():return recovery
@@ -1492,6 +1531,8 @@ func _reconsider_active_autonomy() -> void:
 	var duty:String=_autonomy_duty_id()
 	var optional:bool=str(current.id) not in ["school","school_day","career_day","homework","job"]
 	var duty_ready:bool=optional and not duty.is_empty() and _autonomy_projection_need(duty).is_empty() and not _autonomy_target_for(duty).is_empty()
+	# A pastime that still ends in time for an on-time arrival is not cut short by the open duty.
+	if duty_ready and duty in ["school_day","career_day"] and str(current.id) in LEISURE_ACTIONS and minutes+float(current.duration)-float(current.elapsed)+DEPARTURE_WALK<=_duty_deadline(duty):duty_ready=false
 	var preparation_ready:bool=false
 	var preparing:String=_autonomy_preparation_duty_id()
 	if optional and not preparing.is_empty() and float(current.elapsed)>=30.0 and not _autonomy_target_for(preparing).is_empty():
@@ -1983,6 +2024,8 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 	speed = int(state.get("speed", 1))
 	autonomy = bool(state.get("autonomy", true))
 	autonomy_state = state.get("autonomy_state",{"version":1,"contacts":{},"deferred":{}}).duplicate(true)
+	_leisure_history.clear()
+	for pastime:Variant in autonomy_state.get("leisure",[]):_leisure_history.append(str(pastime))
 	away_state = state.get("away_state",{}).duplicate(true)
 	if not away_state.is_empty():
 		away_state.exit_position = _as_vector3(away_state.exit_position)
@@ -2042,6 +2085,10 @@ func _validate_autonomy_state(state:Dictionary) -> String:
 		if not _number_in_range(contact.get("at"),0.0,now) or str(contact.get("action","")) not in SOCIAL_ACTIONS or not _autonomy_integer(contact.get("count"),1,1000000):return "Save contains an invalid social contact time or activity."
 	for id:Variant in value.deferred:
 		if str(id) not in ["school","school_day","career_day","homework","job"] or not _number_in_range(value.deferred[id],0.0,now+1440.0):return "Save contains an invalid postponed responsibility."
+	var leisure:Variant=value.get("leisure",[])
+	if not leisure is Array or leisure.size()>3:return "Save contains an invalid pastime history."
+	for id:Variant in leisure:
+		if not id is String or id not in LEISURE_ACTIONS:return "Save contains an unknown recent pastime."
 	return ""
 
 
