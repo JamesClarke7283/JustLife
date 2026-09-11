@@ -197,7 +197,16 @@ func capture_milestone(which:String) -> void:
 	get_viewport().get_texture().get_image().save_png(folder.path_join(which+".png"))
 	if is_instance_valid(player):print("JUSTLIFE_PACKED_AUDIO voice=",player._voice_streams.size()," ambience=",is_instance_valid(ambience_player.stream)," click=",is_instance_valid(audio_player.stream))
 	print("JUSTLIFE_CAPTURE ",which)
-	get_tree().quit()
+	# Free the scene, then quit from a timer signal so the shutdown does not
+	# depend on this freed object's coroutine: the settle lets the audio and
+	# rendering servers release their streams and textures cleanly.
+	if is_instance_valid(audio_player):audio_player.stop()
+	if is_instance_valid(ambience_player):ambience_player.stop()
+	var settle:SceneTreeTimer=get_tree().create_timer(0.25)
+	var tree:=get_tree()
+	settle.timeout.connect(func():tree.quit())
+	queue_free()
+	await settle.timeout
 
 func rect(n:Control,p:Vector2,s:Vector2,parent:Node=ui) -> Control:
 	parent.add_child(n)
@@ -457,7 +466,7 @@ func draw_creator() -> void:
 		button("Sage",Vector2(1294,702),Vector2(88,34),func():profile.top_color="417a71";profile.bottom_color="493e37";refresh_preview())
 	icon_button("rotate_left","Turn Lifelet left",Vector2(626,726),Vector2(48,42),func():creator_spin-=.5;preview.rotation.y=creator_spin).name="CreatorTurnLeft"
 	icon_button("rotate_right","Turn Lifelet right",Vector2(769,726),Vector2(48,42),func():creator_spin+=.5;preview.rotation.y=creator_spin).name="CreatorTurnRight"
-	text_label("DRAG TO ROTATE",Vector2(657,782),Vector2(160,24),11,P.MUTED)
+	text_label("DRAG TO ROTATE",Vector2(380,782),Vector2(160,24),11,P.MUTED)
 	small_caps("Household · %d / 8" % household_profiles.size(),Vector2(42,743),Vector2(162,24))
 	var connections=button("Connections",Vector2(214,738),Vector2(133,31),show_creator_connections)
 	connections.disabled=household_profiles.size()<2
@@ -918,7 +927,7 @@ func draw_household_bar() -> void:
 			fill.content_margin_top=0;fill.content_margin_bottom=0
 			b.add_theme_stylebox_override("fill",fill)
 			need_bars[key]=b;need_fills[key]=fill
-			var value:Label=text_label("80",p+Vector2(181,0),Vector2(24,22),10,P.MUTED)
+			var value:Label=text_label("80",p+Vector2(181,0),Vector2(24,22),12,P.INK)
 			value.tooltip_text=_need_tooltip(key,80.0)
 			value.mouse_filter=Control.MOUSE_FILTER_PASS
 			value.gui_input.connect(func(event:InputEvent):_need_row_clicked(event,key))
