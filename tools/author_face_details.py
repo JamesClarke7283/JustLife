@@ -21,6 +21,7 @@ parser.add_argument('--family',choices=['adult','child','teen','elder','all'],de
 parser.add_argument('--save',action='store_true')
 parser.add_argument('--brow',type=float,default=0.0018,help='world shift toward the skull')
 parser.add_argument('--seam',type=float,default=0.0015,help='world shift toward the viewer')
+parser.add_argument('--corner',type=float,default=1.03,help='sideways seam growth toward the lip corners')
 args=parser.parse_args(sys.argv[sys.argv.index('--')+1:] if '--' in sys.argv else [])
 FAMILIES=['adult','child','teen','elder'] if args.family=='all' else [args.family]
 SOURCES={'adult':'art/characters.blend','child':'art/characters_child.blend','teen':'art/characters_teen.blend','elder':'art/characters_elder.blend'}
@@ -60,8 +61,22 @@ for family in FAMILIES:
         # The seam may approach the lip front but keeps a small setback.
         shift=min(shift,max(0.0,smin.y-(lmin.y+0.0006)))
         move_part(seam,Vector((0,-shift,0)))
+        # The corners: grow the seam sideways so its ends reach the lip line
+        # instead of stopping short and leaving a skin sliver.
+        icentre=(smin+smax)*.5
+        lip_x=max(abs(lmin.x),abs(lmax.x))
+        seam_x=max(abs(smin.x),abs(smax.x))
+        factor=min(args.corner,1.0+(lip_x-seam_x-seam_x*0.01)/max(seam_x,1e-6))
+        local_centre=seam.matrix_world.inverted()@icentre
+        for store in [seam.data.vertices] + ([seam.data.shape_keys.key_blocks[0].data] if seam.data.shape_keys else []):
+            for v in store:
+                p=v.co-local_centre
+                p.x*=factor
+                v.co=local_centre+p
+        seam.data.update()
         nmin,nmax=world_bbox(seam)
-        entry['seam']={'shift':round(shift,4),'front_after':round(nmin.y,4),'lip_front':round(lmin.y,4)}
+        entry['seam']={'shift':round(shift,4),'front_after':round(nmin.y,4),'lip_front':round(lmin.y,4),
+                       'corner_factor':round(factor,4),'seam_half_width':round((nmax.x-nmin.x)*.5,4),'lip_half_width':round(lip_x,4)}
     report[family]=entry
     if args.save:
         bpy.ops.wm.save_mainfile()
