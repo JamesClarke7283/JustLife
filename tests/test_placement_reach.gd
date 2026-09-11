@@ -51,5 +51,7 @@ func _run()->void:
 	for pair:Array in [["bed",bed],["toilet",toilet],["treadmill",treadmill]]:
 		var route:Dictionary=world.route_to(living,world.approach(pair[1]))
 		check(bool(route.ok),"After the conversion the %s is still reachable from the living room (%s)." % [str(pair[0]),str(route.get("error",""))])
+	app.queue_free()
+	await process_frame;await process_frame;await process_frame
 	print("PLACEMENT_REACH %d checks, %d failures" % [checks,failures.size()])
 	quit(0 if failures.is_empty() else 1)

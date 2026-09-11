@@ -98,5 +98,7 @@ func _run()->void:
 		return str(_current(walker).get("phase",""))=="active" and app.world.actors[idler].position.distance_to(Vector3(1.5,.16,0.5))<.3)
 	check(both>=0,"The walker reaches the fridge and the stroller reaches the garden side through the one doorway (frame %d)." % both)
 	print("CASE2 both_frame=%d yielded=%s walker=%s idler=%s" % [both,str(yielded),str(app.world.actors[walker].position),str(app.world.actors[idler].position)])
+	app.queue_free()
+	await process_frame;await process_frame;await process_frame
 	print("DOORWAY_YIELD %d checks, %d failures" % [checks,failures.size()])
 	quit(0 if failures.is_empty() else 1)

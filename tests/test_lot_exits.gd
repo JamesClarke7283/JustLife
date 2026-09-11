@@ -45,5 +45,7 @@ func _run()->void:
 		check(reachable==16,"All sixteen slots keep a walkable path to the front door with the garden room to x=%.1f (%d of 16)." % [float(annex.bx),reachable])
 		check(bool(tx.undo(door.receipt).ok) and bool(tx.undo(room.receipt).ok),"The garden room undoes cleanly.")
 	check(_slots(world).exits==before.exits and _slots(world).returns==before.returns,"After the undo the slots return to their sidewalk positions.")
+	app.queue_free()
+	await process_frame;await process_frame;await process_frame
 	print("LOT_EXITS %d checks, %d failures" % [checks,failures.size()])
 	quit(0 if failures.is_empty() else 1)
