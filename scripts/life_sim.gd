@@ -1372,8 +1372,10 @@ func _autonomy_target_for(id:String,excluded_target_ids:Array=[]) -> Dictionary:
 				available=_school_availability(id,str(target.id),true).is_empty()
 		if not available:continue
 		var cost:float=_autonomy_target_load(str(target.id))
-		# A bookshelf can host homework without blocking classes or shifts.
-		if id=="homework" and str(target.kind) in ["desk","computer"]:cost+=60.0
+		# A bookshelf hosts homework first so desks stay open for classes and
+		# home shifts, but a busy shelf must still yield to an idle desk:
+		# one queued assignment is a longer wait than the protection is worth.
+		if id=="homework" and str(target.kind) in ["desk","computer"]:cost+=15.0
 		if cost<lowest:
 			lowest=cost;selected={"id":id,"target_id":str(target.id),"position":target.position,"load":cost}
 	return selected
