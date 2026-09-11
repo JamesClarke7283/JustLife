@@ -1,6 +1,17 @@
 # Packaged release verification
 
 The final Linux handoff for this run uses runtime/asset commit **`953cf841b9379239c44fdd730464190428b87631`**. It includes the one-minute daily clock, bounded sidestep-search repair, brief leisure before school/work, normal shutdown sequencing and accepted adult casual drape/shoulder weights. Subsequent handoff documentation does not alter these packaged inputs.
+## Development verification, 11–12 September 2026 (post-handoff iteration)
+
+These changes are verified in the development tree (HEAD, commits after `8b34a98`); the packaged build from `953cf841` predates them and was not re-exported.
+
+- **Independent re-review 1** (commit `9ad4bfe`): weighted **6.9/10**, findings P0 unparented selection marker (per-frame errors), P1 stale home-suite windows and unverified week economy. All fixed and re-verified by **independent re-review 2** on the final HEAD: weighted **7.6/10** (visuals 7.4, usability 7.6, mechanics 7.8, breadth 7.7, reliability 7.5), decision iterate. Reviews: [iteration 59 contract](REVIEWS/iteration_59_contract.md).
+- Headless suites at HEAD: World 254/0 (6 documented chair-clearance observations), Need click 8/0, Queue choice 5/0 (new), Leisure spread 6/0, Lot exits 15/0, Doorway yield 10/0, Placement reach 11/0, Waiting autonomy 11/0, Autonomy policy 167/0, Prework recovery 58/0, regression groups 12 processes PASS. The three world suites now free the app and settle before quitting: zero leaked-instance warnings.
+- Rendered: home suite exits 0/0 on playthrough and fresh-process resume phases (`dist/test-work/justlife-playthrough-6cnxbzqd`); live captures print zero errors.
+- Rendered catalogue weeks at HEAD: two full seven-day runs (`4btmemhi`, `xf67z35v`) plus one (`e00olwc6`): 321 assertions each, every member's Fun minimum ≥ 12.3, zero critical minutes, zero late arrivals, all annex purchases land and are used. The weekly waiting cap (≤ 4 h/member) holds for at least seven of eight members in each week; the tail member rotates (Jamie 4.63 h, then Ellis 4.98 h, then Morgan 4.54 h) with short legitimate episodes — documented as the open P1 ([iteration 59 contract](REVIEWS/iteration_59_contract.md)).
+- Frame probe (2-day rendered run, 12,993 frames): p50 26.5 ms, p95 41.7 ms, max 150 ms — improved from p95 60.5 ms; the 33 ms budget remains open.
+- Character artwork: irises 1.32× wider through the Basis shape-key block with macro evidence (`evidence/face60/`), walker-LOD legs keep 38% geometry, all 20 production pins match the re-exported models.
+
 
 The actual Forward+ executable passes **67 checks with zero failures, errors or warnings**, with all nine 1440×900 captures inspected by the independent critic. This retains the existing 58 startup/asset/creator/family/calendar/adoption-cancel/save/load/delete/car-travel assertions and adds nine checks excluding native input during captures. It is directed public-callback and render coverage, not an unscripted full-game review. The creator face screenshot selects a child; adult art acceptance is separately documented in [iteration 52](REVIEWS/iteration_52_final_clothing.md).
 
