@@ -375,6 +375,11 @@ func _tick_away(_game_minutes: float) -> void:
 	dispatch_notifications(release_notifications())
 
 
+func autonomy_need_choice(need:String,excluded_target_ids:Array=[]) -> Dictionary:
+	# The player's "take care of this" click shares the autonomy chooser, so a
+	# directed fix respects queues, loads and fitting pre-duty pastimes.
+	return _autonomy_need_choice(need,excluded_target_ids)
+
 func request_return_home() -> bool:
 	if not is_away(): return false
 	if str(away_state.phase) == "returning": return true
@@ -731,6 +736,12 @@ static func emotion_effect(emotion: String) -> Dictionary:
 		"Tense": return {"skills":["*"], "multiplier":0.8, "summary":"Skills grow 20% slower until this passes."}
 		"Embarrassed": return {"skills":["charisma"], "multiplier":0.7, "summary":"Charisma grows 30% slower until this passes."}
 	return {}
+
+
+static func emotion_color(emotion: String) -> Color:
+	# One shared palette for the HUD pill, the moodlet tiles and the selection gem.
+	var colors: Dictionary = {"Happy":"65a68b","Energized":"c8aa5d","Confident":"6b9ac0","Focused":"629db3","Inspired":"9a85b3","Playful":"cf8aaa","Tense":"cf8669"}
+	return Color(colors.get(emotion,"7aaf89"))
 
 
 func _gain_skill(skill_name: String, amount: float, practice: float = -1.0) -> void:
@@ -1405,9 +1416,14 @@ func _leisure_fits(id:String,duty:String) -> bool:
 
 func _brief_leisure_fits(duty:String,excluded_target_ids:Array=[]) -> bool:
 	# A Fun break before a due day away is worth projecting only when some
-	# pastime on offer ends in time for an on-time arrival.
+	# pastime on offer ends in time for an on-time arrival and does not just
+	# queue behind a busy seat: a lifelet whose only fitting pastime is a full
+	# sofa is better off departing than waiting behind the queue.
 	for id:String in PRE_DUTY_LEISURE:
-		if _leisure_fits(id,duty) and not _autonomy_target_for(id,excluded_target_ids).is_empty():return true
+		if not _leisure_fits(id,duty):continue
+		var target:Dictionary=_autonomy_target_for(id,excluded_target_ids)
+		if target.is_empty() or float(target.get("load",0.0))>45.0:continue
+		return true
 	return false
 
 func _autonomy_need_choice(need:String,excluded_target_ids:Array=[],preparing:bool=false) -> Dictionary:
@@ -1932,8 +1948,7 @@ func get_mood() -> Dictionary:
 		var strongest:Dictionary=moodlets[-1]
 		for entry in moodlets:
 			if int(entry.strength)>int(strongest.strength):strongest=entry
-		var colors:Dictionary={"Happy":"65a68b","Energized":"c8aa5d","Confident":"6b9ac0","Focused":"629db3","Inspired":"9a85b3","Playful":"cf8aaa","Tense":"cf8669"}
-		return {"label":strongest.emotion,"description":strongest.description,"color":Color(colors.get(strongest.emotion,"7aaf89"))}
+		return {"label":strongest.emotion,"description":strongest.description,"color":emotion_color(strongest.emotion)}
 	if not action_queue.is_empty() and str(action_queue[0]["phase"]) == "active":
 		var id: String = str(action_queue[0]["id"])
 		if id == "paint" and _has_trait("Creative"):

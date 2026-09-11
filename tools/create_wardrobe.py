@@ -179,14 +179,16 @@ def author(family):
     rear=[p for p in lpts if p.y>centre.y+.02*hs]; rim_z=min(p.z for p in rear); rim_r=max(((p-centre).xy.length for p in rear if p.z<rim_z+.03*hs))
     def wrap(u,v):
         a=(u-.5)*math.radians(300)                                   # face opening of 60 degrees at the front
-        lobes=1+.08*math.sin(3*a+.9)*v                               # three gentle locks, strongest toward the hem
+        lock=math.sin(3*a+.9)                                        # three-lock phase, shared by every term
+        lobes=1+.11*lock*v                                           # lock channels deepen toward the hem
         neck=.018*hs*math.exp(-(((v-.15)/.12)**2))                   # a light draw-in under the rim
-        flare=.07*hs*math.exp(-(((v-.45)/.26)**2))                   # volume over the shoulder line
-        R=(rim_r+.048*hs-neck+flare)*lobes
-        taper=1-(.30+.08*math.sin(3*a+.9))*v                         # per-lock width taper
+        flare=.045*hs*math.exp(-(((v-.50)/.22)**2))                  # volume over the shoulder line
+        R=(rim_r+.042*hs-neck+flare)*lobes
+        taper=1-(.44+.09*lock)*v**1.4                                # narrow, late-biased per-lock taper
         ang=abs(math.atan2(math.sin(a),math.cos(a)))                 # 0 at the back centre, pi at the front
-        hem=.215*hs+.055*hs*math.sin(min(ang,math.pi*.62))           # side curtains fall lowest
-        z=rim_z+.02*hs-hem*v
+        hem=.225*hs+.05*hs*math.sin(min(ang,math.pi*.62))*(1+.45*lock)  # side curtains fall lowest, per lock
+        jag=.05*hs*v*v*max(0.0,lock)                                 # leading lock edges fall lower
+        z=rim_z+.02*hs-hem*v-jag
         settle=.04*hs*v*v*v                                          # the ends rest against the back
         return Vector((centre.x+math.sin(a)*R*taper,centre.y+math.cos(a)*R+settle,z))
     ws=new_mesh_object('Hair_Long_Back',surface(wrap,48,16),'Hair',longh)
@@ -201,14 +203,14 @@ def author(family):
         crown=[p for p in lpts if abs(p.x)>.45*side_r and p.x*sgn>0 and p.z>centre.z+.12*(z_top-centre.z) and p.y<centre.y+.02*hs]
         if not crown:crown=sorted(front_rim,key=lambda p:-(p.z+.3*abs(p.x)))[6:]
         anchor=sum(crown,Vector())/len(crown)
-        start=anchor+(centre-anchor)*.12
+        start=anchor+(centre-anchor)*.22
         end_z=rim_z-.205*hs
         def strand(u,v,start=start,end_z=end_z):
             t=v; q=u*math.tau
-            bow=sgn*.009*hs*math.sin(math.pi*min(t*1.25,1.0))        # clears the cheek and ear
+            bow=sgn*.005*hs*math.sin(math.pi*min(t*1.25,1.0))        # clears the cheek and ear
             back=.018*hs*t*t                                         # eases toward the body as it falls
             axis=start+Vector((bow,back,(end_z-start.z)*t))
-            rr=.0165*hs*(1-.78*t)**1.1
+            rr=.0035*hs+.013*hs*(1-t)**1.15
             return axis+Vector((math.cos(q)*rr*.66,math.sin(q)*rr,0))
         new_mesh_object('Hair_Long_Front'+('' if side=='L' else '.001'),surface(strand,14,22,True,True),'Hair',longh)
     buzz,bmade=dup_group('Hair_Crop','Hair_Buzz')
