@@ -292,10 +292,13 @@ func logo(p:Vector2=Vector2(34,25)) -> void:
 	rect(mark,p+Vector2(-2,-2),Vector2(43,43))
 	text_label("JustLife",p+Vector2(51,-3),Vector2(181,44),33,P.INK,true)
 
+
 func progress_steps(current:int) -> void:
+	# The three-step strip sits on the 3D sky, so it keeps a soft card behind it.
+	card(Vector2(448,22),Vector2(622,62),Color("f9faf2",.88),14)
 	var names=["01  Create a Lifelet","02  Find a home","03  Live your story"]
 	for i in range(3):
-		var c=P.TEAL if i==current else P.MUTED
+		var c=P.TEAL if i==current else P.INK
 		text_label(names[i],Vector2(465+i*190,34),Vector2(185,28),14,c)
 		if i==current:line(Vector2(466+i*190,73),Vector2(145,2))
 
