@@ -65,6 +65,13 @@ func _run()->void:
 	check(placed==purchases.size(),"All %d purchases land: eight second-collection furnishings%s." % [purchases.size(),", the annex bed, fridge and bookcase" if with_annex else ""])
 	await press("Live")
 	await screenshot("00_catalogue_cottage",false,false)
+	if with_annex:
+		# The annex projects under the HUD from the default view; frame it once.
+		var saved_target:Vector3=app.world.camera_target;var saved_size:float=app.world.camera.size
+		app.world.camera_target=Vector3(4.6,0.5,7.0);app.world.camera.size=12.0;app.world.update_camera()
+		await frames(3)
+		await screenshot("00_catalogue_annex",false,false)
+		app.world.camera_target=saved_target;app.world.camera.size=saved_size;app.world.update_camera()
 	for member:Dictionary in app.household.members:member.sim.autonomy=true
 	var stages:Array=[]
 	for member:Dictionary in app.household.members:

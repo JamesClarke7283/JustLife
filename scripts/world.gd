@@ -440,6 +440,38 @@ func neighbor_home(p: Vector3) -> void:
 	else:
 		box(house,p+Vector3(-width*.5-.8,.05,0),Vector3(1.6,.2,depth+.4),"bdab91")
 
+func _dress_mirror(node:Node3D,model:Node3D) -> void:
+	# The glass reflects the room: a mirror-finish material fed by a reflection
+	# probe captured once in front of the frame, so the oval shows the walls,
+	# floor and furnishings around it instead of a flat pale disc.
+	for mesh:MeshInstance3D in model.find_children("*","MeshInstance3D",true,false):
+		if mesh.mesh==null:continue
+		for index:int in range(mesh.mesh.get_surface_count()):
+			var source:Material=mesh.get_active_material(index)
+			if source==null or not str(source.resource_name).to_lower().contains("mirror_glass"):continue
+			var glass:StandardMaterial3D=StandardMaterial3D.new()
+			glass.albedo_color=Color(.93,.95,.97)
+			glass.metallic=1.0;glass.metallic_specular=1.0;glass.roughness=.04
+			mesh.set_surface_override_material(index,glass)
+	var probe:ReflectionProbe=ReflectionProbe.new()
+	probe.name="MirrorReflection"
+	probe.size=Vector3(7,3.2,7)
+	probe.position=Vector3(0,1.3,1.4)
+	probe.origin_offset=Vector3(0,0,-1.4)
+	probe.box_projection=true
+	probe.interior=true
+	probe.enable_shadows=false
+	probe.intensity=.9
+	probe.max_distance=12.0
+	probe.update_mode=ReflectionProbe.UPDATE_ONCE
+	node.add_child(probe)
+
+func refresh_mirror_reflections() -> void:
+	# Furnishings and walls changed: capture the rooms again for every mirror.
+	for probe:ReflectionProbe in furniture.find_children("MirrorReflection","ReflectionProbe",true,false):
+		probe.update_mode=ReflectionProbe.UPDATE_ALWAYS
+		probe.set_deferred("update_mode",ReflectionProbe.UPDATE_ONCE)
+
 func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	var kind: String=str(entry.get("kind","plant"))
 	if not LifeCatalog.ITEMS.has(kind):return
@@ -456,6 +488,7 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	node.add_child(model)
 	node.position=Vector3(float(entry.get("x",0)),Building.level_y(level),float(entry.get("z",0)))
 	node.rotation_degrees.y=float(entry.get("rotation",0))
+	if kind=="mirror":_dress_mirror(node,model)
 	var info:Dictionary=entry.duplicate(true)
 	info["node"]=node
 	info["label"]=data.label
@@ -524,6 +557,8 @@ func rebuild_navigation() -> void:
 		obstacles.append({"id":str(item.id),"level":item_level(item),"x":area.get_center().x,"z":area.get_center().y,"w":area.size.x,"d":area.size.y})
 	var built:Dictionary=lot_navigation.rebuild(result.state,obstacles)
 	if not bool(built.ok):last_layout_error=str(built.error)
+
+	refresh_mirror_reflections()
 
 func nearest_free(p:Vector3) -> Vector2i:
 	var cell=Vector2i(roundi(p.x*4),roundi(p.z*4))

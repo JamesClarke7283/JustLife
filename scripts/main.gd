@@ -29,6 +29,11 @@ var time_label: Label
 var funds_label: Label
 var age_label: Label
 var mood_label: Label
+var mood_ring: Panel
+var mood_pill: Panel
+var moodlet_tiles: Array = []
+var selection_marker: MeshInstance3D
+var marker_time: float = 0.0
 var action_label: Label
 var action_context: Label
 var action_bar: ProgressBar
@@ -272,7 +277,7 @@ func clear_ui() -> void:
 	need_bars.clear();need_values.clear();speed_buttons.clear();live_floor_buttons.clear()
 	household_chips.clear();cancel_action_button=null
 	skill_labels.clear();skill_bars.clear();skill_progress_labels.clear();relationship_labels.clear();career_labels.clear();goal_labels.clear()
-	queue_box=null;time_label=null;funds_label=null;mood_label=null;action_label=null;action_context=null;action_bar=null
+	queue_box=null;time_label=null;funds_label=null;mood_label=null;action_label=null;action_context=null;action_bar=null;mood_ring=null;mood_pill=null;moodlet_tiles.clear()
 	build_quote=null;build_quote_card=null;roof_visibility_button=null
 	last_queue=""
 	close_overlay()
@@ -827,14 +832,39 @@ func draw_household_bar() -> void:
 	card(Vector2(36,739),Vector2(73,90),P.PALE,12)
 	# A 3D portrait uses the same customized model as the live actor.
 	model_thumbnail("character",Vector2(36,732),Vector2(73,105),true)
+	mood_ring=Panel.new()
+	mood_ring.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	var ring_box:StyleBoxFlat=StyleBoxFlat.new()
+	ring_box.bg_color=Color(1,1,1,0)
+	ring_box.set_border_width_all(3)
+	ring_box.set_corner_radius_all(14)
+	mood_ring.add_theme_stylebox_override("panel",ring_box)
+	rect(mood_ring,Vector2(36,732),Vector2(73,105))
 	var household_name=text_label(str(sim.character.name),Vector2(123,739),Vector2(174,31),22,P.INK,true)
 	household_name.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	household_name.size=Vector2(174,31)
 	household_name.tooltip_text=str(sim.character.name)
 	household_name.mouse_filter=Control.MOUSE_FILTER_PASS
+	mood_pill=Panel.new()
+	mood_pill.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	var pill_box:StyleBoxFlat=StyleBoxFlat.new()
+	pill_box.bg_color=Color(P.TEAL.r,P.TEAL.g,P.TEAL.b,.16)
+	pill_box.set_corner_radius_all(13)
+	mood_pill.add_theme_stylebox_override("panel",pill_box)
+	rect(mood_pill,Vector2(120,775),Vector2(172,30))
 	mood_label=text_label("Feeling inspired",Vector2(124,778),Vector2(165,26),14,P.TEAL)
 	age_label=text_label(str(LifeLifecycle.LABELS[str(sim.character.age_stage)]),Vector2(124,810),Vector2(160,25),12,P.MUTED)
 	age_label.mouse_filter=Control.MOUSE_FILTER_PASS
+	moodlet_tiles.clear()
+	for i in range(4):
+		var tile:Panel=Panel.new()
+		var tile_box:StyleBoxFlat=StyleBoxFlat.new()
+		tile_box.set_corner_radius_all(5)
+		tile.add_theme_stylebox_override("panel",tile_box)
+		rect(tile,Vector2(39+i*18,811),Vector2(16,16))
+		tile.gui_input.connect(func(event:InputEvent):
+			if event is InputEventMouseButton and event.pressed and event.button_index==MOUSE_BUTTON_LEFT:show_person())
+		moodlet_tiles.append(tile)
 	var center_button:=button("Center",Vector2(42,841),Vector2(111,27),center_lifelet)
 	center_button.name="CenterLifelet"
 	center_button.tooltip_text="Show this Lifelet and their floor; keep the current floor during stair transit"
@@ -869,11 +899,20 @@ func draw_household_bar() -> void:
 		for i in range(6):
 			var key:String=nms[i]
 			var p=Vector2(989+(i%2)*208,779+(i/2)*29)
-			text_label(key.capitalize(),p,Vector2(69,22),12)
+			var title:Label=text_label(key.capitalize(),p,Vector2(69,22),12)
+			title.tooltip_text=_need_tooltip(key,80.0)
+			title.mouse_filter=Control.MOUSE_FILTER_PASS
+			title.gui_input.connect(func(event:InputEvent):_need_row_clicked(event,key))
 			var b=ProgressBar.new();b.show_percentage=false
 			rect(b,p+Vector2(69,8),Vector2(105,7))
+			b.mouse_filter=Control.MOUSE_FILTER_PASS
+			b.gui_input.connect(func(event:InputEvent):_need_row_clicked(event,key))
 			need_bars[key]=b
-			need_values[key]=text_label("80",p+Vector2(181,0),Vector2(24,22),10,P.MUTED)
+			var value:Label=text_label("80",p+Vector2(181,0),Vector2(24,22),10,P.MUTED)
+			value.tooltip_text=_need_tooltip(key,80.0)
+			value.mouse_filter=Control.MOUSE_FILTER_PASS
+			value.gui_input.connect(func(event:InputEvent):_need_row_clicked(event,key))
+			need_values[key]=value
 	elif panel_tab=="Skills":
 		for i in range(mini(8,sim.skills.size())):
 			var key:String=sim.skills.keys()[i]
@@ -911,6 +950,34 @@ func draw_household_bar() -> void:
 		career_labels["work"]=button("Go to work",Vector2(1241,779),Vector2(149,37),_go_to_work,true)
 		button("Career details",Vector2(1241,824),Vector2(149,32),show_career_record)
 
+func _update_selection_marker(delta: float) -> void:
+	# The selected Lifelet wears a floating gem tinted by their current mood.
+	if selection_marker==null:
+		selection_marker=MeshInstance3D.new()
+		selection_marker.name="SelectionMarker"
+		var gem:SphereMesh=SphereMesh.new()
+		gem.radius=.085;gem.height=.2;gem.radial_segments=4;gem.rings=2
+		selection_marker.mesh=gem
+		var shine:StandardMaterial3D=StandardMaterial3D.new()
+		shine.roughness=.25;shine.metallic=.15
+		shine.emission_enabled=true;shine.emission_energy=.55
+		selection_marker.material_override=shine
+		selection_marker.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		gem.radius=.11;gem.height=.27;gem.radial_segments=4;gem.rings=2
+	marker_time+=delta
+	var actor:Node3D=world.actors.get(household.selected_id())
+	var show:bool=mode in ["live","build"] and is_instance_valid(actor) and actor.is_visible_in_tree() and not sim.is_away()
+	selection_marker.visible=show
+	if not show:return
+	var height:float=float(actor.call("get_display_height")) if actor.has_method("get_display_height") else 1.76
+	selection_marker.global_position=actor.to_global(Vector3(0,height+.26+sin(marker_time*2.2)*.035,0))
+	selection_marker.rotate_y(delta*1.6)
+	var tone:Color=sim.get_mood().color
+	var shine:StandardMaterial3D=selection_marker.material_override
+	shine.albedo_color=tone
+	shine.emission=tone
+
+
 func draw_queue() -> void:
 	var scroll=ScrollContainer.new()
 	scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
@@ -937,10 +1004,33 @@ func refresh_hud() -> void:
 	if time_label:time_label.text=sim.get_clock_text()+ ("  ·  Paused" if sim.speed==0 else "")
 	if mood_label:
 		var mood=sim.get_mood()
-		mood_label.text=mood.label
+		var strength:int=0
+		for entry:Dictionary in sim.moodlets:
+			if int(entry.strength)>strength:strength=int(entry.strength)
+		mood_label.text=str(mood.label)+(" +%d" % strength if strength>0 else "")
 		mood_label.add_theme_color_override("font_color",mood.color)
 		var effect:Dictionary=LifeSim.emotion_effect(str(mood.label))
 		mood_label.tooltip_text=str(mood.description)+("" if effect.is_empty() else "\n"+str(effect.summary))
+		if mood_ring:
+			var ring:StyleBoxFlat=mood_ring.get_theme_stylebox("panel")
+			var worst:float=100.0
+			for key:String in sim.needs:worst=minf(worst,float(sim.needs[key]))
+			ring.border_color=Color("cf6b5a") if worst<15.0 else (Color("dca657") if worst<35.0 else mood.color)
+		if mood_pill:
+			var pill:StyleBoxFlat=mood_pill.get_theme_stylebox("panel")
+			pill.bg_color=Color(mood.color.r,mood.color.g,mood.color.b,.16)
+		for i in range(moodlet_tiles.size()):
+			var tile:Panel=moodlet_tiles[i]
+			var index:int=sim.moodlets.size()-1-i
+			if index<0:
+				tile.visible=false
+				continue
+			tile.visible=true
+			var entry:Dictionary=sim.moodlets[index]
+			var box:StyleBoxFlat=tile.get_theme_stylebox("panel")
+			var tone:Color=LifeSim.emotion_color(str(entry.emotion))
+			box.bg_color=Color(tone.r,tone.g,tone.b,.9)
+			tile.tooltip_text="%s · %s · %d min" % [str(entry.emotion),str(entry.description),int(entry.remaining)]
 	for key in need_bars:
 		var value:float=sim.needs[key]
 		need_bars[key].value=value
@@ -949,6 +1039,8 @@ func refresh_hud() -> void:
 		bar_style.content_margin_top=0;bar_style.content_margin_bottom=0
 		need_bars[key].add_theme_stylebox_override("fill",bar_style)
 		need_values[key].text=str(int(value))
+		need_bars[key].tooltip_text=_need_tooltip(key,value)
+		need_values[key].tooltip_text=_need_tooltip(key,value)
 	var away:Dictionary=sim.get_away_state()
 	for id:String in household_chips:
 		var chip:Button=household_chips[id]
@@ -1155,7 +1247,7 @@ func draw_build_catalog() -> void:
 		button("Remove wall",Vector2(925,784),Vector2(140,47),func():begin_construction("erase"))
 		var paint=button("Paint wall",Vector2(1075,784),Vector2(150,47),func():begin_construction("paint"),world.construction.tool=="paint")
 		paint.tooltip_text="Pick the tool, choose a swatch, then click a wall to repaint that segment."
-		var whole=button("Whole room",Vector2(1235,784),Vector2(144,47),func():
+		var whole=button("Joined walls",Vector2(1235,784),Vector2(144,47),func():
 			world.construction.paint_scope="wall" if world.construction.paint_scope=="room" else "room"
 			draw_live(),world.construction.paint_scope=="room")
 		whole.tooltip_text="Paint every wall joined to the clicked one, corner to corner, in one go."
@@ -1666,6 +1758,27 @@ func queue_nearest(kind:String,id:String) -> void:
 	for item in world.items:
 		if item.kind==kind:queue_interaction(item,id);return
 	show_notice("Add a %s in Build & buy first." % kind)
+
+func _need_tooltip(key:String,value:float) -> String:
+	# What the need means, where it stands and what a click will do about it.
+	var state:String="comfortable"
+	if value<15.0:state="critical"
+	elif value<35.0:state="low"
+	elif value<60.0:state="a little low"
+	var want:String={"hunger":"a meal or a snack","energy":"sleep or a nap","hygiene":"a shower or bath","bladder":"the toilet","fun":"a favourite pastime","social":"a friendly chat"}[key]
+	return "%s — %d, %s. Click to take care of it: %s." % [key.capitalize(),int(value),state,want]
+
+func _need_row_clicked(event:InputEvent,key:String) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index==MOUSE_BUTTON_LEFT:_auto_solve_need(key)
+
+func _auto_solve_need(key:String) -> void:
+	if sim.is_away():show_notice("This Lifelet will be available after coming home.");return
+	var choice:Dictionary=sim.autonomy_need_choice(key)
+	if choice.is_empty():show_notice("Nothing in reach helps with %s right now." % key);return
+	if not sim.queue_action(str(choice.id),str(choice.target_id),choice.position):
+		show_notice("That did not work out. Try again soon.");return
+	refresh_hud()
+	show_notice("Taking care of %s now." % key)
 
 func focus_neighbor(id:String) -> void:
 	if LifeResidents.PEOPLE.has(id) and not residents.present(id):show_neighborhood(str(LifeResidents.PEOPLE[id].home));return
@@ -2395,12 +2508,15 @@ func _process(delta:float) -> void:
 			_store_motion()
 		meal_flow.sync_world(household.speed>0)
 		_bind_member(selected_id)
+		_update_selection_marker(delta)
 		if away_targets_changed:_refresh_sim_targets(false)
 		residents.tick(delta)
 		traversal.courtesy.consider(traversal)
 		hud_refresh+=delta
 		if hud_refresh>.25:hud_refresh=0;refresh_hud()
-	if mode=="build":refresh_build_quote()
+	if mode=="build":
+		_update_selection_marker(delta)
+		refresh_build_quote()
 	if not overlay_open and not get_viewport().gui_get_focus_owner() is LineEdit:
 		var pan=Vector2.ZERO
 		if Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP):pan.y-=1
