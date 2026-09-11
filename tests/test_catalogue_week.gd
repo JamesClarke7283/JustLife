@@ -16,7 +16,17 @@ const EXTRA_FURNISHINGS: Array = [["treadmill",4.75,-.5,90],["toybox",-1.7,1.2,0
 const ANNEX: Dictionary = {"ax":2.6,"az":5.5,"bx":7.6,"bz":8.9,"door_center":6.3}
 const NEW_ACTIONS: Array = ["jog","play_toys","play_piano","bath","dance","stretch","practice_speech","play_chess","play_games","warm_up","change_outfit"]
 
+var result_printed:bool=false
+func print_result(extra:String="") -> void:
+	if result_printed:return
+	result_printed=true
+	print("CATALOGUE_WEEK_RESULT assertions=%d failures=%d resume=%s %s"%[assertions,failures.size(),str(resume_only),extra])
+
 func _run()->void:
+	# The reviewer's one silent exit(1) after the Live press had no RESULT
+	# line; this watchdog marks any run that dies before its real result.
+	var timeout_s:float=float(OS.get_environment("JUSTLIFE_WEEK_TIMEOUT")) if OS.has_environment("JUSTLIFE_WEEK_TIMEOUT") else 2400.0
+	create_timer(timeout_s).timeout.connect(func():print_result("incomplete — exited before completion"))
 	screenshot_dir="res://art/catalogue_week"
 	DirAccess.make_dir_recursive_absolute(screenshot_dir)
 	app=load("res://scenes/main.tscn").instantiate();root.add_child(app);current_scene=app
@@ -28,7 +38,7 @@ func _run()->void:
 		notices.append(message)
 		if audit_enabled:audit.notices.append({"at":_now(),"message":message}))
 	if resume_only:
-		print("CATALOGUE_WEEK_RESULT assertions=0 failures=0 resume=true");quit(0);return
+		print_result();quit(0);return
 	await _create_genealogy()
 	var active_id:String=""
 	for member:Dictionary in app.household.members:
@@ -92,7 +102,7 @@ func _run()->void:
 		var short_file:=FileAccess.open(screenshot_dir.path_join("audit_first.json"),FileAccess.WRITE)
 		short_file.store_string(JSON.stringify(audit,"  "));short_file.close()
 		_write_report();app.queue_free();await frames(3)
-		print("CATALOGUE_WEEK_RESULT assertions=%d failures=%d resume=%s days=%d"%[assertions,failures.size(),str(resume_only),days])
+		print_result("days=%d"%days)
 		quit(0 if failures.is_empty() else 1);return
 	await _final_review()
 	var counts:Dictionary={}
@@ -140,5 +150,5 @@ func _run()->void:
 	var file:=FileAccess.open(screenshot_dir.path_join("audit_first.json"),FileAccess.WRITE)
 	file.store_string(JSON.stringify(audit,"  "));file.close()
 	_write_report();app.queue_free();await frames(3)
-	print("CATALOGUE_WEEK_RESULT assertions=%d failures=%d resume=%s"%[assertions,failures.size(),str(resume_only)])
+	print_result()
 	quit(0 if failures.is_empty() else 1)
