@@ -862,6 +862,9 @@ func draw_household_bar() -> void:
 		tile_box.set_corner_radius_all(5)
 		tile.add_theme_stylebox_override("panel",tile_box)
 		rect(tile,Vector2(39+i*18,811),Vector2(16,16))
+		var mark:Label=text_label("",Vector2(0,0),Vector2(16,16),11,P.WHITE,false,tile)
+		mark.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+		mark.name="Mark"
 		tile.gui_input.connect(func(event:InputEvent):
 			if event is InputEventMouseButton and event.pressed and event.button_index==MOUSE_BUTTON_LEFT:show_person())
 		moodlet_tiles.append(tile)
@@ -1030,6 +1033,8 @@ func refresh_hud() -> void:
 			var box:StyleBoxFlat=tile.get_theme_stylebox("panel")
 			var tone:Color=LifeSim.emotion_color(str(entry.emotion))
 			box.bg_color=Color(tone.r,tone.g,tone.b,.9)
+			var mark:Label=tile.get_node_or_null("Mark") as Label
+			if mark:mark.text=str(entry.emotion).left(1)
 			tile.tooltip_text="%s · %s · %d min" % [str(entry.emotion),str(entry.description),int(entry.remaining)]
 	for key in need_bars:
 		var value:float=sim.needs[key]
