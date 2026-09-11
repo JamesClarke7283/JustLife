@@ -1465,14 +1465,15 @@ func _autonomy_need_choice(need:String,excluded_target_ids:Array=[],preparing:bo
 			if briefing:
 				# Before a day away only pastimes that end in time for the walk to
 				# the lot exit are offered, so the rotation cannot pick a canvas
-				# that makes the Lifelet late. A critically bored Lifelet keeps
-				# the shortest pastimes even when that costs a few late minutes.
+				# that makes the Lifelet late. A critically bored Lifelet (Fun
+				# under sixteen, the level the weekly floor sits at) keeps the
+				# shortest pastimes even when that costs a few late minutes.
 				var fitting:Array[String]=[]
 				var overflow:Array[String]=[]
 				for id:String in candidates:
 					if _leisure_fits(id,leisure_duty):fitting.append(id)
 					else:overflow.append(id)
-				if float(needs.fun)<12.0:
+				if float(needs.fun)<16.0:
 					overflow.sort_custom(func(a:String,b:String)->bool:return float(_actions[a].duration)<float(_actions[b].duration))
 					fitting.append_array(overflow)
 				candidates=fitting
@@ -1532,7 +1533,7 @@ func _autonomous_choice(excluded_target_ids:Array=[]) -> Dictionary:
 		if float(needs[need])>=20.0:break
 		# Moderate boredom, loneliness or untidiness can wait until after a
 		# scheduled day away. Truly critical needs still request recovery.
-		if leaving and need not in ["hunger","energy","bladder"] and float(needs[need])>=12.0:continue
+		if leaving and need not in ["hunger","energy","bladder"] and float(needs[need])>=16.0:continue
 		var urgent:Dictionary=_autonomy_need_choice(need,excluded_target_ids)
 		if not urgent.is_empty():return urgent
 	var preparing:String=_autonomy_preparation_duty_id()
