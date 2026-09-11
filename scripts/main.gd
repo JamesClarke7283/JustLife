@@ -412,8 +412,8 @@ func draw_creator() -> void:
 		small_caps("Skin tone",Vector2(1102,278))
 		swatches(["f2d1b1","e7b98f","d9a17d","b77e58","925c40","613e30"],"skin_color",Vector2(1100,308),36,7)
 		small_caps("Hairstyle",Vector2(1102,358))
-		var hair_names:Array=["Crop","Bob","Curls","Pony","Long","Buzz","Waves"]
-		var hair_tips:Array=["A relaxed swept crop","A softly sculpted bob","Natural rounded curls","A swept-back ponytail","Long layered lengths","A close buzz cut","Loose shoulder-length waves"]
+		var hair_names:Array=["Crop","Bob","Curls","Pony","Long","Buzz","Waves","Bun"]
+		var hair_tips:Array=["A relaxed swept crop","A softly sculpted bob","Natural rounded curls","A swept-back ponytail","Long layered lengths","A close buzz cut","Loose shoulder-length waves","A sleek twisted updo"]
 		for i in range(hair_names.size()):
 			var b=button(hair_names[i],Vector2(1100+(i%4)*80,388+(i/4)*42),Vector2(73,36),func():profile.hair=i;refresh_preview(),int(profile.get("hair",0))==i)
 			b.tooltip_text=hair_tips[i]
@@ -518,7 +518,7 @@ func set_body_scale(value:float) -> void:
 
 func randomize_person() -> void:
 	profile.name=["Mara Vale","Alex Rowan","Ellis Park","Jules Rivera","Noa Ellis","Robin Ash"][randi()%6]
-	profile.frame=randi()%2;profile.hair=randi()%7;profile.outfit=randi()%5;profile.bottom=randi()%2
+	profile.frame=randi()%2;profile.hair=randi()%8;profile.outfit=randi()%5;profile.bottom=randi()%2
 	for feature:String in ["face_round","jaw_strong","nose_wide","eye_spacing"]:profile[feature]=randf_range(0,.75)
 	profile.skin_color=["f2d1b1","e7b98f","d9a17d","b77e58","925c40","613e30"][randi()%6]
 	profile.hair_color=["2a2420","54382a","89563a","c2a16b","dfccb0"][randi()%5]
@@ -574,7 +574,7 @@ func add_creator_member() -> void:
 	person.erase("world_state")
 	person.name=["Ellis Rowan","Jules Park","Noa Rivera","Robin Ash","Avery Woods","Morgan Bell","Jamie Reed"][household_profiles.size()-1]
 	person.frame=household_profiles.size()%2
-	person.hair=household_profiles.size()%7
+	person.hair=household_profiles.size()%8
 	person.outfit=household_profiles.size()%5
 	person.bottom=household_profiles.size()%2
 	person.top_color=["417a71","7195b3","bd9b68","efeadb"][household_profiles.size()%4]
