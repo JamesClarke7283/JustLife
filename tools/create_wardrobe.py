@@ -24,7 +24,7 @@ parser.add_argument('--preview-dir',type=pathlib.Path,default=None)
 args=parser.parse_args(sys.argv[sys.argv.index('--')+1:] if '--' in sys.argv else [])
 FAMILIES=['adult','child','teen','elder'] if args.family=='all' else [args.family]
 GROUPS=['Root','Spine','Head','Arm_L','Forearm_L','Arm_R','Forearm_R','Leg_L','Shin_L','Leg_R','Shin_R']
-NEW_PREFIXES=('Outfit_Tee','Outfit_Hoodie','Skin_Leg_continuous','Bottom_Shorts','Hair_Pony','Hair_Long','Hair_Buzz')
+NEW_PREFIXES=('Outfit_Tee','Outfit_Hoodie','Skin_Leg_continuous','Bottom_Shorts','Hair_Pony','Hair_Long','Hair_Buzz','Hair_Waves')
 D=bpy.data
 
 def link(o,parent):
@@ -213,6 +213,24 @@ def author(family):
             rr=.0035*hs+.013*hs*(1-t)**1.15
             return axis+Vector((math.cos(q)*rr*.66,math.sin(q)*rr,0))
         new_mesh_object('Hair_Long_Front'+('' if side=='L' else '.001'),surface(strand,14,22,True,True),'Hair',longh)
+    # ---- Waves: the Bob lengthened to the shoulders with vertical waves.
+    wav,wmade=dup_group('Hair_Bob','Hair_Waves')
+    wtop=max(p.z for o in wmade if o.type=='MESH' for p in world_points(o))
+    wbottom=min(p.z for o in wmade if o.type=='MESH' for p in world_points(o))
+    for o in wmade:
+        if o.type!='MESH':continue
+        bm=bmesh.new(); bm.from_mesh(o.data)
+        inv=o.matrix_world.inverted()
+        for v in bm.verts:
+            w=o.matrix_world@v.co
+            depth=(wtop-w.z)/max(wtop-wbottom,1e-4)
+            w.z=wtop-(wtop-w.z)*1.42
+            radial=Vector((w.x,w.y)).normalized() if Vector((w.x,w.y)).length>1e-4 else Vector((0,-1))
+            wave=.02*hs*math.sin(max(0.0,depth)*math.tau*.9)
+            w.x+=radial.x*wave;w.y+=radial.y*wave
+            v.co=inv@w
+        bm.to_mesh(o.data); bm.free()
+        for f in o.data.polygons:f.use_smooth=True
     buzz,bmade=dup_group('Hair_Crop','Hair_Buzz')
     for o in bmade:
         if not o.name.endswith('_Cap'):D.objects.remove(o)
