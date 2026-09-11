@@ -41,6 +41,7 @@ var cancel_action_button: Button
 var household_chips: Dictionary = {}
 var away_phases: Dictionary = {}
 var need_bars: Dictionary = {}
+var need_fills: Dictionary = {}
 var need_values: Dictionary = {}
 var queue_box: HBoxContainer
 var last_queue: String = ""
@@ -274,7 +275,7 @@ func clear_ui() -> void:
 	for child in ui.get_children():
 		ui.remove_child(child)
 		child.queue_free()
-	need_bars.clear();need_values.clear();speed_buttons.clear();live_floor_buttons.clear()
+	need_bars.clear();need_values.clear();need_fills.clear();speed_buttons.clear();live_floor_buttons.clear()
 	household_chips.clear();cancel_action_button=null
 	skill_labels.clear();skill_bars.clear();skill_progress_labels.clear();relationship_labels.clear();career_labels.clear();goal_labels.clear()
 	queue_box=null;time_label=null;funds_label=null;mood_label=null;action_label=null;action_context=null;action_bar=null;mood_ring=null;mood_pill=null;moodlet_tiles.clear()
@@ -910,7 +911,10 @@ func draw_household_bar() -> void:
 			rect(b,p+Vector2(69,8),Vector2(105,7))
 			b.mouse_filter=Control.MOUSE_FILTER_PASS
 			b.gui_input.connect(func(event:InputEvent):_need_row_clicked(event,key))
-			need_bars[key]=b
+			var fill:StyleBoxFlat=P.panel(P.TEAL,5)
+			fill.content_margin_top=0;fill.content_margin_bottom=0
+			b.add_theme_stylebox_override("fill",fill)
+			need_bars[key]=b;need_fills[key]=fill
 			var value:Label=text_label("80",p+Vector2(181,0),Vector2(24,22),10,P.MUTED)
 			value.tooltip_text=_need_tooltip(key,80.0)
 			value.mouse_filter=Control.MOUSE_FILTER_PASS
@@ -1040,9 +1044,7 @@ func refresh_hud() -> void:
 		var value:float=sim.needs[key]
 		need_bars[key].value=value
 		var c=P.TEAL if value>45 else (P.GOLD if value>22 else P.CORAL)
-		var bar_style=P.panel(c,5)
-		bar_style.content_margin_top=0;bar_style.content_margin_bottom=0
-		need_bars[key].add_theme_stylebox_override("fill",bar_style)
+		if need_fills.has(key):need_fills[key].bg_color=c
 		need_values[key].text=str(int(value))
 		need_bars[key].tooltip_text=_need_tooltip(key,value)
 		need_values[key].tooltip_text=_need_tooltip(key,value)
