@@ -8,10 +8,11 @@ extends "res://tests/test_autonomy_week.gd"
 ## weekdays and a weekend). Harness mutations are limited to the granted
 ## budget, those paths and that trait; needs, time and completions are
 ## observed, never edited.
-const EXTRA_FURNISHINGS: Array = [["treadmill",4.75,-.5,90],["toybox",-1.7,1.2,0],["piano",-1.7,-1.4,0],["bathtub",2.4,-2.6,0],["stereo",-5.5,-2.5,90],["yoga_mat",-1.6,3.3,0],["mirror",-5.5,-1.0,90],["armchair",-1.4,3.2,0],["bed",6.4,6.9,0],["fridge",3.2,8.3,180],["desk",4.7,8.35,0],["bookshelf",4.3,5.85,0]]
+const EXTRA_FURNISHINGS: Array = [["treadmill",4.75,-.5,90],["toybox",-1.7,1.2,0],["piano",-1.7,-1.4,0],["bathtub",2.4,-2.6,0],["stereo",-5.5,-2.5,90],["yoga_mat",-1.6,3.3,0],["mirror",-5.5,-1.0,90],["armchair",-1.4,3.2,0],["bed",6.4,6.9,0],["fridge",3.2,8.3,180],["desk",4.3,6.05,0]]
 # A five-by-three-and-a-half garden annex holds the second bed, a second
-# fridge, a second desk for homework and a bookcase, with its doorway on the
-# west wall; the cottage's own rooms have no floor left for them.
+# fridge and a second desk for homework, with its doorway on the west wall;
+# the cottage's own rooms have no floor left for them. The north strip beside
+# the bed stays open: it is the bed's route from the door.
 const ANNEX: Dictionary = {"ax":2.6,"az":5.5,"bx":7.6,"bz":8.9,"door_center":6.3}
 const NEW_ACTIONS: Array = ["jog","play_toys","play_piano","bath","dance","stretch","practice_speech","play_chess","play_games","warm_up","change_outfit"]
 
@@ -46,7 +47,7 @@ func _run()->void:
 	# spots, the treadmill stands along the east wall, and crowded walkers yield
 	# or squeeze past each other instead of standing still.
 	var with_annex:bool=OS.get_environment("JUSTLIFE_WEEK_ANNEX")!="0"
-	var purchases:Array=EXTRA_FURNISHINGS if with_annex else EXTRA_FURNISHINGS.filter(func(entry:Array)->bool:return str(entry[0]) not in ["bed","fridge","desk","bookshelf"])
+	var purchases:Array=EXTRA_FURNISHINGS if with_annex else EXTRA_FURNISHINGS.filter(func(entry:Array)->bool:return str(entry[0]) not in ["bed","fridge","desk"])
 	if with_annex:
 		var tx=app.build_transactions
 		var annex:Dictionary=tx.prepare({"op":"structure","tool":"room","level":0,"ax":ANNEX.ax,"az":ANNEX.az,"bx":ANNEX.bx,"bz":ANNEX.bz})
@@ -62,7 +63,7 @@ func _run()->void:
 		app.on_placement(str(entry[0]),Vector3(float(entry[1]),0.16,float(entry[2])),float(entry[3]))
 		if app.world.items.size()>before:placed+=1
 		else:check(false,"Catalogue furnishing could not be placed in Willow Cottage: "+str(entry[0]))
-	check(placed==purchases.size(),"All %d purchases land: eight second-collection furnishings%s." % [purchases.size(),", the annex bed, fridge, desk and bookcase" if with_annex else ""])
+	check(placed==purchases.size(),"All %d purchases land: eight second-collection furnishings%s." % [purchases.size(),", the annex bed, fridge and desk" if with_annex else ""])
 	await press("Live")
 	await screenshot("00_catalogue_cottage",false,false)
 	if with_annex:
