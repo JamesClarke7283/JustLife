@@ -14,7 +14,7 @@ Weighted mean 7.6. The first re-review's P0 (unparented marker, 2,085 errors/run
 
 ## What the second review still requires
 
-- **P1 — the week waiting cap.** The cap is met by at least seven of eight members in both weeks; the tail rotates with snack-seat scarcity at the single cottage fridge seat. Candidate next steps: portable snacks eaten at any free chair (meal-flow change), or a third snack seat in the fixture.
+- **P1 — the week waiting cap.** The cap is met by at least seven of eight members in every week; the tail rotates (Jamie 4.63 h, Ellis 4.98 h, Morgan 4.54 h across three consecutive weeks) with short legitimate episodes — bedtime churn, shower and toilet contention, homework chains. The candidate "snacks eaten at any free chair" was implemented through the television seat pattern and rejected on evidence: one week showed no tail reduction (Avery 4.03 h, Jamie 4.53 h) and adding a claimed-seat skip produced the first late arrivals of any week (23 and 18 minutes) alongside a worse tail, so both were reverted. The remaining structural options are richer fixture facilities or scheduling, which change the accepted contract fixture and deserve their own iteration.
 - **P2.** Chair approaches remain displaced for tucked dining chairs (the front cell is the table; the orbit probe found no closer free cell — the diagnostic now documents a real geometric fact). Mouth contour and brow seating at 2× zoom; moodlet tile initials land this iteration after the review. Frame p95 toward 33 ms. Residual finalize RID noise.
 - The reported 'Liflet' spelling was checked in source and renders: the string is 'Lifelet' everywhere (`progress_steps`, the creator, the lot screen); the review misread the small serif render.
 
