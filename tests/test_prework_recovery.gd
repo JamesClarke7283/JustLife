@@ -53,15 +53,16 @@ func run() -> void:
 	check(str(moderate._autonomous_choice().get("id",""))=="career_day","Once no pastime ends in time for an on-time arrival, moderate boredom yields to the open shift.")
 	moderate.needs.fun=11.0
 	check(str(moderate._autonomous_choice().get("id",""))=="relax","Critical boredom past the deadline still takes the shortest available pastime.")
-	# A late riser: the shift is due, Fun 46 projects under 20 by the evening,
-	# and a forty-minute relax at 09:00 still reaches the lot exit by 10:00 with
-	# ten minutes to reach the seat and fifteen to reach the sidewalk.
+	# A late riser: the shift is due, and with work now fun-compensating only a
+	# Fun below 32 projects evening boredom; at Fun 30 a forty-minute relax at
+	# 09:00 still reaches the lot exit by 10:00 with ten minutes to reach the
+	# seat and fifteen to reach the sidewalk.
 	var riser:LifeSim=furnished("adult",535.0)
-	riser.character.traits=["Creative"];riser.needs.fun=46.0
-	check(riser._autonomy_projection_need("career_day",60.0,true)=="fun","A Creative late riser at Fun 46 projects evening boredom across the shift.")
+	riser.character.traits=["Creative"];riser.needs.fun=30.0
+	check(riser._autonomy_projection_need("career_day",60.0,true)=="fun","A Creative late riser at Fun 30 projects evening boredom across the shift.")
 	check(str(riser._autonomous_choice().get("id",""))=="relax","At 08:55 the due shift waits for a brief relax because arrival stays on time.")
 	riser._choose_autonomous_action();complete_front(riser)
-	check(is_equal_approx(riser.minutes,575.0) and riser.needs.fun>60.0,"The relax ends at 09:35 with Fun restored above 60.")
+	check(is_equal_approx(riser.minutes,575.0) and riser.needs.fun>50.0,"The relax ends at 09:35 with Fun restored above 50.")
 	riser._choose_autonomous_action()
 	check(current_id(riser)=="career_day","After the break the shift is the next autonomous choice.")
 	complete_front(riser)

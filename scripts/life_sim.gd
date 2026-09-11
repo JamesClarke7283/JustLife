@@ -170,8 +170,8 @@ func new_household(profile: Dictionary) -> void:
 
 func _build_actions() -> void:
 	_define("arrive_home","Arriving home",1.0,{},0,"",0.0,"Walk into your new home. Canceling the walk keeps this Lifelet in the family.")
-	_define("career_day", "Go to work", LifeCareerSchedule.LENGTH, {"hunger":30.0,"bladder":38.0,"social":24.0,"energy":-12.0,"fun":-4.0}, 0, "", 0.0, "Weekday work, 09:00–17:00. Arrive by 10:00; late arrivals until noon reduce pay and performance. Lunch and bathroom breaks are included.")
-	_define("school_day", "Go to school", 420.0, {"hunger":22.0,"bladder":28.0,"social":35.0,"energy":-7.0,"fun":-3.0}, 0, "", 0.0, "Leave for school on weekdays from 08:00. Arrive by 09:00 to be on time; late arrival is possible until 12:00. Return at 15:00. Lunch and bathroom breaks are part of the school day.")
+	_define("career_day", "Go to work", LifeCareerSchedule.LENGTH, {"hunger":30.0,"bladder":38.0,"social":24.0,"energy":-12.0,"fun":12.0}, 0, "", 0.0, "Weekday work, 09:00–17:00. Arrive by 10:00; late arrivals until noon reduce pay and performance. Lunch and bathroom breaks are included.")
+	_define("school_day", "Go to school", 420.0, {"hunger":22.0,"bladder":28.0,"social":35.0,"energy":-7.0,"fun":10.0}, 0, "", 0.0, "Leave for school on weekdays from 08:00. Arrive by 09:00 to be on time; late arrival is possible until 12:00. Return at 15:00. Lunch and bathroom breaks are part of the school day.")
 	_define("help_homework", "Help with homework", 45.0, {}, 0, "", 0.0, "Support a child or teen through one assignment and build Parenting skill.")
 	_define("school", "Attend online classes", 180.0, {}, 0, "", 0.0, "Weekday lessons at your desk, 08:00–14:00. Prepared homework improves learning and grades.")
 	_define("homework", "Do homework", 45.0, {}, 0, "", 0.0, "Complete a weekday assignment and prepare for the next attended class.")
@@ -183,7 +183,7 @@ func _build_actions() -> void:
 	_define("clean_plate","Wash this plate",10.0,{"hygiene":-1.0},0,"",0.0,"Carry the used plate to a sink and wash it.")
 	_define("snack", "Grab a snack", 15.0, {"hunger": 32.0}, 8, "", 0.0, "A quick bite to keep the day going.")
 	_define("cook", "Cook a fresh meal", 45.0, {"fun": 8.0, "hygiene": -5.0}, 25, "cooking", 34.0, "Choose a recipe to prepare and share. Cooking skill unlocks more dishes. Eating restores hunger.")
-	_define("sleep", "Sleep", 360.0, {"energy": 95.0}, 0, "", 0.0, "A full night's rest restores energy.")
+	_define("sleep", "Sleep", 360.0, {"energy": 95.0, "fun": 15.0}, 0, "", 0.0, "A full night's rest restores energy and chases the boredom away.")
 	_define("nap", "Take a nap", 75.0, {"energy": 38.0}, 0, "", 0.0, "A short, refreshing nap.")
 	_define("shower", "Take a shower", 30.0, {"hygiene": 85.0, "fun": 4.0}, 0, "", 0.0, "Freshen up and feel ready for the day.")
 	_define("toilet", "Use toilet", 15.0, {"bladder": 95.0, "hygiene": -3.0}, 0, "", 0.0, "Take care of a pressing need.")
