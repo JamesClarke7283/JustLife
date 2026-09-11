@@ -2056,7 +2056,7 @@ func show_careers() -> void:
 	var index:int=0
 	for track_id:String in LifeSim.CAREER_TRACKS:
 		var track:Dictionary=LifeSim.CAREER_TRACKS[track_id]
-		var y:float=325+index*91
+		var y:float=320+index*78
 		var current:bool=str(sim.career.get("track","studio"))==track_id
 		button(str(track.label)+( " · Current" if current else ""),Vector2(478,y),Vector2(484,43),func():_select_career(track_id),current,overlay)
 		text_label("%s · §%d / shift · %s skill" % [track.titles[0],track.base_salary,str(track.skill).capitalize()],Vector2(484,y+47),Vector2(474,28),12,P.MUTED,false,overlay)
