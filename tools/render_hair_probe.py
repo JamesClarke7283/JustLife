@@ -21,7 +21,7 @@ POSES={
  'arms_forward':{'Arm_L':(-.9,0,0),'Arm_R':(-.9,0,0),'Forearm_L':(-1.0,0,0),'Forearm_R':(-1.0,0,0)},
  'walk':{'Leg_L':(-.38,0,0),'Leg_R':(.33,0,0),'Shin_R':(.48,0,0),'Arm_L':(.22,0,0),'Arm_R':(-.22,0,0),'Forearm_R':(-.22,0,0),'Head':(.02,0,.08)},
 }
-HAIR_PREFIXES=('Hair_Bob','Hair_Buzz','Hair_Crop','Hair_Pony','Hair_Long','Hair_Curls','Curls')
+HAIR_PREFIXES=('Hair_Bob','Hair_Buzz','Hair_Crop','Hair_Pony','Hair_Long','Hair_Curls','Hair_Waves','Curls')
 
 def stage(path: pathlib.Path, pose: str) -> None:
     bpy.ops.wm.open_mainfile(filepath=str(path))
