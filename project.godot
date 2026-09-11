@@ -49,4 +49,5 @@ status="No .mcp.json found — use Project > Tools > MCP Toolkit > Write .mcp.js
 rendering_device/driver.windows="d3d12"
 renderer/rendering_method.mobile="gl_compatibility"
 anti_aliasing/quality/msaa_3d=1
+scaling_3d/scale=0.90
 lights_and_shadows/directional_shadow/size=2048
