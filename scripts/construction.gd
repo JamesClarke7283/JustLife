@@ -341,7 +341,7 @@ func make_proposal(p: Vector3) -> Dictionary:
 		elif tool in ["door","erase","paint"]:
 			if not data.has("remove_id"):return {"valid":false,"error":"Point at a wall on this level."}
 			operation["id"]=str(data.remove_id)
-			if tool=="paint":operation["material"]=paint_material;operation["scope"]=paint_scope
+			if tool=="paint":operation["material"]=paint_material;operation["scope"]=paint_scope;operation["px"]=p.x;operation["pz"]=p.z
 			if tool=="door":
 				var wall:Dictionary={}
 				for record:Dictionary in records:

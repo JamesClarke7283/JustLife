@@ -1270,10 +1270,10 @@ func draw_build_catalog() -> void:
 		button("Remove wall",Vector2(925,784),Vector2(140,47),func():begin_construction("erase"))
 		var paint=button("Paint wall",Vector2(1075,784),Vector2(150,47),func():begin_construction("paint"),world.construction.tool=="paint")
 		paint.tooltip_text="Pick the tool, choose a swatch, then click a wall to repaint that segment."
-		var whole=button("Joined walls",Vector2(1235,784),Vector2(144,47),func():
+		var whole=button("Whole room",Vector2(1235,784),Vector2(144,47),func():
 			world.construction.paint_scope="wall" if world.construction.paint_scope=="room" else "room"
 			draw_live(),world.construction.paint_scope=="room")
-		whole.tooltip_text="Paint every wall joined to the clicked one, corner to corner, in one go."
+		whole.tooltip_text="Paints the enclosed room on the side you click; a wall shared with the next room changes for both rooms."
 		button("New roof",Vector2(305,841),Vector2(146,31),func():begin_construction("roof"))
 		button("Edit roof",Vector2(461,841),Vector2(146,31),func():begin_construction("roof_edit"))
 		button("Remove roof",Vector2(617,841),Vector2(146,31),func():begin_construction("roof_remove"))
