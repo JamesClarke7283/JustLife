@@ -24,7 +24,7 @@ parser.add_argument('--preview-dir',type=pathlib.Path,default=None)
 args=parser.parse_args(sys.argv[sys.argv.index('--')+1:] if '--' in sys.argv else [])
 FAMILIES=['adult','child','teen','elder'] if args.family=='all' else [args.family]
 GROUPS=['Root','Spine','Head','Arm_L','Forearm_L','Arm_R','Forearm_R','Leg_L','Shin_L','Leg_R','Shin_R']
-NEW_PREFIXES=('Outfit_Tee','Outfit_Hoodie','Skin_Leg_continuous','Bottom_Shorts','Hair_Pony','Hair_Long','Hair_Buzz','Hair_Waves')
+NEW_PREFIXES=('Outfit_Tee','Outfit_Hoodie','Skin_Leg_continuous','Bottom_Shorts','Hair_Pony','Hair_Long','Hair_Buzz','Hair_Waves','Hair_Bun')
 D=bpy.data
 
 def link(o,parent):
@@ -231,6 +231,26 @@ def author(family):
             v.co=inv@w
         bm.to_mesh(o.data); bm.free()
         for f in o.data.polygons:f.use_smooth=True
+    # ---- Bun: a sleek twisted updo gathered at the upper back of the crown.
+    bun,bmade=dup_group('Hair_Bob','Hair_Bun')
+    for o in bmade:
+        if '_Fringe' in o.name or '_Lock' in o.name or '_Strand' in o.name:D.objects.remove(o)
+    bcap=D.objects['Hair_Bun_Cap']
+    bpts=world_points(bcap); btop=max(p.z for p in bpts)
+    bback=[p for p in bpts if p.y>0.02*hs]
+    bcy=sum(p.y for p in bback)/len(bback)
+    # The gathered knot sits at the upper back of the crown.
+    bun_c=Vector((0,bcy+.055*hs,btop-.055*hs))
+    def bun_ball(u,v):
+        a=u*math.tau; b=v*math.tau
+        r=.056*hs*(1+.12*math.cos(2*a+b*1.5))*(1-.22*b)
+        return bun_c+Vector((math.cos(a)*math.sin(b)*r,math.sin(a)*math.sin(b)*r*.8,-math.cos(b)*r))
+    new_mesh_object('Hair_Bun_Knot',surface(bun_ball,28,16,True,False),'Hair',bun)
+    def bun_wrap(u,v):
+        a=u*math.tau; r=.038*hs
+        base=bun_c+Vector((0,-.045*hs,-.02*hs))
+        return base+Vector((math.cos(a)*r,math.sin(a)*r*.8,-.008*hs*math.cos(a)))
+    new_mesh_object('Hair_Bun_Band',surface(bun_wrap,20,6,True,False),'Jewelry',bun)
     buzz,bmade=dup_group('Hair_Crop','Hair_Buzz')
     for o in bmade:
         if not o.name.endswith('_Cap'):D.objects.remove(o)
