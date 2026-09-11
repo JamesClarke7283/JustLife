@@ -81,12 +81,17 @@ def run():
         if args.adoption_oven:extras=[*extras,"--adoption-oven"] if extras else ["--","--adoption-oven"]
         if args.adoption_ui_only:extras=[*extras,"--adoption-ui-only"] if extras else ["--","--adoption-ui-only"]
         command=[args.godot,"--path",str(root),"--resolution","1440x900","--audio-driver","Dummy","--script","res://tests/"+script,*extras]
+        if script=="test_catalogue_week.gd" and args.timeout<2400:
+            print("WARNING: catalogue_week's in-process watchdog fires at 2400 s; pass --timeout 2400 so a timeout kill cannot precede the result line",flush=True)
         with (root/f"{stage}.log").open("w") as log:
             try:
                 result=subprocess.run(command,env=env,stdout=log,stderr=subprocess.STDOUT,timeout=args.timeout)
                 code=result.returncode
             except subprocess.TimeoutExpired:
                 code=124
+                # A process-level successor of the in-process RESULT line: a
+                # killed stage still leaves a visible, greppable result marker.
+                print(stage.upper()+"_RESULT incomplete — runner killed the stage at the %d s timeout"%args.timeout,flush=True)
         log_text=(root/f"{stage}.log").read_text()
         runtime_errors=re.findall(r"^(?:SCRIPT ERROR|ERROR):.*",log_text,re.M)
         result_path=root/"art"/evidence_folder/("resume_results.json" if stage=="resume" else "playthrough_results.json")
