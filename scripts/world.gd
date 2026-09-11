@@ -75,7 +75,7 @@ func _ready() -> void:
 	environment.ambient_light_color = Color("e4ede4")
 	environment.ambient_light_energy = .35
 	environment.tonemap_mode = Environment.TONE_MAPPER_REINHARDT
-	environment.ssao_enabled = true
+	environment.ssao_enabled = false
 	environment.ssao_radius = 1.5
 	environment.ssao_intensity = 1.2
 	we.environment = environment
@@ -87,7 +87,7 @@ func _ready() -> void:
 	sun.shadow_enabled = true
 	sun.light_angular_distance = 0.5
 	sun.directional_shadow_max_distance = 60
-	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	add_child(sun)
 	update_camera()
 
