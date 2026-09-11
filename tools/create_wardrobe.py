@@ -233,7 +233,7 @@ def export_variant(blend,variant,out):
             for key in o.data.shape_keys.key_blocks:key.value=0
         if low:
             if o.type=='MESH' and o.data.shape_keys is None:
-                mod=o.modifiers.new('Live camera reduction','DECIMATE');mod.ratio=.12 if o.name.endswith('_Cap') else .22
+                mod=o.modifiers.new('Live camera reduction','DECIMATE');mod.ratio=.12 if o.name.endswith('_Cap') else (.38 if 'Leg' in o.name else .22)
                 if o.modifiers.find('Soft skeletal deformation')>=0:
                     bpy.context.view_layer.objects.active=o;bpy.ops.object.modifier_move_up(modifier=mod.name)
             elif o.type=='CURVE':o.data.resolution_u=2;o.data.bevel_resolution=1

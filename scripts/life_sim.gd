@@ -1617,12 +1617,29 @@ func _choose_autonomous_action() -> void:
 	if not choice.is_empty() and queue_action(str(choice.id),str(choice.target_id),choice.position):
 		action_queue.back()["autonomous"] = true
 
+func _restored_need(action_id: String) -> String:
+	# The need an action primarily refills, from its declared changes.
+	var definition: Dictionary = _actions.get(action_id, {})
+	var changes: Dictionary = definition.get("changes", {})
+	var best: String = ""
+	var best_value: float = 0.0
+	for need: String in changes:
+		if float(changes[need]) > best_value:best_value = float(changes[need]);best = need
+	return best
+
+
 func reconsider_waiting_autonomy(blocked_target_ids: Array, waited_game_minutes: float) -> bool:
 	if not autonomy or action_queue.is_empty() or not is_finite(waited_game_minutes) or waited_game_minutes < 30.0: return false
 	var current: Dictionary = action_queue[0]
 	if not bool(current.get("autonomous",false)) or str(current.get("phase","")) != "approach" or current.has("cooperation_id"): return false
 	var choice: Dictionary = _autonomous_choice(blocked_target_ids)
-	if choice.is_empty() or (str(choice.id) == str(current.id) and str(choice.target_id) == str(current.target_id)): return false
+	if choice.is_empty() or (str(choice.id) == str(current.id) and str(choice.target_id) == str(current.target_id)):
+		# Urgency is not the only reason to leave a queue: a mild need behind
+		# an occupied resource reroutes to a free equivalent after half an
+		# hour (the sofa nap while a housemate sleeps, the bathtub while the
+		# shower is busy, the annex fridge while the kitchen one cooks).
+		choice = _autonomy_need_choice(_restored_need(str(current.id)), blocked_target_ids)
+		if choice.is_empty() or (str(choice.id) == str(current.id) and str(choice.target_id) == str(current.target_id)):return false
 	if str(current.id) in ["school","school_day","career_day","homework","job"] and str(choice.id)!=str(current.id):
 		var danger:bool=false
 		for need:String in NEED_NAMES:

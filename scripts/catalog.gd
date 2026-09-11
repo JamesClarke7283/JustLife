@@ -63,7 +63,7 @@ static func starter_layout(lot: int = 0) -> Array:
 		["bed",3.5,1.5,0],["nightstand",2.03,.65,0],["nightstand",4.98,.65,0],
 		["desk",3.4,4.3,180],["chair",3.4,3.48,0],["plant",5.2,4.2,180],
 		["shower",4.9,-4.13,0],["toilet",2.35,-4.1,0],["sink",5.15,-2.13,-90],
-		["painting",-2.1,-4.91,0]
+		["painting",-2.1,-4.91,0],["mirror",5.45,2.3,0]
 	]
 	if lot == 2:
 		entries = [["fridge",-5.2,-4.3,0],["bed",3.5,2.1,0],["toilet",2.35,-4.1,0],["shower",4.9,-4.13,0],["stove",-3.1,-4.4,0]]
