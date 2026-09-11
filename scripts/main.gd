@@ -1954,7 +1954,7 @@ func _cancel_blocked_action(generation:int,action:Dictionary,member_id:String=""
 	var record:Dictionary=route_failures.get(member_id,{"count":0})
 	var action_id:String=str(action.get("id",""))
 	var target_id:String=str(action.get("target_id",""))
-	if record.action==action_id and record.target==target_id:
+	if record.get("action","")==action_id and record.get("target","")==target_id:
 		record.streak=int(record.get("streak",0))+1
 	else:
 		record.streak=1
