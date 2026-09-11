@@ -1338,13 +1338,20 @@ func _autonomy_projection_need(id:String,travel_minutes:float=60.0,include_fun:b
 		if projected<lowest:lowest=projected;problem=need
 	return problem
 
-func _autonomy_target_load(target_id:String) -> float:
-	var load_minutes:float=0.0
-	for member:Dictionary in _autonomy_household_members():
-		if member.sim==self:continue
-		var current:Dictionary=member.sim.get_current_action()
-		if not current.is_empty() and str(current.target_id)==target_id:
-			load_minutes+=maxf(1.0,float(current.duration)-float(current.elapsed))
+func _autonomy_target_load(target_id: String) -> float:
+	# The current user's remaining minutes, plus a standing penalty for every
+	# household member already heading for or waiting at the same resource, so
+	# an occupied furnishing with a queue loses an equivalent free one.
+	var load_minutes: float = 0.0
+	for member: Dictionary in _autonomy_household_members():
+		if member.sim == self:continue
+		if member.sim.action_queue.is_empty():continue
+		var front: Dictionary = member.sim.action_queue[0]
+		if str(front.get("target_id", "")) != target_id:continue
+		if str(front.get("phase", "")) == "active":
+			load_minutes += maxf(1.0, float(front.duration) - float(front.elapsed))
+		else:
+			load_minutes += 20.0
 	return load_minutes
 
 func _autonomy_target_for(id:String,excluded_target_ids:Array=[]) -> Dictionary:

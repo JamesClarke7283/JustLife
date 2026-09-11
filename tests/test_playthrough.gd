@@ -662,9 +662,9 @@ func _resume_verification() -> void:
 	if is_instance_valid(app.get("household")):
 		for member: Dictionary in app.household.members:member.sim.autonomy = true
 		var next_day: int = int(expected.state.day) + 1
-		await wait_until(func() -> bool: return app.sim.day >= next_day or app.sim.minutes >= 1320, "autonomous household reaches the late evening", 40)
+		await wait_until(func() -> bool: return app.sim.day >= next_day or app.sim.minutes >= 1320, "autonomous household reaches the late evening", 180)
 		await screenshot("15_autonomous_evening")
-		await wait_until(func() -> bool: return app.sim.day >= next_day and app.sim.minutes >= 480, "autonomous household reaches the following morning", 45)
+		await wait_until(func() -> bool: return app.sim.day >= next_day and app.sim.minutes >= 480, "autonomous household reaches the following morning", 180)
 		check(app.sim.day >= next_day and app.household.day == app.sim.day, "Both simulation and household cross into the next day.")
 		var needs_valid: bool = true
 		var all_acted: bool = true

@@ -956,14 +956,14 @@ func _update_selection_marker(delta: float) -> void:
 		selection_marker=MeshInstance3D.new()
 		selection_marker.name="SelectionMarker"
 		var gem:SphereMesh=SphereMesh.new()
-		gem.radius=.085;gem.height=.2;gem.radial_segments=4;gem.rings=2
+		gem.radius=.11;gem.height=.27;gem.radial_segments=4;gem.rings=2
 		selection_marker.mesh=gem
 		var shine:StandardMaterial3D=StandardMaterial3D.new()
 		shine.roughness=.25;shine.metallic=.15
 		shine.emission_enabled=true;shine.emission_energy=.55
 		selection_marker.material_override=shine
 		selection_marker.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		gem.radius=.11;gem.height=.27;gem.radial_segments=4;gem.rings=2
+		world.add_child(selection_marker)
 	marker_time+=delta
 	var actor:Node3D=world.actors.get(household.selected_id())
 	var show:bool=mode in ["live","build"] and is_instance_valid(actor) and actor.is_visible_in_tree() and not sim.is_away()
@@ -1231,7 +1231,8 @@ func draw_build_catalog() -> void:
 		button("Stairs",Vector2(929,725),Vector2(146,46),func():begin_construction("stairs"))
 		button("Remove floor / stairs",Vector2(1085,725),Vector2(294,46),func():begin_construction("remove_structure"))
 		if world.construction.tool=="paint":
-			# While the paint tool is active the floor finishes give way to the wall swatches.
+			# While the paint tool is active the wall swatches take this row and
+			# the floor finishes drop one row down, so both stay reachable.
 			for i in range(8):
 				var colour:String=["eae7d7","8faf9f","e6d8c5","c8d7e0","d9b7a3","7d8a99","efd9a0","a3ad7a"][i]
 				var swatch=button("",Vector2(305+i*58,791),Vector2(50,32),func():world.construction.paint_material=colour;draw_live())
@@ -1239,6 +1240,9 @@ func draw_build_catalog() -> void:
 				swatch.add_theme_stylebox_override("normal",P.panel(Color(colour),16,P.TEAL if world.construction.paint_material==colour else Color("ffffff"),3))
 				swatch.add_theme_stylebox_override("hover",P.panel(Color(colour).lightened(.1),16,P.TEAL,3))
 				if world.construction.paint_material==colour:swatch.text="•";swatch.add_theme_color_override("font_color",Color.WHITE)
+			button("Warm oak",Vector2(305,836),Vector2(146,31),func():change_floor("cfa97e"))
+			button("Pale stone",Vector2(461,836),Vector2(146,31),func():change_floor("dcd6c6"))
+			button("Walnut",Vector2(617,836),Vector2(146,31),func():change_floor("896953"))
 		else:
 			button("Warm oak",Vector2(305,784),Vector2(150,47),func():change_floor("cfa97e"))
 			button("Pale stone",Vector2(465,784),Vector2(150,47),func():change_floor("dcd6c6"))
