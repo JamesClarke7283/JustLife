@@ -57,6 +57,7 @@ var last_bill_day: int = 0
 var _targets: Array = []
 var _idle_minutes: float = 0.0
 var autonomy_state: Dictionary = {"version":1,"contacts":{},"deferred":{}}
+var social_cooldowns: Dictionary = {}  # neighbour id -> game minute until which the chooser skips them
 var _change_accumulator: float = 0.0
 var _warned_needs: Dictionary = {}
 var _actions: Dictionary = {}
@@ -1391,6 +1392,8 @@ func _autonomy_social_choice(excluded_target_ids:Array=[]) -> Dictionary:
 	for target:Dictionary in _targets:
 		var target_id:String=str(target.id)
 		if excluded_target_ids.has(target_id) or str(target.kind)!="neighbor" or not relationships.has(target_id):continue
+		# A neighbour whose approach kept failing routing stays on cooldown.
+		if float(social_cooldowns.get(target_id,-1e18)) > _autonomy_now():continue
 		var occupied:bool=false
 		for member:Dictionary in _autonomy_household_members():
 			if str(member.id)!=target_id:continue
@@ -1412,6 +1415,43 @@ func _autonomy_social_choice(excluded_target_ids:Array=[]) -> Dictionary:
 		if not bool(get_action_availability(id,target_id).available):continue
 		if score>best:best=score;selected={"id":id,"target_id":target_id,"position":target.position}
 	return selected
+
+
+func cool_social_target(target_id: String, until_game_minute: float) -> void:
+	# Route failures kept re-selecting an unreachable neighbour; the chooser
+	# skips them until the cooldown lapses.
+	social_cooldowns[target_id] = until_game_minute
+
+
+func reconsider_waiting_autonomy(blocked_target_ids: Array, waited_game_minutes: float) -> bool:
+	if not autonomy or action_queue.is_empty() or not is_finite(waited_game_minutes) or waited_game_minutes < 30.0: return false
+	var current: Dictionary = action_queue[0]
+	if not bool(current.get("autonomous",false)) or str(current.get("phase","")) != "approach" or current.has("cooperation_id"): return false
+	var choice: Dictionary = _autonomous_choice(blocked_target_ids)
+	if choice.is_empty() or (str(choice.id) == str(current.id) and str(choice.target_id) == str(current.target_id)):
+		# Urgency is not the only reason to leave a queue: a mild need behind
+		# an occupied resource reroutes to a free equivalent after half an
+		# hour (the sofa nap while a housemate sleeps, the bathtub while the
+		# shower is busy, the annex fridge while the kitchen one cooks).
+		choice = _autonomy_need_choice(_restored_need(str(current.id)), blocked_target_ids)
+		if choice.is_empty() or (str(choice.id) == str(current.id) and str(choice.target_id) == str(current.target_id)):return false
+	if str(current.id) in ["school","school_day","career_day","homework","job"] and str(choice.id)!=str(current.id):
+		var danger:bool=false
+		for need:String in NEED_NAMES:
+			if float(needs[need])<20.0:danger=true
+		if not danger:return false
+	var replacement: Dictionary = _actions[str(choice.id)].duplicate(true)
+	if str(choice.id) in ["school","school_day","career_day","homework"]:replacement["target_kind"]=_education_target_kind(str(choice.target_id))
+	replacement.merge({"target_id":str(choice.target_id),"target_position":choice.position,"phase":"queued","elapsed":0.0,"progress":0.0,"paid":false,"autonomous":true})
+	# Replanning must release the current meal's actual carrier before changing
+	# its action identity. Later player instructions retain their exact objects.
+	if is_instance_valid(meal_service):meal_service.canceled(self,current)
+	action_queue[0] = replacement
+	_idle_minutes=0.0
+	_start_front()
+	_emit_changed()
+	return true
+
 
 func _duty_deadline(id:String) -> float:
 	# The latest minute a Lifelet can reach the lot exit and still arrive on time.
@@ -1628,36 +1668,6 @@ func _restored_need(action_id: String) -> String:
 	for need: String in changes:
 		if float(changes[need]) > best_value:best_value = float(changes[need]);best = need
 	return best
-
-
-func reconsider_waiting_autonomy(blocked_target_ids: Array, waited_game_minutes: float) -> bool:
-	if not autonomy or action_queue.is_empty() or not is_finite(waited_game_minutes) or waited_game_minutes < 30.0: return false
-	var current: Dictionary = action_queue[0]
-	if not bool(current.get("autonomous",false)) or str(current.get("phase","")) != "approach" or current.has("cooperation_id"): return false
-	var choice: Dictionary = _autonomous_choice(blocked_target_ids)
-	if choice.is_empty() or (str(choice.id) == str(current.id) and str(choice.target_id) == str(current.target_id)):
-		# Urgency is not the only reason to leave a queue: a mild need behind
-		# an occupied resource reroutes to a free equivalent after half an
-		# hour (the sofa nap while a housemate sleeps, the bathtub while the
-		# shower is busy, the annex fridge while the kitchen one cooks).
-		choice = _autonomy_need_choice(_restored_need(str(current.id)), blocked_target_ids)
-		if choice.is_empty() or (str(choice.id) == str(current.id) and str(choice.target_id) == str(current.target_id)):return false
-	if str(current.id) in ["school","school_day","career_day","homework","job"] and str(choice.id)!=str(current.id):
-		var danger:bool=false
-		for need:String in NEED_NAMES:
-			if float(needs[need])<20.0:danger=true
-		if not danger:return false
-	var replacement: Dictionary = _actions[str(choice.id)].duplicate(true)
-	if str(choice.id) in ["school","school_day","career_day","homework"]:replacement["target_kind"]=_education_target_kind(str(choice.target_id))
-	replacement.merge({"target_id":str(choice.target_id),"target_position":choice.position,"phase":"queued","elapsed":0.0,"progress":0.0,"paid":false,"autonomous":true})
-	# Replanning must release the current meal's actual carrier before changing
-	# its action identity. Later player instructions retain their exact objects.
-	if is_instance_valid(meal_service):meal_service.canceled(self,current)
-	action_queue[0] = replacement
-	_idle_minutes=0.0
-	_start_front()
-	_emit_changed()
-	return true
 
 
 func _has_trait(trait_name: String) -> bool:

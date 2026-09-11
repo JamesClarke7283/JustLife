@@ -1952,8 +1952,20 @@ func _cancel_blocked_action(generation:int,action:Dictionary,member_id:String=""
 	if loading_game or (epoch>=0 and epoch!=load_epoch):return
 	if member_id.is_empty():member_id=bound_member_id
 	var record:Dictionary=route_failures.get(member_id,{"count":0})
-	record.count=int(record.count)+1;record.action=str(action.get("id",""));record.target=str(action.get("target_id",""));record.at=household.minutes
+	var action_id:String=str(action.get("id",""))
+	var target_id:String=str(action.get("target_id",""))
+	if record.action==action_id and record.target==target_id:
+		record.streak=int(record.get("streak",0))+1
+	else:
+		record.streak=1
+	record.count=int(record.count)+1;record.action=action_id;record.target=target_id;record.at=household.minutes
 	route_failures[member_id]=record
+	# Two consecutive routing failures for the same social target put that
+	# neighbour on a three-hour cooldown, so the chooser falls back to other
+	# company instead of walking into the same blocked approach all day.
+	if record.streak>=2 and action_id in LifeSim.SOCIAL_ACTIONS:
+		var member_sim:LifeSim=household.member_sim(member_id)
+		if is_instance_valid(member_sim):member_sim.cool_social_target(target_id,float(household.minutes)+180.0)
 	var prior:String=bound_member_id
 	_store_motion()
 	_bind_member(member_id)
