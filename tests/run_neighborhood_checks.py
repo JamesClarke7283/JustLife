@@ -16,7 +16,10 @@ def main():
     (source / 'dist' / '.gdignore').touch()
     snapshot = Path(tempfile.mkdtemp(prefix='resident-checks-', dir=work))
     for name in ('scripts', 'scenes', 'assets'):
-        shutil.copytree(source / name, snapshot / name, ignore=shutil.ignore_patterns('*_rig*', '*_grip*'))
+        # Ignore only the heavyweight character rig/grip models; a bare
+        # '*_rig*' glob also matched assets/ui/rotate_right.svg.
+        ignore = shutil.ignore_patterns('*character_rig*', '*character_grip*', '*_surface_grip*', '*_broad_grip*') if name == 'assets' else None
+        shutil.copytree(source / name, snapshot / name, ignore=ignore)
     (snapshot / 'tests').mkdir()
     for name in TESTS:
         shutil.copy2(source / 'tests' / name, snapshot / 'tests' / name)

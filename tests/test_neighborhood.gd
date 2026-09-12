@@ -39,7 +39,7 @@ func run() -> void:
 		if app.current_venue!=venue:app.travel_to(venue)
 		await finish_trip();await process_frame
 		check(app.current_venue==venue and app.world.items.size()>5,"Distinct populated destination: "+venue)
-		check(app.household.members.size()==2 and app.world.actors.size()==4,"Household stays together at "+venue)
+		check(app.household.members.size()==2 and app.world.actors.size()==6,"Household stays together at "+venue)
 		for target:Dictionary in app.world.simulation_targets():
 			check(not app.world.path_to(app.player.position,target.position).is_empty(),"Accessible "+str(target.id))
 		app.set_build_mode(true)

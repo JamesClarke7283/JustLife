@@ -63,11 +63,15 @@ func consume()->void:
  check(float(app.sim.relationships.maya.friendship)==float(expected.friendship) and float(app.sim.skills.charisma.xp)==float(expected.charisma),"Fresh continuation never grants absent social rewards")
 func finish_queue()->void:
  var remote_active:bool=false
+ # The iteration-50 clock runs one game-minute per wall second; very fast
+ # lets the bounded loop drain the remaining queue inside the time budget.
+ app.sim.set_speed(8)
  for i:int in range(2200):
   app._process(.05)
   if i%10==0:await process_frame
   var action:Dictionary=app.sim.get_current_action()
   if str(action.get("id",""))=="friendly" and str(action.get("phase",""))=="active" and not app.residents.present("maya"):remote_active=true
   if action.is_empty():break
+ app.sim.set_speed(1)
  check(not remote_active,"No social activity becomes active with a hidden resident")
  check(app.sim.action_queue.is_empty(),"The remaining queue completes without hanging")

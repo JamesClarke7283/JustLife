@@ -62,12 +62,12 @@ func apply_contact(contact:Dictionary,member_sim:LifeSim) -> void:
 func _default_state(id:String,place:String) -> Dictionary:
  var person:Dictionary=PEOPLE[id]
  var side:int=int(person.get("side",-1))
- var at:=Vector3(-8.25*side,.16,float(person.get("lane",8.0)))
- var phase:String="walking" if int(person.get("walk_wait",24.0))<=0.0 else "home"
+ var at:=Vector3(8.25*side,.16,float(person.get("lane",8.0)))
+ var phase:String="walking" if float(person.get("walk_wait",24.0))<=0.0 else "home"
  var wait:float=float(person.get("walk_wait",24.0)) if phase=="walking" else float(person.get("rest_wait",24.0))
  if place==str(person.home):at=Vector3(-.5,.16,.1);phase="visiting";wait=5.0
  elif place in LifeNeighborhood.RESIDENT_HOMES:phase="home";wait=999999.0
- elif place!="home":at=Vector3(-2.5*side,.16,2.75);phase="visiting";wait=float(person.get("visit_wait",5.0))
+ elif place!="home":at=Vector3(2.5*side,.16,2.75);phase="visiting";wait=float(person.get("visit_wait",5.0))
  return {"position":[at.x,at.y,at.z],"direction":-side,"phase":phase,"wait":wait,"rotation":PI*.5*-side,"waypoint":0}
 
 func attach(place:String) -> void:
@@ -223,16 +223,20 @@ func restore(value:Variant) -> void:
    var valid:bool=true
    for number:Variant in record.position:
     if not (number is float or number is int) or not is_finite(float(number)):valid=false
-   if not valid or absf(float(record.position[0]))>9 or absf(float(record.position[2]))>9 or absf(float(record.position[1])-.16)>.001:continue
+   # The z bound covers every catalogue lane (tom walks at z=10.4).
+   if not valid or absf(float(record.position[0]))>9 or absf(float(record.position[2]))>12 or absf(float(record.position[1])-.16)>.001:continue
    if str(record.get("phase","")) not in ["home","walking","visiting"]:continue
    if not (record.get("wait") is float or record.get("wait") is int) or not is_finite(float(record.wait)) or float(record.wait)<0:continue
    if not (record.get("rotation") is float or record.get("rotation") is int) or not is_finite(float(record.rotation)):continue
    var direction:Variant=record.get("direction",1)
    var waypoint:Variant=record.get("waypoint",0)
    if not _integer(direction,-1,1) or float(direction)==0 or not _integer(waypoint,0,2):continue
-   var allowed:Array=["home","walking"] if place=="home" else (["home"] if place in ["maya_home","leo_home"] and place!=str(PEOPLE[id].home) else ["visiting"])
+   var allowed:Array=["home","walking"] if place=="home" else (["home"] if place in LifeNeighborhood.RESIDENT_HOMES and place!=str(PEOPLE[id].home) else ["visiting"])
    if str(record.phase) not in allowed:continue
-   accepted[id]={"position":record.position.duplicate(),"phase":str(record.phase),"wait":minf(float(record.wait),999999.0),"direction":int(direction),"rotation":float(record.rotation),"waypoint":int(waypoint)}
+   # Route the restored position through Vector3 so the stored values match
+   # the float32 precision the live actor-derived snapshot carries.
+   var restored:=Vector3(float(record.position[0]),float(record.position[1]),float(record.position[2]))
+   accepted[id]={"position":[restored.x,restored.y,restored.z],"phase":str(record.phase),"wait":minf(float(record.wait),999999.0),"direction":int(direction),"rotation":float(record.rotation),"waypoint":int(waypoint)}
   locations[place]=accepted
 
  if value.get("home_visit") is Dictionary:home_visit.restore(value.home_visit)
