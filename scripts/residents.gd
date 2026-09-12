@@ -9,7 +9,9 @@ var trip:Dictionary={}
 var car:Node3D
 var home_visit:LifeHomeVisit
 var sidewalk_routes:Dictionary={}
-var _initiated:Dictionary={}  # resident id -> absolute game day of their last self-started contact
+var _initiated:Dictionary={}
+var _anchor_cache:Dictionary={}
+  # resident id -> absolute game day of their last self-started contact
 const INITIATE_RADIUS:=2.5
 ## Sidewalk lane per resident, derived from the catalogue so new roster
 ## entries join the walking flow without new controller constants.
@@ -22,7 +24,7 @@ func _init(controller:Node) -> void:
   SIDEWALK_LANES[id]=float(PEOPLE[id].get("lane",8.0))
 
 func reset() -> void:
- locations.clear();active_place="";trip.clear();home_visit.reset();sidewalk_routes.clear();_initiated.clear()
+ locations.clear();active_place="";trip.clear();home_visit.reset();sidewalk_routes.clear();_initiated.clear();_anchor_cache.clear()
 
 ## A visiting resident with a household member nearby starts one contact per
 ## game day: a cheerful chat off hours, or looking for company when their
@@ -171,6 +173,26 @@ func _walk_sidewalk(id:String,state:Dictionary,time:float)->bool:
   app.world.set_actor_away(id,true,true);sidewalk_routes.erase(id)
  return moving
 
+## Waypoints for a visiting resident: routine residents at their venue idle
+## beside their anchor object (desk, planters); everyone else walks the house
+## circuit. The lookup is cached per venue.
+func _destinations_for(id:String) -> Array:
+ var person:Dictionary=PEOPLE[id]
+ var anchor_kind:String=str(person.get("routine",{}).get("anchor_kind",""))
+ var at_routine_venue:bool=active_place==str(person.get("routine",{}).get("venue",""))
+ if anchor_kind.is_empty() or not at_routine_venue:
+  return [Vector3(-.5,.16,2.9),Vector3(1.8,.16,2.8),Vector3(-.5,.16,.1)]
+ var cache_key:String=active_place+"/"+anchor_kind
+ if _anchor_cache.has(cache_key):return _anchor_cache[cache_key]
+ var result:Array=[]
+ for entry:Dictionary in LifeNeighborhood.layout(active_place):
+  if str(entry.get("kind",""))!=anchor_kind:continue
+  var p:=Vector3(float(entry.x),.16,float(entry.z))
+  result.append_array([p+Vector3(.7,.16,.35),p+Vector3(-.7,.16,.2),p+Vector3(0,.16,.55)])
+ if result.is_empty():result=[Vector3(-.5,.16,2.9),Vector3(1.8,.16,2.8),Vector3(-.5,.16,.1)]
+ _anchor_cache[cache_key]=result
+ return result
+
 func tick(delta:float) -> void:
  if active_place.is_empty() or not locations.has(active_place):return
  var speed:float=float(app.sim.speed)
@@ -220,7 +242,9 @@ func tick(delta:float) -> void:
    elif str(state.phase)=="visiting":
     state.wait=maxf(0,float(state.wait)-delta*speed)
     if float(state.wait)<=0:
-     var destinations:Array=[Vector3(-.5,.16,2.9),Vector3(1.8,.16,2.8),Vector3(-.5,.16,.1)]
+     # A routine resident at their venue idles by their anchor object; other
+     # visitors keep the house lot's front-room circuit.
+     var destinations:Array=_destinations_for(id)
      var destination:Vector3=destinations[int(state.waypoint)%destinations.size()]
      var route:PackedVector3Array=app.world.path_to(actor.position,destination)
      if route.size()>1:
