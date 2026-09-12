@@ -212,7 +212,9 @@ func tick(delta:float) -> void:
   var routine_venue:String=str(person.get("routine",{}).get("venue",""))
   var at_routine_venue:bool=routine_venue!="" and active_place==routine_venue
   var routine_on:bool=LifeResidentCatalogue.routine_active(person,LifeEducation.weekday(app.sim.day),app.sim.minutes)
-  var morning_on:bool=not home_visit.owns(id) and LifeResidentCatalogue.routine_morning_active(person,LifeEducation.weekday(app.sim.day),app.sim.minutes)
+  # The morning jog plays on the home lot's lane: at other venues the
+  # resident keeps their normal presence rhythm.
+  var morning_on:bool=not home_visit.owns(id) and active_place=="home" and LifeResidentCatalogue.routine_morning_active(person,LifeEducation.weekday(app.sim.day),app.sim.minutes)
   if morning_on and str(state.phase)!="walking":
    # The second beat: a morning spent out on the lane before the routine.
    state.phase="walking";state.routine_away=false

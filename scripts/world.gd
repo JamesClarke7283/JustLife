@@ -532,7 +532,7 @@ func rebuild_navigation() -> void:
 	# Even a rejected rebuild can replace the compatibility grid.
 	_target_approaches.clear()
 	# Compatibility grid stays ground-only until main/food callers are migrated.
-	navigation.region=Rect2i(-36,-28,73,65)
+	navigation.region=Rect2i(-36,-28,73,75)
 	navigation.cell_size=Vector2(.25,.25)
 	navigation.diagonal_mode=AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
 	navigation.update()
