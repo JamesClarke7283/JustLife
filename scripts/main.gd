@@ -1975,7 +1975,7 @@ func _cancel_blocked_action(generation:int,action:Dictionary,member_id:String=""
 
 func on_action_finished(action:Dictionary) -> void:
 	if is_instance_valid(player):
-		player.speech({"arrive_home":"This feels like a new beginning.","school_day":"Learned something new today.","career_day":"Home after a busy day.","cook":"Ready to serve.","serve_meal":"Come and get it!","eat_meal":"That was lovely.","store_meal":"Something for later.","clean_plate":"All clean.","read":"One more chapter…","paint":"Made something lovely.","friendly":"Good to talk with you!","joke":"Ha!","deep_talk":"I understand.","water":"Looking greener.","work":"All done!","homework":"Ready for tomorrow.","help_homework":"We worked it out."}.get(action.id,"That feels better."))
+		player.speech({"arrive_home":"This feels like a new beginning.","school_day":"Learned something new today.","career_day":"Home after a busy day.","cook":"Ready to serve.","serve_meal":"Come and get it!","eat_meal":"That was lovely.","store_meal":"Something for later.","clean_plate":"All clean.","read":"One more chapter…","paint":"Made something lovely.","friendly":"Good to talk with you!","joke":"Ha!","deep_talk":"I understand.","hug":"That hug was just right.","share_interests":"We have so much in common!","water":"Looking greener.","work":"All done!","homework":"Ready for tomorrow.","help_homework":"We worked it out."}.get(action.id,"That feels better."))
 	refresh_hud()
 
 func show_notice(message:String) -> void:
