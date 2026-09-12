@@ -74,7 +74,7 @@ func _run()->void:
  app.load_game(visit_slot);await process_frame
  check(app.current_venue=="maya_home" and app.residents.app==app and app.residents.active_place=="maya_home","Named friend-home load adopts the matching resident service")
  check(app.residents.present("maya") and not app.residents.present("leo"),"Only the loaded cottage's present resident is targetable")
- check(app.residents.snapshot()==visit_residents and _same(app.world.serialize_items(),visit_world),"Named friend-home load preserves exact resident and house records")
+ check(_same(app.residents.snapshot(),visit_residents) and _same(app.world.serialize_items(),visit_world),"Named friend-home load preserves exact resident and house records")
  var expected:Dictionary={"slot":visit_slot,"home":home,"visit":visit_world,"residents":visit_residents}
  var receipt:=FileAccess.open("user://resident_v2_expected.json",FileAccess.WRITE);receipt.store_string(JSON.stringify(expected,"",true,true));receipt.close()
  await _trip("home")
