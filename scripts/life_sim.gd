@@ -65,6 +65,7 @@ var last_gossip: Dictionary = {}  # neighbour id -> game minute of the last goss
 var visited_venue: String = ""  # non-empty while the Lifelet is at a visited venue (a resident's home)
 var last_hosted_credit: float = -1e18  # absolute game minute of the last hosted-activity credit
 var last_companion_credit: float = -1e18  # absolute game minute of the last routine-venue companion credit
+var companion_anchors: Dictionary = {}  # routine resident id -> their anchor object position
 var routine_memory_days: Dictionary = {}  # host id -> game day of the last remembered routine encounter
 var _change_accumulator: float = 0.0
 var _warned_needs: Dictionary = {}
@@ -785,7 +786,7 @@ func _finish_front() -> void:
 		autonomy_state["leisure"]=_leisure_history.duplicate()
 	if not str(action.get("target_id","")).is_empty():_recent_target_use[str(action.target_id)]=_autonomy_now()
 	_maybe_credit_host(id)
-	_maybe_credit_companion(id)
+	_maybe_credit_companion(id,action.get("target_position"))
 	if id in AGE_GATED_ACTIONS and not bool(get_action_availability(id, str(action.get("target_id",""))).available):
 		# A restored or edited queue cannot grant an activity this age may not do.
 		_emit_notice(str(get_action_availability(id, str(action.get("target_id",""))).reason))
@@ -883,10 +884,11 @@ func _maybe_credit_host(action_id: String) -> void:
 	_emit_notice("Time at %s's place brings you closer." % str(person["name"]).split(" ")[0])
 
 
-func _maybe_credit_companion(action_id: String) -> void:
+func _maybe_credit_companion(action_id: String, at: Vector3) -> void:
 	# A routine resident working at their venue during the window joins a
-	# matching leisure activity: friendship with them grows, at most once an
-	# in-game hour. Separate throttle from the hosted-visit credit.
+	# matching leisure activity NEAR their anchor object: friendship with
+	# them grows, at most once an in-game hour. Separate throttle from the
+	# hosted-visit credit.
 	if visited_venue.is_empty() or visited_venue=="home":return
 	if not (action_id in LEISURE_ACTIONS or action_id=="study"):return
 	if _autonomy_now()-last_companion_credit<60.0:return
@@ -896,6 +898,8 @@ func _maybe_credit_companion(action_id: String) -> void:
 		if routine.is_empty() or str(routine.get("venue",""))!=visited_venue:continue
 		if not LifeResidentCatalogue.routine_active(person,LifeEducation.weekday(day),minutes):continue
 		if not relationships.has(resident_id):continue
+		var anchor: Vector3 = companion_anchors.get(resident_id, Vector3.INF)
+		if at.distance_to(anchor)>2.5:continue
 		last_companion_credit=_autonomy_now()
 		var rel: Dictionary = relationships[resident_id]
 		rel["friendship"] = clampf(float(rel["friendship"]) + 2.0, -100.0, 100.0)

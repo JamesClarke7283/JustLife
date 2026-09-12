@@ -641,7 +641,19 @@ func setup_live(layout:Array) -> void:
 	world.set_build(false)
 	# The visited venue drives hosted-activity credits: which home the
 	# household is enjoying, and whose hospitality that is.
-	for member:Dictionary in household.members:member.sim.visited_venue="" if current_venue=="home" else current_venue
+	for member:Dictionary in household.members:
+		member.sim.visited_venue="" if current_venue=="home" else current_venue
+		# Routine residents carry their anchor object position so companion
+		# credits demand co-presence at the same furnishing.
+		member.sim.companion_anchors.clear()
+		for resident_id:String in LifeResidentCatalogue.IDS:
+			var routine:Dictionary=LifeResidentCatalogue.PEOPLE[resident_id].get("routine",{})
+			if str(routine.get("venue",""))!=current_venue:continue
+			var kind:String=str(routine.get("anchor_kind",""))
+			for item:Dictionary in world.items:
+				if str(item.id).begins_with(current_venue) and str(item.kind)==kind:
+					member.sim.companion_anchors[resident_id]=Vector3(float(item.x),.16,float(item.z))
+					break
 	world.camera.projection=Camera3D.PROJECTION_ORTHOGONAL
 	world.camera.size=16.0
 	world.camera_angle=.62
