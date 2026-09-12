@@ -179,6 +179,9 @@ func configure(new_profile: Dictionary) -> void:
 	_ensure_nodes()
 	if has_meta("layer_cache"): remove_meta("layer_cache")  # a new model needs its view layers and pick bodies assigned again
 	profile = new_profile.duplicate(true)
+	# Wordless voices are shared clips; the pitch varies by name so each
+	# Lifelet and neighbour sounds like their own person.
+	_voice.pitch_scale = clampf(1.0 + (float(str(new_profile.get("name", "")).hash() % 100) / 100.0 - 0.5) * 0.24, 0.88, 1.12)
 	if _model != null:
 		visual.remove_child(_model)
 		_model.queue_free()

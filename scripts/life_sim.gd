@@ -133,10 +133,10 @@ func new_household(profile: Dictionary) -> void:
 	skills.clear()
 	for skill_name: String in SKILL_NAMES:
 		skills[skill_name] = {"level": 1, "xp": 0.0}
-	relationships = {
-		"maya": {"name": "Maya Chen", "friendship": 12.0, "romance": 0.0, "status": "Acquaintance"},
-		"leo": {"name": "Leo Morgan", "friendship": 4.0, "romance": 0.0, "status": "Acquaintance"}
-	}
+	relationships = {}
+	for index: int in LifeResidentCatalogue.IDS.size():
+		var resident_id: String = LifeResidentCatalogue.IDS[index]
+		relationships[resident_id] = {"name": str(LifeResidentCatalogue.PEOPLE[resident_id].name), "friendship": 12.0 - 4.0 * float(index), "romance": 0.0, "status": "Acquaintance"}
 	for relationship: Dictionary in relationships.values():
 		_normalize_relationship(relationship, false)
 	romantic_partner = ""
@@ -268,7 +268,7 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 				if int(WEAR_ACTIONS[wear_id]) != int(character.get("outfit", 0)): ids.append(wear_id)
 		"garden_bed": ids = ["water"]
 		"fireplace": ids = ["warm_up"]
-		"neighbor", "maya", "leo": ids = SOCIAL_ACTIONS
+		"neighbor", "maya", "leo", "priya", "tom": ids = SOCIAL_ACTIONS
 	if str(character.age_stage) in LifeEducation.SCHOOL_STAGES:
 		if kind in ["desk","computer"]: ids = ["school","homework","study"] + (["play_games"] if kind == "computer" else [])
 		elif kind == "bookshelf": ids = ["read","homework","study"]
@@ -1886,7 +1886,7 @@ func _offer_daily_story() -> void:
 	if story_events.size() >= MAX_STORY_EVENTS:
 		return
 	var kind: String = STORY_KINDS[(day - 2) % STORY_KINDS.size()]
-	var neighbor: String = "maya" if (day + day / 6) % 2 == 0 else "leo"
+	var neighbor: String = LifeResidentCatalogue.IDS[(day - 2) % LifeResidentCatalogue.IDS.size()]
 	var track: Dictionary = CAREER_TRACKS.get(str(career.get("track", "studio")), CAREER_TRACKS.studio)
 	story_events.append({"id":"story_day_%d" % day, "kind":kind, "day":day, "context":{"neighbor":neighbor, "skill":str(track.skill), "career_level":int(career.level), "creativity_level":int(skills.creativity.level)}})
 	_emit_notice("A new story choice is waiting: %s." % _story_event(story_events.back()).title)
@@ -2367,6 +2367,11 @@ func _validate_state(state: Dictionary) -> String:
 		var skill: Variant = state["skills"].get(skill_name)
 		if not skill is Dictionary or not _number_in_range(skill.get("level"), 1.0, 10.0) or not _number_in_range(skill.get("xp"), 0.0, 10000.0):
 			return "Save contains an invalid skill."
+	# Legacy saves predate the larger roster: synthesise any catalogue
+	# neighbour they lack so the expanded neighborhood joins mid-story.
+	for resident_id:String in LifeResidentCatalogue.IDS:
+		if not state["relationships"].has(resident_id):
+			state["relationships"][resident_id] = {"name": str(LifeResidentCatalogue.PEOPLE[resident_id].name), "friendship": 8.0, "romance": 0.0, "status": "Acquaintance"}
 	for required_id:String in ["maya","leo"]:
 		if not state["relationships"].has(required_id):return "Save is missing a relationship."
 	for person_id: String in state["relationships"]:
@@ -2589,7 +2594,7 @@ func _validate_progression(state: Dictionary) -> String:
 			return "Save contains an invalid story identity."
 		event_ids.append(str(ticket.id))
 		var context: Dictionary = ticket.context
-		if str(context.get("neighbor", "")) not in ["maya", "leo"] or str(context.get("skill", "")) not in SKILL_NAMES or not _number_in_range(context.get("career_level"), 1, 5) or not _number_in_range(context.get("creativity_level"), 1, 10):
+		if str(context.get("neighbor", "")) not in LifeResidentCatalogue.IDS or str(context.get("skill", "")) not in SKILL_NAMES or not _number_in_range(context.get("career_level"), 1, 5) or not _number_in_range(context.get("creativity_level"), 1, 10):
 			return "Save contains an invalid story context."
 	for story: Variant in state.get("story_history", []):
 		if not story is Dictionary:

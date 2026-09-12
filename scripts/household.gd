@@ -117,11 +117,12 @@ func _sync_wallet() -> void:
 
 func _sync_social_context() -> void:
 	var partners:Dictionary={}
-	var adults:Dictionary={"maya":true,"leo":true}
+	var adults:Dictionary={}
+	for resident_id:String in LifeResidentCatalogue.IDS:adults[resident_id]=true
 	for member:Dictionary in members:
 		partners[member.id]=member.sim.romantic_partner
 		adults[member.id]=str(member.sim.character.get("life_stage","adult"))=="adult"
-		if str(member.sim.romantic_partner) in ["maya","leo"]:
+		if str(member.sim.romantic_partner) in LifeResidentCatalogue.IDS:
 			partners[member.sim.romantic_partner]=member.id
 	for member:Dictionary in members:
 		var reciprocal:Dictionary={}
@@ -492,7 +493,7 @@ func _validate_member_identity(data:Dictionary) -> String:
 			if LifeFamilyGraph.inverse(str(relationship.get("family_role","none")))!=str(reverse_relations[expected_ids[index]].get("family_role","none")):
 				return "The saved household has one-sided family roles."
 		for relation_id:Variant in relations:
-			if not relation_id is String or (str(relation_id) not in ["maya","leo"] and str(relation_id) not in expected_ids):
+			if not relation_id is String or (str(relation_id) not in LifeResidentCatalogue.IDS and str(relation_id) not in expected_ids):
 				return "The saved household contains an unknown relationship identity."
 		var partner_id:String=str(entry.state.get("romantic_partner",""))
 		if partner_id in expected_ids:
@@ -504,7 +505,7 @@ func _validate_member_identity(data:Dictionary) -> String:
 				return "The saved household contains a missing reciprocal relationship."
 			if str(peer_relations[expected_ids[index]].get("bond","none"))!=str(relations[partner_id].get("bond","none")):
 				return "The saved household contains mismatched partnership stages."
-		elif partner_id in ["maya","leo"]:
+		elif partner_id in LifeResidentCatalogue.IDS:
 			if neighbor_partners.has(partner_id):return "A neighbor cannot have two household partners."
 			neighbor_partners[partner_id]=expected_ids[index]
 	return ""
