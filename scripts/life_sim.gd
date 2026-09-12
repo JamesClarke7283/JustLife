@@ -1097,6 +1097,7 @@ func _apply_social(action: Dictionary) -> bool:
 				_emit_notice("%s seems uncomfortable. Try building a friendship first." % person["name"])
 		"argue":
 			change = -22.0
+			person["romance"] = maxf(0.0, float(person["romance"]) - 12.0)
 		"sympathize":
 			# Household members carry a live Fun read; neighbors carry a
 			# catalogue mood schedule — drained during weekday work hours.
