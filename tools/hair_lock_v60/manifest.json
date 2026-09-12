@@ -1,0 +1,31 @@
+{
+  "tool": "hair_lock_v60",
+  "baseline": {
+    "commit": "6d486f85e835d0c7311d57872cd003a10ed94ca6",
+    "note": "iteration 59 accepted character sources (Bun/Long/Waves paddle locks and floating hoodie hood)"
+  },
+  "blender": "5.2.1",
+  "inputs": {
+    "art/characters.blend": {
+      "sha256": "1b7e59817990604c317820f69eb76ad558a9afb6336fd644a9cedc1602378324"
+    },
+    "art/characters_child.blend": {
+      "sha256": "068bb7fbf1b86bb4a357a1e1314061863120423b3f96443523325faf42f3bfd7"
+    },
+    "art/characters_teen.blend": {
+      "sha256": "de8677ce7b7fd49de0cdeab61795674305e31e4d6be5a0eaa02d5d07517768f5"
+    },
+    "art/characters_elder.blend": {
+      "sha256": "b459a61a6c06697f1bbf9919de03c861e5a0e100fd3c85151daff0c763654f52"
+    }
+  },
+  "expected": {
+    "changed_objects_per_family": 37,
+    "lock_vert_budget": {
+      "input": 48,
+      "max": 96
+    },
+    "hood_edge_max_after": -0.008
+  },
+  "policy": "generate.py extracts the pinned blends from the baseline commit and refuses hash drift (working tree or git), authors candidates in fresh Blender processes, exports sixteen GLBs through the create_wardrobe export path, records every hash in RECEIPT.json, renders before/after evidence into evidence/hair60 and re-qualifies the production hashes and adult decoded PINS; only --apply writes the working tree."
+}

@@ -7,7 +7,7 @@ primitive references and exporter version, must equal the qualified revision.
 import copy, hashlib, json, math, struct
 from pathlib import Path
 
-PINS = {'character.glb': '38505d8eba1d84b3c5e87cbba5ee4b82a58e67dfe23ef48e86d0c19e1b0a95c6', 'character_broad.glb': '18429f695dca7e73fdb5bd7dfcfdc97548995bd6f7f02d3042b4d84190277886', 'character_lod.glb': '722706b11b440dc55b922dd3b739f9d8522fcba4ddfd18b11e268ed0264b43bb', 'character_broad_lod.glb': '729efd666709846b88a26897447904602022adac21d26af6b1f972e21084fcac'} # Qualified Cardigan rear-hem correction; rig18/surface2 retained.
+PINS = {'character.glb': 'bc3511bebf0129203c2090f85f20178edb532c9ec3aae671da7ac487ee8986b3', 'character_broad.glb': '7f3b9231263699917912695c04607a2e15e709aacac1d3309538a465f3d9dfe1', 'character_lod.glb': 'd98dc3be13437a35b4650626331633c1632e3c626547d62c87797d467b9d00d7', 'character_broad_lod.glb': '91fec8391dd418af89b57ab3029cd1e5bd10dc34ecdfb2544b0d908889fe8424'} # Qualified hair-lock v60 rounded tapered locks and seated hood; rig18/surface2 retained.
 FORMATS = {5120:'b',5121:'B',5122:'h',5123:'H',5125:'I',5126:'f'}
 COUNTS = {'SCALAR':1,'VEC2':2,'VEC3':3,'VEC4':4,'MAT4':16}
 
