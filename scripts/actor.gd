@@ -246,7 +246,9 @@ func configure(new_profile: Dictionary) -> void:
 	_voice.position.y = (_authored_height-.26) * _height
 	var hair_index: int = clampi(int(profile.get("hair", 0)), 0, HAIR_NAMES.size() - 1)
 	# Older exports lack the later styles; fall back to the first authored style rather than showing no hair.
-	if _model.find_child(HAIR_NAMES[hair_index], true, false) == null: hair_index = 0
+	if _model.find_child(HAIR_NAMES[hair_index], true, false) == null:
+		push_warning("Hairstyle %s is missing from the loaded model; showing %s instead. Reimport the project if this is unexpected." % [HAIR_NAMES[hair_index], HAIR_NAMES[0]])
+		hair_index = 0
 	for index: int in range(HAIR_NAMES.size()):
 		var group: Node3D = _model.find_child(HAIR_NAMES[index], true, false) as Node3D
 		if group != null:
