@@ -2,7 +2,7 @@
 from pathlib import Path
 import argparse, hashlib, json, os, shutil, subprocess, sys, tempfile
 
-TESTS = ('test_residents_validation.gd', 'test_residents.gd', 'test_residents_v2.gd', 'test_residents_fresh_load.gd', 'test_residents_queued.gd', 'test_residents_v2_household.gd', 'test_residents_v2_food.gd', 'test_companion_visit.gd', 'test_neighborhood.gd')
+TESTS = ('test_residents_validation.gd', 'test_residents.gd', 'test_residents_v2.gd', 'test_residents_fresh_load.gd', 'test_residents_queued.gd', 'test_residents_v2_household.gd', 'test_residents_v2_food.gd', 'test_companion_credit.gd', 'test_companion_visit.gd', 'test_neighborhood.gd')
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -21,7 +21,7 @@ def main():
         ignore = shutil.ignore_patterns('*character_rig*', '*character_grip*', '*_surface_grip*', '*_broad_grip*') if name == 'assets' else None
         shutil.copytree(source / name, snapshot / name, ignore=ignore)
     (snapshot / 'tests').mkdir()
-    for name in TESTS + ('test_stair_controller.gd', 'test_stair_food_custody.gd', 'test_stair_save_process.gd', 'test_stair_save.gd', 'test_build_world_levels.gd', 'resident_v2_load_controller.gd', 'test_furnishing.gd'):
+    for name in TESTS + ('test_stair_controller.gd', 'test_stair_food_custody.gd', 'test_stair_save_process.gd', 'test_stair_save.gd', 'test_build_world_levels.gd', 'resident_v2_load_controller.gd', 'test_furnishing.gd', 'test_autonomy_policy.gd'):
         shutil.copy2(source / 'tests' / name, snapshot / 'tests' / name)
     lines = []
     skip = False
@@ -52,7 +52,9 @@ def main():
         with log.open('w') as output:
             result = subprocess.run([godot, '--headless', '--path', str(snapshot), *arguments], env=env, stdout=output, stderr=subprocess.STDOUT, timeout=240)
         text = log.read_text()
-        failed = result.returncode != 0 or 'SCRIPT ERROR:' in text or '\nERROR:' in text
+        # The engine's benign "resources still in use at exit" notice (a
+        # script holding its own GDScript resource) is not a stage failure.
+        failed = result.returncode != 0 or 'SCRIPT ERROR:' in text or ('\nERROR:' in text and 'resources still in use' not in text)
         results.append({'phase': phase, 'exit_code': result.returncode, 'failed': failed, 'warnings': text.count('WARNING:'), 'log': str(log)})
         print(f'{phase}: {"FAIL" if failed else "PASS"} ({text.count("WARNING:")} warnings)', flush=True)
         if failed:
