@@ -195,7 +195,7 @@ func tick(delta:float) -> void:
    state.phase="home";state.routine_away=true;state.wait=float(person.get("home_wait",60.0))
    actor.visible=false
    app.world.set_actor_away(id,true,true);sidewalk_routes.erase(id);continue
-  elif at_routine_venue and not routine_on and bool(state.get("routine_away",false)):
+  elif bool(state.get("routine_away",false)) and not routine_on:
    # The routine window closed while they were out at this lot: step back on.
    state.phase="visiting";state.wait=float(person.get("visit_wait",5.0))
    actor.visible=true
