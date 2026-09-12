@@ -71,7 +71,10 @@ func _run_days(target:float)->void:
 	sample_time=_now();next_capture=(floorf((_now()-audit_start)/1440)+1)*1440+audit_start
 	audit_enabled=true
 	await press("▶▶▶")
-	var end_wall:int=Time.get_ticks_msec()+300000
+	# The iteration-50 clock (1 game-minute per real second) makes a three-day
+	# stage alone need ~540 s at very fast, plus paused daily captures; the old
+	# 300 s budget predates it and could never reach the target again.
+	var end_wall:int=Time.get_ticks_msec()+1200000
 	while _now()<target and Time.get_ticks_msec()<end_wall:
 		await process_frame
 		audit.frame_ms.append(root.get_process_delta_time()*1000.0)
