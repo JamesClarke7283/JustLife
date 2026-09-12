@@ -41,11 +41,12 @@ Weighted mean **8.0** by this iteration's own scoring; the independent review of
 | `test_route_learning` | 6 checks, 0 failures |
 | `test_doorway_yield` | 10 checks, 0 failures |
 | `test_actor` | 612 checks, 0 failures |
-| `run_public_twofloor.py` | import 0 / public 0 / resume 0 problems |
-| `run_playthrough.py --suite neighborhood` | exit 0, 0 runtime errors, resume 0 |
+| `run_public_twofloor.py` | import 0 / public 0 / resume 0 problems (re-verified after the manifest fix) |
+| `run_playthrough.py --suite neighborhood` | exit 0, 0 runtime errors; resume exit 0, 0 errors |
 | `run_playthrough.py --suite home` | exit 0, 0 runtime errors |
 | `run_neighborhood_checks.py` | 12/12 suites PASS |
-| `probe_family60.gd` (rendered) | 11 checks, 0 failures, 8 captures |
+| `run_playthrough.py --suite supported_homework` | playthrough exit 0 (was exit 1 with 9 failures); resume keeps 8 pre-existing failures, reproduced identically with this iteration stashed |
+| `probe_family60.gd` (rendered) | 12 checks, 0 failures, 9 captures (adds the caregiving check) |
 | `probe_frames.gd` (rendered) | p50 16.4 / p90 20.2–31.8 / p95 38.1–54.0 / p99 60.3 |
 
 ## Independent review response
