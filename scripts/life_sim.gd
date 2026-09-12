@@ -61,6 +61,7 @@ var _idle_minutes: float = 0.0
 var autonomy_state: Dictionary = {"version":1,"contacts":{},"deferred":{}}
 var social_cooldowns: Dictionary = {}  # neighbour id -> game minute until which the chooser skips them
 var last_hugs: Dictionary = {}  # neighbour id -> game minute of the last hug
+var last_gossip: Dictionary = {}  # neighbour id -> game minute of the last gossip
 var _change_accumulator: float = 0.0
 var _warned_needs: Dictionary = {}
 var _actions: Dictionary = {}
@@ -74,7 +75,7 @@ var story_events: Array = []
 var story_history: Array = []
 var _story_generated_day: int = 1
 const STORY_KINDS: Array[String] = ["neighbor_invitation", "career_opportunity", "hobby_exhibition", "garden_exchange", "learning_circle", "community_picnic"]
-const SOCIAL_ACTIONS: Array[String] = ["friendly", "joke", "deep_talk", "hug", "share_interests", "flirt", "argue", "ask_partner", "commit", "break_up"]
+const SOCIAL_ACTIONS: Array[String] = ["friendly", "joke", "deep_talk", "hug", "share_interests", "sympathize", "gossip", "flirt", "argue", "ask_partner", "commit", "break_up"]
 const AGE_GATED_ACTIONS: Array[String] = ["jog", "play_toys"]
 const LEISURE_ACTIONS: Array[String] = ["paint", "read", "watch", "relax", "play_piano", "play_chess", "dance", "play_games", "practice_speech", "stretch", "warm_up", "jog", "play_toys"]
 const PRE_DUTY_LEISURE: Array[String] = ["relax", "read", "watch", "stretch", "warm_up", "paint"]  # brief pastimes before a school or work day; the short ones sit ahead of the canvas
@@ -222,6 +223,8 @@ func _build_actions() -> void:
 	_define("deep_talk", "Have a heartfelt talk", 45.0, {"social": 45.0, "fun": 8.0}, 0, "charisma", 28.0, "A deeper conversation works best with someone you know.")
 	_define("hug", "Share a hug", 15.0, {"social": 24.0, "fun": 5.0}, 0, "charisma", 12.0, "A warm hug for someone you care about. Works best on a real friend.")
 	_define("share_interests", "Share interests", 35.0, {"social": 38.0, "fun": 10.0}, 0, "charisma", 20.0, "Talk about what you love. Lifelets with shared traits connect deeply.")
+	_define("sympathize", "Offer sympathy", 20.0, {"social": 20.0, "fun": 4.0}, 0, "charisma", 14.0, "Sit with someone having a hard day and really listen. Comforts a struggling friend most.")
+	_define("gossip", "Share a bit of gossip", 20.0, {"social": 16.0, "fun": 8.0}, 0, "charisma", 10.0, "Trade the neighborhood's small stories. Fun, but the same story twice lands flat.")
 	_define("flirt", "Flirt", 25.0, {"social": 26.0, "fun": 10.0}, 0, "charisma", 20.0, "Express interest. Friendship helps your advances land well.")
 	_define("argue", "Argue", 20.0, {"social": 8.0, "fun": -12.0}, 0, "charisma", 8.0, "Vent your frustration, at a cost to the relationship.")
 	_define("ask_partner", "Ask to become partners", 35.0, {"social": 15.0, "fun": 8.0}, 0, "charisma", 12.0, "Choose a relationship together. Both adults need 45 friendship and 35 romance, and must be available.")
@@ -1092,6 +1095,21 @@ func _apply_social(action: Dictionary) -> bool:
 		"argue":
 			change = -22.0
 			person["romance"] = maxf(0.0, float(person["romance"]) - 12.0)
+		"sympathize":
+			var their_fun:float=float(_social_reciprocal[target].get("fun",100.0)) if _social_reciprocal.has(target) else 100.0
+			if their_fun<45.0:
+				change=16.0
+				_emit_notice("You sit with %s and really listen. They seem lighter." % person["name"])
+			else:
+				change=7.0
+		"gossip":
+			var last:float=float(last_gossip.get(target,-1e9))
+			if minutes-last<900.0:
+				change=3.0
+				_emit_notice("%s has heard this story before. It lands flat." % person["name"])
+			else:
+				change=9.0
+			last_gossip[target]=minutes
 	if _has_trait("Outgoing") and change > 0.0:
 		change *= 1.2
 	person["friendship"] = clampf(float(person["friendship"]) + change, -100.0, 100.0)

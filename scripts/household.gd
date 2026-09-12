@@ -130,7 +130,7 @@ func _sync_social_context() -> void:
 			if other.id!=member.id and other.sim.relationships.has(str(member.id)):
 				var relationship:Dictionary=other.sim.relationships[str(member.id)]
 				relationship.life_stage = str(member.sim.character.life_stage)
-				reciprocal[other.id]={"friendship":relationship.friendship,"romance":relationship.romance,"traits":other.sim.character.get("traits",[])}
+				reciprocal[other.id]={"friendship":relationship.friendship,"romance":relationship.romance,"traits":other.sim.character.get("traits",[]),"fun":float(other.sim.needs.get("fun",100.0))}
 				family_roles[other.id]=family_relationship(str(member.id),str(other.id))
 		member.sim.set_social_context(str(member.id),partners,adults,reciprocal,family_roles)
 

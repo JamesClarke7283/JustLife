@@ -39,5 +39,28 @@ func run()->void:
 	check(gained>15.0,"Shared traits make the conversation land deeply (+%.1f)." % gained)
 	# The "met" milestone is recorded by the interaction.
 	check(sim.relationships["maya"].milestones.has("met"),"The interaction records the met milestone.")
+	# Sympathy comforts a struggling friend most.
+	sim.relationships["maya"].friendship=20.0
+	sim.set_social_context("player",{},{"maya":true},{"maya":{"friendship":20.0,"traits":["Creative"],"fun":30.0}}, {})
+	var low:Dictionary={"id":"sympathize","target_id":"maya","target_position":Vector3.ZERO}
+	check(sim._apply_social(low),"Sympathy on a struggling friend completes.")
+	var comforted:float=float(sim.relationships["maya"].friendship)-20.0
+	check(comforted>14.0,"Sympathy on a low-mood friend gains the full comfort (+%.1f)." % comforted)
+	# Sympathy on a cheerful friend gains less.
+	sim.relationships["maya"].friendship=20.0
+	sim.set_social_context("player",{},{"maya":true},{"maya":{"friendship":20.0,"traits":["Creative"],"fun":90.0}}, {})
+	check(sim._apply_social(low),"Sympathy on a cheerful friend completes.")
+	var mild:float=float(sim.relationships["maya"].friendship)-20.0
+	check(mild>5.0 and mild<comforted,"Sympathy on a cheerful friend gains less (+%.1f vs %.1f)." % [mild,comforted])
+	# Gossip: fresh story gains well; an immediate repeat lands flat.
+	sim.relationships["maya"].friendship=30.0
+	var story:Dictionary={"id":"gossip","target_id":"maya","target_position":Vector3.ZERO}
+	check(sim._apply_social(story),"Fresh gossip completes.")
+	var fresh:float=float(sim.relationships["maya"].friendship)-30.0
+	check(fresh>7.0,"Fresh gossip gains well (+%.1f)." % fresh)
+	var before_gossip:float=float(sim.relationships["maya"].friendship)
+	check(sim._apply_social(story),"The immediate repeat gossip completes.")
+	var stale:float=float(sim.relationships["maya"].friendship)-before_gossip
+	check(stale>0.0 and stale<fresh,"A repeated story gains less (+%.1f vs %.1f)." % [stale,fresh])
 	print("SOCIAL_VARIETY %d checks, %d failures"%[checks,failures.size()])
 	quit(0 if failures.is_empty() else 1)
