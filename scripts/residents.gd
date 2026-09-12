@@ -130,7 +130,7 @@ func routine_note(destination:String) -> String:
  var person:Dictionary=PEOPLE.get(resident,{})
  var routine:Dictionary=person.get("routine",{})
  if routine.is_empty() or not LifeResidentCatalogue.routine_active(person,LifeEducation.weekday(app.sim.day),app.sim.minutes):return ""
- var end_minute:float=float(routine["to"])*60.0
+ var end_minute:float=LifeResidentCatalogue.routine_until(person,app.sim.minutes)
  var hour:int=int(end_minute/60.0)
  var minute:int=int(fmod(end_minute,60.0))
  return str(person.name).split(" ")[0]+" is out at "+str(routine["place"])+" until %02d:%02d." % [hour,minute]
@@ -186,9 +186,14 @@ func tick(delta:float) -> void:
   var guest:bool=home_visit.owns(id)
   var routine_due:bool=not guest and LifeResidentCatalogue.routine_active(person,LifeEducation.weekday(app.sim.day),app.sim.minutes) and str(state.phase)!="home"
   if routine_due:
-   state.phase="home";state.wait=float(person.get("home_wait",60.0))
+   state.phase="home";state.routine_away=true;state.wait=float(person.get("home_wait",60.0))
    actor.visible=false
-   app.world.set_actor_away(id,true,true)
+   app.world.set_actor_away(id,true,true);sidewalk_routes.erase(id);continue
+  elif bool(state.get("routine_away",false)):
+   # The routine window closed while they were out at this lot: step back on.
+   state.phase="visiting";state.wait=float(person.get("visit_wait",5.0))
+   actor.visible=true
+   app.world.set_actor_away(id,false,false);sidewalk_routes.erase(id)
   if guest:sidewalk_routes.erase(id);home_visit.tick(delta);continue
   var speaker:Dictionary=_speaker(id)
   var moving:bool=false
@@ -201,7 +206,7 @@ func tick(delta:float) -> void:
   elif speed>0:
    if str(state.phase)=="home":
     state.wait=maxf(0,float(state.wait)-delta*speed*LifeSim.GAME_MINUTES_PER_SECOND)
-    if float(state.wait)<=0 and active_place=="home" and app.traversal._free(id,actor.position):
+    if float(state.wait)<=0 and active_place=="home" and app.traversal._free(id,actor.position) and not LifeResidentCatalogue.routine_active(PEOPLE[id],LifeEducation.weekday(app.sim.day),app.sim.minutes):
      sidewalk_routes.erase(id);state.phase="walking";app.world.set_actor_away(id,false,false)
    elif str(state.phase)=="walking":
     moving=_walk_sidewalk(id,state,delta*speed)
