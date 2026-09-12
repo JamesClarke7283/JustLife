@@ -121,6 +121,19 @@ func publish_targets(force:bool=false) -> void:
  var targets:Array=app.world.simulation_targets()
  for member:Dictionary in app.household.members:member.sim.register_targets(targets.filter(func(t:Dictionary):return str(t.id)!=str(member.id) and home_visit.social_allowed(str(t.id),member.sim.get_current_action())))
 
+## The arrival flavor for a host whose routine has them out: who, where,
+## and until when. Empty when the host is home.
+func routine_note(destination:String) -> String:
+ var resident:String=str(LifeNeighborhood.PLACES.get(destination,{}).get("resident",""))
+ if resident.is_empty():return ""
+ var person:Dictionary=PEOPLE.get(resident,{})
+ var routine:Dictionary=person.get("routine",{})
+ if routine.is_empty() or not LifeResidentCatalogue.routine_active(person,LifeEducation.weekday(app.sim.day),app.sim.minutes):return ""
+ var end_minute:float=float(routine["to"])*60.0
+ var hour:int=int(end_minute/60.0)
+ var minute:int=int(fmod(end_minute,60.0))
+ return str(person.name).split(" ")[0]+" is out at "+str(routine["place"])+" until %02d:%02d." % [hour,minute]
+
 func _walk_sidewalk(id:String,state:Dictionary,time:float)->bool:
  var actor:LifeActor=app.world.actors[id]
  var goal:=Vector3(8.5*float(state.direction),.16,float(SIDEWALK_LANES[id]))
@@ -164,6 +177,14 @@ func tick(delta:float) -> void:
   var actor:LifeActor=app.world.actors.get(id)
   if not is_instance_valid(actor):continue
   var state:Dictionary=locations[active_place][id]
+  # A resident whose weekday routine window is open steps out: off-lot and
+  # untargetable until the window closes, when the usual home-to-walking
+  # flip brings them back on their normal rhythm.
+  var person:Dictionary=PEOPLE[id]
+  if LifeResidentCatalogue.routine_active(person,LifeEducation.weekday(app.sim.day),app.sim.minutes) and str(state.phase)!="home":
+   state.phase="home";state.wait=float(person.get("home_wait",60.0))
+   actor.visible=false
+   app.world.set_actor_away(id,true,true)
   if home_visit.owns(id):sidewalk_routes.erase(id);home_visit.tick(delta);continue
   var speaker:Dictionary=_speaker(id)
   var moving:bool=false
@@ -370,6 +391,8 @@ func _arrive() -> void:
  var layout:Array=app.home_layout if destination=="home" else app.venue_layouts.get(destination,LifeNeighborhood.layout(destination))
  if destination=="home" and layout.is_empty():layout=LifeCatalog.starter_layout(app.selected_lot)
  app.loading_game=true;app.setup_live(layout);app.loading_game=false
+ var note:=routine_note(destination)
+ if not note.is_empty():app.show_notice(note)
  for index:int in range(app.household.members.size()):
   var member:Dictionary=app.household.members[index]
   var actor:LifeActor=app.world.actors[member.id]
