@@ -259,7 +259,7 @@ func _finish()->void:
 	if meal.active() or not app.household.meals.carried_by(str(state.guest)).is_empty():return
 	var id:String=str(state.guest);var actor:LifeActor=_body(id)
 	var resident:Dictionary=app.residents.locations.home[id]
-	resident.phase="home";resident.position=_packed(actor.position);resident.rotation=actor.rotation.y;resident.wait=48.0 if id=="maya" else 72.0
+	resident.phase="home";resident.position=_packed(actor.position);resident.rotation=actor.rotation.y;resident.wait=float(LifeResidentCatalogue.PEOPLE.get(id,{}).get("home_wait",60.0))
 	app.world.set_actor_away(id,true,true);state={};_welcome_action={};_departure_action={}
 	app.residents.publish_targets(true);app.show_notice(str(LifeResidents.PEOPLE[id].name)+" has headed home.")
 

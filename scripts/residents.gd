@@ -11,10 +11,15 @@ var home_visit:LifeHomeVisit
 var sidewalk_routes:Dictionary={}
 var _initiated:Dictionary={}  # resident id -> absolute game day of their last self-started contact
 const INITIATE_RADIUS:=2.5
-const SIDEWALK_LANES={"maya":8.0,"leo":8.8}
+## Sidewalk lane per resident, derived from the catalogue so new roster
+## entries join the walking flow without new controller constants.
+var SIDEWALK_LANES:Dictionary={}
+
 
 func _init(controller:Node) -> void:
  app=controller;home_visit=LifeHomeVisit.new(self)
+ for id:String in PEOPLE:
+  SIDEWALK_LANES[id]=float(PEOPLE[id].get("lane",8.0))
 
 func reset() -> void:
  locations.clear();active_place="";trip.clear();home_visit.reset();sidewalk_routes.clear();_initiated.clear()
@@ -55,13 +60,15 @@ func apply_contact(contact:Dictionary,member_sim:LifeSim) -> void:
   relationship.friendship=clampf(float(relationship.friendship)+float(contact.friendship),-100.0,100.0)
 
 func _default_state(id:String,place:String) -> Dictionary:
- var at:=Vector3(-8.25 if id=="maya" else 8.25,.16,float(SIDEWALK_LANES[id]))
- var phase:String="walking" if id=="maya" else "home"
- var wait:float=0 if id=="maya" else 24.0
- if place==str(PEOPLE[id].home):at=Vector3(-.5,.16,.1);phase="visiting";wait=5.0
- elif place in ["maya_home","leo_home"]:phase="home";wait=999999.0
- elif place!="home":at=Vector3(-2.5 if id=="maya" else 2.5,.16,2.75);phase="visiting";wait=3.0 if id=="maya" else 7.0
- return {"position":[at.x,at.y,at.z],"direction":1 if id=="maya" else -1,"phase":phase,"wait":wait,"rotation":PI*.5 if id=="maya" else -PI*.5,"waypoint":0}
+ var person:Dictionary=PEOPLE[id]
+ var side:int=int(person.get("side",-1))
+ var at:=Vector3(-8.25*side,.16,float(person.get("lane",8.0)))
+ var phase:String="walking" if int(person.get("walk_wait",24.0))<=0.0 else "home"
+ var wait:float=float(person.get("walk_wait",24.0)) if phase=="walking" else float(person.get("rest_wait",24.0))
+ if place==str(person.home):at=Vector3(-.5,.16,.1);phase="visiting";wait=5.0
+ elif place in LifeNeighborhood.RESIDENT_HOMES:phase="home";wait=999999.0
+ elif place!="home":at=Vector3(-2.5*side,.16,2.75);phase="visiting";wait=float(person.get("visit_wait",5.0))
+ return {"position":[at.x,at.y,at.z],"direction":-side,"phase":phase,"wait":wait,"rotation":PI*.5*-side,"waypoint":0}
 
 func attach(place:String) -> void:
  sidewalk_routes.clear()
@@ -146,7 +153,7 @@ func _walk_sidewalk(id:String,state:Dictionary,time:float)->bool:
   actor.position=next;budget-=step;moving=true
   if distance<=step+.000001:route.point+=1
  if actor.position.distance_to(goal)<.00001:
-  state.phase="home";state.wait=48.0 if id=="maya" else 72.0;state.direction=-int(state.direction)
+  state.phase="home";state.wait=float(PEOPLE[id].get("home_wait",60.0));state.direction=-int(state.direction)
   app.world.set_actor_away(id,true,true);sidewalk_routes.erase(id)
  return moving
 

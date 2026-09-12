@@ -256,9 +256,9 @@ func _test_new_story_kinds() -> void:
 	sim.needs.fun = 40.0
 	var money: int = sim.funds
 	var cooking_xp: float = xp_total(sim, "cooking")
-	var friendship: float = float(sim.relationships.leo.friendship)
+	var friendship: float = float(sim.relationships.priya.friendship)
 	check(sim.choose_story_event("story_day_8", "bring_party_dish"), "The party dish must be selectable.")
-	check(sim.funds == money - 20 and is_equal_approx(xp_total(sim, "cooking"), cooking_xp + 30.0) and is_equal_approx(float(sim.relationships.leo.friendship), friendship + 10.0), "The party dish must apply its cost, cooking XP and friendship exactly.")
+	check(sim.funds == money - 20 and is_equal_approx(xp_total(sim, "cooking"), cooking_xp + 30.0) and is_equal_approx(float(sim.relationships.priya.friendship), friendship + 10.0), "The party dish must apply its cost, cooking XP and friendship exactly.")
 	check(sim.needs.social == 60.0 and sim.needs.fun == 52.0 and sim.needs.energy == 70.0, "The party dish must apply its advertised need tradeoffs.")
 	sim.day = 9
 	sim._offer_daily_story()
