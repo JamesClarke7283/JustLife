@@ -296,7 +296,9 @@ func physical_error()->String:
 	if app.current_venue!="home":return "A home guest was saved in a different venue."
 	var id:String=str(state.guest);var actor:LifeActor=_body(id)
 	if not is_instance_valid(actor) or not actor.visible:return "The saved guest is not physically present."
-	if actor.position!=_vector(state.position) or actor.rotation.y!=float(state.rotation):return "The saved guest transform is inconsistent."
+	# The saved transform round-trips through JSON doubles while the actor
+	# carries float32; compare with engine float32 tolerance.
+	if actor.position.distance_to(_vector(state.position))>.01 or absf(actor.rotation.y-float(state.rotation))>.01:return "The saved guest transform is inconsistent."
 	if not app.world.lot_navigation.point_clear(0,actor.position):return "The saved guest is on unsupported or blocked ground."
 	for key:String in ["welcome","inside","exit"]:
 		if not app.world.lot_navigation.point_clear(0,state[key]):return "A saved guest destination is unsupported or blocked."
