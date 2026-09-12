@@ -505,6 +505,7 @@ func swatches(colors:Array,key:String,p:Vector2,diameter:float,gap:float) -> voi
 		if profile.get(key,"")==c:b.text="•";b.add_theme_color_override("font_color",Color.WHITE)
 
 func refresh_preview() -> void:
+	if not is_instance_valid(preview):return
 	preview.scale=Vector3.ONE
 	preview.configure(profile)
 	frame_creator_camera()
