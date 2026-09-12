@@ -47,6 +47,9 @@ func _same_snapshot(a:Variant,b:Variant)->bool:
 	if (a is float or a is int) and (b is float or b is int):return is_equal_approx(float(a),float(b))
 	return a==b
 func _same_value(a:Variant,b:Variant)->bool:
+	# Positions pass through Vector3 (float32) on the live path while saves
+	# carry JSON doubles; numerics compare with engine float32 tolerance.
+	if (a is float or a is int) and (b is float or b is int):return is_equal_approx(float(a),float(b))
 	if a is Dictionary and b is Dictionary:
 		if a.size()!=b.size():return false
 		for key:Variant in a:
