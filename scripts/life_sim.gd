@@ -30,7 +30,8 @@ const CAREER_TRACKS: Dictionary = {
 	"culinary":{"label":"Culinary arts","skill":"cooking","base_salary":160,"titles":["Kitchen assistant","Prep cook","Line chef","Sous chef","Head chef"]},
 	"technology":{"label":"Technology","skill":"logic","base_salary":200,"titles":["Support specialist","Junior developer","Software engineer","Technical lead","Principal engineer"]},
 	"community":{"label":"Community work","skill":"charisma","base_salary":150,"titles":["Community assistant","Event organizer","Outreach specialist","Program manager","Community director"]},
-	"fitness":{"label":"Wellness club","skill":"fitness","base_salary":170,"titles":["Club assistant","Fitness coach","Personal trainer","Wellness lead","Body architect"]}
+	"fitness":{"label":"Wellness club","skill":"fitness","base_salary":170,"titles":["Club assistant","Fitness coach","Personal trainer","Wellness lead","Body architect"]},
+	"botany":{"label":"Botany guild","skill":"gardening","base_salary":155,"titles":["Garden centre clerk","Plant technician","Botanist","Head horticulturist","Master gardener"]}
 }
 
 var needs: Dictionary = {}
