@@ -207,6 +207,17 @@ func _walk(id:String,route:Dictionary,time:float,consider_courtesy:bool=true)->D
 		var next:Vector3=actor.position+difference/distance*step
 		if not courtesy.step_allowed(self,id,actor.position,next):return {"time":0.0,"moved":moved,"blocked":true}
 		if not _step_clear(id,actor.position,next) and not (bool(route.get("squeeze",false)) and _step_clear_of_structure(id,actor.position,next)):
+			if not _step_clear_of_structure(id,actor.position,next) and courtesy.step_allowed(self,id,actor.position,next):
+				# Even without any body nearby this step is refused by walls,
+				# furniture or floors: the planned corridor is not truly
+				# walkable. Learn the edge so the planner routes around it.
+				route.structure_refusals=int(route.get("structure_refusals",0))+1
+				if int(route.structure_refusals)>=4:
+					route.structure_refusals=0
+					app.world.lot_navigation.penalize_segment(app.world.point_level(actor.position),actor.position,goal)
+					var detour:PackedVector3Array=_floor_route(actor.position,route.points[-1],id)
+					if not detour.is_empty():route.points=detour;route.point=0
+				return {"time":0.0,"moved":moved,"blocked":true}
 			if courtesy.beneficiary(self,id):return {"time":0.0,"moved":moved,"blocked":true}
 			var observing:bool=consider_courtesy and _can_observe_replan(id,route)
 			if observing and _observe_replan(id,route,remaining,moved):return {"time":0.0,"moved":moved,"blocked":true}
@@ -543,8 +554,12 @@ func _resolve_standoff(id:String,route:Dictionary)->void:
 	# After several fruitless retreats the walker squeezes past the bodies in its
 	# way for the rest of this route, the way people do in a crowded hallway,
 	# rather than shuffling back and forth all evening. Walls, stairs and
-	# courtesy corridors are still respected.
+	# courtesy corridors are still respected. A real detour around the holding
+	# body is tried first, so nobody walks through anybody on open floor.
 	if int(route.get("standoffs",0))>=STANDOFF_LIMIT:
+		if int(route.get("bypasses",0))<4 and _try_body_bypass(id,route):
+			route.bypasses=int(route.get("bypasses",0))+1
+			return
 		if not bool(route.get("squeeze",false)):route.squeeze=true;squeeze_count+=1
 		return
 	var actor:LifeActor=app.world.actors[id]
@@ -565,6 +580,33 @@ func _resolve_standoff(id:String,route:Dictionary)->void:
 	# Nobody else could move: back off anyway and try again shortly.
 	_retreat(id,route,"")
 
+func _try_body_bypass(id:String,route:Dictionary)->bool:
+	# Step around the holding body through walkable floor: an approach step to
+	# one side, then the planner rejoins the original destination from there.
+	var actor:LifeActor=app.world.actors[id]
+	if int(route.point)>=route.points.size():return false
+	var goal:Vector3=route.points[int(route.point)]
+	var forward:Vector3=goal-actor.position;forward.y=0.0
+	if forward.length()<.05:return false
+	forward=forward.normalized()
+	var side:Vector3=Vector3(-forward.z,0,forward.x)
+	var level:int=app.world.point_level(actor.position)
+	for candidate_dir:Vector3 in [side,-side]:
+		var waypoint:Vector3=goal+candidate_dir*.9+forward*.25
+		waypoint.y=actor.position.y
+		if not app.world.lot_navigation.point_clear(level,waypoint):continue
+		var approach:Vector3=actor.position+candidate_dir*.45
+		approach.y=actor.position.y
+		if not app.world.lot_navigation.point_clear(level,approach):continue
+		if not _step_clear(id,actor.position,approach):continue
+		var onward:PackedVector3Array=_floor_route(waypoint,route.points[-1],id)
+		if onward.is_empty():continue
+		var spliced:PackedVector3Array=PackedVector3Array([approach])
+		spliced.append(waypoint)
+		for index:int in range(1,onward.size()):spliced.append(onward[index])
+		route.points=spliced;route.point=0
+		return true
+	return false
 func _retreat(id:String,route:Dictionary,peer:String)->bool:
 	var actor:LifeActor=app.world.actors[id]
 	var corridor:PackedVector3Array=_corridor_points(routes[peer]) if not peer.is_empty() and routes.has(peer) else PackedVector3Array()
