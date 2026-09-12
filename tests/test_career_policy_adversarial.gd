@@ -63,6 +63,8 @@ func _career_changes() -> void:
 	check(not sim.choose_career("technology"), "Returning workers retain their original track until actual home arrival.")
 	sim.complete_away_return()
 	check(sim.choose_career("technology") and sim.career.track == "technology", "Changing career is valid once the worker arrives home.")
+	check(sim.choose_career("botany") and sim.career.track == "botany" and int(sim.career.salary) == 155, "The sixth track (botany) is selectable with its own salary.")
+	check(str(sim.career.title) == "Garden centre clerk" and sim.career.level == 1, "The botany track starts at its first rank.")
 	check(worker().restore_state(snapshot(sim)).ok, "An early return followed by a career change is loadable.")
 	for adulthood: bool in [false, true]:
 		var late: LifeSim = worker("teen" if adulthood else "adult", 780.0)
