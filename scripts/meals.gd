@@ -8,8 +8,8 @@ const MAX_PORTIONS := 128
 const EATING_MINUTES := 32.0
 # Authored support dimensions in tools/create_furniture.py. Keep the entire
 # ceramic footprint on the surface, with a 1 cm inset from its outer edge.
-const SURFACE_HEIGHTS := {"dining":.847,"counter":.952,"stove":.997}
-const SURFACE_HALF_SIZE := {"dining":Vector2(.8,.56),"counter":Vector2(.525,.39),"stove":Vector2(.51,.385)}
+const SURFACE_HEIGHTS := {"dining":.847,"counter":.952,"stove":.997,"coffee_table":.46}
+const SURFACE_HALF_SIZE := {"dining":Vector2(.8,.56),"counter":Vector2(.525,.39),"stove":Vector2(.51,.385),"coffee_table":Vector2(.5,.24)}
 const PLATE_HALF_SIZE := Vector2(.15,.15)
 const PLATTER_HALF_SIZE := Vector2(.25,.168)
 const SURFACE_INSET := .01
