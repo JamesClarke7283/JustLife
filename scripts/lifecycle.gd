@@ -2,9 +2,9 @@ extends RefCounted
 class_name LifeLifecycle
 ## Progress is a fraction of a stage, so changing lifespan preserves age.
 
-const STAGES: Array[String] = ["child", "teen", "young_adult", "adult", "elder"]
-const LABELS: Dictionary = {"child":"Child", "teen":"Teen", "young_adult":"Young adult", "adult":"Adult", "elder":"Elder", "unknown":"Age unspecified"}
-const NORMAL_DAYS: Dictionary = {"child":14, "teen":21, "young_adult":28, "adult":42, "elder":28}
+const STAGES: Array[String] = ["baby", "child", "teen", "young_adult", "adult", "elder"]
+const LABELS: Dictionary = {"baby":"Baby", "child":"Child", "teen":"Teen", "young_adult":"Young adult", "adult":"Adult", "elder":"Elder", "unknown":"Age unspecified"}
+const NORMAL_DAYS: Dictionary = {"baby":7, "child":14, "teen":21, "young_adult":28, "adult":42, "elder":28}
 const SPANS: Dictionary = {"short":0.5, "normal":1.0, "long":4.0}
 
 static func stage_for(profile: Dictionary) -> String:
@@ -16,7 +16,7 @@ static func stage_for(profile: Dictionary) -> String:
 	return "unknown"
 
 static func eligibility(stage: String) -> String:
-	if stage in ["child", "teen"]: return "minor"
+	if stage in ["baby", "child", "teen"]: return "minor"
 	if stage in ["young_adult", "adult", "elder"]: return "adult"
 	return "unknown"
 

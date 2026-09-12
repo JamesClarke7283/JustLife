@@ -5,6 +5,7 @@ class_name LifeHousehold
 signal member_age_changed(member_id: String, previous: String, current: String)
 signal member_action_started(member_id: String, action: Dictionary)
 signal member_action_finished(member_id: String, action: Dictionary)
+signal baby_born(mother_id: String)
 signal notice(message: String)
 signal selection_changed(member_id: String)
 
@@ -22,21 +23,25 @@ var journeys: Dictionary = {}
 var physical_snapshot_provider:Callable=Callable()
 var family_graph: Dictionary = LifeFamilyGraph.fresh()
 var adoptions: Dictionary = LifeAdoption.fresh()
+var pregnancy: Dictionary = LifeBabyPlan.fresh()
 var _family_roles: Dictionary = {}
 var meals: LifeMeals = LifeMeals.new()
 var sanitation: LifeSanitation = LifeSanitation.new()
 var cooperations: Array = []
 var cooperation_serial: int = 0
+var birth_serial: int = 1
 var _cooperation_depth: int = 0
 const COOPERATION_WAIT_LIMIT: float = 60.0
 
 func new_household(profiles: Array) -> void:
 	journeys.clear()
 	adoptions=LifeAdoption.fresh()
+	pregnancy=LifeBabyPlan.fresh()
 	meals.clear()
 	sanitation.clear()
 	cooperations.clear()
 	cooperation_serial = 0
+	birth_serial = 1
 	for member in members:member.sim.queue_free()
 	members.clear()
 	family_graph = LifeFamilyGraph.fresh()
@@ -176,6 +181,9 @@ func tick(delta: float) -> void:
 		funds=sim.funds
 	day=members[0].sim.day
 	minutes=members[0].sim.minutes
+	# Conception to birth runs on the shared game clock, so fast speed, pause
+	# and a save/load all agree about when the baby is due.
+	pregnancy_tick()
 	_sync_wallet()
 	if paired:
 		_reconcile_cooperations()
@@ -194,7 +202,7 @@ func get_state(world_data: Array = []) -> Dictionary:
 	adopt_selected_changes()
 	var states:Array=[]
 	for member in members:states.append({"id":member.id,"state":member.sim.get_state()})
-	var result:Dictionary={"household_version":2 if not journeys.is_empty() else 1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state(),"sanitation":sanitation.get_state()}
+	var result:Dictionary={"household_version":2 if not journeys.is_empty() else 1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"pregnancy":pregnancy.duplicate(true),"birth_serial":birth_serial,"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state(),"sanitation":sanitation.get_state()}
 	if not journeys.is_empty():result.journeys=journeys.duplicate(true)
 	if physical_snapshot_provider.is_valid():
 		var physical:Dictionary=physical_snapshot_provider.call()
@@ -370,6 +378,15 @@ func restore_state(data: Dictionary) -> Dictionary:
 	if not adoption_error.is_empty():
 		for candidate:Dictionary in candidates:candidate.sim.free()
 		return {"ok":false,"error":adoption_error}
+	var pregnancy_data:Variant=data.get("pregnancy",null)
+	var pregnancy_error:String=LifeBabyPlan.validate(pregnancy_data,data)
+	if pregnancy_error.is_empty():pregnancy_error=LifeBabyPlan.validate_pending(pregnancy_data,data,pregnancy_data if pregnancy_data is Dictionary else {})
+	if not pregnancy_error.is_empty():
+		for candidate:Dictionary in candidates:candidate.sim.free()
+		return {"ok":false,"error":pregnancy_error}
+	if not LifeJourneyState.number(data.get("birth_serial",1),1,LifeBabyPlan.MAX_BIRTHS,true):
+		for candidate:Dictionary in candidates:candidate.sim.free()
+		return {"ok":false,"error":"Save contains an invalid birth counter."}
 	var journey_result:Dictionary={"ok":true}
 	if data.has("journeys"):
 		journey_result=LifeJourneyState.validate(data.journeys,data)
@@ -406,6 +423,8 @@ func restore_state(data: Dictionary) -> Dictionary:
 			for action_index:int in candidates[index].sim.action_queue.size():
 				candidates[index].sim.action_queue[action_index].phase=data.members[index].state.action_queue[action_index].phase
 	adoptions=data.get("adoptions",LifeAdoption.fresh()).duplicate(true)
+	pregnancy=LifeBabyPlan.fresh() if pregnancy_data==null else (pregnancy_data as Dictionary).duplicate(true)
+	birth_serial=int(data.get("birth_serial",1))
 	meals.restore(meal_data)
 	sanitation.restore(sanitation_data)
 	for old in members:old.sim.queue_free()
@@ -585,21 +604,49 @@ func queue_supported_homework(learner_id: String, helper_id: String, furniture_i
 
 func _member_cooperation(member_id: String) -> Dictionary:
 	for session: Dictionary in cooperations:
-		if member_id in [str(session.learner_id),str(session.helper_id)]: return session
+		if _cooperation_member_ids(session).has(member_id): return session
 	return {}
+
+func _cooperation_member_ids(session: Dictionary) -> Array[String]:
+	# Homework sessions keep their learner/helper roles. An intimate session is
+	# symmetric: both members are participants and neither is "the helper".
+	if LifeBabyPlan.session_kind(session) == LifeBabyPlan.SESSION_KIND:
+		return [str(session.get("a_id","")),str(session.get("b_id",""))]
+	return [str(session.get("learner_id","")),str(session.get("helper_id",""))]
+
+func _sessions_of_kind(kind: String) -> Array:
+	var found:Array=[]
+	for session:Dictionary in cooperations:
+		if LifeBabyPlan.session_kind(session) == kind: found.append(session)
+	return found
 
 func _cooperation(token: String) -> Dictionary:
 	for session: Dictionary in cooperations:
 		if str(session.id) == token: return session
 	return {}
 
+func cooperation_state(token: String) -> Dictionary:
+	# Presentation only: the beat's cover animation asks whether its own session
+	# is still running, exactly as the queue asks for a presentation view.
+	return _cooperation(token)
+
 func cooperative_presentation(member_id: String) -> Dictionary:
 	var session: Dictionary = _member_cooperation(member_id)
 	if session.is_empty(): return {}
+	if LifeBabyPlan.session_kind(session) == LifeBabyPlan.SESSION_KIND:
+		return _baby_presentation(session,member_id)
 	var learner: LifeSim = member_sim(str(session.learner_id))
 	var action: Dictionary = learner.get_current_action()
 	var role: String = "learner" if member_id == str(session.learner_id) else "helper"
 	return {"session_id":str(session.id),"role":role,"phase":str(session.phase),"ready":session.ready.has(member_id),"partner_id":str(session.helper_id) if role == "learner" else str(session.learner_id),"learner_id":str(session.learner_id),"helper_id":str(session.helper_id),"furniture_id":str(session.furniture_id),"elapsed":float(action.get("elapsed",0.0)),"duration":45.0,"progress":float(action.get("progress",0.0)),"learner_position":Vector3(session.learner_position[0],session.learner_position[1],session.learner_position[2]),"helper_position":Vector3(session.helper_position[0],session.helper_position[1],session.helper_position[2])}
+
+func _baby_presentation(session: Dictionary, member_id: String) -> Dictionary:
+	# One shared clock: the pair's elapsed/minutes are mirrored by the session
+	# owner below, exactly as a shared homework session mirrors its learner.
+	var owner: LifeSim = member_sim(str(session.a_id))
+	var action: Dictionary = owner.get_current_action()
+	var role: String = "a" if member_id == str(session.a_id) else "b"
+	return {"kind":LifeBabyPlan.SESSION_KIND,"session_id":str(session.id),"role":role,"phase":str(session.phase),"ready":session.ready.has(member_id),"partner_id":str(session.b_id) if role == "a" else str(session.a_id),"a_id":str(session.a_id),"b_id":str(session.b_id),"furniture_id":str(session.furniture_id),"elapsed":float(action.get("elapsed",0.0)),"duration":LifeBabyPlan.DURATION,"progress":float(action.get("progress",0.0))}
 
 func mark_cooperative_ready(member_id: String) -> void:
 	var session: Dictionary = _member_cooperation(member_id)
@@ -612,7 +659,7 @@ func mark_cooperative_ready(member_id: String) -> void:
 		if not session.ready.has(member_id): session.ready.append(member_id)
 		if session.ready.size() == 2:
 			session.phase="active"
-			for id: String in [str(session.learner_id),str(session.helper_id)]:
+			for id: String in _cooperation_member_ids(session):
 				var actor: LifeSim = member_sim(id)
 				var action: Dictionary = actor.get_current_action()
 				action.phase="active"
@@ -628,14 +675,17 @@ func mark_cooperative_ready(member_id: String) -> void:
 func cancel_cooperative_action(member_id: String) -> bool:
 	var session: Dictionary = _member_cooperation(member_id)
 	if session.is_empty(): return false
+	var reason:String = "Homework together was cancelled. The assignment is still available today."
+	if LifeBabyPlan.session_kind(session) == LifeBabyPlan.SESSION_KIND:
+		reason = "The moment passed. The bed is free again whenever you both want to try."
 	_begin_cooperation_change()
-	_cancel_cooperation(session,"Homework together was cancelled. The assignment is still available today.")
+	_cancel_cooperation(session,reason)
 	_end_cooperation_change()
 	return true
 
 func _cancel_cooperation(session: Dictionary, reason: String) -> void:
 	cooperations.erase(session)
-	for id: String in [str(session.learner_id),str(session.helper_id)]:
+	for id: String in _cooperation_member_ids(session):
 		var actor: LifeSim = member_sim(id)
 		if actor == null: continue
 		var front_removed: bool = not actor.action_queue.is_empty() and str(actor.action_queue[0].get("cooperation_id","")) == str(session.id)
@@ -643,10 +693,12 @@ func _cancel_cooperation(session: Dictionary, reason: String) -> void:
 			if str(actor.action_queue[index].get("cooperation_id","")) == str(session.id): actor.action_queue.remove_at(index)
 		if front_removed: actor._start_front()
 		actor._emit_changed()
-	var learner: LifeSim = member_sim(str(session.learner_id))
-	if learner != null and not reason.is_empty(): learner._emit_notice(reason)
+	var lead: LifeSim = member_sim(str(session.get("learner_id",session.get("a_id",""))))
+	if lead != null and not reason.is_empty(): lead._emit_notice(reason)
 
 func _cooperation_error(session: Dictionary) -> String:
+	if LifeBabyPlan.session_kind(session) == LifeBabyPlan.SESSION_KIND:
+		return _baby_session_error(session)
 	var reason: String = _homework_pair_error(str(session.learner_id),str(session.helper_id),str(session.furniture_id),false)
 	if not reason.is_empty(): return reason
 	var learner: LifeSim = member_sim(str(session.learner_id))
@@ -658,18 +710,38 @@ func _cooperation_error(session: Dictionary) -> String:
 		if str(action.get("cooperation_id","")) != str(session.id) or str(action.get("cooperation_role","")) != role or str(action.get("target_id","")) != str(session.furniture_id): return "One Lifelet's homework plans changed."
 	return learner._school_action_error(learner.get_current_action())
 
+func _baby_session_error(session: Dictionary) -> String:
+	# Interruption, a moved bed or a new life stage ends the beat for both. The
+	# beat carries its own action, so a partner who was woken already broke the
+	# shared action identity below; no separate sleep check is needed.
+	if str(session.phase) == "assembling" and float(session.waited) >= COOPERATION_WAIT_LIMIT:
+		return "The Lifelets could not settle in together. Choose the bed again when they are both asleep."
+	var first: LifeSim = member_sim(str(session.a_id))
+	var second: LifeSim = member_sim(str(session.b_id))
+	if first == null or second == null: return "One partner is no longer part of this household."
+	if first.day != int(session.day) or second.day != int(session.day):
+		return "A new day begins. Try for Baby again tonight."
+	for pair: Array in [[first,str(session.a_id)],[second,str(session.b_id)]]:
+		var actor: LifeSim = pair[0]
+		var action: Dictionary = actor.get_current_action()
+		if str(action.get("cooperation_id","")) != str(session.id) or str(action.get("target_id","")) != str(session.furniture_id):
+			return "The moment ends early. Both partners can try again when they are settled in together."
+		if str(actor.character.get("life_stage","adult")) != "adult":
+			return "The moment ends early. Both partners must be adults."
+	return ""
+
 func _reconcile_cooperations() -> void:
 	for session: Dictionary in cooperations.duplicate():
 		var reason: String = _cooperation_error(session)
 		if not reason.is_empty():
 			_cancel_cooperation(session,reason)
 			continue
-		var learner: LifeSim = member_sim(str(session.learner_id))
-		var helper: LifeSim = member_sim(str(session.helper_id))
-		var source: Dictionary = learner.get_current_action()
-		var mirror: Dictionary = helper.get_current_action()
-		mirror.elapsed=float(source.elapsed)
-		mirror.progress=float(source.progress)
+		var ids:Array[String] = _cooperation_member_ids(session)
+		var source: Dictionary = member_sim(ids[0]).get_current_action()
+		for other_id:String in ids.slice(1):
+			var mirror: Dictionary = member_sim(other_id).get_current_action()
+			mirror.elapsed=float(source.elapsed)
+			mirror.progress=float(source.progress)
 
 func before_member_notification() -> void:
 	if _cooperation_depth > 0 or restoring or cooperations.is_empty(): return
@@ -688,6 +760,58 @@ func _end_cooperation_change() -> void:
 	for member: Dictionary in members:
 		batches.append({"sim":member.sim,"events":member.sim.release_notifications()})
 	for batch: Dictionary in batches: batch.sim.dispatch_notifications(batch.events)
+
+func finish_cooperative_action(token: String) -> void:
+	var session: Dictionary = _cooperation(token)
+	if session.is_empty(): return
+	if LifeBabyPlan.session_kind(session) == LifeBabyPlan.SESSION_KIND:
+		finish_try_for_baby(session)
+		return
+	finish_cooperative_homework(token)
+
+func finish_try_for_baby(session: Dictionary) -> void:
+	# The pair's beat completes: the shared clock must have run its course, and
+	# the household conceives exactly once, on the moment the beat finishes.
+	_begin_cooperation_change()
+	var reason: String = _cooperation_error(session)
+	var first: LifeSim = member_sim(str(session.a_id))
+	if reason.is_empty() and (str(session.phase) != "active" or first == null or float(first.get_current_action().elapsed) < LifeBabyPlan.DURATION):
+		reason = "Both partners must stay together for the whole moment."
+	if not reason.is_empty():
+		_cancel_cooperation(session,reason)
+		_end_cooperation_change()
+		return
+	var ids:Array[String] = _cooperation_member_ids(session)
+	cooperations.erase(session)
+	pregnancy = LifeBabyPlan.conceive(member_sim(str(session.mother_id)),str(session.mother_id),member_sim(str(session.father_id)),str(session.father_id),day,minutes,birth_serial)
+	birth_serial = int(pregnancy.get("serial",1))+1
+	# Sims-4 flow: the beat conceives a pregnancy, and the birth follows when
+	# the countdown completes (pregnancy_tick), which opens the baby creator.
+	var actions:Array = []
+	for id:String in ids:
+		var actor:LifeSim = member_sim(id)
+		var action:Dictionary = actor.action_queue.pop_front()
+		action.phase="finished"
+		action.elapsed=LifeBabyPlan.DURATION
+		action.progress=1.0
+		action["baby_conceived"]=true
+		actions.append([actor,action,id])
+	var mother:LifeSim = member_sim(str(session.mother_id))
+	if mother != null:
+		mother.add_moodlet("A new arrival","Happy","The wait is over. A baby is ready to meet the family.",LifeBabyPlan.PREGNANCY_MINUTES,3)
+		mother.remember("A new beginning","The family is welcoming a new baby.")
+	var father:LifeSim = member_sim(str(session.father_id))
+	if father != null:
+		father.add_moodlet("A shared secret","Confident","Something wonderful is beginning for the family.",720,2)
+	_sync_social_context()
+	for entry:Array in actions:
+		var actor:LifeSim = entry[0]
+		var action:Dictionary = entry[1]
+		actor._emit_action_finished(action)
+		actor._idle_minutes=0.0
+		actor._start_front()
+		actor._emit_changed()
+	_end_cooperation_change()
 
 func finish_cooperative_homework(token: String) -> void:
 	var session: Dictionary = _cooperation(token)
@@ -766,6 +890,11 @@ func _validate_saved_cooperations(data: Dictionary) -> String:
 	var bound_actions: int = 0
 	for session: Variant in sessions:
 		if not session is Dictionary: return "Save contains an invalid homework session."
+		if LifeBabyPlan.session_kind(session) == LifeBabyPlan.SESSION_KIND:
+			var baby_error:String = _validate_saved_baby_session(session,data,by_id,used_members,used_tokens)
+			if not baby_error.is_empty(): return baby_error
+			bound_actions += 2
+			continue
 		for key: String in ["id","learner_id","helper_id","furniture_id","learner_stage","phase"]:
 			if not session.get(key) is String: return "Save contains an invalid homework identity."
 		var token: String = str(session.id)
@@ -828,6 +957,197 @@ func _validate_saved_cooperations(data: Dictionary) -> String:
 	if actual_actions != bound_actions: return "Save contains mismatched homework sessions and actions."
 	return ""
 
+func _validate_saved_baby_session(session: Dictionary, data: Dictionary, by_id: Dictionary, used_members: Array[String], used_tokens: Array[String]) -> String:
+	for key: String in ["id","kind","a_id","b_id","mother_id","father_id","furniture_id","phase"]:
+		if not session.get(key) is String: return "Save contains an invalid intimate session identity."
+	var token: String = str(session.id)
+	var suffix: String = token.trim_prefix(LifeBabyPlan.TOKEN_PREFIX)
+	if not token.begins_with(LifeBabyPlan.TOKEN_PREFIX) or not suffix.is_valid_int() or str(int(suffix)) != suffix or int(suffix) < 1 or int(suffix) > int(data.get("cooperation_serial",0)) or used_tokens.has(token): return "Save contains a duplicate or invalid intimate session token."
+	used_tokens.append(token)
+	var a_id: String = str(session.a_id)
+	var b_id: String = str(session.b_id)
+	if a_id == b_id or not by_id.has(a_id) or not by_id.has(b_id) or used_members.has(a_id) or used_members.has(b_id): return "Save assigns a Lifelet to impossible or overlapping intimate sessions."
+	used_members.append_array([a_id,b_id])
+	if str(session.furniture_id).is_empty() or by_id.has(str(session.furniture_id)): return "Save assigns an intimate session to a missing bed."
+	if [a_id,b_id].has(str(session.mother_id)) == false or [a_id,b_id].has(str(session.father_id)) == false or str(session.mother_id) == str(session.father_id): return "Save contains an intimate session with unrelated parents."
+	if str(session.phase) not in ["assembling","active"] or not session.get("ready") is Array or session.ready.size() > 2: return "Save contains an invalid intimate session phase."
+	var ready: Array = []
+	for id: Variant in session.ready:
+		if not id is String or str(id) not in [a_id,b_id] or ready.has(id): return "Save contains invalid intimate arrival flags."
+		ready.append(id)
+	if str(session.phase) == "active" and ready.size() != 2: return "Save starts an intimate session before both Lifelets arrive."
+	if not _cooperation_number(session.get("day"),float(data.get("day",1)),float(data.get("day",1)),true) or not _cooperation_number(session.get("created_minutes"),0,float(data.get("minutes",0))): return "Save contains an expired or invalid intimate meeting."
+	if not _cooperation_number(session.get("waited"),0,COOPERATION_WAIT_LIMIT-.000001): return "Save contains impossible intimate waiting time."
+	var first: Dictionary = by_id[a_id]
+	var second: Dictionary = by_id[b_id]
+	if str(first.character.get("life_stage","")) != "adult" or str(second.character.get("life_stage","")) != "adult": return "Save contains an intimate session with a non-adult."
+	if str(first.get("romantic_partner","")) != b_id or str(second.get("romantic_partner","")) != a_id: return "Save starts an intimate session without a partnership."
+	if LifeBabyPlan.gender_of(first.character) == LifeBabyPlan.gender_of(second.character): return "Save starts an intimate session without opposite genders."
+	for role: String in [a_id,b_id]:
+		var state: Dictionary = by_id[role]
+		if not state.get("action_queue") is Array or state.action_queue.is_empty() or not state.action_queue[0] is Dictionary: return "Save is missing a paired intimate action."
+		var action: Dictionary = state.action_queue[0]
+		if str(action.get("id","")) != LifeBabyPlan.ACTION_ID or str(action.get("cooperation_id","")) != token or str(action.get("cooperation_role","")) != role or str(action.get("target_id","")) != str(session.furniture_id): return "Save links an intimate session to the wrong action or bed."
+		if not _cooperation_number(action.get("duration"),LifeBabyPlan.DURATION,LifeBabyPlan.DURATION) or not _cooperation_number(action.get("elapsed"),0,LifeBabyPlan.DURATION-.000001) or not action.get("paid") is bool or bool(action.get("autonomous",false)): return "Save contains invalid paired intimate progress."
+		if str(action.get("phase","")) != ("active" if str(session.phase) == "active" else "approach"): return "Save contains inconsistent paired intimate phases."
+		if str(action.get("seat_slot","")) not in ["left","right"]: return "Save contains an intimate action without a bed half."
+		if bool(action.paid) != (str(session.phase) == "active"): return "Save contains an intimate beat that never began."
+		if bool(action.paid) and action.get("started_day") != data.get("day"): return "Save contains an intimate beat started on another day."
+	return ""
+
+
+# --- Try for Baby, pregnancy and birth -------------------------------------
+# The pair's beat is a cooperative session like shared homework: both members
+# hold one action, one shared clock, and either can end it for both.
+
+func try_for_baby_plan(initiator_id: String, bed_id: String) -> Dictionary:
+	var initiator:LifeSim=member_sim(initiator_id)
+	if initiator==null:return {"ok":false,"error":"That Lifelet is not part of this household."}
+	var reason:String=LifeBabyPlan.try_error(initiator,bed_id,members,pregnancy)
+	if not reason.is_empty():return {"ok":false,"error":reason}
+	var partner:LifeSim=member_sim(str(initiator.romantic_partner))
+	var pair:Array=LifeBabyPlan.mother_of(initiator,initiator_id,partner,str(initiator.romantic_partner))
+	var bed:Dictionary=_target(bed_id)
+	if bed.is_empty():return {"ok":false,"error":"Choose the bed both partners are sleeping in."}
+	# Both sleepers keep the half they already hold; the beat adds no new slot.
+	var a:LifeSim=member_sim(str(pair[0]))
+	var b:LifeSim=member_sim(str(pair[1]))
+	if LifeBabyPlan.now_of(day,minutes) <= 0.0:return {"ok":false,"error":"The household clock is not ready."}
+	return {"ok":true,"request":{"token":LifeBabyPlan.TOKEN_PREFIX+str(cooperation_serial+1),"a_id":str(pair[0]),"b_id":str(pair[1]),"mother_id":str(pair[0]),"father_id":str(pair[1]),"bed_id":bed_id,"slot_a":str(a.get_current_action().get("seat_slot","left")),"slot_b":str(b.get_current_action().get("seat_slot","right")),"position_a":a.get_current_action().get("target_position",Vector3.ZERO),"position_b":b.get_current_action().get("target_position",Vector3.ZERO),"day":day,"minutes":minutes}}
+
+func begin_try_for_baby(initiator_id: String, bed_id: String) -> Dictionary:
+	var plan:Dictionary=try_for_baby_plan(initiator_id,bed_id)
+	if not bool(plan.ok):return plan
+	var request:Dictionary=plan.request
+	# Re-check the exact bed claim, since a live household may have changed
+	# between the menu and the click.
+	for id:String in [str(request.a_id),str(request.b_id)]:
+		var actor:LifeSim=member_sim(id)
+		if not LifeBabyPlan.sleeping_in(actor,str(request.bed_id)):return {"ok":false,"error":"Both partners must be asleep in the same bed first."}
+	_begin_cooperation_change()
+	cooperation_serial += 1
+	var token:String=LifeBabyPlan.TOKEN_PREFIX+str(cooperation_serial)
+	var session:Dictionary={"id":token,"kind":LifeBabyPlan.SESSION_KIND,"a_id":str(request.a_id),"b_id":str(request.b_id),"mother_id":str(request.mother_id),"father_id":str(request.father_id),"furniture_id":str(request.bed_id),"day":int(request.day),"created_minutes":float(request.minutes),"phase":"assembling","ready":[],"waited":0.0}
+	cooperations.append(session)
+	var initiator:String=initiator_id
+	var ids:Array=[str(request.a_id),str(request.b_id)]
+	for id:String in ids:
+		var actor:LifeSim=member_sim(id)
+		var action:Dictionary=actor._actions[LifeBabyPlan.ACTION_ID].duplicate(true)
+		var slot:String=str(request.slot_a) if id==str(request.a_id) else str(request.slot_b)
+		var position:Vector3=request.position_a if id==str(request.a_id) else request.position_b
+		action.merge({"target_id":str(request.bed_id),"target_kind":"bed","target_position":position,"seat_slot":slot,"phase":"queued","elapsed":0.0,"progress":0.0,"paid":false,"autonomous":false,"cooperation_id":token,"cooperation_role":id,"cooperation_primary":id==str(request.a_id),"partner_id":str(request.b_id) if id==str(request.a_id) else str(request.a_id)},true)
+		# The pair is already asleep in this bed: the beat takes the front of
+		# the queue and the sleep it interrupted waits behind it, so finishing
+		# or cancelling the beat puts both partners straight back to sleep.
+		actor.action_queue.push_front(action)
+		actor._idle_minutes=0.0
+		actor._start_front()
+		actor._emit_changed()
+	if not initiator.is_empty() and member_sim(initiator)==null:initiator=""
+	_end_cooperation_change()
+	return {"ok":true,"session_id":token}
+
+func pregnancy_tick() -> void:
+	# The due moment is a game-minute countdown, so fast speed and a load both
+	# work without any wall-clock timer. Called once per household tick.
+	if not bool(pregnancy.get("active",false)):return
+	var expecting:LifeSim=member_sim(str(pregnancy.mother_id))
+	if expecting!=null:
+		# Sims-4 shows the wait as a moodlet with the days left on it.
+		expecting.add_moodlet("Expecting","Happy",LifeBabyPlan.countdown_text(pregnancy,day,minutes)+" until the baby arrives.",60,2)
+	if LifeBabyPlan.remaining_minutes(pregnancy,day,minutes) > 0.0:return
+	var mother:LifeSim=member_sim(str(pregnancy.mother_id))
+	var father:LifeSim=member_sim(str(pregnancy.father_id))
+	if mother==null or father==null:return
+	_begin_cooperation_change()
+	pregnancy=LifeBabyPlan.resolve_birth(pregnancy,day,minutes)
+	if mother!=null:
+		mother.add_moodlet("A new arrival","Happy","The wait is over. A baby is ready to meet the family.",1440,3)
+	if father!=null:
+		father.add_moodlet("A new arrival","Happy","The wait is over. A baby is ready to meet the family.",1440,3)
+	baby_born.emit(str(pregnancy.get("mother_id","")))
+	_end_cooperation_change()
+
+func birth_ready() -> bool:
+	return bool(pregnancy.get("pending",false))
+
+func pending_baby_profile() -> Dictionary:
+	if not birth_ready():return {}
+	return LifeBabyPlan.pending_birth(pregnancy,day,minutes).baby
+
+## The only place a baby joins the household. The player's creator profile is
+## the baby's own; the family graph and both parents' relationship rows are
+## written exactly as an adoption writes its guardian links.
+func commit_baby(profile: Dictionary, spawn: Vector3, destination: Vector3, world_data: Array) -> Dictionary:
+	if not birth_ready():return {"ok":false,"error":"This household is not expecting a baby right now."}
+	var reason:String=LifeBabyPlan.profile_error(profile)
+	if not reason.is_empty():return {"ok":false,"error":reason}
+	if members.size()>=MAX_MEMBERS:return {"ok":false,"error":"Your household already has eight Lifelets."}
+	var mother_id:String=str(pregnancy.mother_id)
+	var father_id:String=str(pregnancy.father_id)
+	var mother:LifeSim=member_sim(mother_id)
+	if mother==null or member_sim(father_id)==null:return {"ok":false,"error":"The parents are no longer part of this household."}
+	if not LifeAdoption.point(spawn) or not LifeAdoption.point(destination):return {"ok":false,"error":"A safe arrival route is required."}
+	var snapshot:Dictionary=get_state(world_data)
+	if snapshot.has("snapshot_error"):return {"ok":false,"error":str(snapshot.snapshot_error)}
+	var id:String="housemate_%d" % members.size()
+	var baby:=LifeSim.new()
+	baby.new_household(profile)
+	baby.day=day;baby.minutes=minutes;baby.funds=funds;baby.speed=speed
+	baby.education=LifeEducation.fresh("baby",day)
+	baby.career.schedule=LifeCareerSchedule.fresh(day)
+	baby._story_generated_day=day
+	baby.set_aging(str(mother.lifecycle.lifespan),bool(mother.lifecycle.auto_age))
+	baby.character.world_state={"player":[spawn.x,spawn.y,spawn.z],"player_rotation":PI,"resource_wait_started":-1.0,"resource_action_active":false,"waiting_action_id":"arrive_home","waiting_target_id":"lot_exit"}
+	var arrival:Dictionary=baby._actions.arrive_home.duplicate(true)
+	arrival.merge({"target_id":"lot_exit","target_kind":"lot_exit","target_position":destination,"elapsed":0.0,"progress":0.0,"phase":"approach","paid":false,"autonomous":false,"baby_serial":int(pregnancy.get("serial",1))},true)
+	baby.action_queue.append(arrival)
+	var baby_state:Dictionary=baby.get_state();baby.free()
+	snapshot.members.append({"id":id,"state":baby_state})
+	if snapshot.has("journeys"):
+		var journey_identity:int=int(snapshot.journeys.next_identity)
+		snapshot.journeys.next_identity=journey_identity+1
+		snapshot.journeys.members[id]={"position":LifeJourneyState.packed(spawn),"yaw":PI,"motion":{"phase":"route","identity":journey_identity,"ticket":0,"safety":false,"custody":"","destination":LifeJourneyState.packed(destination),"stair_id":"","direction":0,"distance":0.0,"wait":[],"clear":[],"intent":{"kind":"action","id":"arrive_home","target_id":"lot_exit","meal_source":"","meal_stage":"","meal_plate":""}}}
+	for parent:String in [mother_id,father_id]:snapshot.family_graph.parents.append({"a":parent,"b":id})
+	var ids:Array=[]
+	for entry:Dictionary in snapshot.members:ids.append(str(entry.id))
+	snapshot.family_graph=LifeFamilyGraph.canonical(snapshot.family_graph,ids)
+	for entry:Dictionary in snapshot.members:
+		if str(entry.id)==id:continue
+		var role:String=LifeFamilyGraph.relationship(snapshot.family_graph,str(entry.id),id)
+		var familiar:bool=LifeFamilyGraph.is_family(role)
+		var relation:Dictionary={"name":baby_state.character.name,"friendship":55.0 if familiar else 18.0,"romance":0.0,"status":LifeFamilyGraph.label(role),"life_stage":"minor","bond":"none","milestones":["met","friends"] if familiar else [],"family_role":role}
+		entry.state.relationships[id]=relation
+		var reverse:Dictionary=relation.duplicate(true)
+		reverse.name=entry.state.character.name;reverse.life_stage=entry.state.character.life_stage
+		reverse.family_role=LifeFamilyGraph.inverse(role);reverse.status=LifeFamilyGraph.label(str(reverse.family_role))
+		baby_state.relationships[str(entry.id)]=reverse
+	snapshot.pregnancy=LifeBabyPlan.fresh()
+	snapshot.birth_serial=int(pregnancy.get("serial",1))+1
+	# Validate the complete proposed household before mutating any live member.
+	var validator:=LifeHousehold.new()
+	var checked:Dictionary=validator.restore_state(snapshot)
+	if not bool(checked.ok):validator.free();return checked
+	var added:LifeSim=validator.member_sim(id)
+	validator.remove_child(added)
+	validator.free()
+	for entry:Dictionary in snapshot.members:
+		if str(entry.id)!=id:member_sim(str(entry.id)).relationships[id]=entry.state.relationships[id].duplicate(true)
+	family_graph=snapshot.family_graph.duplicate(true)
+	pregnancy=LifeBabyPlan.fresh()
+	birth_serial=int(snapshot.birth_serial)
+	if snapshot.has("journeys"):journeys=snapshot.journeys.duplicate(true)
+	members.append({"id":id,"sim":added});add_child(added)
+	added.name="Life_"+id;added.household_bills_enabled=false
+	connect_member(id,added)
+	_rebuild_family_roles()
+	return {"ok":true,"child":id,"spawn":spawn}
+
+func _target(id: String) -> Dictionary:
+	for target:Dictionary in targets:
+		if str(target.id)==id:return target
+	return {}
 
 func adoption_availability(guardians:Array) -> String:
 	if members.size()>=MAX_MEMBERS:return "Your household already has eight Lifelets."

@@ -1,0 +1,26 @@
+{
+ "tool": "baby_v60",
+ "blender": "5.2.1 LTS",
+ "blender_build": "9e2066aef7ef",
+ "generator_sha256": "5500210c675c038b2ebc3f2525c6a921704124d9500e5ca9ab1c469cc37ed488",
+ "pose_spec_sha256": "fa33e51f35ea9b2b8f2e47adc35c50de1128439d219c996b12b2bcb8aa330f53",
+ "contract_inputs": {
+  "scripts/actor.gd": "91b782cc6a7d9ef1412c5143a4605815a0bc36e7e11c12eb444ee611e2271186",
+  "scripts/lifecycle.gd": "e53d34406dce67a876dbf7ddb04658578a722dbabcbeb2320ae63e779f00b32c",
+  "tools/create_characters.py": "10a45cd8517da56641b04c239ae3f5ac820c5fa07ee0a2d7c31ecfd33b477f12"
+ },
+ "policy": "Authored parametrically from this source only: no voxel remesh and no random state. A rerun rebuilds the same glTF JSON and the same vertex/index counts; the exporter may reorder the binary buffers, so the recorded hashes are provenance for this run rather than a cross-run promise. Exports through the create_characters export steps (rest pose, zeroed morphs, broad x-scale 1.12, decimated LOD).",
+ "report": {
+  "family": "baby",
+  "objects": 82,
+  "height_m": 0.55,
+  "source": "art/characters_baby.blend",
+  "source_sha256": "ab7e24a86feae92d34a66732a03e16638b56f6e2f849c04e6e244309d85a637c",
+  "exports": {
+   "character_baby.glb": "c3fb070c3ea9c944a7a3919841b6963aa6d06c954eefb5b85218f6002e183195",
+   "character_baby_broad.glb": "0e031d458b4414a3bbbcd4ca1d83a4b7a0dfd44ea3d103ef657be1980491b19b",
+   "character_baby_lod.glb": "65fcf219ad49f5605f32ea5df345b185d0a210341d2c89e54f45f16afa846de2",
+   "character_baby_broad_lod.glb": "dbc4048481e2af8d830fd889e17c456b8633a67a915d5bbff08d44fb4d071fcb"
+  }
+ }
+}

@@ -6,7 +6,26 @@ const JOINT_NAMES: Array[String] = ["Head", "Arm_L", "Arm_R", "Forearm_L", "Fore
 const HAIR_NAMES: Array[String] = ["Hair_Crop", "Hair_Bob", "Hair_Curls", "Hair_Pony", "Hair_Long", "Hair_Buzz", "Hair_Waves", "Hair_Bun"]
 const OUTFIT_NAMES: Array[String] = ["Outfit_Casual", "Outfit_Jacket", "Outfit_Cardigan", "Outfit_Tee", "Outfit_Hoodie"]
 const BOTTOM_NAMES: Array[String] = ["Trousers", "Shorts"]
-const VERIFIED_AGE_ASSETS: Array[String] = ["child","teen","elder"]
+const VERIFIED_AGE_ASSETS: Array[String] = ["baby","child","teen","elder"]
+const STAGED_AGE_ASSETS: Array[String] = ["baby","child","teen","elder"]
+## The baby's hands-and-knees crawl. One numeric contract with
+## tools/baby_v60/crawl_pose.py, which solves BABY_CRAWL_LIFT from the posed
+## geometry and fails the generator run if the two drift apart.
+const BABY_CRAWL_STRIDE: float = 5.6
+const BABY_CRAWL_PITCH: float = 1.222
+const BABY_CRAWL_LIFT: float = 0.0700
+const BABY_CRAWL_REACH: float = 0.026
+const BABY_CRAWL_ARM: float = -1.300
+const BABY_CRAWL_ARM_SWING: float = 0.240
+const BABY_CRAWL_FOREARM: float = 0.060
+const BABY_CRAWL_FOREARM_CURL: float = 0.200
+const BABY_CRAWL_LEG: float = -1.222
+const BABY_CRAWL_LEG_SWING: float = 0.200
+const BABY_CRAWL_SHIN: float = -1.571
+const BABY_CRAWL_SHIN_LIFT: float = 0.420
+const BABY_CRAWL_HEAD: float = -1.320
+## How far a kneeling baby's body drops so it sits back on its heels.
+const BABY_KNEEL_DROP: float = -0.110
 const IDENTITY_KEYS: Array[String] = ["face_round", "jaw_strong", "nose_wide", "eye_spacing"]
 
 var profile: Dictionary = {}
@@ -220,10 +239,14 @@ func configure(new_profile: Dictionary) -> void:
 		if ResourceLoader.exists(lod_path):
 			path = lod_path
 	var stage: String = str(profile.get("age_stage","young_adult"))
-	if stage in ["child","teen","elder"]:
-		path = _age_model_path(stage,frame,bool(profile.get("low_detail",false)))
+	if stage in STAGED_AGE_ASSETS:
+		var staged: String = _age_model_path(stage,frame,bool(profile.get("low_detail",false)))
+		# A stage whose authored model has not been imported yet keeps the adult
+		# mesh rather than rendering nothing; the caller reports the gap.
+		if ResourceLoader.exists(staged):
+			path = staged
 	# Staged rigs can be reviewed without replacing the released articulated assets.
-	if bool(profile.get("rig_preview", false)) and stage not in ["child","teen","elder"]:
+	if bool(profile.get("rig_preview", false)) and stage not in STAGED_AGE_ASSETS:
 		var rig_path: String = "res://assets/models/character_broad_rig" if frame == 1 else "res://assets/models/character_rig"
 		rig_path += "_lod.glb" if bool(profile.get("low_detail", false)) else ".glb"
 		if ResourceLoader.exists(rig_path):
@@ -300,9 +323,9 @@ static func _age_model_path(stage: String, frame: int, low_detail: bool) -> Stri
 
 static func available_age_stages() -> Array[String]:
 	var result: Array[String] = []
-	for stage: String in ["child","teen","young_adult","adult","elder"]:
+	for stage: String in ["baby","child","teen","young_adult","adult","elder"]:
 		var ready: bool = true
-		if stage in ["child","teen","elder"]:
+		if stage in STAGED_AGE_ASSETS:
 			ready = stage in VERIFIED_AGE_ASSETS
 			for frame: int in range(2):
 				for lod: bool in [false,true]:
@@ -344,9 +367,11 @@ func _find_model_extras(node: Node) -> Dictionary:
 func _read_age_landmarks(stage: String) -> void:
 	var extras: Dictionary = _find_model_extras(_model)
 	_model_age = str(extras.get("age_stage",stage))
-	_authored_height = _landmark_number(extras,"height_m",1.76,.75,2.3)
-	_hip_height = _landmark_number(extras,"hip_height",.90,.3,1.2)
-	_knee_height = _landmark_number(extras,"knee_height",.548,.15,.8)
+	# The floor of each range admits the baby family (0.55 m tall, 0.245 m hips,
+	# 0.135 m knees) while still rejecting a corrupt or absurd landmark.
+	_authored_height = _landmark_number(extras,"height_m",1.76,.40,2.3)
+	_hip_height = _landmark_number(extras,"hip_height",.90,.08,1.2)
+	_knee_height = _landmark_number(extras,"knee_height",.548,.04,.8)
 	_proportion = _authored_height/1.76
 	_mouth_anchor = _landmark_vector(extras.get("mouth_anchor"),Vector3(0,.054,.114))
 	_palm_anchors = {"L":_landmark_vector(extras.get("palm_anchor_l"),Vector3(-.024,-.274,.026)),
@@ -982,7 +1007,19 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 	_brush.visible = false
 	_watering_can.visible = false
 	_mop.visible=false
-	if moving:
+	if _model_age == "baby":
+		# The baby never walks. Moving is a hands-and-knees crawl; idle is a
+		# kneel, sitting back on its heels. Both go through the same joint-setter
+		# path as every other age, so there is no second animation system.
+		if moving:
+			var crawl_cycle: float = t * BABY_CRAWL_STRIDE
+			_baby_crawl_pose(pose,crawl_cycle)
+			offset = _baby_crawl_offset(crawl_cycle)
+			lean = Vector3(BABY_CRAWL_PITCH,0,0)
+		else:
+			_baby_kneel_pose(pose,t)
+			offset.y = BABY_KNEEL_DROP
+	elif moving:
 		var cycle: float = t * 7.6
 		var swing: float = sin(cycle)
 		pose["Leg_L"] = Vector3(swing * 0.48, 0, 0)
@@ -1305,6 +1342,43 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 	if not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation and not _reconstructing_meal and not _reconstructing_rest:_update_expression(animation_delta,action_id,blend)
 	if not stair_presentation.is_empty():_apply_stair_pose()
 	_update_held_props(animation_delta,moving,action_id)
+
+
+func _baby_kneel_pose(pose: Dictionary, t: float) -> void:
+	## Sitting back on the heels with the hands resting in front, which is how
+	## the baby waits when it is not crawling.
+	pose["Head"] = Vector3(0.02 * sin(t * 1.5), 0.09 * sin(t * 0.5), 0.0)
+	pose["Arm_L"] = Vector3(-0.30, 0, -0.22)
+	pose["Arm_R"] = Vector3(-0.30, 0, 0.22)
+	pose["Forearm_L"] = Vector3(-0.60, 0, 0)
+	pose["Forearm_R"] = Vector3(-0.60, 0, 0)
+	pose["Leg_L"] = Vector3(-0.26, 0, 0.10)
+	pose["Leg_R"] = Vector3(-0.26, 0, -0.10)
+	pose["Shin_L"] = Vector3(1.571, 0, 0)
+	pose["Shin_R"] = Vector3(1.571, 0, 0)
+
+
+func _baby_crawl_pose(pose: Dictionary, cycle: float) -> void:
+	## Hands and knees: torso pitched forward, arms planted ahead, thighs under
+	## the raised hips and shins lying along the floor. Every value mirrors
+	## tools/baby_v60/crawl_pose.py, which renders the same pose for evidence.
+	var swing: float = sin(cycle)
+	var bob: float = sin(cycle * 0.5)
+	pose["Head"] = Vector3(BABY_CRAWL_HEAD + 0.050 * bob, 0.070 * sin(cycle * 0.37), 0.0)
+	pose["Arm_L"] = Vector3(BABY_CRAWL_ARM + swing * BABY_CRAWL_ARM_SWING, 0, -0.090)
+	pose["Arm_R"] = Vector3(BABY_CRAWL_ARM - swing * BABY_CRAWL_ARM_SWING, 0, 0.090)
+	pose["Forearm_L"] = Vector3(BABY_CRAWL_FOREARM - maxf(0.0, -swing) * BABY_CRAWL_FOREARM_CURL + maxf(0.0, swing) * BABY_CRAWL_FOREARM_CURL * 0.7, 0, 0)
+	pose["Forearm_R"] = Vector3(BABY_CRAWL_FOREARM - maxf(0.0, swing) * BABY_CRAWL_FOREARM_CURL + maxf(0.0, -swing) * BABY_CRAWL_FOREARM_CURL * 0.7, 0, 0)
+	pose["Leg_L"] = Vector3(BABY_CRAWL_LEG + swing * BABY_CRAWL_LEG_SWING, 0, 0.070)
+	pose["Leg_R"] = Vector3(BABY_CRAWL_LEG - swing * BABY_CRAWL_LEG_SWING, 0, -0.070)
+	pose["Shin_L"] = Vector3(BABY_CRAWL_SHIN + maxf(0.0, swing) * BABY_CRAWL_SHIN_LIFT, 0, 0)
+	pose["Shin_R"] = Vector3(BABY_CRAWL_SHIN + maxf(0.0, -swing) * BABY_CRAWL_SHIN_LIFT, 0, 0)
+
+
+func _baby_crawl_offset(cycle: float) -> Vector3:
+	## Lift the pitched body so the planted hands and folded knees rest on the
+	## floor, with the small stride bob and a nudge forward over the hands.
+	return Vector3(0.0, BABY_CRAWL_LIFT + absf(sin(cycle)) * 0.010, BABY_CRAWL_REACH)
 
 
 func _mopping_pose(pose:Dictionary)->void:

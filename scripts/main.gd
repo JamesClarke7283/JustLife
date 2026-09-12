@@ -15,6 +15,9 @@ var preview: LifeActor
 var player: LifeActor
 var mode: String = "creator"
 var creator_tab: String = "Look"
+var creator_purpose: String = ""
+var cover_beat: Node3D
+var cover_beat_time: float = 0.0
 var panel_tab: String = "Needs"
 var catalog_category: String = "All"
 var catalog_search: String = ""
@@ -175,6 +178,7 @@ func _connect_live_nodes() -> void:
 	household.notice.connect(show_notice)
 	household.member_action_started.connect(_member_action_started)
 	household.member_action_finished.connect(_member_action_finished)
+	household.baby_born.connect(_on_baby_born)
 	household.member_age_changed.connect(func(id: String, _previous: String, _current: String): _refresh_aged_member.call_deferred(id,load_epoch,sender))
 	world.object_clicked.connect(on_object_clicked)
 	world.placement_reach_check=func(kind:String,p:Vector3,angle:float)->bool:
@@ -467,6 +471,13 @@ func draw_creator() -> void:
 	icon_button("rotate_left","Turn Lifelet left",Vector2(626,726),Vector2(48,42),func():creator_spin-=.5;preview.rotation.y=creator_spin).name="CreatorTurnLeft"
 	icon_button("rotate_right","Turn Lifelet right",Vector2(769,726),Vector2(48,42),func():creator_spin+=.5;preview.rotation.y=creator_spin).name="CreatorTurnRight"
 	text_label("DRAG TO ROTATE",Vector2(380,782),Vector2(160,24),11,P.MUTED)
+	if creator_purpose=="baby":
+		# The baby's creator is the ordinary creator with the baby stage seeded:
+		# same drawing, same control handlers, one confirm instead of a move-in.
+		small_caps("A new arrival",Vector2(42,743),Vector2(162,24))
+		text_label("Everything here belongs to the new baby. Name them and make the face your own.",Vector2(42,772),Vector2(1000,32),15,P.MUTED)
+		button("Welcome the baby  →",Vector2(1080,802),Vector2(322,62),confirm_baby_creator,true)
+		return
 	small_caps("Household · %d / 8" % household_profiles.size(),Vector2(42,743),Vector2(162,24))
 	var connections=button("Connections",Vector2(214,738),Vector2(133,31),show_creator_connections)
 	connections.disabled=household_profiles.size()<2
@@ -482,6 +493,102 @@ func draw_creator() -> void:
 	remove.disabled=household_profiles.size()<=1
 	button("Surprise me",Vector2(867,815),Vector2(160,50),randomize_person)
 	button("Find my home  →",Vector2(1080,802),Vector2(322,62),show_lot_selection,true)
+
+func try_for_baby(item:Dictionary) -> void:
+	var result:Dictionary=household.begin_try_for_baby(bound_member_id,str(item.id))
+	if not bool(result.ok):
+		show_notice(str(result.get("error","Try for Baby is unavailable right now.")))
+		return
+	_start_cover_beat(str(result.session_id),str(item.id))
+	refresh_hud()
+	show_notice("The covers rustle over the pair. Stay close for the whole moment, or click the bed again to stop.")
+
+func _start_cover_beat(token:String,bed_id:String) -> void:
+	_end_cover_beat()
+	var item:Dictionary=_find_item(bed_id)
+	if item.is_empty():return
+	# Original cover overlay: a rounded quilt drawn procedurally over the pair
+	# (the bed model's own linen stays put), ruffling and swelling as the beat
+	# runs. The session token ties the animation to the live household state.
+	var node:=Node3D.new()
+	node.name="BabyCoverBeat"
+	item.node.add_child(node)
+	var mesh:=MeshInstance3D.new()
+	var shape:=SphereMesh.new()
+	shape.radius=.62
+	shape.height=1.24
+	shape.radial_segments=18
+	shape.rings=8
+	mesh.mesh=shape
+	mesh.name="Quilt"
+	var material:=StandardMaterial3D.new()
+	material.albedo_color=Color("ded6e8")
+	material.roughness=.95
+	mesh.material_override=material
+	node.add_child(mesh)
+	cover_beat=node
+	cover_beat_time=0.0
+	cover_beat.set_meta("token",token)
+
+func _end_cover_beat() -> void:
+	if is_instance_valid(cover_beat):cover_beat.queue_free()
+	cover_beat=null
+	cover_beat_time=0.0
+
+func _update_cover_beat(delta:float) -> void:
+	if not is_instance_valid(cover_beat):
+		return
+	if mode!="live" or household.cooperation_state(str(cover_beat.get_meta("token",""))).is_empty():
+		_end_cover_beat()
+		return
+	cover_beat_time+=delta*clampf(float(household.speed),0.0,3.0)
+	var swell:float=.5+.5*sin(cover_beat_time*2.2)
+	var mesh:MeshInstance3D=cover_beat.get_node_or_null("Quilt")
+	if is_instance_valid(mesh):
+		mesh.scale=Vector3(1.0+.06*swell,1.0+.10*swell,1.0+.05*swell)
+		mesh.rotation.z=.05*sin(cover_beat_time*3.4)
+	var item:Dictionary=_find_item(str(cover_beat.get_parent().name))
+	if not item.is_empty():
+		var data:Dictionary=LifeCatalog.get_item(str(item.kind))
+		cover_beat.position=Vector3(0,float(data.get("height",1.4))*.62,0)
+
+func confirm_baby_creator() -> void:
+	if creator_purpose!="baby" or household.members.size()>=LifeHousehold.MAX_MEMBERS:
+		show_notice("Your household already has eight Lifelets.");return
+	if str(profile.name).strip_edges().is_empty():profile.name="Wren Vale"
+	var spawn:Vector3=world.lot_exit_position(household.members.size())
+	var destination:Vector3=world.lot_return_position(household.members.size())
+	var result:Dictionary=household.commit_baby(profile,spawn,destination,world.serialize_items())
+	if not bool(result.ok):
+		show_notice(str(result.error));return
+	var id:String=str(result.child)
+	var baby:LifeSim=household.member_sim(id)
+	household_profiles.append(baby.character.duplicate(true))
+	motion_states[id]=_empty_motion()
+	creator_purpose=""
+	creator_family_links=[]
+	# Leave the character studio for the real home the newborn walks into.
+	var layout:Array=home_layout if not home_layout.is_empty() else LifeCatalog.starter_layout(selected_lot)
+	setup_live(layout)
+	household.register_targets(world.simulation_targets())
+	_member_action_started(id,baby.get_current_action())
+	show_notice("Welcome to the family, %s. Select their household portrait to help them settle in." % str(baby.character.name).split(" ")[0])
+
+func show_baby_creator() -> void:
+	# The baby creator is the ordinary creator with the baby stage seeded, so
+	# the drawing and every control handler are the same code path.
+	var baby:Dictionary=household.pending_baby_profile()
+	if baby.is_empty():return
+	creator_purpose="baby"
+	creator_tab="Look"
+	household_profiles=[]
+	creator_family_links=[]
+	profile=baby.duplicate(true)
+	profile["age_stage"]="baby"
+	profile["life_stage"]="minor"
+	creator_index=0
+	household_profiles=[profile]
+	show_creator()
 
 func set_creator_tab(value:String) -> void:
 	creator_tab=value
@@ -1577,6 +1684,7 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 			elif str(a.id)=="call_to_meal":
 				var joined:int=meal_flow.call_to_meal(str(item.id));close_overlay();show_notice("%d Lifelets are coming to eat." % joined)
 			elif str(a.id)=="supported_homework":show_homework_helpers(item)
+			elif str(a.id)==LifeBabyPlan.ACTION_ID:try_for_baby(item);close_overlay()
 			else:queue_interaction(item,a.id);close_overlay())
 		column.add_child(b)
 	if actions.is_empty():paragraph("A little detail that makes this place home.",pos+Vector2(18,80),Vector2(304,55),13,P.MUTED,overlay)
@@ -1891,6 +1999,14 @@ func _member_action_started(id:String,action:Dictionary) -> void:
 	on_action_started(action)
 	_store_motion()
 	_bind_member(prior)
+
+func _on_baby_born(mother_id: String) -> void:
+	# The birth itself opens the naming/customising creator, exactly as the
+	# Sims-4 flow ends with the newborn arriving. Deferred so the household's
+	# tick finishes the conception bookkeeping before the mode changes.
+	if not bool(household.birth_ready()):return
+	show_notice("The baby has arrived.")
+	show_baby_creator.call_deferred()
 
 func _member_action_finished(id:String,action:Dictionary) -> void:
 	if loading_game:return
@@ -2549,6 +2665,7 @@ func _process(delta:float) -> void:
 	if mode=="travel":residents.tick_trip(delta);return
 	if mode not in ["live","build"]:return
 	if mode=="live":
+		_update_cover_beat(delta)
 		residents.publish_targets()
 		meal_flow.sync_world(household.speed>0)
 		_store_motion()
@@ -3630,6 +3747,7 @@ func show_birthday() -> void:
 	button("Keep this age",Vector2(768,554),Vector2(188,48),close_overlay,false,overlay)
 
 func creator_age_stages() -> Array:
+	if creator_purpose=="baby":return ["baby"]
 	var stages: Array=[]
 	for age: String in LifeLifecycle.STAGES:
 		if age in ["young_adult","adult"] or (is_instance_valid(preview) and preview.has_method("supports_age") and preview.call("supports_age",age)):
