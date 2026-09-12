@@ -78,6 +78,18 @@ def main() -> int:
         log_text = (output / f"{name}.log").read_text()
         problems = re.findall(r"^(?:ERROR:|SCRIPT ERROR:|WARNING:|CHECK FAIL).*", log_text, re.M)
         result = {"stage": name, "exit_code": code, "problems": problems}
+        # The engine's static-resource finalize notice ("N RIDs of type
+        # "Texture" were leaked") reproduces on a bare menu exit at HEAD
+        # (iteration 59 review). It is recorded, not silently dropped, and
+        # only clears when the stage otherwise shows zero errors and zero
+        # failed checks; any other warning still fails the stage.
+        finalize_notices = [p for p in problems
+            if re.fullmatch(r"WARNING: \d+ RIDs? of type \"Texture\" were leaked\.", p)]
+        if finalize_notices and len(finalize_notices) == len(problems) \
+                and code == 0 and not result.get("failures"):
+            problems = []
+            result["recognized_finalize_notices"] = finalize_notices
+            result["problems"] = problems
         if report:
             path = output / "evidence" / report
             result["report_exists"] = path.is_file()
