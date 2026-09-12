@@ -1094,9 +1094,18 @@ func _apply_social(action: Dictionary) -> bool:
 				_emit_notice("%s seems uncomfortable. Try building a friendship first." % person["name"])
 		"argue":
 			change = -22.0
-			person["romance"] = maxf(0.0, float(person["romance"]) - 12.0)
 		"sympathize":
-			var their_fun:float=float(_social_reciprocal[target].get("fun",100.0)) if _social_reciprocal.has(target) else 100.0
+			# Household members carry a live Fun read; neighbors carry a
+			# catalogue mood schedule — drained during weekday work hours.
+			var their_fun:float=100.0
+			var record:Variant=_social_reciprocal.get(target,{})
+			if record is Dictionary:
+				if record.has("resident_fun"):
+					var at_work:bool=LifeEducation.weekday(day) and minutes>=540.0 and minutes<=960.0
+					var mood:Dictionary=record["resident_fun"]
+					their_fun=float(mood["work" if at_work else "off"])
+				else:
+					their_fun=float(record.get("fun",100.0))
 			if their_fun<45.0:
 				change=16.0
 				_emit_notice("You sit with %s and really listen. They seem lighter." % person["name"])
@@ -2042,7 +2051,7 @@ func get_mood() -> Dictionary:
 
 
 func get_state() -> Dictionary:
-	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "bladder_grace":bladder_grace, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "wants": wants.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "bills_paid": bills_paid, "last_bill_day": last_bill_day,"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true)}
+	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "bladder_grace":bladder_grace, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "wants": wants.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "bills_paid": bills_paid, "last_bill_day": last_bill_day,"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true)}
 
 
 func save_game(world_data: Array = []) -> bool:
@@ -2145,6 +2154,14 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 	for story: Dictionary in story_history:
 		for key: String in ["day", "offered_day", "minutes"]:
 			story[key] = int(story[key])
+	# Repeat-interaction state survives saves so hug warmth, gossip staleness
+	# and chooser cooldowns keep their consequences across a reload.
+	last_hugs = {}
+	for key: Variant in state.get("last_hugs", {}):last_hugs[str(key)] = float(state["last_hugs"][key])
+	last_gossip = {}
+	for key: Variant in state.get("last_gossip", {}):last_gossip[str(key)] = float(state["last_gossip"][key])
+	social_cooldowns = {}
+	for key: Variant in state.get("social_cooldowns", {}):social_cooldowns[str(key)] = float(state["social_cooldowns"][key])
 	funds = int(state["funds"])
 	day = int(state["day"])
 	minutes = float(state["minutes"])

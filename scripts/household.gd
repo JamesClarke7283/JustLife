@@ -132,6 +132,13 @@ func _sync_social_context() -> void:
 				relationship.life_stage = str(member.sim.character.life_stage)
 				reciprocal[other.id]={"friendship":relationship.friendship,"romance":relationship.romance,"traits":other.sim.character.get("traits",[]),"fun":float(other.sim.needs.get("fun",100.0))}
 				family_roles[other.id]=family_relationship(str(member.id),str(other.id))
+		# Neighbors join the context with their catalogue traits and workday
+		# mood schedule, so conditional interactions land for them too.
+		for neighbor:String in LifeResidentCatalogue.PEOPLE:
+			if not member.sim.relationships.has(neighbor) or reciprocal.has(neighbor):continue
+			var known:Dictionary=LifeResidentCatalogue.PEOPLE[neighbor]
+			var link:Dictionary=member.sim.relationships[neighbor]
+			reciprocal[neighbor]={"friendship":float(link.get("friendship",0.0)),"romance":float(link.get("romance",0.0)),"traits":known.get("traits",[]),"resident_fun":known.get("fun",{"work":40,"off":80})}
 		member.sim.set_social_context(str(member.id),partners,adults,reciprocal,family_roles)
 
 func set_funds(value: int) -> void:

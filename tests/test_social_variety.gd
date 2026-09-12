@@ -70,5 +70,35 @@ func run()->void:
 		sim.last_gossip.clear()
 		check(sim._apply_social({"id":act,"target_id":"maya","target_position":Vector3.ZERO}),"A first %s completes." % act)
 		check(sim.relationships["maya"].milestones.has("met"),"A first %s records the met milestone." % act)
+	# Neighbors carry a catalogue mood schedule: drained during weekday work
+	# hours, cheerful in the evening.
+	sim.relationships["maya"]=fresh_rel.duplicate(true);sim.relationships["maya"].milestones=[]
+	sim.set_social_context("player",{},{"maya":true},{"maya":{"friendship":0.0,"traits":[],"resident_fun":{"work":35,"off":78}}}, {})
+	sim.day=1;sim.minutes=600.0
+	sim.last_gossip.clear()
+	var workday:Dictionary={"id":"sympathize","target_id":"maya","target_position":Vector3.ZERO}
+	check(sim._apply_social(workday),"Sympathy on a working neighbor completes.")
+	var tired:float=float(sim.relationships["maya"].friendship)
+	check(tired>14.0,"A neighbor at work responds to sympathy fully (+%.1f)." % tired)
+	sim.relationships["maya"]=fresh_rel.duplicate(true);sim.relationships["maya"].milestones=[]
+	sim.minutes=1200.0
+	check(sim._apply_social(workday),"Sympathy on an evening neighbor completes.")
+	var rested:float=float(sim.relationships["maya"].friendship)
+	check(rested>5.0 and rested<tired,"An evening neighbor gains the mild sympathy (+%.1f vs %.1f)." % [rested,tired])
+	# Gossip staleness survives a save and restore.
+	sim.relationships["maya"]=fresh_rel.duplicate(true);sim.relationships["maya"].milestones=[]
+	sim.minutes=600.0
+	sim.last_gossip.clear()
+	check(sim._apply_social(story),"Fresh gossip after reset completes.")
+	var snapshot:Dictionary=sim.get_state()
+	var resumed:LifeSim=LifeSim.new();owned.append(resumed)
+	check(resumed.restore_state(snapshot).ok,"The state with gossip history restores.")
+	resumed.relationships["maya"]=fresh_rel.duplicate(true);resumed.relationships["maya"].milestones=[]
+	resumed.set_social_context("player",{},{"maya":true},{"maya":{"friendship":0.0,"traits":[]}}, {})
+	resumed.minutes=630.0
+	var again:Dictionary={"id":"gossip","target_id":"maya","target_position":Vector3.ZERO}
+	check(resumed._apply_social(again),"The restored repeat gossip completes.")
+	var stale_after:float=float(resumed.relationships["maya"].friendship)
+	check(stale_after>0.0 and stale_after<7.0,"A repeat after reload still lands flat (+%.1f)." % stale_after)
 	print("SOCIAL_VARIETY %d checks, %d failures"%[checks,failures.size()])
 	quit(0 if failures.is_empty() else 1)
