@@ -1905,9 +1905,11 @@ func _offer_daily_story() -> void:
 	if story_events.size() >= MAX_STORY_EVENTS:
 		return
 	var kind: String = STORY_KINDS[(day - 2) % STORY_KINDS.size()]
-	# A stride of three visits every resident across four days while drifting
-	# against the eight-day kind cycle, so kind and host pairings vary.
-	var neighbor: String = LifeResidentCatalogue.IDS[((day - 2) * 3) % LifeResidentCatalogue.IDS.size()]
+	# A stride of three visits every resident across four days, and the
+	# whole-cycle count (integer division by the kind period) shifts the table
+	# one slot per eight-day cycle, so kind and host pairings drift instead of
+	# locking one-to-one.
+	var neighbor: String = LifeResidentCatalogue.IDS[(((day - 2) * 3) + (day - 2) / 8) % LifeResidentCatalogue.IDS.size()]
 	var track: Dictionary = CAREER_TRACKS.get(str(career.get("track", "studio")), CAREER_TRACKS.studio)
 	story_events.append({"id":"story_day_%d" % day, "kind":kind, "day":day, "context":{"neighbor":neighbor, "skill":str(track.skill), "career_level":int(career.level), "creativity_level":int(skills.creativity.level)}})
 	_emit_notice("A new story choice is waiting: %s." % _story_event(story_events.back()).title)
