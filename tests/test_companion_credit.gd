@@ -20,6 +20,10 @@ func run()->void:
 	sim._maybe_credit_companion("read")
 	var gained: float = float(sim.relationships.priya.friendship)-before
 	check(gained>1.0,"A read at the library during Priya's window credits her (+%.1f)." % gained)
+	var memory_found: bool = false
+	for memory: Dictionary in sim.memories:
+		if str(memory.label).begins_with("Time with "):memory_found=true
+	check(memory_found,"The companion credit is remembered.")
 	# The hourly throttle: an immediate second credit is refused.
 	var held: float = float(sim.relationships.priya.friendship)
 	sim._maybe_credit_companion("read")

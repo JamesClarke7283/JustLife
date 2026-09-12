@@ -18,6 +18,10 @@ func run()->void:
 	complete_paint()
 	var gained: float = float(sim.relationships.maya.friendship)-before
 	check(gained>2.0,"A finished paint at the host's home credits the host (+%.1f)." % gained)
+	var memory_found: bool = false
+	for memory: Dictionary in sim.memories:
+		if str(memory.label).begins_with("Time at "):memory_found=true
+	check(memory_found,"The first hosted credit is remembered.")
 	# The hourly throttle: another finished activity 30 minutes later gains
 	# nothing (paint itself runs 90 minutes, so the direct call isolates the
 	# window from the action length).
