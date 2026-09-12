@@ -130,7 +130,7 @@ func routine_note(destination:String) -> String:
  var person:Dictionary=PEOPLE.get(resident,{})
  var routine:Dictionary=person.get("routine",{})
  if routine.is_empty() or not LifeResidentCatalogue.routine_active(person,LifeEducation.weekday(app.sim.day),app.sim.minutes):return ""
- var end_minute:float=LifeResidentCatalogue.routine_until(person,app.sim.minutes)
+ var end_minute:float=LifeResidentCatalogue.routine_until(person)
  var hour:int=int(end_minute/60.0)
  var minute:int=int(fmod(end_minute,60.0))
  return str(person.name).split(" ")[0]+" is out at "+str(routine["place"])+" until %02d:%02d." % [hour,minute]
@@ -197,6 +197,7 @@ func tick(delta:float) -> void:
    app.world.set_actor_away(id,true,true);sidewalk_routes.erase(id);continue
   elif bool(state.get("routine_away",false)) and not routine_on:
    # The routine window closed while they were out at this lot: step back on.
+   state.routine_away=false
    state.phase="visiting";state.wait=float(person.get("visit_wait",5.0))
    actor.visible=true
    app.world.set_actor_away(id,false,false);sidewalk_routes.erase(id)
