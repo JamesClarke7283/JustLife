@@ -896,7 +896,7 @@ func _maybe_credit_companion(action_id: String) -> void:
 		var rel: Dictionary = relationships[resident_id]
 		rel["friendship"] = clampf(float(rel["friendship"]) + 2.0, -100.0, 100.0)
 		_update_relationship_status(rel)
-		_emit_notice("%s is here too, and the %s feels less quiet with company." % [str(person["name"]).split(" ")[0],str(routine.get("place","the room"))])
+		_emit_notice("%s is here too, and %s feels less quiet with company." % [str(person["name"]).split(" ")[0],str(routine.get("place","the room"))])
 		return
 
 
