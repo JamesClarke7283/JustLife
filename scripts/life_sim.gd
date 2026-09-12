@@ -64,6 +64,7 @@ var last_hugs: Dictionary = {}  # neighbour id -> game minute of the last hug
 var last_gossip: Dictionary = {}  # neighbour id -> game minute of the last gossip
 var visited_venue: String = ""  # non-empty while the Lifelet is at a visited venue (a resident's home)
 var last_hosted_credit: float = -1e18  # absolute game minute of the last hosted-activity credit
+var last_companion_credit: float = -1e18  # absolute game minute of the last routine-venue companion credit
 var _change_accumulator: float = 0.0
 var _warned_needs: Dictionary = {}
 var _actions: Dictionary = {}
@@ -783,6 +784,7 @@ func _finish_front() -> void:
 		autonomy_state["leisure"]=_leisure_history.duplicate()
 	if not str(action.get("target_id","")).is_empty():_recent_target_use[str(action.target_id)]=_autonomy_now()
 	_maybe_credit_host(id)
+	_maybe_credit_companion(id)
 	if id in AGE_GATED_ACTIONS and not bool(get_action_availability(id, str(action.get("target_id",""))).available):
 		# A restored or edited queue cannot grant an activity this age may not do.
 		_emit_notice(str(get_action_availability(id, str(action.get("target_id",""))).reason))
@@ -875,6 +877,27 @@ func _maybe_credit_host(action_id: String) -> void:
 	person["friendship"] = clampf(float(person["friendship"]) + 3.0, -100.0, 100.0)
 	_update_relationship_status(person)
 	_emit_notice("Time at %s's place brings you closer." % str(person["name"]).split(" ")[0])
+
+
+func _maybe_credit_companion(action_id: String) -> void:
+	# A routine resident working at their venue during the window joins a
+	# matching leisure activity: friendship with them grows, at most once an
+	# in-game hour. Separate throttle from the hosted-visit credit.
+	if visited_venue.is_empty() or visited_venue=="home":return
+	if not (action_id in LEISURE_ACTIONS or action_id=="study"):return
+	if _autonomy_now()-last_companion_credit<60.0:return
+	for resident_id: String in LifeResidentCatalogue.IDS:
+		var person: Dictionary = LifeResidentCatalogue.PEOPLE[resident_id]
+		var routine: Dictionary = person.get("routine", {})
+		if routine.is_empty() or str(routine.get("venue",""))!=visited_venue:continue
+		if not LifeResidentCatalogue.routine_active(person,LifeEducation.weekday(day),minutes):continue
+		if not relationships.has(resident_id):continue
+		last_companion_credit=_autonomy_now()
+		var rel: Dictionary = relationships[resident_id]
+		rel["friendship"] = clampf(float(rel["friendship"]) + 2.0, -100.0, 100.0)
+		_update_relationship_status(rel)
+		_emit_notice("%s is here too, and the %s feels less quiet with company." % [str(person["name"]).split(" ")[0],str(routine.get("place","the room"))])
+		return
 
 
 func _normalize_relationship(person: Dictionary, legacy: bool) -> void:

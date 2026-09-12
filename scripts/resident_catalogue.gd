@@ -16,6 +16,6 @@ static func routine_active(person: Dictionary, weekday: bool, minutes: float) ->
 	if routine.is_empty() or not weekday:return false
 	return minutes >= float(routine["from"]) * 60.0 and minutes < float(routine["to"]) * 60.0
 
-static func routine_until(person: Dictionary, minutes: float) -> float:
+static func routine_until(person: Dictionary) -> float:
 	var routine: Dictionary = person.get("routine", {})
 	return float(routine["to"]) * 60.0
