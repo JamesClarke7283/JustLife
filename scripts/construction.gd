@@ -113,6 +113,12 @@ func snapshot() -> Dictionary:
 	if not building_state.is_empty():return building_state.duplicate(true)
 	return {"kind":"__construction","walls":records.duplicate(true),"floors":floor_records.duplicate(true)}
 
+func has_upper_floor() -> bool:
+	if building_state.is_empty():return false
+	for floor:Dictionary in building_state.floors:
+		if int(floor.level)==1:return true
+	return false
+
 func restore(data: Dictionary) -> void:
 	last_error=""
 	var canonical:Dictionary={}
@@ -408,7 +414,7 @@ func _make_level_proposal(p:Vector3)->Dictionary:
 					record["supports"]=[str(first.id),str(second.id)]
 					if Building._perimeter_support_error(state,record,0).is_empty():found=true;break
 				if found:break
-			if not found:view["error"]="An upper floor needs two complete opposite bearing walls below.";return view
+			if not found:view["error"]="An upper floor needs two complete opposite bearing walls below it. Enclose the room below with walls first (a closed room works), or drag a smaller rectangle over a walled room.";return view
 		operation={"op":"add","collection":"floors","record":record}
 	else:
 		var selected:Dictionary={}
