@@ -27,6 +27,9 @@ def run():
     project = work / 'project'
     project.mkdir()
     shutil.copytree(source / 'scripts', project / 'scripts')
+    # The script dependency chain preloads shaders (construction.gd), so the
+    # minimal project needs them or every dependent script fails to compile.
+    shutil.copytree(source / 'assets' / 'shaders', project / 'assets' / 'shaders')
     (project / 'tests').mkdir()
     for name in ('test_save_storage.gd', 'test_save_library.gd'):
         shutil.copy2(source / 'tests' / name, project / 'tests' / name)

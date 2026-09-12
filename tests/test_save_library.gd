@@ -59,7 +59,9 @@ func run() -> void:
 	home.select(7)
 	home.selected().queue_action("read", "community_shelf", Vector3(2, .16, 4))
 	home.begin_action("housemate_7")
-	home.tick(1.0)
+	# Six real seconds: the iteration-50 clock runs one game-minute per second,
+	# so the partially-progressed active action carries elapsed 6.0.
+	home.tick(6.0)
 	var state: Dictionary = home.get_state([{"id":"favorite_easel", "kind":"easel", "position":Vector3(3, 0, 1)}])
 	var preview: Image = Image.create(80, 40, false, Image.FORMAT_RGBA8)
 	preview.fill(Color("74a68d"))

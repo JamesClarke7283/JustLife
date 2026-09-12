@@ -1066,10 +1066,13 @@ func _apply_social(action: Dictionary) -> bool:
 				_emit_notice("%s appreciates the chat, but needs time to open up." % person["name"])
 		"hug":
 			if float(person["friendship"]) >= 25.0:
-				var last:float=float(last_hugs.get(target,-1e9))
-				change=14.0 if minutes-last>=600.0 else 6.0
+				var last:float=float(last_hugs.get(target,-1e18))
+				# Absolute game minutes: the 600-minute window survives
+				# midnight and a save/reload instead of wrapping at the
+				# time-of-day clock.
+				change=14.0 if _autonomy_now()-last>=600.0 else 6.0
 				if change<14.0:_emit_notice("%s cherishes the hug, though you hugged not long ago." % person["name"])
-				last_hugs[target]=minutes
+				last_hugs[target]=_autonomy_now()
 			else:
 				change=3.0
 				_emit_notice("%s isn't ready for a hug yet. Build the friendship first." % person["name"])
@@ -1112,13 +1115,14 @@ func _apply_social(action: Dictionary) -> bool:
 			else:
 				change=7.0
 		"gossip":
-			var last:float=float(last_gossip.get(target,-1e9))
-			if minutes-last<900.0:
+			var last:float=float(last_gossip.get(target,-1e18))
+			# Absolute game minutes, like the hug window.
+			if _autonomy_now()-last<900.0:
 				change=3.0
 				_emit_notice("%s has heard this story before. It lands flat." % person["name"])
 			else:
 				change=9.0
-			last_gossip[target]=minutes
+			last_gossip[target]=_autonomy_now()
 	if _has_trait("Outgoing") and change > 0.0:
 		change *= 1.2
 	person["friendship"] = clampf(float(person["friendship"]) + change, -100.0, 100.0)
@@ -2220,6 +2224,23 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 func _autonomy_integer(value:Variant,minimum:int,maximum:int) -> bool:
 	return (value is int or value is float) and is_finite(float(value)) and float(value)==floorf(float(value)) and float(value)>=minimum and float(value)<=maximum
 
+func _validate_social_repeat_state(state:Dictionary) -> String:
+	# Hug/gossip stamps are absolute game minutes; chooser cooldowns are
+	# absolute stamps no further than a three-hour cooldown ahead.
+	var now:float=float(state.get("day",1)-1)*1440.0+float(state.get("minutes",0.0))
+	for key:String in ["last_hugs","last_gossip"]:
+		var stamps:Variant=state.get(key,{})
+		if not stamps is Dictionary:return "Save contains invalid social stamps."
+		for target:Variant in stamps:
+			if not target is String or str(target).is_empty() or not _number_in_range(stamps[target],0.0,maxf(now,0.0)):
+				return "Save contains invalid social stamps."
+	var cooldowns:Variant=state.get("social_cooldowns",{})
+	if not cooldowns is Dictionary:return "Save contains an invalid social cooldown."
+	for target:Variant in cooldowns:
+		if not target is String or str(target).is_empty() or not _number_in_range(cooldowns[target],0.0,now+181.0):
+			return "Save contains an invalid social cooldown."
+	return ""
+
 func _validate_autonomy_state(state:Dictionary) -> String:
 	var value:Variant=state.get("autonomy_state",{"version":1,"contacts":{},"deferred":{}})
 	if not value is Dictionary or not _autonomy_integer(value.get("version"),1,1) or not value.get("contacts") is Dictionary or not value.get("deferred") is Dictionary:return "Save contains invalid autonomy history."
@@ -2347,6 +2368,8 @@ func _validate_state(state: Dictionary) -> String:
 		return "Save contains an invalid clock or funds."
 	var autonomy_error:String=_validate_autonomy_state(state)
 	if not autonomy_error.is_empty():return autonomy_error
+	var repeat_error:String=_validate_social_repeat_state(state)
+	if not repeat_error.is_empty():return repeat_error
 	var school_error: String = _validate_school_state(state)
 	if not school_error.is_empty(): return school_error
 	if not _number_in_range(state.get("speed", 1), 0.0, 8.0) or int(state.get("speed", 1)) not in [0, 1, 3, 8] or not state.get("autonomy", true) is bool:
