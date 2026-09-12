@@ -2546,6 +2546,7 @@ func _process(delta:float) -> void:
 		_update_selection_marker(delta)
 		if away_targets_changed:_refresh_sim_targets(false)
 		residents.tick(delta)
+		_tick_resident_contacts()
 		traversal.courtesy.consider(traversal)
 		hud_refresh+=delta
 		if hud_refresh>.25:hud_refresh=0;refresh_hud()
@@ -3022,6 +3023,34 @@ func _reconcile_social_action()->void:
 	if changed:action.target_position=destination;action.phase="approach"
 	var missing_route:bool=str(action.phase)=="approach" and not traversal.active(bound_member_id) and path.is_empty()
 	if changed or missing_route:on_action_started(action)
+var _contact_minute:int=-1
+
+## Once per game minute, a visiting resident may start a contact with a
+## household member who is physically nearby on the lot.
+func _tick_resident_contacts()->void:
+	var minute:int=int(sim.minutes)
+	if minute==_contact_minute:return
+	_contact_minute=minute
+	var positions:Dictionary={}
+	for member:Dictionary in household.members:
+		var member_sim:LifeSim=member.sim
+		if member_sim.is_away() or str(member_sim.get_current_action().get("id",""))=="sleep":continue
+		var actor:LifeActor=world.actors.get(str(member.id))
+		if not is_instance_valid(actor):continue
+		positions[str(member.id)]=actor.position
+	if positions.is_empty():return
+	for resident_id:String in LifeResidents.PEOPLE:
+		var state:Dictionary=residents.locations.get(residents.active_place,{}).get(resident_id,{})
+		var actor:LifeActor=world.actors.get(resident_id)
+		if state.is_empty() or not is_instance_valid(actor):continue
+		var contact:Dictionary=residents.resident_initiation(resident_id,str(state.get("phase","")),actor.position,positions,LifeEducation.weekday(sim.day),sim.minutes,sim.day)
+		if not contact.is_empty():_apply_resident_contact(contact)
+
+func _apply_resident_contact(contact:Dictionary)->void:
+	var member_sim:LifeSim=household.member_sim(str(contact.member))
+	if not is_instance_valid(member_sim):return
+	residents.apply_contact(contact,member_sim)
+	show_notice(str(contact.notice))
 
 func _reconcile_social_routes()->void:
 	var prior:String=bound_member_id
@@ -3031,6 +3060,7 @@ func _reconcile_social_routes()->void:
 		if not sim.is_away():_reconcile_social_action()
 		_store_motion()
 	_bind_member(prior)
+
 
 func _resolve_activity_target(action:Dictionary) -> void:
 	if str(action.id) in ["school_day","career_day"]:

@@ -9,13 +9,50 @@ var trip:Dictionary={}
 var car:Node3D
 var home_visit:LifeHomeVisit
 var sidewalk_routes:Dictionary={}
+var _initiated:Dictionary={}  # resident id -> absolute game day of their last self-started contact
+const INITIATE_RADIUS:=2.5
 const SIDEWALK_LANES={"maya":8.0,"leo":8.8}
 
 func _init(controller:Node) -> void:
  app=controller;home_visit=LifeHomeVisit.new(self)
 
 func reset() -> void:
- locations.clear();active_place="";trip.clear();home_visit.reset();sidewalk_routes.clear()
+ locations.clear();active_place="";trip.clear();home_visit.reset();sidewalk_routes.clear();_initiated.clear()
+
+## A visiting resident with a household member nearby starts one contact per
+## game day: a cheerful chat off hours, or looking for company when their
+## catalogue mood is drained. Pure decision — the caller applies the effects.
+func resident_initiation(resident_id:String,resident_phase:String,resident_position:Vector3,member_positions:Dictionary,weekday:bool,minutes:float,absolute_day:int) -> Dictionary:
+ if resident_phase!="visiting":return {}
+ if int(_initiated.get(resident_id,-1))>=absolute_day:return {}
+ var nearest:String=""
+ var best:float=INITIATE_RADIUS
+ for member_id:String in member_positions:
+  var distance:float=float(member_positions[member_id].distance_to(resident_position))
+  if distance<best:best=distance;nearest=member_id
+ if nearest.is_empty():return {}
+ var catalogue:Dictionary=PEOPLE[resident_id]
+ var at_work:bool=weekday and minutes>=540.0 and minutes<=960.0
+ var mood:Dictionary=catalogue.get("fun",{"work":40,"off":80})
+ var drained:bool=float(mood["work" if at_work else "off"])<45.0
+ _initiated[resident_id]=absolute_day
+ var first_name:String=str(catalogue.name).split(" ")[0]
+ if drained:
+  return {"resident":resident_id,"member":nearest,"kind":"vent","social":10.0,"friendship":5.0,
+   "notice":"%s comes over, looking for a little company." % first_name}
+ if "Cheerful" in catalogue.get("traits",[]):
+  return {"resident":resident_id,"member":nearest,"kind":"cheerful_chat","social":16.0,"friendship":8.0,
+   "notice":"%s drops by with a big grin and the latest news." % first_name}
+ return {"resident":resident_id,"member":nearest,"kind":"chat","social":12.0,"friendship":6.0,
+  "notice":"%s stops by to chat for a few minutes." % first_name}
+
+## The effects half of a resident contact: needs and friendship move on the
+## member's real sim, inside the same clamps every other social gain uses.
+func apply_contact(contact:Dictionary,member_sim:LifeSim) -> void:
+ member_sim.needs.social=clampf(float(member_sim.needs.social)+float(contact.social),0.0,100.0)
+ var relationship:Dictionary=member_sim.relationships.get(str(contact.resident),{})
+ if relationship.has("friendship"):
+  relationship.friendship=clampf(float(relationship.friendship)+float(contact.friendship),-100.0,100.0)
 
 func _default_state(id:String,place:String) -> Dictionary:
  var at:=Vector3(-8.25 if id=="maya" else 8.25,.16,float(SIDEWALK_LANES[id]))
