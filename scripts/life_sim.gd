@@ -65,6 +65,7 @@ var last_gossip: Dictionary = {}  # neighbour id -> game minute of the last goss
 var visited_venue: String = ""  # non-empty while the Lifelet is at a visited venue (a resident's home)
 var last_hosted_credit: float = -1e18  # absolute game minute of the last hosted-activity credit
 var last_companion_credit: float = -1e18  # absolute game minute of the last routine-venue companion credit
+var routine_memory_days: Dictionary = {}  # host id -> game day of the last remembered routine encounter
 var _change_accumulator: float = 0.0
 var _warned_needs: Dictionary = {}
 var _actions: Dictionary = {}
@@ -876,6 +877,9 @@ func _maybe_credit_host(action_id: String) -> void:
 	var person: Dictionary = relationships[host]
 	person["friendship"] = clampf(float(person["friendship"]) + 3.0, -100.0, 100.0)
 	_update_relationship_status(person)
+	if int(routine_memory_days.get(host,-1))!=day:
+		routine_memory_days[host]=day
+		remember("Time at "+str(person["name"]).split(" ")[0]+"'s place","Spent part of the day together at their home.")
 	_emit_notice("Time at %s's place brings you closer." % str(person["name"]).split(" ")[0])
 
 
@@ -896,6 +900,9 @@ func _maybe_credit_companion(action_id: String) -> void:
 		var rel: Dictionary = relationships[resident_id]
 		rel["friendship"] = clampf(float(rel["friendship"]) + 2.0, -100.0, 100.0)
 		_update_relationship_status(rel)
+		if int(routine_memory_days.get(resident_id,-1))!=day:
+			routine_memory_days[resident_id]=day
+			remember("Time with "+str(person["name"]).split(" ")[0],"Shared part of a weekday at "+str(routine.get("place","the room"))+".")
 		_emit_notice("%s is here too, and %s feels less quiet with company." % [str(person["name"]).split(" ")[0],str(routine.get("place","the room"))])
 		return
 
