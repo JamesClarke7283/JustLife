@@ -315,7 +315,10 @@ func progress_steps(current:int) -> void:
 		text_label(names[i],Vector2(465+i*190,34),Vector2(185,28),14,c)
 		if i==current:line(Vector2(466+i*190,73),Vector2(145,2))
 
-func show_creator() -> void:
+func show_creator(purpose:String="") -> void:
+	# The purpose is set by this entry alone, so a pending birth can never leak
+	# the baby creator into the new-game, milestone or recovery paths.
+	creator_purpose=purpose
 	close_overlay(false)
 	cancel_placement()
 	mode="creator"
@@ -418,8 +421,14 @@ func draw_creator() -> void:
 		small_caps("Hairstyle",Vector2(1102,358))
 		var hair_names:Array=["Crop","Bob","Curls","Pony","Long","Buzz","Waves","Bun"]
 		var hair_tips:Array=["A relaxed swept crop","A softly sculpted bob","Natural rounded curls","A swept-back ponytail","Long layered lengths","A close buzz cut","Loose shoulder-length waves","A sleek twisted updo"]
-		for i in range(hair_names.size()):
-			var b=button(hair_names[i],Vector2(1100+(i%4)*80,388+(i/4)*42),Vector2(73,36),func():profile.hair=i;refresh_preview(),int(profile.get("hair",0))==i)
+		# Only styles this stage's model authors are offered, so a choice is
+		# never silently replaced when the Lifelet is created.
+		var offered_hair:Array=range(hair_names.size())
+		if is_instance_valid(preview) and preview.has_method("authored_hair_styles"):
+			offered_hair=preview.authored_hair_styles()
+		for slot:int in range(offered_hair.size()):
+			var i:int=int(offered_hair[slot])
+			var b=button(hair_names[i],Vector2(1100+(slot%4)*80,388+(slot/4)*42),Vector2(73,36),func():profile.hair=i;refresh_preview(),int(profile.get("hair",0))==i)
 			b.tooltip_text=hair_tips[i]
 		small_caps("Hair color",Vector2(1102,486))
 		swatches(["2a2420","54382a","89563a","c2a16b","dfccb0","784e49"],"hair_color",Vector2(1100,514),36,7)
@@ -568,7 +577,13 @@ func confirm_baby_creator() -> void:
 	creator_purpose=""
 	creator_family_links=[]
 	# Leave the character studio for the real home the newborn walks into.
+	# Serialize the live world first: the cached layout only refreshes on save,
+	# so rebuilding from it would silently reverse purchases, built walls and
+	# an upper storey made since the last save.
+	if current_venue=="home":home_layout=world.serialize_items()
+	else:venue_layouts[current_venue]=world.serialize_items()
 	var layout:Array=home_layout if not home_layout.is_empty() else LifeCatalog.starter_layout(selected_lot)
+	if current_venue!="home":layout=venue_layouts.get(current_venue,layout)
 	setup_live(layout)
 	household.register_targets(world.simulation_targets())
 	_member_action_started(id,baby.get_current_action())
@@ -588,7 +603,7 @@ func show_baby_creator() -> void:
 	profile["life_stage"]="minor"
 	creator_index=0
 	household_profiles=[profile]
-	show_creator()
+	show_creator("baby")
 
 func set_creator_tab(value:String) -> void:
 	creator_tab=value
@@ -626,7 +641,15 @@ func set_body_scale(value:float) -> void:
 
 func randomize_person() -> void:
 	profile.name=["Mara Vale","Alex Rowan","Ellis Park","Jules Rivera","Noa Ellis","Robin Ash"][randi()%6]
-	profile.frame=randi()%2;profile.hair=randi()%8;profile.outfit=randi()%5;profile.bottom=randi()%2
+	profile.frame=randi()%2;profile.outfit=0;profile.bottom=0
+	if is_instance_valid(preview) and preview.has_method("authored_hair_styles"):
+		var styles:Array=preview.authored_hair_styles()
+		profile.hair=int(styles[randi()%styles.size()])
+		var wardrobe:Dictionary=preview.authored_wardrobe()
+		var outfits:Array=wardrobe.get("outfits",[0]);var bottoms:Array=wardrobe.get("bottoms",[0])
+		profile.outfit=int(outfits[randi()%outfits.size()]);profile.bottom=int(bottoms[randi()%bottoms.size()])
+	else:
+		profile.hair=randi()%8;profile.outfit=randi()%5;profile.bottom=randi()%2
 	for feature:String in ["face_round","jaw_strong","nose_wide","eye_spacing"]:profile[feature]=randf_range(0,.75)
 	profile.skin_color=["f2d1b1","e7b98f","d9a17d","b77e58","925c40","613e30"][randi()%6]
 	profile.hair_color=["2a2420","54382a","89563a","c2a16b","dfccb0"][randi()%5]
@@ -1647,10 +1670,19 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 	close_overlay();overlay_open=true;dismiss_layer()
 	var actions:Array=sim.get_actions_for(str(item.kind),str(item.id))
 	if str(item.kind)=="meal":actions.append({"id":"call_to_meal","label":"Call everyone to eat","cost":0,"duration":0,"available":true,"description":"Invite available hungry household members and your welcomed guest. Busy Lifelets keep their plans."})
+	# A beat already in progress offers its own stop, so the invitation in its
+	# notice has a control the player can actually press.
+	for running:Variant in household.cooperations:
+		if not running is Dictionary:continue
+		var session:Dictionary=running
+		if LifeBabyPlan.session_kind(session)!=LifeBabyPlan.SESSION_KIND:continue
+		actions.insert(0,{"id":"stop_try_for_baby","label":"Stop the moment","cost":0,"duration":0,"available":true,"description":"End it now. Nothing is decided unless the whole moment finishes."})
+		break
 	if str(item.kind) in ["desk","computer"] and str(sim.character.age_stage) in ["child","teen"]:
 		var availability:Dictionary=sim.get_action_availability("homework",str(item.id))
 		var reason:String=str(availability.reason)
 		if not sim.action_queue.is_empty():reason="Finish or cancel this Lifelet’s current activity first."
+		actions.insert(mini(2,actions.size()),{"id":"supported_homework","label":"Do homework together…","cost":0,"duration":45,"available":reason.is_empty(),"unavailable_reason":reason,"description":"Choose a trusted household adult to help. Learn together and strengthen your friendship."})
 	if str(item.kind)=="floor_lamp" and not _find_item(str(item.id)).is_empty():
 		var lamp:Dictionary=_find_item(str(item.id))
 		actions.append({"id":"switch_light","label":"Switch off" if world.item_lit(lamp) else "Switch on","cost":0,"duration":0,"available":true,"description":"A warm pool of light for evenings in."})
@@ -1685,6 +1717,9 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 				var joined:int=meal_flow.call_to_meal(str(item.id));close_overlay();show_notice("%d Lifelets are coming to eat." % joined)
 			elif str(a.id)=="supported_homework":show_homework_helpers(item)
 			elif str(a.id)==LifeBabyPlan.ACTION_ID:try_for_baby(item);close_overlay()
+			elif str(a.id)=="stop_try_for_baby":
+				household.cancel_cooperative_action(bound_member_id)
+				_end_cover_beat();close_overlay()
 			else:queue_interaction(item,a.id);close_overlay())
 		column.add_child(b)
 	if actions.is_empty():paragraph("A little detail that makes this place home.",pos+Vector2(18,80),Vector2(304,55),13,P.MUTED,overlay)
@@ -3538,6 +3573,9 @@ func continue_life() -> void:
 		world.set_build(mode=="build")
 		household.set_speed(0 if mode=="build" else menu_resume_speed)
 		draw_live();_sync_actor_sound()
+		# A birth that was waiting to be named must not be stranded by leaving
+		# the creator: reopen it as soon as the household is live again.
+		if household.birth_ready():show_baby_creator.call_deferred()
 	else:load_game()
 
 func new_game() -> void:

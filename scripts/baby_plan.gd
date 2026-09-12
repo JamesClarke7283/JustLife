@@ -27,6 +27,9 @@ const BOTTOM_COLORS: Array[String] = ["eadfc9","3e5955","51697c","493e37","b88a7
 const FACE_KEYS: Array[String] = ["face_round","jaw_strong","nose_wide","eye_spacing"]
 const TRAIT_NAMES: Array[String] = ["Creative","Outgoing","Active","Bookworm","Foodie","Neat"]
 const ASPIRATIONS: Array[String] = ["Maker","Connected","Successful","Balanced"]
+## Styles the baby family authors (Crop, Bob, Curls). Longer styles are adult
+## meshes the baby model does not carry, so they are never rolled or offered.
+const BABY_HAIR_STYLES: Array[int] = [0,1,2]
 const HAIR_STYLES: int = 8
 
 static func fresh() -> Dictionary:
@@ -148,7 +151,7 @@ static func roll(mother: Dictionary, father: Dictionary, serial: int) -> Diction
 	var profile:Dictionary = {
 		"name": "%s %s" % [FIRST_NAMES[rng.randi()%FIRST_NAMES.size()],LAST_NAMES[rng.randi()%LAST_NAMES.size()]],
 		"age_stage":"baby", "life_stage":"minor", "gender":gender, "frame":frame_for(gender),
-		"hair": rng.randi()%HAIR_STYLES, "skin_color":skin, "hair_color":hair_color, "eye_color":eye,
+		"hair": BABY_HAIR_STYLES[rng.randi()%BABY_HAIR_STYLES.size()], "skin_color":skin, "hair_color":hair_color, "eye_color":eye,
 		"top_color":top, "bottom_color":bottom, "outfit":0, "bottom":0,
 		"body_scale":1.0, "height_scale":1.0, "traits":[], "aspiration":aspiration
 	}
@@ -204,6 +207,12 @@ static func profile_error(profile: Variant) -> String:
 		return "Save contains a baby of the wrong age stage."
 	if not _whole(baby.get("frame"),0,1) or not _whole(baby.get("hair"),0,HAIR_STYLES-1) or not _whole(baby.get("outfit"),0,4) or not _whole(baby.get("bottom"),0,1):
 		return "Save contains invalid baby styling."
+	# The baby model authors three hairstyles and one romper: a profile may not
+	# record a style the model would silently substitute at load.
+	if not int(baby.get("hair",0)) in BABY_HAIR_STYLES:
+		return "Save contains a baby hairstyle the model does not have."
+	if int(baby.get("outfit",0))!=0 or int(baby.get("bottom",0))!=0:
+		return "Save contains baby clothing the model does not have."
 	for key:String in ["skin_color","hair_color","eye_color","top_color","bottom_color"]:
 		if not _color(baby.get(key)):
 			return "Save contains an invalid baby colour."
