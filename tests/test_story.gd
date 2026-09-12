@@ -11,6 +11,7 @@ func _initialize() -> void:
 	_test_practice_at_skill_cap()
 	_test_saved_day_sets_and_reentrant_choices()
 	_test_later_choice_requirements()
+	_test_new_story_kinds()
 	_test_legacy_and_malformed_saves()
 	print("Story progression: %d checks, %d failures." % [checks, failures])
 	quit(1 if failures > 0 else 0)
@@ -237,4 +238,38 @@ func _test_later_choice_requirements() -> void:
 	sim.needs.fun = 25.0
 	money = sim.funds
 	check(sim.choose_story_event("story_day_7", "quiet_reset") and sim.needs.energy == 43.0 and sim.needs.fun == 35.0 and sim.funds == money, "The community picnic includes a real no-cost restorative alternative.")
+	sim.free()
+
+func _test_new_story_kinds() -> void:
+	var sim: LifeSim = make_sim()
+	# Days 2-7 keep their kinds; the appended kinds land on days 8 and 9.
+	sim.day = 2
+	sim._offer_daily_story()
+	check(sim.get_story_events()[0].kind == "neighbor_invitation", "Extending the rotation must not move day two's invitation.")
+	sim.day = 8
+	sim._offer_daily_story()
+	var party: Dictionary = sim.get_story_events().back()
+	check(str(party.kind) == "block_party", "Day eight must offer the block party.")
+	check(party.choices.size() == 3 and party.title == "The lane closes for the evening", "The block party carries three labelled choices.")
+	sim.needs.energy = 80.0
+	sim.needs.social = 40.0
+	sim.needs.fun = 40.0
+	var money: int = sim.funds
+	var cooking_xp: float = xp_total(sim, "cooking")
+	var friendship: float = float(sim.relationships.leo.friendship)
+	check(sim.choose_story_event("story_day_8", "bring_party_dish"), "The party dish must be selectable.")
+	check(sim.funds == money - 20 and is_equal_approx(xp_total(sim, "cooking"), cooking_xp + 30.0) and is_equal_approx(float(sim.relationships.leo.friendship), friendship + 10.0), "The party dish must apply its cost, cooking XP and friendship exactly.")
+	check(sim.needs.social == 60.0 and sim.needs.fun == 52.0 and sim.needs.energy == 70.0, "The party dish must apply its advertised need tradeoffs.")
+	sim.day = 9
+	sim._offer_daily_story()
+	check(sim.get_story_events().back().kind == "flea_market", "Day nine must offer the flea market.")
+	sim.needs.energy = 80.0
+	sim.needs.social = 40.0
+	var satisfaction: int = sim.satisfaction
+	money = sim.funds
+	check(sim.choose_story_event("story_day_9", "rent_table"), "Renting a flea-market table must be selectable.")
+	check(sim.funds == money + 60 and is_equal_approx(xp_total(sim, "charisma"), 0.0 + 20.0) or xp_total(sim, "charisma") == 20.0, "Selling at the flea market must pay and practice charisma.")
+	check(sim.satisfaction == satisfaction + 10, "Selling must pay its stated satisfaction.")
+	check(sim.needs.energy == 68.0 and sim.needs.social == 54.0, "The table choice must apply its energy and social tradeoffs.")
+	check(not sim.choose_story_event("story_day_9", "rent_table"), "The market choice cannot be replayed.")
 	sim.free()

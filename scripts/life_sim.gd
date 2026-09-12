@@ -74,7 +74,7 @@ var aspiration_history: Array = []
 var story_events: Array = []
 var story_history: Array = []
 var _story_generated_day: int = 1
-const STORY_KINDS: Array[String] = ["neighbor_invitation", "career_opportunity", "hobby_exhibition", "garden_exchange", "learning_circle", "community_picnic"]
+const STORY_KINDS: Array[String] = ["neighbor_invitation", "career_opportunity", "hobby_exhibition", "garden_exchange", "learning_circle", "community_picnic", "block_party", "flea_market"]
 const SOCIAL_ACTIONS: Array[String] = ["friendly", "joke", "deep_talk", "hug", "share_interests", "sympathize", "gossip", "flirt", "argue", "ask_partner", "commit", "break_up"]
 const AGE_GATED_ACTIONS: Array[String] = ["jog", "play_toys"]
 const LEISURE_ACTIONS: Array[String] = ["paint", "read", "watch", "relax", "play_piano", "play_chess", "dance", "play_games", "practice_speech", "stretch", "warm_up", "jog", "play_toys"]
@@ -1950,6 +1950,20 @@ func _story_event(ticket: Dictionary) -> Dictionary:
 				_story_choice("join_picnic", "Join the garden picnic", {"cost":18, "needs":{"social":24, "fun":18, "energy":-10}, "friendship":{neighbor:12}}),
 				_story_choice("prepare_food", "Help prepare the picnic food", {"needs":{"hunger":20, "energy":-12, "hygiene":-6}, "skills":{"cooking":35}, "friendship":{neighbor:6}}),
 				_story_choice("quiet_reset", "Take a quiet reset", {"needs":{"energy":18, "fun":10}})]
+		"block_party":
+			result.title = "The lane closes for the evening"
+			result.description = "%s is organizing the end-of-lane block party. Bring a dish to share, run the music corner, or keep your porch quiet and watch the string lights go up." % neighbor_name
+			result.choices = [
+				_story_choice("bring_party_dish", "Bring a dish to share", {"cost":20, "needs":{"social":20, "fun":12, "energy":-10}, "skills":{"cooking":30}, "friendship":{neighbor:10}}),
+				_story_choice("music_corner", "Run the music corner", {"needs":{"energy":-14, "social":16, "fun":14}, "skills":{"creativity":25}, "friendship":{neighbor:6}}),
+				_story_choice("porch_night", "Keep a quiet porch night", {"needs":{"energy":12, "fun":8}})]
+		"flea_market":
+			result.title = "One table, everything must go"
+			result.description = "The empty lot becomes a flea market for the morning. Rent a table and sell what you no longer need, hunt for a bargain, or spend the morning at home."
+			result.choices = [
+				_story_choice("rent_table", "Rent a table and sell", {"income":60, "needs":{"energy":-12, "social":14}, "skills":{"charisma":20}, "satisfaction":10}),
+				_story_choice("hunt_bargain", "Hunt for a bargain", {"cost":25, "needs":{"fun":14, "social":8}, "satisfaction":15}),
+				_story_choice("home_morning", "Keep the morning at home", {"needs":{"energy":15, "fun":6}})]
 	return result
 
 
