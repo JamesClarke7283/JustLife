@@ -233,10 +233,9 @@ func restore(value:Variant) -> void:
    if not _integer(direction,-1,1) or float(direction)==0 or not _integer(waypoint,0,2):continue
    var allowed:Array=["home","walking"] if place=="home" else (["home"] if place in LifeNeighborhood.RESIDENT_HOMES and place!=str(PEOPLE[id].home) else ["visiting"])
    if str(record.phase) not in allowed:continue
-   # Route the restored position through Vector3 so the stored values match
-   # the float32 precision the live actor-derived snapshot carries.
-   var restored:=Vector3(float(record.position[0]),float(record.position[1]),float(record.position[2]))
-   accepted[id]={"position":[restored.x,restored.y,restored.z],"phase":str(record.phase),"wait":minf(float(record.wait),999999.0),"direction":int(direction),"rotation":float(record.rotation),"waypoint":int(waypoint)}
+   # Positions restore verbatim: the JSON doubles match the saved snapshot
+   # exactly, and the live path re-quantizes to float32 through the actor.
+   accepted[id]={"position":record.position.duplicate(),"phase":str(record.phase),"wait":minf(float(record.wait),999999.0),"direction":int(direction),"rotation":float(record.rotation),"waypoint":int(waypoint)}
   locations[place]=accepted
 
  if value.get("home_visit") is Dictionary:home_visit.restore(value.home_visit)
