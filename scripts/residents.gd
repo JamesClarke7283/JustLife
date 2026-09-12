@@ -180,13 +180,16 @@ func tick(delta:float) -> void:
   var state:Dictionary=locations[active_place][id]
   # A resident whose weekday routine window is open steps out: off-lot and
   # untargetable until the window closes, when the usual home-to-walking
-  # flip brings them back on their normal rhythm.
+  # flip brings them back on their normal rhythm. An invited guest never
+  # vanishes mid-visit: the step-out defers until the visit ends.
   var person:Dictionary=PEOPLE[id]
-  if LifeResidentCatalogue.routine_active(person,LifeEducation.weekday(app.sim.day),app.sim.minutes) and str(state.phase)!="home":
+  var guest:bool=home_visit.owns(id)
+  var routine_due:bool=not guest and LifeResidentCatalogue.routine_active(person,LifeEducation.weekday(app.sim.day),app.sim.minutes) and str(state.phase)!="home"
+  if routine_due:
    state.phase="home";state.wait=float(person.get("home_wait",60.0))
    actor.visible=false
    app.world.set_actor_away(id,true,true)
-  if home_visit.owns(id):sidewalk_routes.erase(id);home_visit.tick(delta);continue
+  if guest:sidewalk_routes.erase(id);home_visit.tick(delta);continue
   var speaker:Dictionary=_speaker(id)
   var moving:bool=false
   var talk:String=""
