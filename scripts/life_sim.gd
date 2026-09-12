@@ -194,6 +194,7 @@ func _build_actions() -> void:
 	_define("snack", "Grab a snack", 15.0, {"hunger": 32.0}, 8, "", 0.0, "A quick bite to keep the day going.")
 	_define("cook", "Cook a fresh meal", 45.0, {"fun": 8.0, "hygiene": -5.0}, 25, "cooking", 34.0, "Choose a recipe to prepare and share. Cooking skill unlocks more dishes. Eating restores hunger.")
 	_define("sleep", "Sleep", 360.0, {"energy": 95.0, "fun": 15.0}, 0, "", 0.0, "A full night's rest restores energy and chases the boredom away.")
+	_define("try_for_baby", "Try for Baby", LifeBabyPlan.DURATION, {"social": 20.0, "fun": 14.0, "energy": -6.0}, 0, "", 0.0, "An intimate moment with your partner while you share the bed. If you both want to, this can begin a pregnancy.")
 	_define("nap", "Take a nap", 75.0, {"energy": 38.0}, 0, "", 0.0, "A short, refreshing nap.")
 	_define("shower", "Take a shower", 30.0, {"hygiene": 85.0, "fun": 4.0}, 0, "", 0.0, "Freshen up and feel ready for the day.")
 	_define("toilet", "Use toilet", 15.0, {"bladder": 95.0, "hygiene": -3.0}, 0, "", 0.0, "Take care of a pressing need.")
@@ -248,7 +249,7 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"lot_exit": ids = ["school_day"] if str(character.age_stage) in LifeEducation.SCHOOL_STAGES else (["career_day"] if str(character.life_stage)=="adult" else [])
 		"fridge": ids = ["cook", "snack", "birthday"]
 		"stove", "kitchen": ids = ["cook"]
-		"bed": ids = ["sleep", "nap"]
+		"bed": ids = ["sleep", "nap", "try_for_baby"]
 		"shower", "bath": ids = ["shower"]
 		"toilet": ids = ["toilet"]
 		"sofa", "chair", "armchair", "loveseat", "stool": ids = ["relax", "nap"]
@@ -443,6 +444,9 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 		return false
 	if id == "help_homework":
 		_emit_notice("Choose Do homework together at a desk to arrange both Lifelets.")
+		return false
+	if id == LifeBabyPlan.ACTION_ID:
+		_emit_notice("Choose Try for Baby on the bed both partners are sleeping in.")
 		return false
 	if not _actions.has(id):
 		return false
@@ -644,7 +648,7 @@ func _step(game_minutes: float) -> void:
 		_update_wants()
 		return
 	_reconsider_active_autonomy()
-	if not action_queue.is_empty() and str(action_queue[0]["phase"]) == "active" and str(action_queue[0].id) != "help_homework":
+	if not action_queue.is_empty() and str(action_queue[0]["phase"]) == "active" and str(action_queue[0].id) != "help_homework" and not (str(action_queue[0].id) == LifeBabyPlan.ACTION_ID and not bool(action_queue[0].get("cooperation_primary",false))):
 		var action: Dictionary = action_queue[0]
 		var actual_step: float = minf(game_minutes, float(action["duration"]) - float(action["elapsed"]))
 		action["elapsed"] = float(action["elapsed"]) + actual_step
@@ -775,7 +779,7 @@ func _gain_skill(skill_name: String, amount: float, practice: float = -1.0) -> v
 
 func _finish_front() -> void:
 	if not action_queue.is_empty() and action_queue[0].has("cooperation_id") and is_instance_valid(cooperation_owner):
-		cooperation_owner.finish_cooperative_homework(str(action_queue[0].cooperation_id))
+		cooperation_owner.finish_cooperative_action(str(action_queue[0].cooperation_id))
 		return
 	var action: Dictionary = action_queue.pop_front()
 	var id: String = str(action["id"])
@@ -956,8 +960,15 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 		if not reason.is_empty():return {"available":false,"reason":reason}
 	if not _actions.has(id):
 		return {"available":false, "reason":"That activity is unavailable."}
+	# A baby is driven by a caregiver: it keeps its recovery and play set and is
+	# refused everything else here, before any target or queue rule applies.
+	var stage_reason: String = LifeStagePolicy.action_error(str(character.age_stage), str(character.life_stage), id)
+	if not stage_reason.is_empty():
+		return {"available":false, "reason":stage_reason}
 	if id=="career_day":
 		reason=_career_departure_error(target_id)
+	elif id == LifeBabyPlan.ACTION_ID:
+		reason=_try_for_baby_error(target_id)
 	elif id == "school_day":
 		reason = _school_departure_error(target_id)
 	elif id in ["school","homework"]:
@@ -1011,6 +1022,15 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 				reason = "You are not currently partners."
 	return {"available":reason.is_empty(), "reason":reason}
 
+
+func _try_for_baby_error(bed_id: String) -> String:
+	# The household owns the pair's identities and the family state; the
+	# simulation only binds them to this Lifelet's own bed click.
+	if not is_instance_valid(cooperation_owner) or not cooperation_owner.has_method("try_for_baby_plan"):
+		return "Try for Baby needs a live household."
+	if is_away():return "This Lifelet will be available after coming home."
+	var plan:Dictionary=cooperation_owner.try_for_baby_plan(_social_member_id,bed_id)
+	return "" if bool(plan.ok) else str(plan.get("error","Try for Baby is unavailable right now."))
 
 func _social_detail(stage: String, name: String) -> Dictionary:
 	match stage:
@@ -2279,8 +2299,11 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 		if stored.has("target_kind"): action["target_kind"] = str(stored.target_kind)
 		for key: String in ["cooperation_id","cooperation_role","meal_source","meal_stage","meal_plate","meal_seat","seat_slot"]:
 			if stored.has(key): action[key] = str(stored[key])
+		if stored.has("cooperation_primary"): action["cooperation_primary"] = bool(stored.cooperation_primary)
+		if stored.has("partner_id"): action["partner_id"] = str(stored.partner_id)
 		if stored.has("meal_standing"): action["meal_standing"] = stored.meal_standing
 		if stored.has("adoption_serial"): action["adoption_serial"]=int(stored.adoption_serial)
+		if stored.has("baby_serial"): action["baby_serial"]=int(stored.baby_serial)
 		for key:String in ["home_visit_serial","home_visit_token"]:
 			if stored.has(key):action[key]=int(stored[key])
 		if str(action.id) == "birthday": action["birthday_from_stage"] = str(stored.get("birthday_from_stage",character.age_stage))
@@ -2490,13 +2513,27 @@ func _validate_state(state: Dictionary) -> String:
 				return "Save contains invalid sanitation action progress."
 			if (float(action.elapsed)>0.0 or str(action.phase)=="active") and not bool(action.paid):return "Save contains sanitation progress that never began."
 		if action.has("adoption_serial") and action_id!="arrive_home":return "Save contains adoption metadata on an unrelated action."
+		if action.has("baby_serial") and action_id!="arrive_home":return "Save contains birth metadata on an unrelated action."
 		if action_id=="arrive_home":
-			if not LifeAdoption.integer(action.get("adoption_serial"),1,7) or action.get("paid")!=false or not action.get("paid") is bool or action.get("autonomous")!=false or not action.get("autonomous") is bool or not LifeAdoption.integer(action.get("cost"),0,0) or not LifeAdoption.integer(action.get("duration"),1,1) or not LifeAdoption.integer(action.get("elapsed"),0,0) or str(action.get("phase",""))!="approach" or str(action.get("target_id",""))!="lot_exit" or str(action.get("target_kind",""))!="lot_exit" or not LifeAdoption.point(action.get("target_position")):
+			# A newborn and an adopted child both walk home from the street; the
+			# newborn carries its birth serial where the adoption carries its
+			# review serial, and exactly one of the two is present.
+			var review_serial:Variant=action.get("adoption_serial")
+			var birth_serial_value:Variant=action.get("baby_serial")
+			var serial_ok:bool=(LifeAdoption.integer(review_serial,1,7) and not action.has("baby_serial")) or (LifeAdoption.integer(birth_serial_value,1,LifeBabyPlan.MAX_BIRTHS) and not action.has("adoption_serial"))
+			if not serial_ok or action.get("paid")!=false or not action.get("paid") is bool or action.get("autonomous")!=false or not action.get("autonomous") is bool or not LifeAdoption.integer(action.get("cost"),0,0) or not LifeAdoption.integer(action.get("duration"),1,1) or not LifeAdoption.integer(action.get("elapsed"),0,0) or str(action.get("phase",""))!="approach" or str(action.get("target_id",""))!="lot_exit" or str(action.get("target_kind",""))!="lot_exit" or not LifeAdoption.point(action.get("target_position")):
 				return "Save contains invalid adoption arrival progress."
 		if action.has("home_visit_serial") or action.has("home_visit_token"):
 			if action_id!="friendly" or not _autonomy_integer(action.get("home_visit_serial"),1,1000000000) or not _autonomy_integer(action.get("home_visit_token"),1,1000000):return "Save contains invalid home welcome metadata."
 		if action.has("cooperation_id") or action.has("cooperation_role") or action_id == "help_homework":
-			if not action.get("cooperation_id") is String or str(action.cooperation_id).is_empty() or str(action.get("cooperation_role","")) != ("helper" if action_id == "help_homework" else "learner") or action_id not in ["homework","help_homework"]:
+			if not action.get("cooperation_id") is String or str(action.cooperation_id).is_empty():
+				return "Save contains an invalid cooperative action."
+			if action_id == LifeBabyPlan.ACTION_ID:
+				# An intimate beat is symmetric: both members carry the same
+				# session under their own id, and one of them owns the clock.
+				if not str(action.cooperation_id).begins_with(LifeBabyPlan.TOKEN_PREFIX) or not action.get("cooperation_role") is String or not action.get("cooperation_primary") is bool or str(action.get("seat_slot","")) not in ["left","right"]:
+					return "Save contains an invalid intimate action."
+			elif str(action.get("cooperation_role","")) != ("helper" if action_id == "help_homework" else "learner") or action_id not in ["homework","help_homework"]:
 				return "Save contains an invalid cooperative action."
 			if action_id == "help_homework" and str(profile.get("life_stage","adult")) != "adult": return "Save contains a non-adult homework helper."
 		if action_id in ["job","career_day","work"] and str(profile.get("life_stage","adult")) != "adult": return "Save contains adult work queued for a non-adult Lifelet."

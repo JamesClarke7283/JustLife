@@ -3,7 +3,7 @@ class_name LifeEducation
 ## Pure schooling state: callers own time, action queues, needs, skills, and UI.
 
 const VERSION: int = 1
-const STAGES: Array[String] = ["child", "teen", "young_adult", "adult", "elder", "unknown"]
+const STAGES: Array[String] = ["baby", "child", "teen", "young_adult", "adult", "elder", "unknown"]
 const SCHOOL_STAGES: Array[String] = ["child", "teen"]
 const DAY_LIMIT: int = 1000000
 const COUNTERS: Array[String] = ["attended", "missed", "homework", "prepared"]
@@ -240,7 +240,7 @@ static func _validate_record(record: Variant, day: int) -> String:
 
 
 static func _allowed_transition(previous: String, current: String) -> bool:
-	return ["child>teen","teen>young_adult","young_adult>adult","adult>elder"].has(previous+">"+current)
+	return ["baby>child","child>teen","teen>young_adult","young_adult>adult","adult>elder"].has(previous+">"+current)
 
 
 static func _normalized(state: Dictionary) -> Dictionary:

@@ -55,6 +55,7 @@ static func validate(value:Variant,data:Dictionary) -> String:
 		for index:int in range(queue.size()):
 			var action:Dictionary=queue[index]
 			if str(action.get("id",""))!="arrive_home":continue
+			if action.has("baby_serial"):continue  # a newborn, not an adoption
 			arrivals+=1
 			if index!=0 or arrivals>1 or not integer(action.get("adoption_serial"),1,value.events.size()):return "Save contains an invalid adoption arrival."
 			var event:Dictionary=value.events[int(action.adoption_serial)-1]
