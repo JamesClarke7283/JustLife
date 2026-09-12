@@ -1809,6 +1809,9 @@ func queue_interaction(item:Dictionary,id:String) -> void:
 	if LifeResidents.PEOPLE.has(str(item.id)) and not residents.present(str(item.id)):show_notice("This neighbor has gone home. Catch them on their next walk, or visit their home.");return
 	var destination:Vector3=world.approach(item)
 	if item.kind=="neighbor":destination=item.node.position+Vector3(0,0,.8)
+	if str(item.kind) in world.SHARED_BEDS and not _bed_available_for({"id":id,"target_id":str(item.id)},bound_member_id):
+		show_notice("Someone is already asleep in that bed.")
+		return
 	sim.queue_action(id,item.id,destination)
 	refresh_hud()
 
@@ -3106,7 +3109,7 @@ func _resolve_activity_target(action:Dictionary) -> void:
 		action.target_position=world.actors[str(action.target_id)].position+Vector3(0,0,.9)
 		return
 	var item:Dictionary=_find_item(str(action.target_id))
-	if not item.is_empty() and str(item.kind) in world.TWO_SEATERS:_assign_seat_slot(action,item)
+	if not item.is_empty() and (str(item.kind) in world.TWO_SEATERS or str(item.kind) in world.SHARED_BEDS):_assign_seat_slot(action,item)
 	var wanted:String=""
 	if action.id=="cook" and not item.is_empty() and item.kind=="fridge":wanted="stove"
 	if action.id=="watch" and not item.is_empty() and item.kind=="tv":wanted="sofa"
@@ -3137,14 +3140,52 @@ func _resolve_activity_target(action:Dictionary) -> void:
 func _assign_seat_slot(action:Dictionary,item:Dictionary) -> void:
 	# A two-seater keeps its own seat per Lifelet: take the left seat unless a
 	# housemate already holds it, then the right. The approach point follows.
+	# A bed keeps its two halves for a partnered pair: the first partner takes
+	# one half, the second takes the other, and anyone else is refused the bed
+	# entirely by the availability gate rather than being seated on a half.
+	var shared_bed:bool=str(item.kind) in world.SHARED_BEDS
 	var taken:Array=[]
+	var partner_in_bed:bool=false
 	for member:Dictionary in household.members:
 		if member.id==bound_member_id:continue
 		var other:Dictionary=member.sim.get_current_action()
-		if not other.is_empty() and str(other.get("target_id",""))==str(item.id) and other.has("seat_slot"):taken.append(str(other.seat_slot))
+		if other.is_empty() or str(other.get("target_id",""))!=str(item.id) or not other.has("seat_slot"):continue
+		taken.append(str(other.seat_slot))
+		if shared_bed and _is_my_partner(str(member.id)):partner_in_bed=true
+	if shared_bed and not taken.is_empty() and not partner_in_bed:
+		# Someone else already lies here and they are not this member's
+		# partner: claim the free half AND the whole bed so the availability
+		# gate refuses it instead of seating a housemate on the edge.
+		action["seat_slot"]="right" if taken.has("left") else "left"
+		action.target_position=world.slot_approach(item,str(action.seat_slot))
+		return
+	if shared_bed and partner_in_bed:
+		action["seat_slot"]="right" if taken.has("left") else "left"
+		action.target_position=world.slot_approach(item,str(action.seat_slot))
+		return
 	if not action.has("seat_slot") or taken.has(str(action.seat_slot)):
 		action["seat_slot"]="right" if taken.has("left") and not taken.has("right") else "left"
 	action.target_position=world.slot_approach(item,str(action.seat_slot))
+
+func _is_my_partner(member_id:String) -> bool:
+	var mine:LifeSim=household.member_sim(bound_member_id)
+	return mine!=null and not str(mine.romantic_partner).is_empty() and str(mine.romantic_partner)==member_id
+
+func _bed_available_for(action:Dictionary,member_id:String) -> bool:
+	# An occupied shared bed admits exactly one other body: this member's
+	# partner. Queued sleepers have no resolved phase, so this rule reads the
+	# household instead of the phase-dependent conflict loop.
+	var item:Dictionary=_find_item(str(action.get("target_id","")))
+	if item.is_empty() or str(item.kind) not in world.SHARED_BEDS:return true
+	var mine:LifeSim=household.member_sim(member_id)
+	var my_partner:String="" if mine==null else str(mine.romantic_partner)
+	for member:Dictionary in household.members:
+		if str(member.id)==member_id:continue
+		var other:Dictionary=member.sim.get_current_action()
+		if other.is_empty() or str(other.get("target_id",""))!=str(item.id):continue
+		if str(member.id)==my_partner and not my_partner.is_empty():continue
+		return false
+	return true
 
 func _activity_available(action:Dictionary) -> bool:
 	return _activity_available_for_member(action,bound_member_id)
@@ -3155,6 +3196,7 @@ func _activity_available_for_member(action:Dictionary,member_id:String) -> bool:
 	if str(action.get("id","")) in LifeSim.SOCIAL_ACTIONS and LifeResidents.PEOPLE.has(str(action.get("target_id",""))):
 		if not residents.present(str(action.target_id)) or not residents.home_visit.social_allowed(str(action.target_id),action):return false
 	if meal_flow.standing_place_blocks(member_id,action) or meal_flow.guest_blocks(action):return false
+	if not _bed_available_for(action,member_id):return false
 	var wanted:Array[String]=_activity_resources(action)
 	var session_id:String=str(action.get("cooperation_id",""))
 	# Read the requesting member without rebinding the movement controller
@@ -3184,8 +3226,23 @@ func _activity_available_for_member(action:Dictionary,member_id:String) -> bool:
 			if own_wait_started>=0 and earlier>own_wait_started:continue
 			if own_wait_started>=0 and is_equal_approx(earlier,own_wait_started) and str(member.id)>member_id:continue
 		for resource_id:String in _activity_resources(other):
-			if wanted.has(resource_id):return false
+			if wanted.has(resource_id):
+				# A partner sleeping in the other half of the same bed is the
+				# one allowed conflict: the two halves are distinct resources,
+				# so only the whole-bed claim overlaps and that overlap is
+				# exactly what sharing means.
+				if _partner_shares_bed(action,member_id,str(member.id),other,resource_id):continue
+				return false
 	return true
+
+func _partner_shares_bed(action:Dictionary,member_id:String,holder_id:String,other:Dictionary,resource_id:String) -> bool:
+	var item:Dictionary=_find_item(str(action.get("target_id","")))
+	if item.is_empty() or str(item.kind) not in world.SHARED_BEDS:return false
+	if str(other.get("target_id",""))!=str(item.id):return false
+	if resource_id!=str(item.id):return false
+	var mine:LifeSim=household.member_sim(member_id)
+	if mine==null or str(mine.romantic_partner).is_empty():return false
+	return str(mine.romantic_partner)==holder_id
 
 func _activity_resources(action:Dictionary) -> Array[String]:
 	if str(action.get("id","")) in ["school_day","career_day"]:return []
@@ -3193,7 +3250,9 @@ func _activity_resources(action:Dictionary) -> Array[String]:
 	var item:Dictionary=_find_item(target_id)
 	var resources:Array[String]=[]
 	if item.is_empty():resources.append(target_id)
-	else:resources=world.activity_resource_ids(item,str(action.get("seat_slot","")))
+	else:
+		for resource_id:String in world.activity_resource_ids(item,str(action.get("seat_slot",""))):
+			resources.append(resource_id)
 	if action.has("target_position"):
 		var at:Vector3=action.target_position
 		var cell:Vector2i=Vector2i(roundi(at.x*2),roundi(at.z*2))

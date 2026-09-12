@@ -910,9 +910,13 @@ func _desk_surface(node:Node3D) -> Dictionary:
 		"desk_forward":-node.global_basis.z.normalized()}
 
 const TWO_SEATERS: Array[String] = ["loveseat"]
+## Beds a partnered pair shares: the left and right halves of the mattress.
+const SHARED_BEDS: Array[String] = ["bed"]
 
 func seat_slot_offset(item:Dictionary,slot:String) -> Vector3:
-	# Local offset of a named seat on a two-seater; single seats return zero.
+	# Local offset of a named slot on a two-seater or shared bed; single seats
+	# return zero.
+	if str(item.kind) in SHARED_BEDS:return Vector3(-.42 if slot=="left" else .42,0,0)
 	if str(item.kind) not in TWO_SEATERS:return Vector3.ZERO
 	return Vector3(-.45 if slot=="left" else .45,0,0)
 
@@ -924,6 +928,11 @@ func slot_approach(item:Dictionary,slot:String) -> Vector3:
 	return Vector3(c.x*.25,.16,c.y*.25)
 
 func activity_resource_ids(item:Dictionary,slot:String="") -> Array[String]:
+	var shared_bed:bool=str(item.kind) in SHARED_BEDS
+	if shared_bed:
+		# A whole-bed claim plus the half: any second sleeper conflicts on the
+		# bed itself, and only a partner is allowed to overlap the halves.
+		return [str(item.id)+":"+slot,str(item.id)] if not slot.is_empty() else [str(item.id)]
 	var resources:Array[String]=[str(item.id)+(":"+slot if str(item.kind) in TWO_SEATERS and not slot.is_empty() else "")]
 	if str(item.kind) in ["desk","computer"]:
 		var chair:Dictionary=closest_item("chair",item.node.to_global(Vector3(0,0,.88)),1.25)
@@ -1002,7 +1011,7 @@ func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -
 		"toilet":
 			local=Vector3(0,.615,.12);yaw=node.rotation.y;kind="seat"
 		"bed":
-			local=Vector3(-.43,.80,.015);yaw=node.rotation.y;kind="bed"
+			local=Vector3(0,.80,.015)+seat_slot_offset(item,str(landmarks.get("seat_slot","left")));yaw=node.rotation.y;kind="bed"
 		"shower":
 			local=Vector3(0,.166,.01);yaw=node.rotation.y+PI
 		"armchair":
