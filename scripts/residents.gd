@@ -184,12 +184,18 @@ func tick(delta:float) -> void:
   # vanishes mid-visit: the step-out defers until the visit ends.
   var person:Dictionary=PEOPLE[id]
   var guest:bool=home_visit.owns(id)
-  var routine_due:bool=not guest and LifeResidentCatalogue.routine_active(person,LifeEducation.weekday(app.sim.day),app.sim.minutes) and str(state.phase)!="home"
+  # The routine's named venue is where they ARE during the window: the
+  # library keeps Priya, the community garden keeps Tom. Everywhere else the
+  # window hides them until it closes.
+  var routine_venue:String=str(person.get("routine",{}).get("venue",""))
+  var at_routine_venue:bool=routine_venue!="" and active_place==routine_venue
+  var routine_on:bool=LifeResidentCatalogue.routine_active(person,LifeEducation.weekday(app.sim.day),app.sim.minutes)
+  var routine_due:bool=not guest and not at_routine_venue and routine_on and str(state.phase)!="home"
   if routine_due:
    state.phase="home";state.routine_away=true;state.wait=float(person.get("home_wait",60.0))
    actor.visible=false
    app.world.set_actor_away(id,true,true);sidewalk_routes.erase(id);continue
-  elif bool(state.get("routine_away",false)):
+  elif at_routine_venue and not routine_on and bool(state.get("routine_away",false)):
    # The routine window closed while they were out at this lot: step back on.
    state.phase="visiting";state.wait=float(person.get("visit_wait",5.0))
    actor.visible=true
