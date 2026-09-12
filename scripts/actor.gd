@@ -271,10 +271,12 @@ func configure(new_profile: Dictionary) -> void:
 	_blink_elapsed = -1.0
 	_voice.position.y = (_authored_height-.26) * _height
 	var hair_index: int = clampi(int(profile.get("hair", 0)), 0, HAIR_NAMES.size() - 1)
-	# Older exports lack the later styles; fall back to the first authored style rather than showing no hair.
+	# Older exports and the baby family lack the later styles: fall back to the
+	# first style the model actually has, and record that fallback in the
+	# profile so saves, menus and validation agree with what is shown.
 	if _model.find_child(HAIR_NAMES[hair_index], true, false) == null:
-		push_warning("Hairstyle %s is missing from the loaded model; showing %s instead. Reimport the project if this is unexpected." % [HAIR_NAMES[hair_index], HAIR_NAMES[0]])
-		hair_index = 0
+		hair_index = authored_hair_styles().front()
+		profile["hair"] = hair_index
 	for index: int in range(HAIR_NAMES.size()):
 		var group: Node3D = _model.find_child(HAIR_NAMES[index], true, false) as Node3D
 		if group != null:
@@ -391,6 +393,27 @@ func _landmark_vector(value: Variant, fallback: Vector3) -> Vector3:
 		if not (axis is float or axis is int) or not is_finite(float(axis)) or absf(float(axis)) > 1.0: return fallback
 	return Vector3(float(value[0]),float(value[1]),float(value[2]))
 
+
+func authored_hair_styles() -> Array[int]:
+	# Indices of the hairstyles this loaded model actually authors.
+	var found: Array[int] = []
+	if _model == null: return [0]
+	for index: int in range(HAIR_NAMES.size()):
+		if _model.find_child(HAIR_NAMES[index], true, false) != null: found.append(index)
+	if found.is_empty(): found.append(0)
+	return found
+
+func authored_wardrobe() -> Dictionary:
+	# Which outfits and bottoms this model authors, as index lists, so menus and
+	# validation offer exactly what the character can wear.
+	var outfits: Array[int] = []
+	var bottoms: Array[int] = []
+	if _model != null:
+		for index: int in range(OUTFIT_NAMES.size()):
+			if _model.find_child(OUTFIT_NAMES[index], true, false) != null: outfits.append(index)
+		if _model.find_child("Bottom_Shorts", true, false) != null: bottoms.append(1)
+		if _model.find_child("Bottom_Continuous_trousers", true, false) != null or _model.find_child("Bottom_Continuous_Romper", true, false) != null: bottoms.append(0)
+	return {"outfits": outfits if not outfits.is_empty() else [0], "bottoms": bottoms if not bottoms.is_empty() else [0]}
 
 func set_outfit(index: int) -> void:
 	profile["outfit"] = clampi(index,0,OUTFIT_NAMES.size()-1)

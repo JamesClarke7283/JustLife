@@ -8,10 +8,12 @@ class_name LifeStagePolicy
 ## Callers pass the raw values so the decision stays a pure function of them.
 
 ## The recovery and play set a baby keeps: sleep, eat, wash, play, be fussed over.
+## The baby family authors only the casual romper, so the other wear actions are
+## refused rather than offered and then rendered identically.
 const BABY_ACTIONS: Array[String] = [
 	"sleep", "nap", "snack", "eat_meal", "shower", "bath", "toilet", "relax",
 	"play_toys", "birthday", "change_outfit",
-	"wear_casual", "wear_jacket", "wear_cardigan", "wear_tee", "wear_hoodie",
+	"wear_casual",
 ]
 
 const BABY_SOCIAL_REASON: String = "A baby cannot hold a conversation yet."

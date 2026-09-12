@@ -272,7 +272,7 @@ func _creator_case()->void:
 	app.profile.frame=0
 	app.profile.gender="female"
 	app.profile.skin_color="925c40"
-	app.profile.hair=5
+	app.profile.hair=2
 	app.profile.hair_color="dfccb0"
 	app.profile.eye_color="55738f"
 	app.profile.face_round=.42
@@ -285,7 +285,7 @@ func _creator_case()->void:
 		if str(member.sim.character.get("age_stage",""))=="baby":baby_id=str(member.id)
 	check(not baby_id.is_empty(),"The new member is a baby.")
 	var baby=household.member_sim(baby_id)
-	check(str(baby.character.name)=="Wren Solis" and int(baby.character.frame)==0 and str(baby.character.skin_color)=="925c40" and int(baby.character.hair)==5 and str(baby.character.hair_color)=="dfccb0" and str(baby.character.eye_color)=="55738f" and absf(float(baby.character.face_round)-.42)<.001,"The baby keeps every edit the player made.")
+	check(str(baby.character.name)=="Wren Solis" and int(baby.character.frame)==0 and str(baby.character.skin_color)=="925c40" and int(baby.character.hair)==2 and str(baby.character.hair_color)=="dfccb0" and str(baby.character.eye_color)=="55738f" and absf(float(baby.character.face_round)-.42)<.001,"The baby keeps every edit the player made.")
 	check(not bool(baby.household_bills_enabled),"The baby carries no household bills.")
 	var parents:Array=[]
 	for edge:Dictionary in household.family_graph.parents:

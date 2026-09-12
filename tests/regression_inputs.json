@@ -278,6 +278,16 @@
     "scripts/window_geometry.gd",
     "scripts/window_geometry.gd.uid",
     "scripts/world.gd",
-    "scripts/world.gd.uid"
+    "scripts/world.gd.uid",
+    "scripts/baby_plan.gd",
+    "scripts/stage_policy.gd",
+    "assets/models/character_baby.glb",
+    "assets/models/character_baby.glb.import",
+    "assets/models/character_baby_broad.glb",
+    "assets/models/character_baby_broad.glb.import",
+    "assets/models/character_baby_broad_lod.glb",
+    "assets/models/character_baby_broad_lod.glb.import",
+    "assets/models/character_baby_lod.glb",
+    "assets/models/character_baby_lod.glb.import"
   ]
 }

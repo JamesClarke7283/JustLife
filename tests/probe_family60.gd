@@ -122,11 +122,23 @@ func _run()->void:
 		app.show_baby_creator()
 		await _frames(6)
 	check(app.mode=="creator" and app.creator_purpose=="baby","The birth opens the baby creator.")
+	# The creator re-seeds the profile from the pending baby: re-apply the
+	# player's edits here so the confirm keeps them.
+	app.profile.name="Wren Solis"
+	app.profile.gender="female"
+	app.profile.frame=0
+	app.profile.skin_color="925c40"
+	app.profile.hair_color="dfccb0"
+	app.profile.eye_color="55738f"
+	app.profile.face_round=.42
+	app.profile.hair=1
+	app.refresh_preview()
+	await _frames(6)
 	await _shot("05_baby_creator")
 	app.profile.name="Wren Solis"
 	app.profile.gender="female"
 	app.profile.skin_color="925c40"
-	app.profile.hair=4
+	app.profile.hair=2
 	app.profile.hair_color="dfccb0"
 	app.profile.eye_color="55738f"
 	app.refresh_preview()
@@ -167,6 +179,33 @@ func _run()->void:
 			await _frames(6)
 			await _shot("08_baby_crawling")
 			check(true,"The crawling baby is captured in the live view.")
+			# Caregiving: with the baby desperate and the household live, an
+			# adult must restore the need through the public care tick.
+			var baby_sim=household.member_sim(baby_id)
+			for member:Dictionary in household.members:
+				member.sim.autonomy=true
+				member.sim.needs.energy=80.0
+				member.sim.needs.hunger=80.0
+			baby_sim.needs.hunger=12.0
+			var before_hunger:float=float(baby_sim.needs.hunger)
+			var cared:bool=false
+			var seen:Array=[]
+			household.set_speed(8)
+			var found_baby:LifeSim=null
+			for member:Dictionary in household.members:
+				if str(member.sim.character.get("age_stage",""))=="baby":found_baby=member.sim
+			print("CARE_GATE found=",found_baby!=null," same=",found_baby==baby_sim," urgent=",household._most_urgent_need(baby_sim)," speed=",household.speed)
+			for i:int in range(600):
+				await process_frame
+				for m:Dictionary in household.members:
+					if str(m.sim.character.get("age_stage",""))=="baby":continue
+					var why:String="queue=%d act=%s energy=%.0f" % [m.sim.action_queue.size(),str(m.sim.get_current_action().get("id","-")),float(m.sim.needs.get("energy",100.0))]
+					if not seen.has(why):seen.append(why)
+				household.tick(1.0/60.0)
+				if float(baby_sim.needs.hunger)>before_hunger+5.0:cared=true;break
+			print("CARE_SEEN=",seen.slice(0,8)," baby_action=",baby_sim.get_current_action().get("id","<none>")," away=",not baby_sim.get_away_state().is_empty())
+			check(cared,"An adult housemate looks after the desperate baby (hunger %.1f -> %.1f)."%[before_hunger,float(baby_sim.needs.hunger)])
+			await _shot("09_baby_cared_for")
 	app.queue_free();await process_frame
 	print("FAMILY_EVIDENCE %d checks, %d failures" % [checks,failures.size()])
 	quit(0 if failures.is_empty() else 1)

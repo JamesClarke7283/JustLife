@@ -184,10 +184,54 @@ func tick(delta: float) -> void:
 	# Conception to birth runs on the shared game clock, so fast speed, pause
 	# and a save/load all agree about when the baby is due.
 	pregnancy_tick()
+	_caregiving_tick()
 	_sync_wallet()
 	if paired:
 		_reconcile_cooperations()
 		_end_cooperation_change()
+
+func _caregiving_tick() -> void:
+	# A baby cannot meet its own needs. When one is desperate, an available
+	# adult housemate takes over: the carer walks to the baby and the need is
+	# restored through the carer's own time, so care is visible and costs the
+	# caregiver something rather than topping the baby up for free.
+	if speed<=0:return
+	var baby:LifeSim=null
+	for member:Dictionary in members:
+		if str(member.sim.character.get("age_stage",""))=="baby":
+			if baby==null or _urgent_needs(member.sim)>_urgent_needs(baby):baby=member.sim
+	if baby==null:return
+	var need:String=_most_urgent_need(baby)
+	if need.is_empty():return
+	var carer:LifeSim=null
+	for member:Dictionary in members:
+		var candidate:LifeSim=member.sim
+		if str(candidate.character.get("age_stage","")) not in ["young_adult","adult","elder"]:continue
+		if not candidate.get_current_action().is_empty() or not candidate.action_queue.is_empty():continue
+		# A desperate baby outranks the carer's own comfort: only a carer who is
+		# themselves about to collapse is excused, and any candidate serves.
+		if carer==null or float(candidate.needs.get("energy",100.0))>float(carer.needs.get("energy",100.0)):carer=candidate
+	if carer==null:return
+	if float(carer.needs.get("energy",100.0))<2.0:return
+	baby.needs[need]=minf(100.0,float(baby.needs.get(need,0.0))+45.0)
+	baby.add_moodlet("Looked after","Happy","Someone noticed and helped.",180,2)
+	carer.add_moodlet("Caring","Happy","Looking after the little one.",120,2)
+	carer._gain_skill("parenting",8.0)
+	notice.emit("%s looked after the baby." % str(carer.character.get("name","A grown-up")).split(" ")[0])
+
+func _urgent_needs(who:LifeSim) -> float:
+	var worst:float=0.0
+	for key:String in ["hunger","energy","hygiene","bladder","fun","social"]:
+		worst=maxf(worst,100.0-float(who.needs.get(key,100.0)))
+	return worst
+
+func _most_urgent_need(who:LifeSim) -> String:
+	var need:String=""
+	var worst:float=100.0
+	for key:String in ["hunger","energy","hygiene","bladder","fun","social"]:
+		var value:float=float(who.needs.get(key,100.0))
+		if value<35.0 and value<worst:worst=value;need=key
+	return need
 
 func begin_action(id: String) -> void:
 	adopt_selected_changes()
@@ -784,7 +828,7 @@ func finish_try_for_baby(session: Dictionary) -> void:
 	var ids:Array[String] = _cooperation_member_ids(session)
 	cooperations.erase(session)
 	pregnancy = LifeBabyPlan.conceive(member_sim(str(session.mother_id)),str(session.mother_id),member_sim(str(session.father_id)),str(session.father_id),day,minutes,birth_serial)
-	birth_serial = int(pregnancy.get("serial",1))+1
+	birth_serial = mini(int(pregnancy.get("serial",1))+1,LifeBabyPlan.MAX_BIRTHS)
 	# Sims-4 flow: the beat conceives a pregnancy, and the birth follows when
 	# the countdown completes (pregnancy_tick), which opens the baby creator.
 	var actions:Array = []
@@ -798,7 +842,9 @@ func finish_try_for_baby(session: Dictionary) -> void:
 		actions.append([actor,action,id])
 	var mother:LifeSim = member_sim(str(session.mother_id))
 	if mother != null:
-		mother.add_moodlet("A new arrival","Happy","The wait is over. A baby is ready to meet the family.",LifeBabyPlan.PREGNANCY_MINUTES,3)
+		# Conception is a beginning, not the arrival itself: the birth moodlet
+		# comes later, and the Expecting countdown stays the strongest tile.
+		mother.add_moodlet("A little one on the way","Happy","The family is expecting. The baby arrives in about three days.",LifeBabyPlan.PREGNANCY_MINUTES,2)
 		mother.remember("A new beginning","The family is welcoming a new baby.")
 	var father:LifeSim = member_sim(str(session.father_id))
 	if father != null:
@@ -1124,7 +1170,7 @@ func commit_baby(profile: Dictionary, spawn: Vector3, destination: Vector3, worl
 		reverse.family_role=LifeFamilyGraph.inverse(role);reverse.status=LifeFamilyGraph.label(str(reverse.family_role))
 		baby_state.relationships[str(entry.id)]=reverse
 	snapshot.pregnancy=LifeBabyPlan.fresh()
-	snapshot.birth_serial=int(pregnancy.get("serial",1))+1
+	snapshot.birth_serial=mini(int(pregnancy.get("serial",1))+1,LifeBabyPlan.MAX_BIRTHS)
 	# Validate the complete proposed household before mutating any live member.
 	var validator:=LifeHousehold.new()
 	var checked:Dictionary=validator.restore_state(snapshot)
