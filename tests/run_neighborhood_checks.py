@@ -21,7 +21,7 @@ def main():
         ignore = shutil.ignore_patterns('*character_rig*', '*character_grip*', '*_surface_grip*', '*_broad_grip*') if name == 'assets' else None
         shutil.copytree(source / name, snapshot / name, ignore=ignore)
     (snapshot / 'tests').mkdir()
-    for name in TESTS + ('test_stair_controller.gd', 'test_stair_food_custody.gd', 'test_stair_save_process.gd', 'test_stair_save.gd', 'test_build_world_levels.gd'):
+    for name in TESTS + ('test_stair_controller.gd', 'test_stair_food_custody.gd', 'test_stair_save_process.gd', 'test_stair_save.gd', 'test_build_world_levels.gd', 'resident_v2_load_controller.gd'):
         shutil.copy2(source / 'tests' / name, snapshot / 'tests' / name)
     lines = []
     skip = False

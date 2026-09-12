@@ -64,5 +64,16 @@ func run()->void:
 	member.sim.needs.social=40.0
 	residents.apply_contact({"resident":"zed","social":10.0,"friendship":8.0},member.sim)
 	check(not member.sim.relationships.has("zed"),"A contact with an unknown neighbour creates nothing.")
+	routine_probe()
 	print("RESIDENT_CONTACT %d checks, %d failures"%[checks,failures.size()])
 	quit(0 if failures.is_empty() else 1)
+
+func routine_probe()->void:
+	# Pure window check: weekday hours inside the window are out; nights and
+	# the weekend are home.
+	var maya: Dictionary = LifeResidentCatalogue.PEOPLE["maya"]
+	check(not LifeResidentCatalogue.routine_active(maya,true,600.0),"Maya keeps no off-lot routine.")
+	var priya: Dictionary = LifeResidentCatalogue.PEOPLE["priya"]
+	check(LifeResidentCatalogue.routine_active(priya,true,600.0),"Priya's library window is open on a weekday morning.")
+	check(not LifeResidentCatalogue.routine_active(priya,true,480.0),"Priya's window is closed before ten.")
+	check(not LifeResidentCatalogue.routine_active(priya,false,600.0),"Priya's routine does not run on the weekend.")
