@@ -62,6 +62,8 @@ var autonomy_state: Dictionary = {"version":1,"contacts":{},"deferred":{}}
 var social_cooldowns: Dictionary = {}  # neighbour id -> game minute until which the chooser skips them
 var last_hugs: Dictionary = {}  # neighbour id -> game minute of the last hug
 var last_gossip: Dictionary = {}  # neighbour id -> game minute of the last gossip
+var visited_venue: String = ""  # non-empty while the Lifelet is at a visited venue (a resident's home)
+var last_hosted_credit: float = -1e18  # absolute game minute of the last hosted-activity credit
 var _change_accumulator: float = 0.0
 var _warned_needs: Dictionary = {}
 var _actions: Dictionary = {}
@@ -780,6 +782,7 @@ func _finish_front() -> void:
 		while _leisure_history.size()>LEISURE_HISTORY:_leisure_history.pop_back()
 		autonomy_state["leisure"]=_leisure_history.duplicate()
 	if not str(action.get("target_id","")).is_empty():_recent_target_use[str(action.target_id)]=_autonomy_now()
+	_maybe_credit_host(id)
 	if id in AGE_GATED_ACTIONS and not bool(get_action_availability(id, str(action.get("target_id",""))).available):
 		# A restored or edited queue cannot grant an activity this age may not do.
 		_emit_notice(str(get_action_availability(id, str(action.get("target_id",""))).reason))
@@ -856,6 +859,22 @@ func _finish_front() -> void:
 	_update_wants()
 	_start_front()
 	_emit_changed()
+
+
+func _maybe_credit_host(action_id: String) -> void:
+	# Doing a leisure activity at a resident's home warms the friendship with
+	# the host, at most once an in-game hour. Distinct from the resident's own
+	# self-started contacts: this is the member as a guest at the host's place.
+	if visited_venue.is_empty() or visited_venue=="home":return
+	if not (action_id in LEISURE_ACTIONS or action_id=="study"):return
+	if _autonomy_now()-last_hosted_credit<60.0:return
+	var host: String = str(LifeNeighborhood.PLACES.get(visited_venue,{}).get("resident",""))
+	if host.is_empty() or not relationships.has(host):return
+	last_hosted_credit=_autonomy_now()
+	var person: Dictionary = relationships[host]
+	person["friendship"] = clampf(float(person["friendship"]) + 3.0, -100.0, 100.0)
+	_update_relationship_status(person)
+	_emit_notice("Time at %s's place brings you closer." % str(person["name"]).split(" ")[0])
 
 
 func _normalize_relationship(person: Dictionary, legacy: bool) -> void:
