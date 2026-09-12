@@ -100,5 +100,39 @@ func run()->void:
 	check(resumed._apply_social(again),"The restored repeat gossip completes.")
 	var stale_after:float=float(resumed.relationships["maya"].friendship)
 	check(stale_after>0.0 and stale_after<7.0,"A repeat after reload still lands flat (+%.1f)." % stale_after)
+	# Absolute stamps: windows measure real game minutes across midnight.
+	# Gossip at 20:00 on day 1 (absolute 1200) is still stale the next
+	# morning (480 minutes later) and fresh again the next evening.
+	sim.relationships["maya"]=fresh_rel.duplicate(true);sim.relationships["maya"].milestones=[]
+	sim.day=1;sim.minutes=1200.0
+	sim.last_gossip.clear()
+	var evening:Dictionary={"id":"gossip","target_id":"maya","target_position":Vector3.ZERO}
+	check(sim._apply_social(evening),"The evening gossip completes.")
+	var evening_gain:float=float(sim.relationships["maya"].friendship)
+	sim.relationships["maya"]=fresh_rel.duplicate(true);sim.relationships["maya"].milestones=[]
+	sim.day=2;sim.minutes=480.0
+	check(sim._apply_social(evening),"The next-morning repeat completes.")
+	var morning_gain:float=float(sim.relationships["maya"].friendship)
+	check(morning_gain>0.0 and morning_gain<7.0,"Gossip 480 minutes later still lands flat (+%.1f)." % morning_gain)
+	# The morning repeat re-stamps, so the next fresh gossip needs fifteen
+	# hours from THERE: day 3 at 09:00 clears it.
+	sim.day=3;sim.minutes=540.0
+	check(sim._apply_social(evening),"The later-morning gossip completes.")
+	var next_gain:float=float(sim.relationships["maya"].friendship)
+	check(next_gain>7.0,"Gossip more than fifteen hours after the last one is fresh again (+%.1f)." % next_gain)
+	# The same absolute domain for hugs: a 20:00 hug is warm again by noon
+	# the next day.
+	sim.relationships["maya"]=fresh_rel.duplicate(true);sim.relationships["maya"].milestones=[]
+	sim.relationships["maya"].friendship=40.0
+	sim.day=1;sim.minutes=1200.0
+	sim.last_hugs.clear()
+	var late_hug:Dictionary={"id":"hug","target_id":"maya","target_position":Vector3.ZERO}
+	check(sim._apply_social(late_hug),"The late hug completes.")
+	sim.relationships["maya"]=fresh_rel.duplicate(true);sim.relationships["maya"].milestones=[]
+	sim.relationships["maya"].friendship=40.0
+	sim.day=2;sim.minutes=720.0
+	check(sim._apply_social(late_hug),"The noon-next-day hug completes.")
+	var hug_gain:float=float(sim.relationships["maya"].friendship)
+	check(hug_gain>12.0,"A hug sixteen game-hours later carries full warmth (+%.1f)." % hug_gain)
 	print("SOCIAL_VARIETY %d checks, %d failures"%[checks,failures.size()])
 	quit(0 if failures.is_empty() else 1)

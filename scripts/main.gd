@@ -1965,7 +1965,7 @@ func _cancel_blocked_action(generation:int,action:Dictionary,member_id:String=""
 	# company instead of walking into the same blocked approach all day.
 	if record.streak>=2 and action_id in LifeSim.SOCIAL_ACTIONS:
 		var member_sim:LifeSim=household.member_sim(member_id)
-		if is_instance_valid(member_sim):member_sim.cool_social_target(target_id,float(household.minutes)+180.0)
+		if is_instance_valid(member_sim):member_sim.cool_social_target(target_id,member_sim._autonomy_now()+180.0)
 	var prior:String=bound_member_id
 	_store_motion()
 	_bind_member(member_id)
