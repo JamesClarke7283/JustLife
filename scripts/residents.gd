@@ -256,10 +256,20 @@ func tick(delta:float) -> void:
      var destination:Vector3=destinations[int(state.waypoint)%destinations.size()]
      var route:PackedVector3Array=app.world.path_to(actor.position,destination)
      if route.size()>1:
-      var direction:Vector3=route[1]-actor.position
-      actor.rotation.y=lerp_angle(actor.rotation.y,atan2(direction.x,direction.z),minf(delta*6,1))
-      actor.position=actor.position.move_toward(route[1],delta*speed*.75);moving=true
+      var next:Vector3=actor.position.move_toward(route[1],delta*speed*.75)
+      # A visiting resident respects the same body gap as everyone else; a
+      # waypoint another body occupies is abandoned for the next one.
+      if app.traversal._step_clear(id,actor.position,next):
+       var direction:Vector3=route[1]-actor.position
+       actor.rotation.y=lerp_angle(actor.rotation.y,atan2(direction.x,direction.z),minf(delta*6,1))
+       actor.position=next;moving=true
+      else:
+       # Blocked by a body: abandon a close waypoint, otherwise slide aside
+       # so a held-up member can get past.
+       if actor.position.distance_to(destination)<.7:state.waypoint=(int(state.waypoint)+1)%destinations.size();state.wait=8.0
+       else:_yield_to_walkers(id)
      if actor.position.distance_to(destination)<.35 or route.size()<2:state.waypoint=(int(state.waypoint)+1)%destinations.size();state.wait=8.0
+    else:_yield_to_walkers(id)
   actor.animate(delta,speed,moving,talk)
   state.position=[actor.position.x,actor.position.y,actor.position.z];state.rotation=actor.rotation.y
  publish_targets(true)
@@ -393,8 +403,23 @@ func tick_trip(delta:float) -> void:
    if bool(trip.canonical):
     var moved:Dictionary=app.traversal.advance(id,delta,1)
     boarded=bool(moved.get("finished",false))
+    # A route planned through a crowded doorway can fairly detour around
+    # the whole building. If a boarder stops making straight-line progress
+    # toward the car, ask the planner again: the short way is usually clear
+    # a few seconds later.
+    var straight:float=app.world.actors[id].position.distance_to(Vector3(record.endpoint))
+    if not record.has("check_at"):
+     record["check_at"]=float(trip.time)+5.0
+     record["last_distance"]=straight
+    if float(trip.time)>=float(record.check_at):
+     if float(record.get("last_distance",INF))-straight<.5 and int(record.get("replans",0))<3:
+      record["replans"]=int(record.get("replans",0))+1
+      app.traversal.request(id,Vector3(record.endpoint))
+     record["last_distance"]=straight
+     record["check_at"]=float(trip.time)+6.0
     if moved.has("error") and not str(moved.error).is_empty():
      _trip_caption("The path to the car is blocked. "+str(moved.error))
+     _resident_yields(id)
     # LifeTraversal paints the actual stair feet/torso pose while it owns a crossing.
     if not app.traversal.busy(id):actor.animate(delta,1.0,bool(moved.get("moving",false)),"")
    else:
@@ -405,13 +430,27 @@ func tick_trip(delta:float) -> void:
      var distance:float=actor.position.distance_to(point)
      if distance>.001:
       var direction:Vector3=point-actor.position;actor.rotation.y=atan2(direction.x,direction.z)
-     var step:float=minf(distance,budget);actor.position=actor.position.move_toward(point,step);budget-=step
+     var step:float=minf(distance,budget)
+     var next:Vector3=actor.position.move_toward(point,step)
+     # Even the bare-lot boarding walk keeps bodies apart; a blocked step
+     # simply waits for the next tick instead of walking through someone.
+     if not app.traversal._step_clear(id,actor.position,next):break
+     actor.position=next;budget-=step
      if distance<=step+.00001:record.index=int(record.index)+1
     boarded=int(record.index)>=route.size()
     actor.animate(delta,1.0,not boarded,"")
    record.boarded=boarded
    if boarded:actor.visible=false
    else:all_boarded=false
+  if not all_boarded and float(trip.time)>60.0:
+   # A transition must never hold the household hostage: everyone still out
+   # after a minute of boarding is already at the car, so they pile in.
+   for waiting_id:String in trip.boarding:
+    if not bool(trip.boarding[waiting_id].boarded):
+     trip.boarding[waiting_id].boarded=true
+     var waiting:LifeActor=app.world.actors[waiting_id]
+     if waiting!=null:waiting.visible=false
+   all_boarded=true
   if all_boarded:trip.phase="departure";trip.time=0.0;_trip_caption("Driving across Juniper Bay · 15 minutes")
  elif phase=="departure":
   car.position.x=minf(float(trip.time)/2.8,1.0)*21.0
@@ -432,6 +471,73 @@ func tick_trip(delta:float) -> void:
 func _trip_caption(value:String) -> void:
  var caption:Label=app.overlay.find_child("TripPhase",true,false)
  if is_instance_valid(caption):caption.text=value
+
+func _yield_to_walkers(id:String) -> bool:
+ # A standing resident slides one body-width aside when a member with a live
+ # route is held up by them: the same courtesy walking bodies already show
+ # each other, so seats, doors and routes stay reachable.
+ var body:LifeActor=app.world.actors.get(id)
+ if body==null or not body.visible:return false
+ for member:Dictionary in app.household.members:
+  var member_id:String=str(member.id)
+  var walker:LifeActor=app.world.actors.get(member_id)
+  if walker==null or not walker.visible:continue
+  if not app.traversal.active(member_id):continue
+  var route:Dictionary=app.traversal.routes.get(member_id,{})
+  if not route.has("destination"):continue
+  var away:Vector3=body.position-walker.position;away.y=0.0
+  var dist:float=away.length()
+  if dist>=app.traversal.BODY_GAP+.15 or dist<.01:continue
+  var to_body:Vector3=away
+  var to_dest:Vector3=Vector3(route.destination)-walker.position;to_dest.y=0.0
+  if to_body.length()<.01 or to_dest.length()<.01:continue
+  if to_body.normalized().dot(to_dest.normalized())<=.3:continue
+  var side:Vector3=Vector3(-away.z,0,away.x).normalized()
+  for candidate_dir:Vector3 in [side,-side]:
+   var candidate:Vector3=body.position+candidate_dir*.5
+   candidate.y=body.position.y
+   if app.traversal._step_clear(id,body.position,candidate):
+    body.position=candidate
+    if active_place!="" and locations.has(active_place) and locations[active_place].has(id):
+     var yielded_state:Dictionary=locations[active_place][id]
+     yielded_state.position=[candidate.x,candidate.y,candidate.z]
+    return true
+ return false
+
+func _resident_yields(boarder_id:String) -> void:
+ # A resident standing on a boarding route steps aside once, the same
+ # courtesy walking bodies already show each other, so a shared trip can
+ # finish without anyone walking through anyone.
+ var boarder:LifeActor=app.world.actors.get(boarder_id)
+ if boarder==null:return
+ var record:Dictionary=trip.boarding.get(boarder_id,{})
+ var goal:Vector3=boarder.position+Vector3(0,0,1)
+ if record.has("endpoint"):goal=Vector3(record.endpoint)
+ var toward:Vector3=goal-boarder.position;toward.y=0.0
+ if toward.length()<.01:return
+ var side:Vector3=Vector3(-toward.z,0,toward.x).normalized()
+ for blocker_id:String in _blocking_residents(boarder_id,boarder.position,boarder.position.move_toward(goal,.3)):
+  var body:LifeActor=app.world.actors[blocker_id]
+  var away:Vector3=body.position-boarder.position;away.y=0.0
+  if away.length()<.01:continue
+  for candidate_dir:Vector3 in [side,-side]:
+   var candidate:Vector3=body.position+candidate_dir*.45+away.normalized()*.1
+   candidate.y=body.position.y
+   if app.traversal._step_clear(blocker_id,body.position,candidate):
+    body.position=candidate
+    if active_place!="" and locations.has(active_place) and locations[active_place].has(blocker_id):
+     var yielded:Dictionary=locations[active_place][blocker_id]
+     yielded.position=[candidate.x,candidate.y,candidate.z]
+    break
+
+func _blocking_residents(boarder_id:String,from:Vector3,to:Vector3) -> Array:
+ var found:Array=[]
+ for other_id:String in app.world.actors:
+  if other_id==boarder_id or not PEOPLE.has(other_id):continue
+  var body:LifeActor=app.world.actors[other_id]
+  if not body.visible:continue
+  if body.position.distance_to(to)<app.traversal.BODY_GAP or body.position.distance_to(from)<app.traversal.BODY_GAP:found.append(other_id)
+ return found
 
 func _arrive() -> void:
  var destination:String=str(trip.destination)

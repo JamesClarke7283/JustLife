@@ -12,6 +12,7 @@ var _floor_ids:Dictionary={}
 var _locations:Dictionary={}
 var _stair_edges:Dictionary={}
 var generation:int=0
+var penalties:Dictionary={}
 # Derived geometry belongs to the same immutable rebuild as the graph.
 var _support_surfaces:Array=[[],[]]
 var _support_holes:Array=[[],[]]
@@ -155,6 +156,15 @@ func route(from:Variant,to:Variant) -> Dictionary:
 	var finish:Dictionary=_endpoint(to)
 	if not bool(finish.ok):return finish
 	if start.point.is_equal_approx(finish.point) and start.level==finish.level:return {"ok":true,"already_reached":true,"points":PackedVector3Array([start.point]),"segments":[],"distance":0.0,"generation":generation}
+	var disabled:Array=[]
+	if not penalties.is_empty():
+		var now:int=Time.get_ticks_msec()
+		for key:String in penalties.keys():
+			if int(penalties[key])<now:continue
+			var parts:PackedStringArray=key.split(":")
+			var a:int=int(parts[0]);var b:int=int(parts[1])
+			if _graph.are_points_connected(a,b):
+				_graph.disconnect_points(a,b);_graph.disconnect_points(b,a);disabled.append([a,b])
 	var best:PackedInt64Array=[];var best_distance:float=INF
 	for first:int in start.ids:
 		for last:int in finish.ids:
@@ -163,6 +173,8 @@ func route(from:Variant,to:Variant) -> Dictionary:
 			var distance:float=start.point.distance_to(_graph.get_point_position(first))+finish.point.distance_to(_graph.get_point_position(last))
 			for index:int in range(1,ids.size()):distance+=_graph.get_point_position(ids[index-1]).distance_to(_graph.get_point_position(ids[index]))
 			if distance<best_distance:best_distance=distance;best=ids
+	for pair:Array in disabled:
+		_graph.connect_points(pair[0],pair[1]);_graph.connect_points(pair[1],pair[0])
 	if best.is_empty():return {"ok":false,"error":"No complete route connects these floors or rooms.","generation":generation}
 	var points:PackedVector3Array=[start.point]
 	var segments:Array=[]
@@ -174,6 +186,28 @@ func route(from:Variant,to:Variant) -> Dictionary:
 		points.append(at)
 	if not points[-1].is_equal_approx(finish.point):segments.append({"kind":"floor","stair_id":"","level":int(finish.level),"from":points[-1],"to":finish.point});points.append(finish.point)
 	return {"ok":true,"already_reached":false,"points":points,"segments":segments,"distance":best_distance,"generation":generation}
+
+
+func penalize_segment(level:int,from:Vector3,to:Vector3,duration_ms:int=45000)->void:
+	# Learn from an actual refused step: graph edges under it are avoided by
+	# later routes until the penalty expires, so a corridor the walker cannot
+	# truly use is not planned twice.
+	var now:int=Time.get_ticks_msec()
+	for key:String in penalties.keys():
+		if int(penalties[key])<now:penalties.erase(key)
+	for a:int in _ids_near(level,from):
+		for b:int in _ids_near(level,to):
+			if a==b:continue
+			penalties[_edge_key(a,b)]=now+duration_ms
+
+func _ids_near(level:int,point:Vector3)->PackedInt64Array:
+	var found:PackedInt64Array=[]
+	for key:String in _floor_ids:
+		var parts:PackedStringArray=key.split(":")
+		if int(parts[0])!=level:continue
+		var id:int=_floor_ids[key]
+		if _graph.get_point_position(id).distance_to(point)<=.4:found.append(id)
+	return found
 
 func reachable_from(level:int,point:Vector3,excluded:Dictionary={}) -> Dictionary:
 	# Every graph point a walker can reach from here, across stairs, as a set of
