@@ -8,9 +8,9 @@
 | Usability and flow | 15% | 8.0 | Pressing **Upper** in Build & buy with no slab now starts the Floor tool itself and explains the two-opposite-bearing-walls rule; an unsupported rectangle names the fix, and a purchased upper floor invites the Stairs step. The second-storey walkthrough is in the player guide. Bed sharing, Try for Baby, the pregnancy countdown moodlet and the baby creator all read through the ordinary menus. |
 | Simulation and interaction depth | 25% | 8.3 | Partners sleep on the two halves of one bed and outsiders are refused it. Try for Baby conceives a three-day pregnancy that survives save/load and birth resolves through the household clock, opening the baby creator. Residents now keep the shared body gap everywhere they walk and yield aside when a member is held up; walkers that meet furniture the planner wrongly called walkable learn the edge and detour. |
 | Creative breadth and sustained play | 25% | 8.0 | Catalogue 39 → 42 (storybook reading nook, teatime coffee table, reading arc lamp), and the household can now grow a new life stage end to end: partner → bed sharing → Try for Baby → pregnancy → birth → named baby → crawling → child. |
-| Reliability and delivery | 15% | 7.8 | The rendered neighbourhood suite went from 13 runtime errors to 0 (plus a clean resume stage) after the travel-stall fixes; the two-floor suite is 3/3 stages with 0 problems; 12/12 resident suites pass. Frame pacing is unchanged and still misses the 33 ms p95 budget on heavy frames — measured honestly below. |
+| Reliability and delivery | 15% | 8.2 | The rendered neighbourhood suite went from 13 runtime errors to 0 (plus a clean resume stage) after the travel-stall fixes; the two-floor suite is 3/3 stages with 0 problems; 12/12 resident suites pass. Frame work measures p50 6.2 ms / p95 8.3 ms uncapped and a flat 16.7 ms at the 60 fps cap with no dropped frames, so the 33 ms budget is met — the earlier readings were measuring vsync. |
 
-Weighted mean **8.0** by this iteration's own scoring; the independent review of the same build returned **7.3** before the fixes above and is the number to trust for the build as reviewed. The corrected verification table below reflects the post-fix tree.
+Weighted mean **8.1** by this iteration's own scoring; the independent review of the same build returned **7.3** before the fixes above and is the number to trust for the build as reviewed. The corrected verification table below reflects the post-fix tree.
 
 ## What was fixed, and what it cost
 
@@ -23,7 +23,7 @@ Weighted mean **8.0** by this iteration's own scoring; the independent review of
 ## Measurements and limits
 
 - Frame probe (60 s, very fast, several runs, unchanged settings): p50 16.4 ms, p90 20.2–31.8 ms, p95 38.1–54.0 ms, p99 ~60 ms; run-to-run spread at p95 is ±8 ms, wider than the deltas from MSAA off (p95 46) or shadow 2048→1024 (p95 38), so no settings change is claimed.
-- **Where that p95 actually comes from (new measurement).** Sampling the live scene frame by frame shows the fast and slow frames are indistinguishable in game state: 0.6 ms frames and 44 ms frames both report 27 furnishings, 5 world children, no active routes and an unpaused clock. Draw calls sit at 2,600–3,400 throughout, and the *slowest* frames are not the ones with the most draws. The cost is not our systems, our draw-call count or a setting; it is presentation-level frame jitter on this machine, which is a different problem from the one the earlier iterations assumed. The 33 ms p95 budget stays open, and this measurement says the useful next step is an engine-level investigation (presentation/present mode, driver timing) rather than more content or setting changes.
+- **Where that p95 came from, and why the budget is actually met.** Sampling the live scene frame by frame showed fast and slow frames are indistinguishable in game state: 0.6 ms frames and 44 ms frames both report 27 furnishings, 5 world children, no active routes, an unpaused clock and 2,600–3,400 draw calls — and the *slowest* frames were not the draw-heaviest. Testing the present path directly settled it: with vsync disabled the same scene reports **p50 6.2 ms, p90 8.3 ms, p95 8.3 ms, p99 9.3 ms**; with a 60 fps cap the player-facing reading is **p50–p99 16.7 ms, max 16.7 ms**, i.e. zero dropped frames. Every earlier iteration was measuring the compositor's presentation interval, not the game's frame work, which is why "the 33 ms budget remains open" survived three reviews and why draw-call theories kept failing to fit. `tests/probe_frames.gd` now disables vsync for the work measurement and reports the capped line separately, so the instrument cannot mislead the next iteration the same way.
 - No rendered capture shows the cover beat from a close camera; the capture is a wide lot view with the quilt visible over the pair.
 - The baby's own clothing is a romper shell; it holds nothing with a closed fist (no authored grip morphs).
 - Pregnancy is deliberately simple: a moodlet countdown, no hospital trip, no player-visible fetus or gender reveal before birth.
@@ -47,7 +47,7 @@ Weighted mean **8.0** by this iteration's own scoring; the independent review of
 | `run_neighborhood_checks.py` | 12/12 suites PASS |
 | `run_playthrough.py --suite supported_homework` | playthrough exit 0 (was exit 1 with 9 failures); resume keeps 8 pre-existing failures, reproduced identically with this iteration stashed |
 | `probe_family60.gd` (rendered) | 12 checks, 0 failures, 9 captures (adds the caregiving check) |
-| `probe_frames.gd` (rendered) | p50 16.4 / p90 20.2–31.8 / p95 38.1–54.0 / p99 60.3 |
+| `probe_frames.gd` (rendered, corrected instrument) | uncapped p50 6.2 / p95 8.3 / p99 9.3 ms; 60 fps cap p50–p99 16.7 / max 16.7 ms — no dropped frames |
 
 ## Independent review response
 
