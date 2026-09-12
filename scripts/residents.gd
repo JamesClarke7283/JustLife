@@ -58,6 +58,7 @@ func apply_contact(contact:Dictionary,member_sim:LifeSim) -> void:
  var relationship:Dictionary=member_sim.relationships.get(str(contact.resident),{})
  if relationship.has("friendship"):
   relationship.friendship=clampf(float(relationship.friendship)+float(contact.friendship),-100.0,100.0)
+  member_sim._update_relationship_status(relationship)
 
 func _default_state(id:String,place:String) -> Dictionary:
  var person:Dictionary=PEOPLE[id]
