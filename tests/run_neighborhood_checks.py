@@ -2,7 +2,7 @@
 from pathlib import Path
 import argparse, hashlib, json, os, shutil, subprocess, sys, tempfile
 
-TESTS = ('test_residents_validation.gd', 'test_residents.gd', 'test_residents_fresh_load.gd', 'test_residents_queued.gd', 'test_residents_v2_household.gd', 'test_residents_v2_food.gd', 'test_neighborhood.gd')
+TESTS = ('test_residents_validation.gd', 'test_residents.gd', 'test_residents_v2.gd', 'test_residents_fresh_load.gd', 'test_residents_queued.gd', 'test_residents_v2_household.gd', 'test_residents_v2_food.gd', 'test_neighborhood.gd')
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
