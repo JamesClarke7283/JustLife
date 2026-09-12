@@ -2,7 +2,7 @@
 from pathlib import Path
 import argparse, hashlib, json, os, shutil, subprocess, sys, tempfile
 
-TESTS = ('test_residents_validation.gd', 'test_residents.gd', 'test_residents_fresh_load.gd', 'test_residents_queued.gd', 'test_neighborhood.gd')
+TESTS = ('test_residents_validation.gd', 'test_residents.gd', 'test_residents_fresh_load.gd', 'test_residents_queued.gd', 'test_residents_v2_household.gd', 'test_residents_v2_food.gd', 'test_neighborhood.gd')
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -21,7 +21,7 @@ def main():
         ignore = shutil.ignore_patterns('*character_rig*', '*character_grip*', '*_surface_grip*', '*_broad_grip*') if name == 'assets' else None
         shutil.copytree(source / name, snapshot / name, ignore=ignore)
     (snapshot / 'tests').mkdir()
-    for name in TESTS:
+    for name in TESTS + ('test_stair_controller.gd', 'test_stair_food_custody.gd', 'test_stair_save_process.gd', 'test_stair_save.gd', 'test_build_world_levels.gd'):
         shutil.copy2(source / 'tests' / name, snapshot / 'tests' / name)
     lines = []
     skip = False

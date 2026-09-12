@@ -31,6 +31,21 @@ func _load(slot:String)->void:
 	loaded_layout=app.world.serialize_items().duplicate(true)
 	check(app.load_epoch==prior+1,"Named load actually replaces the live household: "+slot)
 
+func _same_snapshot(a:Variant,b:Variant)->bool:
+	# Live positions are float32 (Vector3); the JSON round trip keeps doubles.
+	# Compare with engine float32 tolerance instead of bit equality.
+	if a is Dictionary and b is Dictionary:
+		if a.size()!=b.size():return false
+		for k:Variant in a:
+			if not b.has(k) or not _same_snapshot(a[k],b[k]):return false
+		return true
+	if a is Array and b is Array:
+		if a.size()!=b.size():return false
+		for i:int in range(a.size()):
+			if not _same_snapshot(a[i],b[i]):return false
+		return true
+	if (a is float or a is int) and (b is float or b is int):return is_equal_approx(float(a),float(b))
+	return a==b
 func _same_value(a:Variant,b:Variant)->bool:
 	if a is Dictionary and b is Dictionary:
 		if a.size()!=b.size():return false
@@ -83,7 +98,7 @@ func _run()->void:
 	var arriving_slot:String=app.active_save_id;var expected:Dictionary=app.residents.snapshot()
 	_load(arriving_slot);await process_frame
 	if app.residents.snapshot()!=expected:events.append({"expected_arrival":expected,"actual_arrival":app.residents.snapshot()})
-	check(app.residents.snapshot()==expected and _phase()=="arriving","Same-process named load preserves exact paused arrival")
+	check(_same_snapshot(app.residents.snapshot(),expected) and _phase()=="arriving","Same-process named load preserves exact paused arrival")
 	check(app.residents.home_visit.app==app,"Adopted helper resolves the live owner controller")
 	if "--layout-probe" in OS.get_cmdline_user_args():
 		events.append({"layout_before":initial_layout,"layout_after":app.world.serialize_items()})
@@ -101,7 +116,7 @@ func _run()->void:
 	app.household.set_speed(0)
 	check(app.save_game("","Guest waiting"),"Waiting phase can be saved")
 	var waiting_slot:String=app.active_save_id;expected=app.residents.snapshot();_load(waiting_slot);await process_frame
-	check(app.residents.snapshot()==expected and app.household.speed==0,"Paused waiting load does not repeat arrival or change speed")
+	check(_same_snapshot(app.residents.snapshot(),expected) and app.household.speed==0,"Paused waiting load does not repeat arrival or change speed")
 	app.household.set_speed(1)
 	app.residents.home_visit.welcome(app.household.selected_id())
 	check(not app.residents.home_visit.state.greeting.is_empty(),"Welcome queues an identified ordinary friendly action")
@@ -115,7 +130,7 @@ func _run()->void:
 	if not started:await _finish();return
 	app.household.set_speed(0);check(app.save_game("","Guest greeting"),"Active identified greeting can be saved")
 	var greeting_slot:String=app.active_save_id;expected=app.residents.snapshot();_load(greeting_slot);await process_frame
-	check(app.residents.snapshot()==expected,"Active greeting load preserves exact visit token and start clock")
+	check(_same_snapshot(app.residents.snapshot(),expected),"Active greeting load preserves exact visit token and start clock")
 	app.household.member_action_finished.connect(func(id:String,done:Dictionary):
 		if done.has("home_visit_token"):
 			var speaker:LifeSim=app.household.member_sim(id)
@@ -126,7 +141,7 @@ func _run()->void:
 	check(not finished_welcome.is_empty() and float(finished_welcome.action.elapsed)==25 and float(app.residents.home_visit.state.admitted_at)==float(finished_welcome.clock),"Paid completion keeps exact event clock despite frame overshoot")
 	app.household.set_speed(0);check(app.save_game("","Guest entering"),"Partial indoor arrival can be saved")
 	var entering_slot:String=app.active_save_id;expected=app.residents.snapshot();_load(entering_slot);await process_frame
-	check(app.residents.snapshot()==expected,"Entering load preserves exact route cursor")
+	check(_same_snapshot(app.residents.snapshot(),expected),"Entering load preserves exact route cursor")
 	app.household.set_speed(1)
 	check(_until("inside"),"Actual walking and accepted friendly completion admit the guest")
 	events.append({"phase":_phase(),"notice":app.notice_label.text,"visit":app.residents.home_visit.snapshot(),"queue":str(app.sim.action_queue)})
@@ -135,12 +150,12 @@ func _run()->void:
 	check(app.sim.relationships.maya.friendship==friendship+12,"Only the completed ordinary friendly action grants friendship")
 	app.household.set_speed(0);check(app.save_game("","Guest inside"),"Indoor visit saves without changing household membership")
 	var inside_slot:String=app.active_save_id;expected=app.residents.snapshot();_load(inside_slot);await process_frame
-	check(app.residents.snapshot()==expected and app.household.members.size()==2,"Indoor load preserves guest phase and household size")
+	check(_same_snapshot(app.residents.snapshot(),expected) and app.household.members.size()==2,"Indoor load preserves guest phase and household size")
 	app.residents.home_visit.goodbye();check(_phase()=="leaving" and app.residents.present("maya"),"Goodbye keeps the departing guest physically visible")
 	app.household.set_speed(1);_step(15);app.household.set_speed(0)
 	check(app.save_game("","Guest leaving"),"Partial physical departure can be saved")
 	var leaving_slot:String=app.active_save_id;expected=app.residents.snapshot();_load(leaving_slot);await process_frame
-	check(app.residents.snapshot()==expected and _phase()=="leaving","Named load preserves exact departure cursor")
+	check(_same_snapshot(app.residents.snapshot(),expected) and _phase()=="leaving","Named load preserves exact departure cursor")
 	app.household.set_speed(1);check(_until("absent"),"Guest follows the exit route and becomes absent only at the sidewalk")
 	check(not app.residents.present("maya"),"Finished guest returns to the resident home schedule")
 	var receipt:=FileAccess.open("user://home_visit_slots.json",FileAccess.WRITE)

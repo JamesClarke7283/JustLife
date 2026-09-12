@@ -24,7 +24,7 @@ func _run()->void:
  check(app.current_venue=="park" and app.mode=="live","Maximum-size household completes real canonical boarding and car arrival")
  check(gait.size()==4 and grounded.size()==8,"All four upstairs Lifelets use stair gait and every member reaches the ground before boarding")
  check(minimum>=LifeTraversal.BODY_GAP-.001,"Canonical boarding retains physical body separation throughout all eight routes: "+str(minimum))
- check(app.household.members.size()==8 and app.world.actors.size()==10 and app.world.actors.values().filter(func(a:LifeActor):return a.visible).size()==10,"Destination retains the eight-member household and the two public-venue residents")
+ check(app.household.members.size()==8 and app.world.actors.size()==12 and app.world.actors.values().filter(func(a:LifeActor):return a.visible).size()==12,"Destination retains the eight-member household and the four public-venue residents")
  check(app.home_layout==home,"Maximum household travel retains its canonical two-floor home records")
  var file:=FileAccess.open("user://resident_v2_household.json",FileAccess.WRITE);file.store_string(JSON.stringify({"checks":checks,"failures":failures,"gait":gait.keys(),"boarded_ground":grounded.keys(),"minimum_separation":minimum,"venue":app.current_venue,"mode":app.mode,"routes":str(app.traversal.routes)},"  "));file.close()
  print("RESIDENT_V2_HOUSEHOLD checks=",checks," failures=",failures.size())
