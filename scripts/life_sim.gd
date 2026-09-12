@@ -59,6 +59,7 @@ var _targets: Array = []
 var _idle_minutes: float = 0.0
 var autonomy_state: Dictionary = {"version":1,"contacts":{},"deferred":{}}
 var social_cooldowns: Dictionary = {}  # neighbour id -> game minute until which the chooser skips them
+var last_hugs: Dictionary = {}  # neighbour id -> game minute of the last hug
 var _change_accumulator: float = 0.0
 var _warned_needs: Dictionary = {}
 var _actions: Dictionary = {}
@@ -72,7 +73,7 @@ var story_events: Array = []
 var story_history: Array = []
 var _story_generated_day: int = 1
 const STORY_KINDS: Array[String] = ["neighbor_invitation", "career_opportunity", "hobby_exhibition", "garden_exchange", "learning_circle", "community_picnic"]
-const SOCIAL_ACTIONS: Array[String] = ["friendly", "joke", "deep_talk", "flirt", "argue", "ask_partner", "commit", "break_up"]
+const SOCIAL_ACTIONS: Array[String] = ["friendly", "joke", "deep_talk", "hug", "share_interests", "flirt", "argue", "ask_partner", "commit", "break_up"]
 const AGE_GATED_ACTIONS: Array[String] = ["jog", "play_toys"]
 const LEISURE_ACTIONS: Array[String] = ["paint", "read", "watch", "relax", "play_piano", "play_chess", "dance", "play_games", "practice_speech", "stretch", "warm_up", "jog", "play_toys"]
 const PRE_DUTY_LEISURE: Array[String] = ["relax", "read", "watch", "stretch", "warm_up", "paint"]  # brief pastimes before a school or work day; the short ones sit ahead of the canvas
@@ -218,6 +219,8 @@ func _build_actions() -> void:
 	_define("friendly", "Have a friendly chat", 25.0, {"social": 28.0, "fun": 6.0}, 0, "charisma", 18.0, "Say hello, catch up and grow your friendship.")
 	_define("joke", "Tell a joke", 20.0, {"social": 22.0, "fun": 16.0}, 0, "charisma", 16.0, "Share a laugh and strengthen your friendship.")
 	_define("deep_talk", "Have a heartfelt talk", 45.0, {"social": 45.0, "fun": 8.0}, 0, "charisma", 28.0, "A deeper conversation works best with someone you know.")
+	_define("hug", "Share a hug", 15.0, {"social": 24.0, "fun": 5.0}, 0, "charisma", 12.0, "A warm hug for someone you care about. Works best on a real friend.")
+	_define("share_interests", "Share interests", 35.0, {"social": 38.0, "fun": 10.0}, 0, "charisma", 20.0, "Talk about what you love. Lifelets with shared traits connect deeply.")
 	_define("flirt", "Flirt", 25.0, {"social": 26.0, "fun": 10.0}, 0, "charisma", 20.0, "Express interest. Friendship helps your advances land well.")
 	_define("argue", "Argue", 20.0, {"social": 8.0, "fun": -12.0}, 0, "charisma", 8.0, "Vent your frustration, at a cost to the relationship.")
 	_define("ask_partner", "Ask to become partners", 35.0, {"social": 15.0, "fun": 8.0}, 0, "charisma", 12.0, "Choose a relationship together. Both adults need 45 friendship and 35 romance, and must be available.")
@@ -980,7 +983,7 @@ func _record_social_milestones(target: String, action_id: String) -> void:
 	var person: Dictionary = relationships[target]
 	_normalize_relationship(person, false)
 	var achieved: Array[String] = []
-	if action_id in ["friendly", "joke", "deep_talk"]: achieved.append("met")
+	if action_id in ["friendly", "joke", "deep_talk", "hug", "share_interests"]: achieved.append("met")
 	if float(person.friendship) >= 35.0: achieved.append("friends")
 	if float(person.friendship) >= 65.0: achieved.append("close_friends")
 	if float(person.romance) >= 20.0 and not LifeFamilyGraph.is_family(_family_role(target)): achieved.append("spark")
@@ -1057,6 +1060,26 @@ func _apply_social(action: Dictionary) -> bool:
 			else:
 				change = 4.0
 				_emit_notice("%s appreciates the chat, but needs time to open up." % person["name"])
+		"hug":
+			if float(person["friendship"]) >= 25.0:
+				var last:float=float(last_hugs.get(target,-1e9))
+				change=14.0 if minutes-last>=600.0 else 6.0
+				if change<14.0:_emit_notice("%s cherishes the hug, though you hugged not long ago." % person["name"])
+				last_hugs[target]=minutes
+			else:
+				change=3.0
+				_emit_notice("%s isn't ready for a hug yet. Build the friendship first." % person["name"])
+		"share_interests":
+			var shared:int=0
+			var mine:Array=character.get("traits",[])
+			var theirs:Array=_social_reciprocal[target].get("traits",[]) if _social_reciprocal.has(target) else []
+			for t:Variant in mine:
+				if str(t) in theirs:shared+=1
+			if shared>0:
+				change=18.0
+				_emit_notice("You and %s really get each other." % person["name"])
+			else:
+				change=5.0
 		"flirt":
 			if float(person["friendship"]) >= 30.0:
 				person["romance"] = minf(100.0, float(person["romance"]) + 16.0)
@@ -1162,6 +1185,8 @@ func _activity_memory(id:String) -> void:
 			add_moodlet("In a creative flow","Inspired","You made something only you could make.",240,3)
 			remember("An original canvas","Created and sold a painting.")
 		"friendly","deep_talk":add_moodlet("Feeling connected","Happy","It's good to spend time with someone.",180,2)
+		"hug":add_moodlet("A warm embrace","Happy","A hug makes everything feel a little kinder.",150,2)
+		"share_interests":add_moodlet("Kindred spirits","Confident","Talking about what you love with someone who gets it.",200,2)
 		"joke":add_moodlet("A shared laugh","Playful","That joke is still making you smile.",120,3)
 		"argue":add_moodlet("Words linger","Tense","A difficult conversation takes time to shake off.",180,3)
 		"work","job":
