@@ -105,10 +105,14 @@ func run() -> void:
  check(JSON.stringify(app.world.serialize_items())==JSON.stringify(home),"Returning preserves the player’s home exactly")
  var absent_seen:bool=false
  var returned:bool=false
+ # The iteration-50 clock runs one game-minute per wall second; very fast
+ # (speed 8) lets the 800-frame loop span a full home wait of 48 minutes.
+ app.sim.set_speed(8)
  for i:int in range(800):
   app._process(.05)
   if not app.residents.present("maya"):absent_seen=true
   elif absent_seen:returned=true;break
+ app.sim.set_speed(1)
  check(absent_seen and returned,"A walker leaves the street and returns on a later walk")
  app.queue_free();await process_frame;await process_frame
  print("RESIDENTS_RESULT ",checks,"/",failures)

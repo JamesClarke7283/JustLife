@@ -634,7 +634,7 @@ func setup_live(layout:Array) -> void:
 	mode="live"
 	if stage:stage.visible=false
 	if current_venue=="home":world.create_home(layout)
-	elif current_venue in ["maya_home","leo_home"]:world.create_resident_home(current_venue,layout)
+	elif current_venue in LifeNeighborhood.RESIDENT_HOMES:world.create_resident_home(current_venue,layout)
 	else:world.create_public_venue(current_venue,layout)
 	world.live_enabled=true
 	world.set_build(false)
@@ -2293,7 +2293,7 @@ func _prepare_loaded_world(data:Dictionary) -> Dictionary:
 	candidate.world=LifeWorld.new();viewport.add_child(candidate.world)
 	candidate.world.set_process(false);candidate.world.set_process_unhandled_input(false)
 	if candidate.current_venue=="home":candidate.world.create_home(checked.world)
-	elif candidate.current_venue in ["maya_home","leo_home"]:candidate.world.create_resident_home(candidate.current_venue,checked.world)
+	elif candidate.current_venue in LifeNeighborhood.RESIDENT_HOMES:candidate.world.create_resident_home(candidate.current_venue,checked.world)
 	else:candidate.world.create_public_venue(candidate.current_venue,checked.world)
 	if not candidate.world.last_layout_error.is_empty():
 		var error:String=candidate.world.last_layout_error
@@ -3230,7 +3230,7 @@ func show_neighborhood(chosen:String="") -> void:
 			map.draw_circle(p,19,Color("a2bb84"));map.draw_circle(p-Vector2(5,5),12,Color("b5cb99"))
 		for p:Vector2 in [Vector2(70,122),Vector2(332,76),Vector2(356,92),Vector2(172,226),Vector2(417,144)]:
 			map.draw_style_box(P.panel(Color("c3bfa5"),4),Rect2(p,Vector2(32,28))))
-	var points:Dictionary={"home":Vector2(35,226),"park":Vector2(35,35),"library":Vector2(360,226),"studio":Vector2(360,35),"maya_home":Vector2(44,130),"leo_home":Vector2(353,130)}
+	var points:Dictionary={"home":Vector2(35,226),"park":Vector2(35,35),"library":Vector2(360,226),"studio":Vector2(360,35),"maya_home":Vector2(44,130),"leo_home":Vector2(353,130),"priya_home":Vector2(196,64),"tom_home":Vector2(243,178)}
 	for id:String in points:
 		var data:Dictionary=LifeNeighborhood.PLACES[id]
 		var p:Vector2=points[id]

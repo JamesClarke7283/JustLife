@@ -1162,19 +1162,25 @@ func create_resident_home(place:String,layout:Array) -> void:
 	house=Node3D.new();house.name="ResidentHome_"+place;add_child(house)
 	construction=LifeConstruction.new();house.add_child(construction);construction.initialize(self)
 	furniture=Node3D.new();furniture.name="Furniture";house.add_child(furniture)
-	var cottage:bool=place=="maya_home"
-	var width:float=10.0 if cottage else 12.0
-	var depth:float=9.0 if cottage else 8.0
-	var plaster:String="cbd8c2" if cottage else "d5b39d"
+	var palettes:Dictionary={
+		"maya_home":{"plaster":"cbd8c2","floor":"bb9a73","board":"a98661","accent":"739781","leaf":"73966d"},
+		"leo_home":{"plaster":"d5b39d","floor":"c9b299","board":"a98661","accent":"aa705c","leaf":"73966d"},
+		"priya_home":{"plaster":"d9c6d4","floor":"b59a7e","board":"a8816a","accent":"8a6d84","leaf":"8bab70"},
+		"tom_home":{"plaster":"c2c6ab","floor":"cbb18f","board":"b09a6e","accent":"6f8f5e","leaf":"6f8f5e"}}
+	var palette:Dictionary=palettes.get(place,palettes["maya_home"])
+	var cottage:bool=place in ["maya_home","priya_home"]
+	var width:float={"maya_home":10.0,"leo_home":12.0,"priya_home":11.0,"tom_home":13.0}.get(place,12.0)
+	var depth:float={"maya_home":9.0,"leo_home":8.0,"priya_home":8.0,"tom_home":8.0}.get(place,8.0)
+	var plaster:String=str(palette.plaster)
 	box(house,Vector3(0,-.3,0),Vector3(120,.3,120),"b8cdaa")
 	box(house,Vector3(0,-.16,0),Vector3(17,.15,16),"a8c191")
 	box(house,Vector3(0,-.025,0),Vector3(width+.4,.25,depth+.4),"d3c9b6")
-	box(house,Vector3(0,.105,0),Vector3(width,.045,depth),"bb9a73" if cottage else "c9b299")
+	box(house,Vector3(0,.105,0),Vector3(width,.045,depth),str(palette.floor))
 	# The narrow cottage uses long oak boards; the wide bungalow has parquet blocks.
 	if cottage:
 		for row:int in range(33):
-			box(house,Vector3(-4.9+float(row)*.3,.162,0),Vector3(.009,.004,depth),"a98661")
-			for joint:int in range(4):box(house,Vector3(-4.75+float(row)*.3,.163,-3.9+float(joint)*2.2+float(row%2)*.9),Vector3(.29,.004,.009),"a98661")
+			box(house,Vector3(-4.9+float(row)*.3,.162,0),Vector3(.009,.004,depth),str(palette.board))
+			for joint:int in range(4):box(house,Vector3(-4.75+float(row)*.3,.163,-3.9+float(joint)*2.2+float(row%2)*.9),Vector3(.29,.004,.009),str(palette.board))
 	else:
 		for x:int in range(-6,6):
 			for z:int in range(-4,4):
@@ -1192,7 +1198,7 @@ func create_resident_home(place:String,layout:Array) -> void:
 		box(house,Vector3(0,.08,5.35),Vector3(5.6,.15,1.7),"c8b79a")
 		for x:float in [-2.5,2.5]:
 			box(house,Vector3(x,1.35,5.85),Vector3(.13,2.65,.13),"f4efdc")
-			box(house,Vector3(x,.35,5.9),Vector3(.8,.55,.65),"739781")
+			box(house,Vector3(x,.35,5.9),Vector3(.8,.55,.65),str(palette.accent))
 			for j:int in range(4):sphere(house,Vector3(x-.3+j*.2,.67,5.9),Vector3(.27,.30,.32),"bc8398")
 		var canopy:MeshInstance3D=box(house,Vector3(0,2.76,5.35),Vector3(5.9,.17,2.0),"759487")
 		canopy.visible=not cutaway;ceiling_beams.append(canopy)
@@ -1213,11 +1219,11 @@ func create_resident_home(place:String,layout:Array) -> void:
 		for z:float in [-5.5,3.3]:tree(Vector3(x,-.1,z),.75 if cottage else 1.05)
 	for x:float in [-11.0,12.0]:tree(Vector3(x,-.1,-8),1.4)
 	for x:int in range(-6,7):
-		if cottage:sphere(house,Vector3(x,.25,-6.0),Vector3(1.1,.65,.8),"73966d")
+		if cottage:sphere(house,Vector3(x,.25,-6.0),Vector3(1.1,.65,.8),str(palette.leaf))
 		else:
 			box(house,Vector3(x,.35,-5.5),Vector3(.13,.85,.13),"a88667")
 	box(house,Vector3(2,.5,7.7),Vector3(.12,1.1,.12),"a08060")
-	box(house,Vector3(2,1.02,7.7),Vector3(.45,.35,.35),"739781" if cottage else "aa705c")
+	box(house,Vector3(2,1.02,7.7),Vector3(.45,.35,.35),str(palette.accent))
 	grid=Node3D.new();house.add_child(grid);grid.visible=false
 	# Canonical ground records keep friend homes on the same detached-save path.
 	var structure:Dictionary=Building.fresh()

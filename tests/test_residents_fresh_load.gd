@@ -8,7 +8,9 @@ func check(ok:bool,message:String)->void:
  print("PASS " if ok else "FAIL ",message)
  if not ok:failures+=1
 func equal_values(a:Variant,b:Variant)->bool:
- if (a is float or a is int) and (b is float or b is int):return float(a)==float(b)
+ # Positions pass through Vector3 (float32) on the live path; the JSON
+ # round trip keeps double precision, so compare with float32 tolerance.
+ if (a is float or a is int) and (b is float or b is int):return is_equal_approx(float(a),float(b))
  if a is Dictionary and b is Dictionary:
   if a.size()!=b.size():return false
   for key:Variant in a:

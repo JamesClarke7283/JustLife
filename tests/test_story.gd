@@ -267,8 +267,10 @@ func _test_new_story_kinds() -> void:
 	sim.needs.social = 40.0
 	var satisfaction: int = sim.satisfaction
 	money = sim.funds
+	var charisma_xp: float = xp_total(sim, "charisma")
 	check(sim.choose_story_event("story_day_9", "rent_table"), "Renting a flea-market table must be selectable.")
-	check(sim.funds == money + 60 and is_equal_approx(xp_total(sim, "charisma"), 0.0 + 20.0) or xp_total(sim, "charisma") == 20.0, "Selling at the flea market must pay and practice charisma.")
+	check(sim.funds == money + 60, "Selling at the flea market must pay its stated income.")
+	check(is_equal_approx(xp_total(sim, "charisma"), charisma_xp + 20.0), "Selling must practice charisma exactly (+20 XP).")
 	check(sim.satisfaction == satisfaction + 10, "Selling must pay its stated satisfaction.")
 	check(sim.needs.energy == 68.0 and sim.needs.social == 54.0, "The table choice must apply its energy and social tradeoffs.")
 	check(not sim.choose_story_event("story_day_9", "rent_table"), "The market choice cannot be replayed.")
