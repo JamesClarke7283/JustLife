@@ -489,6 +489,13 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	node.position=Vector3(float(entry.get("x",0)),Building.level_y(level),float(entry.get("z",0)))
 	node.rotation_degrees.y=float(entry.get("rotation",0))
 	if kind=="mirror":_dress_mirror(node,model)
+	if kind=="floor_lamp":
+		# The arc lamp's warm pool of light is runtime state: the menu switch
+		# toggles it and the layout record carries it across save and load.
+		var glow:=OmniLight3D.new();glow.name="LampGlow"
+		glow.position=Vector3(0,1.44,.38);glow.light_color=Color("ffd9a1");glow.light_energy=.95;glow.omni_range=4.2
+		glow.shadow_enabled=false;glow.visible=bool(entry.get("lit",true))
+		node.add_child(glow)
 	var info:Dictionary=entry.duplicate(true)
 	info["node"]=node
 	info["label"]=data.label
@@ -524,6 +531,7 @@ func serialize_items() -> Array:
 		if bool(item.get("transient_food",false)) or bool(item.get("transient_puddle",false)):continue
 		var entry:Dictionary={"id":item.id,"kind":item.kind,"x":item.node.position.x,"z":item.node.position.z,"rotation":item.node.rotation_degrees.y}
 		if item_level(item)!=0:entry["level"]=item_level(item)
+		if str(item.kind)=="floor_lamp" and not bool(item.get("lit",true)):entry["lit"]=false
 		out.append(entry)
 	if construction:out.append(construction.snapshot())
 	return out
@@ -869,6 +877,14 @@ func closest_item(kind:String,from:Vector3,max_distance:float=100.0) -> Dictiona
 		if distance<nearest:nearest=distance;found=item
 	return found
 
+func item_lit(item:Dictionary)->bool:return bool(item.get("lit",true))
+
+func set_item_lit(item:Dictionary,lit:bool)->void:
+	item["lit"]=lit
+	if is_instance_valid(item.get("node")):
+		var glow:Node=item.node.find_child("LampGlow",true,false)
+		if glow!=null:glow.visible=lit
+
 func begin_activity_frame(paused:bool=false) -> void:
 	if paused:return
 	for id:int in _desk_boosters.keys():
@@ -975,8 +991,10 @@ func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -
 			# Turn toward the room to present the cake at the reached position.
 			# Holding it toward the appliance can push the plate into its door.
 			if action_id=="birthday":yaw=node.rotation.y
-		"bench":
-			local=Vector3(0,.522,.05);yaw=node.rotation.y;kind="seat"
+		"bench","book_nook":
+			# The nook's bench sits a little lower than a chair; the shelf
+			# spines above it stay at the seated reader's eye line.
+			local=Vector3(0,.41,.10) if str(item.kind)=="book_nook" else Vector3(0,.522,.05);yaw=node.rotation.y;kind="seat"
 		"sofa":
 			local=Vector3(0,.66,.08);yaw=node.rotation.y;kind="seat"
 		"chair":

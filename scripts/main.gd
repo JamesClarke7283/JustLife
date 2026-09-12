@@ -1356,6 +1356,11 @@ func set_build_level(level:int) -> void:
 		world.construction.restore(migrated.state);world.rebuild_navigation()
 	world.set_view_level(level)
 	world.construction.quote_provider=build_transactions.prepare
+	if level==1 and not world.construction.has_upper_floor():
+		# Second-storey guidance: switching to Upper with no slab yet starts
+		# the floor tool itself, so the recipe is one press plus a drag.
+		begin_construction("floor")
+		show_notice("No upper floor yet, so the Floor tool is ready. Click two corners over the rooms below to lay it — the slab rests on two complete opposite ground walls, so an enclosed room works. Then choose Stairs and point at its lower end.")
 	draw_live()
 
 func set_roof_pitch(value:float)->void:
@@ -1376,6 +1381,7 @@ func begin_construction(tool:String) -> void:
 		if tool=="roof":world.placement_angle=0;show_notice("Choose two roof corners. R rotates the ridge; select a pitch and finish before confirming.")
 		elif tool=="roof_edit":show_notice("Select a roof, then its two new corners. R rotates; pitch and finish changes are free.")
 		else:show_notice("Point at a roof to review its removal. Esc cancels.")
+	elif tool=="floor" and world.view_level==0:show_notice("This paints the ground-floor finish. For a second storey, press Upper first — it starts the upper floor tool for you.")
 	elif tool=="stairs":world.placement_angle=0;show_notice("Point at the stair's lower end. R rotates. The upper opening and guard are included.")
 	elif tool=="remove_structure":show_notice("Point at a floor or staircase to review its removal. Esc cancels.")
 	else:show_notice("Click two corners to create a %s. Esc cancels." % tool if tool in ["wall","room","floor"] else "Click a wall to %s. Esc cancels." % ("add a doorway" if tool=="door" else "remove it"))
@@ -1395,7 +1401,10 @@ func on_construction(data:Dictionary) -> void:
 		if world.construction.tool=="stairs":world.construction.cancel()
 		world.construction.refresh_decorations()
 		_refresh_sim_targets(false);refresh_hud()
-		show_notice("Your structure is in place. %s§%d."%["−" if int(result.cost)>=0 else "+",absi(int(result.cost))])
+		var follow_up:=""
+		if world.construction.tool=="floor" and world.view_level==1:
+			follow_up=" Upper floor added — now choose Stairs and point at its lower end along its edge."
+		show_notice("Your structure is in place. %s§%d.%s"%["−" if int(result.cost)>=0 else "+",absi(int(result.cost)),follow_up])
 		return
 	show_notice("Preview this structure again before confirming it.")
 
@@ -1410,6 +1419,7 @@ func on_placement(kind:String,p:Vector3,angle:float) -> void:
 	var snapshot:Dictionary=pending_move.snapshot if moving else _build_snapshot(price)
 	var entry:Dictionary={"id":str(pending_move.entry.id) if moving else "placed_%d" % Time.get_ticks_usec(),"kind":kind,"x":p.x,"z":p.z,"rotation":angle}
 	if world.view_level==1:entry["level"]=1
+	if moving and pending_move.entry.has("lit"):entry["lit"]=pending_move.entry["lit"] # A moved lamp keeps its switch state.
 	var proposed:Array=world.serialize_items();proposed.append(entry)
 	var problem:String=build_transactions.furnishing_error(proposed)
 	if not problem.is_empty():show_notice(problem);return
@@ -1520,6 +1530,12 @@ func dismiss_layer() -> void:
 	rect(bg,Vector2.ZERO,Vector2(1440,900),overlay)
 	bg.pressed.connect(close_overlay)
 
+func switch_lamp(item:Dictionary) -> void:
+	var lamp:Dictionary=_find_item(str(item.id))
+	if lamp.is_empty() or str(lamp.kind)!="floor_lamp":return
+	world.set_item_lit(lamp,not world.item_lit(lamp))
+	show_notice("The reading lamp glows warm." if world.item_lit(lamp) else "The reading lamp goes dark.")
+
 func show_interactions(item:Dictionary,screen:Vector2) -> void:
 	close_overlay();overlay_open=true;dismiss_layer()
 	var actions:Array=sim.get_actions_for(str(item.kind),str(item.id))
@@ -1528,7 +1544,9 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 		var availability:Dictionary=sim.get_action_availability("homework",str(item.id))
 		var reason:String=str(availability.reason)
 		if not sim.action_queue.is_empty():reason="Finish or cancel this Lifelet’s current activity first."
-		actions.insert(mini(2,actions.size()),{"id":"supported_homework","label":"Do homework together…","cost":0,"duration":45,"available":reason.is_empty(),"unavailable_reason":reason,"description":"Choose a trusted household adult to help. Learn together and strengthen your friendship."})
+	if str(item.kind)=="floor_lamp" and not _find_item(str(item.id)).is_empty():
+		var lamp:Dictionary=_find_item(str(item.id))
+		actions.append({"id":"switch_light","label":"Switch off" if world.item_lit(lamp) else "Switch on","cost":0,"duration":0,"available":true,"description":"A warm pool of light for evenings in."})
 	var control_index:int=-1
 	for i in range(household.members.size()):
 		if household.members[i].id==str(item.id) and i!=household.selected_index:control_index=i
@@ -1555,6 +1573,7 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 			play_click()
 			if str(a.id)=="cook":meal_flow.show_recipes(str(item.id))
 			elif str(a.id)=="choose_leftovers":meal_flow.show_leftovers(str(item.id))
+			elif str(a.id)=="switch_light":switch_lamp(item);close_overlay()
 			elif str(a.id)=="call_to_meal":
 				var joined:int=meal_flow.call_to_meal(str(item.id));close_overlay();show_notice("%d Lifelets are coming to eat." % joined)
 			elif str(a.id)=="supported_homework":show_homework_helpers(item)
