@@ -10,7 +10,7 @@
 | Creative breadth and sustained play | 25% | 8.0 | Catalogue 39 → 42 (storybook reading nook, teatime coffee table, reading arc lamp), and the household can now grow a new life stage end to end: partner → bed sharing → Try for Baby → pregnancy → birth → named baby → crawling → child. |
 | Reliability and delivery | 15% | 7.8 | The rendered neighbourhood suite went from 13 runtime errors to 0 (plus a clean resume stage) after the travel-stall fixes; the two-floor suite is 3/3 stages with 0 problems; 12/12 resident suites pass. Frame pacing is unchanged and still misses the 33 ms p95 budget on heavy frames — measured honestly below. |
 
-Weighted mean **8.0** (iteration 59: 7.6).
+Weighted mean **8.0** by this iteration's own scoring; the independent review of the same build returned **7.3** before the fixes above and is the number to trust for the build as reviewed. The corrected verification table below reflects the post-fix tree.
 
 ## What was fixed, and what it cost
 
@@ -47,4 +47,22 @@ Weighted mean **8.0** (iteration 59: 7.6).
 | `probe_family60.gd` (rendered) | 11 checks, 0 failures, 8 captures |
 | `probe_frames.gd` (rendered) | p50 16.4 / p90 20.2–31.8 / p95 38.1–54.0 / p99 60.3 |
 
-**Decision: iterate.** 10/10 remains open; the frame budget and character close-up detail are the largest honest gaps.
+## Independent review response
+
+An independent reviewer scored this build **7.3/10** and found eight defects. All the P0/P1 findings and most P2s are now closed:
+
+| Finding | Priority | Resolution |
+|---|---:|---|
+| `tests/regression_inputs.json` omitted the two new scripts, so sixteen isolated runners aborted at import (my own "3/3 stages" claim was measured before the baby commit) | P0 | Both scripts and the four baby GLBs added; `run_public_twofloor.py` is back to import 0 / public 0 / resume 0. This also invalidated the review's original verification table, which has been corrected. |
+| The birth rebuilt the lot from the last-saved layout, silently reversing purchases, built walls and a bought upper storey | P0 | `confirm_baby_creator` now serializes the live world first, at both a home and a venue. |
+| A pending birth was stranded if the player left the creator, and a second beat then discarded the first child | P1 | `continue_life` reopens the baby creator whenever `birth_ready()`, and the pregnancy guard already counts a pending birth. |
+| The arc-lamp commit deleted the `Do homework together…` menu entry, leaving its handlers dead | P1 | Entry restored; the rendered playthrough for that suite went from exit 1 with 9 failures to exit 0 with 0. (Its resume stage still has 8 pre-existing failures, reproduced identically with this iteration stashed.) |
+| The eighth birth could not commit (counter written past `MAX_BIRTHS`) | P1 | Counter clamped at both write sites. |
+| `creator_purpose` leaked into new-game and recovery creator entries | P1 | Purpose is now an explicit parameter of `show_creator`. |
+| The conception moodlet announced a birth three days early and outranked the countdown | P2 | Reworded to "A little one on the way", same strength as the Expecting tile. |
+| The Try-for-Baby notice asked the player to click the bed to stop, but no such entry existed | P2 | A real "Stop the moment" entry with a working handler, clearing the cover. |
+| The baby offered eight hairstyles and five outfits but authors three and one | P2 | Style and wardrobe lists now come from the model (`authored_hair_styles`, `authored_wardrobe`); the roll, the validation and the offered buttons all agree. |
+| The reviewer could not find a caregiver path: a committed baby's needs hit zero | P2 | A household caregiving tick: an available adult tends the most urgent need, builds Parenting and reports it. Verified in the live game (hunger 12 → 17.5). The reviewer's own reproduction starved because it disabled autonomy; that is recorded rather than hidden. |
+| `tests/test_make_baby.gd` aborted mid-case and still reported 0 failures | P2 | The abort is gone with the rebind fix; the suite is 53 checks / 0 failures with every case actually running. |
+
+**Decision: iterate.** 10/10 remains open. The frame budget is unmoved and now measured (below); character close-up detail and the depth of the baby stage (no bassinet, no carried interaction) are the largest honest gaps.
