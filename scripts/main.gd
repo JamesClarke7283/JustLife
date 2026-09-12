@@ -638,6 +638,9 @@ func setup_live(layout:Array) -> void:
 	else:world.create_public_venue(current_venue,layout)
 	world.live_enabled=true
 	world.set_build(false)
+	# The visited venue drives hosted-activity credits: which home the
+	# household is enjoying, and whose hospitality that is.
+	for member:Dictionary in household.members:member.sim.visited_venue=current_venue if current_venue in LifeNeighborhood.RESIDENT_HOMES else ""
 	world.camera.projection=Camera3D.PROJECTION_ORTHOGONAL
 	world.camera.size=16.0
 	world.camera_angle=.62
@@ -2199,7 +2202,9 @@ func load_game(slot_id:String="") -> void:
 	current_venue="home";home_layout=[];venue_layouts={}
 	if saved_world is Dictionary:
 		var place:String=str(saved_world.get("venue","home"))
-		if LifeNeighborhood.PLACES.has(place):current_venue=place
+		if LifeNeighborhood.PLACES.has(place):
+			current_venue=place
+			for member:Dictionary in household.members:member.sim.visited_venue=place if place in LifeNeighborhood.RESIDENT_HOMES else ""
 		home_layout=_safe_layout(saved_world.get("home_layout",[]))
 		var saved_venues:Variant=saved_world.get("venue_layouts",{})
 		if saved_venues is Dictionary:
