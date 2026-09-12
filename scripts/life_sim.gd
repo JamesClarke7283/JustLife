@@ -987,7 +987,7 @@ func _record_social_milestones(target: String, action_id: String) -> void:
 	var person: Dictionary = relationships[target]
 	_normalize_relationship(person, false)
 	var achieved: Array[String] = []
-	if action_id in ["friendly", "joke", "deep_talk", "hug", "share_interests"]: achieved.append("met")
+	if action_id in ["friendly", "joke", "deep_talk", "hug", "share_interests", "sympathize", "gossip"]: achieved.append("met")
 	if float(person.friendship) >= 35.0: achieved.append("friends")
 	if float(person.friendship) >= 65.0: achieved.append("close_friends")
 	if float(person.romance) >= 20.0 and not LifeFamilyGraph.is_family(_family_role(target)): achieved.append("spark")

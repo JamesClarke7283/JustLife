@@ -2049,7 +2049,7 @@ func show_careers() -> void:
 	var background:ColorRect=ColorRect.new()
 	background.color=Color(.08,.17,.15,.28)
 	rect(background,Vector2.ZERO,Vector2(1440,900),overlay)
-	card(Vector2(446,132),Vector2(548,644),P.WHITE,24,overlay)
+	card(Vector2(446,132),Vector2(548,722),P.WHITE,24,overlay)
 	small_caps("Find your direction",Vector2(478,155),Vector2(480,25),overlay)
 	text_label("A new chapter at work.",Vector2(476,194),Vector2(484,57),33,P.INK,true,overlay)
 	paragraph("Choose a path that fits your Lifelet. A career change starts at its first rank; your learned skills stay with you.",Vector2(479,261),Vector2(479,54),14,P.MUTED,overlay)
@@ -2061,7 +2061,7 @@ func show_careers() -> void:
 		button(str(track.label)+( " · Current" if current else ""),Vector2(478,y),Vector2(484,43),func():_select_career(track_id),current,overlay)
 		text_label("%s · §%d / shift · %s skill" % [track.titles[0],track.base_salary,str(track.skill).capitalize()],Vector2(484,y+47),Vector2(474,28),12,P.MUTED,false,overlay)
 		index+=1
-	button("Back to life",Vector2(478,713),Vector2(484,43),close_overlay,false,overlay)
+	button("Back to life",Vector2(478,791),Vector2(484,43),close_overlay,false,overlay)
 
 func _select_career(track_id:String) -> void:
 	if sim.choose_career(track_id):

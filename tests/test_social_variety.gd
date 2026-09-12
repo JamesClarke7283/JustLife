@@ -62,5 +62,13 @@ func run()->void:
 	check(sim._apply_social(story),"The immediate repeat gossip completes.")
 	var stale:float=float(sim.relationships["maya"].friendship)-before_gossip
 	check(stale>0.0 and stale<fresh,"A repeated story gains less (+%.1f vs %.1f)." % [stale,fresh])
+	# The new platonic interactions record the first-meeting milestone too.
+	var fresh_rel:Dictionary={"name":"Maya","friendship":0.0,"romance":0.0,"status":"Acquaintance","bond":"none","milestones":[],"family_role":"none","life_stage":"adult"}
+	for act:String in ["sympathize","gossip"]:
+		sim.relationships["maya"]=fresh_rel.duplicate(true);sim.relationships["maya"].milestones=[]
+		sim.set_social_context("player",{},{"maya":true},{"maya":{"friendship":0.0,"traits":[],"fun":90.0}}, {})
+		sim.last_gossip.clear()
+		check(sim._apply_social({"id":act,"target_id":"maya","target_position":Vector3.ZERO}),"A first %s completes." % act)
+		check(sim.relationships["maya"].milestones.has("met"),"A first %s records the met milestone." % act)
 	print("SOCIAL_VARIETY %d checks, %d failures"%[checks,failures.size()])
 	quit(0 if failures.is_empty() else 1)
