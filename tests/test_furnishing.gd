@@ -12,7 +12,9 @@ static func live_item(app: Node, item_id: String) -> Dictionary:
 			return item
 	return {}
 
-static func queue_member_action(app: Node, item: Dictionary, action_id: String) -> bool:
+## member_id defaults to the player: queue_interaction always queues for the
+## bound member, so housemate-driven interactions need their own flow.
+static func queue_member_action(app: Node, item: Dictionary, action_id: String, member_id: String = "player") -> bool:
 	var node: Node3D = item.get("node")
 	if node == null:
 		return false
