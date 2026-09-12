@@ -212,7 +212,13 @@ func tick(delta:float) -> void:
   var routine_venue:String=str(person.get("routine",{}).get("venue",""))
   var at_routine_venue:bool=routine_venue!="" and active_place==routine_venue
   var routine_on:bool=LifeResidentCatalogue.routine_active(person,LifeEducation.weekday(app.sim.day),app.sim.minutes)
-  var routine_due:bool=not guest and not at_routine_venue and routine_on and str(state.phase)!="home"
+  var morning_on:bool=not home_visit.owns(id) and LifeResidentCatalogue.routine_morning_active(person,LifeEducation.weekday(app.sim.day),app.sim.minutes)
+  if morning_on and str(state.phase)!="walking":
+   # The second beat: a morning spent out on the lane before the routine.
+   state.phase="walking";state.routine_away=false
+   actor.visible=true
+   app.world.set_actor_away(id,false,false);sidewalk_routes.erase(id)
+  var routine_due:bool=not home_visit.owns(id) and not at_routine_venue and routine_on and str(state.phase)!="home"
   if routine_due:
    state.phase="home";state.routine_away=true;state.wait=float(person.get("home_wait",60.0))
    actor.visible=false
@@ -258,6 +264,11 @@ func tick(delta:float) -> void:
 
 func snapshot() -> Dictionary:
  var captured:Dictionary=locations.duplicate(true)
+ # Every record carries the routine flag so restores and saves compare
+ # structurally regardless of whether the window has touched this resident.
+ for place:String in captured:
+  for id:String in captured[place]:
+   captured[place][id]["routine_away"]=bool(captured[place][id].get("routine_away",false))
  # Detached physical snapshots include actual resident transforms without
  # modifying this live service, clocks, routes or cached location records.
  if captured.has(active_place) and is_instance_valid(app.world):
@@ -296,7 +307,7 @@ func restore(value:Variant) -> void:
    if str(record.phase) not in allowed:continue
    # Positions restore verbatim: the JSON doubles match the saved snapshot
    # exactly, and the live path re-quantizes to float32 through the actor.
-   accepted[id]={"position":record.position.duplicate(),"phase":str(record.phase),"wait":minf(float(record.wait),999999.0),"direction":int(direction),"rotation":float(record.rotation),"waypoint":int(waypoint)}
+   accepted[id]={"position":record.position.duplicate(),"phase":str(record.phase),"wait":minf(float(record.wait),999999.0),"direction":int(direction),"rotation":float(record.rotation),"waypoint":int(waypoint),"routine_away":bool(record.get("routine_away",false))}
   locations[place]=accepted
 
  if value.get("home_visit") is Dictionary:home_visit.restore(value.home_visit)
