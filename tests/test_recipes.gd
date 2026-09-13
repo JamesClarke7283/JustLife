@@ -66,7 +66,7 @@ func run()->void:
   var approaching:Dictionary=state.duplicate(true);approaching.action_queue[0].phase="approach"
   check(bool(clone.restore_state(approaching).ok),recipe+" valid paid return to stove restores")
   sim.free();clone.free()
- var queued:LifeSim=fresh(4,52)
+ var queued:LifeSim=fresh(4,24)
  for want:Dictionary in queued.wants:want.complete=true # Isolate ingredient spending from the opening-want cash reward.
  check(queued.queue_action("cook","stove",Vector3.ZERO,"harvest_bake"),"First expensive dish queues")
  check(queued.queue_action("cook","stove",Vector3.ZERO,"herb_pasta"),"Later dish can wait for its ingredients")

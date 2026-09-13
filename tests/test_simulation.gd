@@ -58,7 +58,7 @@ func _test_queue_and_resources() -> void:
 	_check(float(sim.needs["hunger"]) < hunger_before and sim.funds == 2500, "Approaching must not grant activity effects or spend money.")
 	sim.begin_current_action()
 	sim.begin_current_action()
-	_check(sim.funds == 2492, "Ingredients should be charged only once.")
+	_check(sim.funds == 2496, "Ingredients should be charged only once.")
 	_advance(sim, 7.5)
 	_check(float(sim.needs["hunger"]) > hunger_before and is_equal_approx(float(sim.get_current_action()["progress"]), 0.5), "Needs should recover gradually with action progress.")
 	_advance(sim, 7.5)

@@ -401,7 +401,7 @@ func _queue_and_activity_flow() -> void:
 	check(app.sim.speed == 8, "Fastest HUD speed selects simulation rate 8.")
 	if await wait_until(func() -> bool: return active_is("cook", 0.08), "walk to stove and actively cook"):
 		check(app.player.position.distance_to(before_position) > 0.5, "Cooking begins after real routed movement.")
-		check(app.sim.funds == before_funds - 25, "Cooking charges ingredients exactly when activity starts.")
+		check(app.sim.funds == before_funds - 12, "Cooking charges ingredients exactly when activity starts.")
 		check(float(app.sim.needs.hunger) > float(before_needs.hunger) - 20.0, "Cooking starts recovering hunger without instant completion.")
 		await screenshot("05_cooking", true)
 	if await wait_until(func() -> bool: return active_is("shower", 0.12), "finish meal and walk to shower"):

@@ -321,7 +321,7 @@
 								"fun": 8.0,
 								"hygiene": -5.0
 							},
-							"cost": 25,
+							"cost": 12,
 							"description": "Toasted grains, roasted vegetables and fresh basil.",
 							"duration": 45.0,
 							"elapsed": 0.0,
@@ -1101,7 +1101,7 @@
 							"changes": {
 								"hunger": 32.0
 							},
-							"cost": 8,
+							"cost": 4,
 							"description": "A quick bite to keep the day going.",
 							"duration": 15.0,
 							"elapsed": 0.0,

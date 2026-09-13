@@ -211,7 +211,7 @@ func _build_actions() -> void:
 	_define("put_in_fridge","Put food in the fridge",5.0,{},0,"",0.0,"Gather the servings left out and put them back in the fridge while they are still fresh.")
 	_define("discard_meal","Clear this meal",5.0,{},0,"",0.0,"Carry the serving dish to the sink and discard its remaining food.")
 	_define("clean_plate","Wash this plate",10.0,{"hygiene":-1.0},0,"",0.0,"Carry the used plate to a sink and wash it.")
-	_define("snack", "Grab a snack", 15.0, {"hunger": 32.0}, 8, "", 0.0, "A quick bite to keep the day going.")
+	_define("snack", "Grab a snack", 15.0, {"hunger": 32.0}, 4, "", 0.0, "A quick bite to keep the day going.")
 	_define("cook", "Cook a fresh meal", 45.0, {"fun": 8.0, "hygiene": -5.0}, 12, "cooking", 34.0, "Choose a recipe to prepare and share. Cooking skill unlocks more dishes. Eating restores hunger. Ingredients start at §12.")
 	_define("sleep", "Sleep", 360.0, {"energy": 95.0, "fun": 15.0}, 0, "", 0.0, "A full night's rest restores energy and chases the boredom away.")
 	_define("try_for_baby", "Try for Baby", LifeBabyPlan.DURATION, {"social": 20.0, "fun": 14.0, "energy": -6.0}, 0, "", 0.0, "An intimate moment with your partner while you share the bed. If you both want to, this can begin a pregnancy.")

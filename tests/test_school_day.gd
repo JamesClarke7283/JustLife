@@ -131,7 +131,10 @@ func _full_day() -> void:
 	advance(sim,1.0)
 	check(sim.away_state.phase == "returning" and sim.away_state.completed and sim.education.attended == 1 and sim.education.last_attendance_day == 1,"At 15:00 one attended day is earned before the walk home.")
 	check(sim.action_queue[1] == directed and finishes.is_empty(),"Later player plans and the school completion callback wait until actual home arrival.")
-	check(sim.needs.hunger > 65.0 and sim.needs.bladder > 65.0 and sim.needs.energy < 85.0 and sim.needs.fun < 85.0,"School provides meal/bathroom care while learning still costs energy and fun.")
+	# The away day meets meals, bathroom use and washroom care, and its lunch
+	# break carries the compensating Fun that offsets the base decay (the same
+	# compensation career_day uses). Learning still costs energy.
+	check(sim.needs.hunger > 65.0 and sim.needs.bladder > 65.0 and sim.needs.hygiene > 65.0 and sim.needs.energy < 85.0 and sim.needs.fun > 65.0,"School provides meal, bathroom and washroom care while learning still costs energy and fun.")
 	var attendance: Dictionary = sim.education.duplicate(true)
 	var logic: Dictionary = sim.skills.logic.duplicate(true)
 	advance(sim,15.0)
@@ -300,7 +303,7 @@ func _recovery_and_bell_regressions() -> void:
 	same.queue_action("snack","fridge");same.get_current_action().autonomous=true;same.begin_current_action()
 	var front:Dictionary=same.get_current_action()
 	for i:int in range(10):same._reconsider_active_autonomy()
-	check(same.get_current_action()==front and same.funds==2492,"Replanning never cancels a paid recovery merely to choose the same action again.")
+	check(same.get_current_action()==front and same.funds==2496,"Replanning never cancels a paid recovery merely to choose the same action again.")
 	var walking:LifeSim=setup("child",479.0)
 	walking.queue_action("read","shelf");walking.get_current_action().autonomous=true
 	walking.minutes=480.0;walking._reconsider_active_autonomy()

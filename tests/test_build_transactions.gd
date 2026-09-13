@@ -30,32 +30,32 @@ func _run()->void:
 	app.sim.register_targets(app.world.simulation_targets())
 	check(app.sim.queue_action("snack","fridge",Vector3(-2.5,.16,-2)) ,"Existing controlled snack uses the real simulation queue.")
 	app.sim.begin_current_action()
-	check(bool(app.sim.get_current_action().paid) and app.sim.funds==9992,"Controlled positive setup charges exactly one snack before building.")
+	check(bool(app.sim.get_current_action().paid) and app.sim.funds==9996,"Controlled positive setup charges exactly one snack before building.")
 	check(app.sim.queue_action("read","book",Vector3(-3,.16,3)),"A later explicit instruction is retained behind the paid activity.")
 	var queue:Array=app.sim.action_queue.duplicate(true);var needs:Dictionary=app.sim.needs.duplicate(true);var minutes:float=app.sim.minutes
 	var tx=Transactions.new(app)
 	var floor_op:Dictionary={"op":"add","collection":"floors","record":{"level":1,"x":0.0,"z":0.0,"w":8.0,"d":10.0,"material":"cfa97e","supports":["north","south"]}}
 	var quote:Dictionary=tx.prepare(floor_op)
 	check(bool(quote.ok) and int(quote.cost)==960,"An actual supported upper floor previews its original area price.")
-	check(app.world.construction.snapshot()==state and app.sim.funds==9992,"Preview changes neither geometry nor the shared wallet.")
-	var forged:Dictionary=quote.duplicate(true);forged.cost=0;forged.funds_after=9992
-	check(not bool(tx.commit(forged).ok) and app.sim.funds==9992 and app.world.construction.snapshot()==state,"A tampered free-floor quote rejects atomically.")
+	check(app.world.construction.snapshot()==state and app.sim.funds==9996,"Preview changes neither geometry nor the shared wallet.")
+	var forged:Dictionary=quote.duplicate(true);forged.cost=0;forged.funds_after=9996
+	check(not bool(tx.commit(forged).ok) and app.sim.funds==9996 and app.world.construction.snapshot()==state,"A tampered free-floor quote rejects atomically.")
 	app.sim.funds=959
 	check(not bool(tx.prepare(floor_op,true).ok) and app.world.construction.snapshot()==state and app.sim.funds==959,"Insufficient funds cause no geometry or extra wallet mutation.")
-	app.sim.funds=9992
+	app.sim.funds=9996
 	var purchase:Dictionary=tx.commit(quote)
-	check(bool(purchase.ok) and app.sim.funds==9032 and app.world.construction.building_state.floors.size()==2,"Confirmation installs the slab and debits its price once.")
+	check(bool(purchase.ok) and app.sim.funds==9036 and app.world.construction.building_state.floors.size()==2,"Confirmation installs the slab and debits its price once.")
 	var after_floor:Dictionary=app.world.construction.snapshot()
-	check(not bool(tx.commit(quote).ok) and app.sim.funds==9032 and app.world.construction.snapshot()==after_floor,"Duplicate floor confirmation cannot charge or duplicate its identity.")
+	check(not bool(tx.commit(quote).ok) and app.sim.funds==9036 and app.world.construction.snapshot()==after_floor,"Duplicate floor confirmation cannot charge or duplicate its identity.")
 	check(tx.has_unintegrated_levels(),"Upper draft is explicitly marked unavailable for unfinished live/save flow.")
 	var stair_op:Dictionary={"op":"add","collection":"stairs","record":{"x":0.0,"z":-2.0,"rotation":0}}
 	var stair_quote:Dictionary=tx.prepare(stair_op)
 	check(bool(stair_quote.ok) and int(stair_quote.cost)==650,"Stair quote includes opening and supported guard for one original price.")
 	actor.position=Vector3(0,.16,-2.5)
-	check(not bool(tx.commit(stair_quote).ok) and app.sim.funds==9032 and app.world.construction.snapshot()==after_floor,"A body arriving at the lower landing after preview blocks confirmation atomically.")
+	check(not bool(tx.commit(stair_quote).ok) and app.sim.funds==9036 and app.world.construction.snapshot()==after_floor,"A body arriving at the lower landing after preview blocks confirmation atomically.")
 	actor.position=Vector3(-3,.16,1)
 	var stair_purchase:Dictionary=tx.commit(stair_quote)
-	check(bool(stair_purchase.ok) and app.sim.funds==8382 and app.world.construction.stair_nodes.size()==1 and app.world.construction.guard_nodes.size()==1,"Clear confirmation builds actual stair/opening/guard exactly once.")
+	check(bool(stair_purchase.ok) and app.sim.funds==8386 and app.world.construction.stair_nodes.size()==1 and app.world.construction.guard_nodes.size()==1,"Clear confirmation builds actual stair/opening/guard exactly once.")
 	var stair_id:String=str(app.world.construction.building_state.stairs[0].id)
 	var upstairs:=Node3D.new();app.world.add_child(upstairs);upstairs.position=Vector3(2,3.16,2);app.world.actors["upstairs_fixture"]=upstairs
 	var removal:Dictionary=tx.prepare({"op":"remove","id":stair_id},true)
@@ -65,11 +65,11 @@ func _run()->void:
 	upstairs.visible=true;upstairs.position=Vector3(0,1.66,0)
 	check(not bool(tx.prepare({"op":"remove","id":stair_id},true).ok),"A controlled mid-stair location blocks structural edits instead of rounding its level.")
 	upstairs.position=Vector3(0,3.16,2.25)
-	check(not bool(tx.undo(stair_purchase.receipt).ok) and app.sim.funds==8382,"Undo cannot remove an occupied upper landing or refund first.")
+	check(not bool(tx.undo(stair_purchase.receipt).ok) and app.sim.funds==8386,"Undo cannot remove an occupied upper landing or refund first.")
 	app.world.actors.erase("upstairs_fixture");upstairs.queue_free()
-	check(bool(tx.undo(stair_purchase.receipt).ok) and app.sim.funds==9032 and app.world.construction.building_state.stairs.is_empty(),"After the fixture leaves, stair undo restores its price and closes its owned hole.")
-	check(bool(tx.undo(purchase.receipt).ok) and app.sim.funds==9992 and not tx.has_unintegrated_levels(),"LIFO undo also restores the earlier floor while retaining monotonic IDs/revisions.")
-	check(not bool(tx.undo(stair_purchase.receipt).ok) and not bool(tx.undo(purchase.receipt).ok) and app.sim.funds==9992,"Consumed history tokens cannot refund either purchase twice.")
+	check(bool(tx.undo(stair_purchase.receipt).ok) and app.sim.funds==9036 and app.world.construction.building_state.stairs.is_empty(),"After the fixture leaves, stair undo restores its price and closes its owned hole.")
+	check(bool(tx.undo(purchase.receipt).ok) and app.sim.funds==9996 and not tx.has_unintegrated_levels(),"LIFO undo also restores the earlier floor while retaining monotonic IDs/revisions.")
+	check(not bool(tx.undo(stair_purchase.receipt).ok) and not bool(tx.undo(purchase.receipt).ok) and app.sim.funds==9996,"Consumed history tokens cannot refund either purchase twice.")
 	check(app.sim.action_queue==queue and app.sim.needs==needs and app.sim.minutes==minutes,"Build transactions preserve the paid current activity, later queue, needs and clock exactly.")
 	check(int(app.world.construction.building_state.revision)>int(after_floor.revision) and int(app.world.construction.building_state.next_serial)>int(state.next_serial),"Undo retains monotonic structural revisions and never reuses allocated IDs.")
 	# All public structure tools use the same detached quote, occupancy and

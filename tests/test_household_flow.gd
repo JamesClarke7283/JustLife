@@ -47,7 +47,7 @@ func run() -> void:
 	for member:Dictionary in app.household.members:
 		for wish:Dictionary in member.sim.wants:
 			if wish.complete:earned+=int(wish.reward)
-	check(app.household.funds==2500-25+earned and app.sim.funds==app.household.member_sim("housemate_1").funds,"One wallet charges the meal once and receives fulfilled-wish rewards once.")
+	check(app.household.funds==2500-12+earned and app.sim.funds==app.household.member_sim("housemate_1").funds,"One wallet charges the meal once and receives fulfilled-wish rewards once.")
 	check(float(first.skills.cooking.xp)>0 and app.household.member_sim("housemate_1").skills.cooking.xp==0,"Skill gains stay with the Lifelet who practiced.")
 	app.queue_interaction(item("bed"),"sleep")
 	app.select_household_member(1)
@@ -71,7 +71,7 @@ func run() -> void:
 	check(app.sim.action_queue.size()==1 and app.sim.action_queue[0].paid,"Resume retains the paid in-progress activity.")
 	check(app.household.funds==int(before.funds),"Household funds survive resume.")
 	# Exercise signal-driven deletion from a live overlay and queue.
-	app.show_interactions(item("fridge"),Vector2(700,400));press("Grab a snack   §8")
+	app.show_interactions(item("fridge"),Vector2(700,400));press("Grab a snack   §4")
 	await process_frame
 	check(app.overlay.get_child_count()==0,"An interaction button closes its overlay safely.")
 	app.cancel_current_action()

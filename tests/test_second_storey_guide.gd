@@ -30,11 +30,17 @@ func _run()->void:
 	app.set_build_level(1);await process_frame
 	check(app.world.view_level==1,"The Upper press switches the build view upstairs.")
 	check(construction.tool=="floor","With no upper floor yet, Upper starts the Floor tool itself.")
-	# An unsupported rectangle (past the starter walls) names the wall rule.
+	# An oversized, off-centre drag is fitted to the walls rather than refused:
+	# the whole point of the one-go purchase. A drag that misses the walls
+	# entirely still names the two-opposite-bearing-walls rule.
 	construction.anchored=true;construction.anchor=Vector3(-8,0,-7)
 	var overhang:Dictionary=construction.make_proposal(Vector3(8,3.16,7))
-	check(not bool(overhang.get("valid",false)) and str(overhang.get("error","")).contains("opposite bearing walls"),
-		"A rectangle past the ground walls is refused with the wall requirement: "+str(overhang.get("error","")))
+	check(bool(overhang.get("valid",false)) and int(overhang.get("cost",0))==1440,
+		"A drag past the ground walls is fitted to the walled span instead of refused: §%s."%str(overhang.get("cost",-1)))
+	construction.anchored=true;construction.anchor=Vector3(-14.5,0,-9.5)
+	var outside:Dictionary=construction.make_proposal(Vector3(-12,3.16,-7))
+	check(not bool(outside.get("valid",false)) and str(outside.get("error","")).contains("opposite bearing walls"),
+		"A rectangle that misses the walled span names the wall requirement: "+str(outside.get("error","")))
 
 	# A supported rectangle over the enclosed starter rooms quotes and commits.
 	var wallet:int=app.household.funds

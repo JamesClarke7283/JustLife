@@ -35,7 +35,7 @@ func _food_produce()->void:
 	check(carried,"Actual paid cooking creates a serving batch and carries it onto the upstairs route.")
 	if not carried:
 		print("FOOD_DIAGNOSTIC ",JSON.stringify(LifeSaveLibrary._json_safe({"queue":app.sim.action_queue,"route":_route("player"),"ledger":app.household.meals.get_state(),"position":app.player.position}),"",true,true));return
-	check(app.household.funds==initial_funds-25 and app.household.meals.batches.size()==1 and app.household.meals.portions.is_empty(),"Actual garden skillet charges once and creates exactly four unclaimed servings.")
+	check(app.household.funds==initial_funds-12 and app.household.meals.batches.size()==1 and app.household.meals.portions.is_empty(),"Actual garden skillet charges once and creates exactly four unclaimed servings.")
 	var batch:Dictionary=app.household.meals.batches[0]
 	check(int(batch.remaining)==4,"Cooked serving dish retains all four servings during transit.")
 	var held_id:String=str(batch.id)

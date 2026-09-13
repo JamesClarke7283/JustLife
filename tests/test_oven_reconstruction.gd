@@ -78,7 +78,7 @@ func _clearing_and_pending_host()->void:
 	_compare_pose(held_before,_pose(a),"restored after presentation clear")
 	app.set_build_mode(true);app.move_item(app._find_item(f.id))
 	check(bool(a.cooking_presentation.get("oven_suspended",false)) and not a._baking_tray.visible and not a._seasoning_jar.visible,"Actual detached Build preview clears the cook's transfer props while paused.")
-	check(float(f.action.elapsed)==float(f.elapsed) and app.household.funds==948,"Detached pose reconstruction preserves paid cooking progress and money.")
+	check(float(f.action.elapsed)==float(f.elapsed) and app.household.funds==976,"Detached pose reconstruction preserves paid cooking progress and money.")
 	app.cancel_placement()
 	check(not bool(a.cooking_presentation.get("oven_suspended",false)) and a._baking_tray.visible,"Canceling the real oven move reconstructs its paid transfer presentation.")
 	_compare_pose(held_before,_pose(a),"canceled Build move")
