@@ -15,8 +15,8 @@
  "assets/models/character_elder_broad.glb": "6fc7fa4871189744ab8e420fbcd84305122d9e59be4133310eb5b4e3c02d3165",
  "assets/models/character_elder_lod.glb": "0e5f7d623b47d39caf8ee9dd6fde6e43ac1364499bbcb331f2e8da17f3bcc7d3",
  "assets/models/character_elder_broad_lod.glb": "13f7c4d428863702e6d21ed5e291f09807f4c6073e12c27b9a01c8853093b146",
- "art/characters.blend": "51bbb2b1de6febc21460260652a9b6574059135497952cd9af724922b1dc7a26",
- "art/characters_child.blend": "adab6778bb43490707412b94dd6d8e22cf84d4e24a67520aebf14ec1fc3b9c98",
- "art/characters_teen.blend": "15d5e126797def5c37278a50da720df436f46ccf69386533ebff2e6f27054d69",
- "art/characters_elder.blend": "e71f32f51ea77792a11a43f28986c5c2e7c05c35f778fe98746eb7f74af1be0c"
+ "art/characters.blend": "b4b5b722b486fa757dcc0e034d27eb80ce4658bf2c79f1b045dffb9a6753d049",
+ "art/characters_child.blend": "cb3807c5fce56f938577ccc6a48715b581c3b96848d351f565fc74551f6112e2",
+ "art/characters_teen.blend": "3ba1f68f20a5d8f1659536680c64d59a2afc67ef7bd462d98f365fb899aea6f3",
+ "art/characters_elder.blend": "a38a5d991083f98c4f773ffab552de84897ea72d83fb924ecfbea19a8ee605c7"
 }
