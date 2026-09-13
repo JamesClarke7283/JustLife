@@ -122,6 +122,8 @@ green (`test_depth_v61` 98 checks, 0 failures).
 | `test_actor` | 612 checks, 0 failures |
 | `test_autonomy_policy` | 167 checks, 0 failures |
 | `test_career_day` | 89 checks, 0 failures |
+| `test_route_learning` | 6 checks, 0 failures |
+| `test_doorway_yield` | 10 checks, 0 failures |
 | `test_story` | 88 checks, 0 failures |
 | `test_education` | 67 checks, 0 failures |
 | `test_school_integration` | 64 checks, 0 failures |
