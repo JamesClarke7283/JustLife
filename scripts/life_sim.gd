@@ -713,6 +713,14 @@ func _step(game_minutes: float) -> void:
 		var action: Dictionary = action_queue[0]
 		var actual_step: float = minf(game_minutes, float(action["duration"]) - float(action["elapsed"]))
 		action["elapsed"] = float(action["elapsed"]) + actual_step
+		# Accumulating the timer minute by minute leaves it a hair short of the
+		# boundary it was meant to cross (a duration of 60.0 reached through a
+		# 0.78 split lands on 59.99999999999999). Once that shortfall falls below
+		# elapsed's own ULP, adding it is a no-op and the action would sit at
+		# 100% forever, so snap to the boundary when we are within a microsecond
+		# of it. Durations are game minutes, so this is far below a frame.
+		if float(action["duration"]) - float(action["elapsed"]) <= 1e-6:
+			action["elapsed"] = float(action["duration"])
 		action["progress"] = clampf(float(action["elapsed"]) / float(action["duration"]), 0.0, 1.0)
 		_apply_continuous_effects(action, actual_step / float(action["duration"]))
 		# A meal can expire and cancel during its effects callback. Never finish
