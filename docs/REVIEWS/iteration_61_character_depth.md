@@ -241,15 +241,19 @@ committed revision was not a runnable artifact. That is now fixed: a clean
   iteration-60 reading of p50 6.2 / p95 8.3 ms on an RTX 5090. This is
   hardware-conditioned; the README already says other graphics hardware has not
   been qualified, and this number belongs beside that statement.
-- **The character close-up is closer but still not finished art.** Hair was the
-  largest defect and the iris proportion was the second; both are now fixed, and
-  the creator's Face tab reads as a character rather than a mannequin. What
-  remains: the iris is now correctly proportioned but has no fibre striations or
-  limbal shading, so at extreme close-up it is a smooth disc; the upper-lid
-  boundary is still a hard edge with no crease, lash line or tear duct; the lips
-  have no philtrum, vermilion border or cupid's bow; and the hands are still a
-  fused paddle with no separated digits in the exported GLB (`Hand_Grip_L/R`
-  morphs sit on an arm-fill mesh).
+- **The character close-up is substantially improved, and the measured picture
+  is better than earlier prose claimed.** Hair was the largest defect and the
+  iris proportion the second; both are fixed, and the creator's Face tab reads as
+  a character rather than a mannequin. A mouth render at 5 mm scale
+  (`/tmp/bow_characters_mouth.png`, reproduced from the production source) shows
+  full lips with a visible cupid's bow, a defined seam and readable nostrils —
+  this review's earlier claim that the lips lack a bow was wrong and has been
+  corrected below. What genuinely remains: the iris is correctly proportioned
+  but has no fibre striations or limbal shading, so it is a smooth disc at
+  extreme close-up; the upper-lid boundary is a hard edge with no crease, lash
+  line or tear duct; sub-millimetre lip and nose surface detail is absent; and
+  the hands are still a fused paddle with no separated digits in the exported
+  GLB (`Hand_Grip_L/R` morphs sit on an arm-fill mesh).
 - **Three eye repairs were attempted; two were rejected and removed with the
   reason recorded.**
   Projecting each surface piece onto the sclera through a nearest-surface BVH
@@ -278,17 +282,26 @@ committed revision was not a runnable artifact. That is now fixed: a clean
   wall is culled in render, which is exactly why the lips are visible. At the
   mouth centre the outer skin's first surface is at y=-0.1124 while the lip front
   is at -0.1053, so the lips are correctly seated inside the opening.
-  So the lip *construction* is sound — the real gap is surface refinement, which
-  `tools/adult_lip_volume/README.md` already states in its own words ("a modest
-  front-view gain, while the profile retains an angular tip and abrupt return",
-  scoped face assessment about 5.5/10). Adding a philtrum, a cupid's bow and a
-  vermilion border, and rounding the angular profile, needs that pinned
-  generator's geometry re-authored and re-qualified — a genuine sculpting change,
-  not a parameter fix, and not something to attempt without the tool's own
-  hash-pinned review path. The nose was measured at the same time and has formed
-  wings, a bridge, a tip and separate nostril openings (protruding 6 mm at
-  0.031 m nose height against a 0.133 m head depth), so it is low-volume rather
-  than absent. Both remain open.
+  Measuring the shape settled it, and **corrected this review's own earlier
+  claim**. A previous paragraph here said the lips "have no philtrum, vermilion
+  border or cupid's bow". That was wrong: it came from a mis-framed render.
+  Measured band by band across the mouth, the upper lip already carries a
+  cupid's bow — its top edge runs 1.51507 at the two peaks, dips to 1.51463 at
+  the centre and falls to 1.51174 at the corners — and both lips taper smoothly
+  and symmetrically to the corners (front y from -0.10531 at the centre to
+  -0.09937 at the corner, a 6 mm recession, on both sides). A corrected bow
+  profile was then authored and rendered at two amplitudes: it deepened the
+  central dip from 0.44 mm to 1.28 mm, and the matched before/after mouth crops
+  are indistinguishable. It was rejected and removed for the same reason the
+  other marginal changes were — it would have cost a full re-qualification to
+  produce no visible difference.
+  The nose was measured at the same time: formed wings, a bridge, a tip and
+  separate nostril openings, protruding 6 mm at 0.031 m nose height against a
+  0.133 m head depth. So both are lower-contrast than the earlier prose
+  suggested rather than unfinished. What genuinely remains is sub-millimetre
+  surface detail — a vermilion border and philtrum groove, and sharper nostril
+  definition — which is below the perceptual threshold at the live camera and
+  only reads in a render crop as tight as the one above.
 - **Breadth at the far end of a life.** Three recipes, one neighbourhood with
   four homes, and no death, inheritance, fears or whims. Households can grow but
   never shrink or end.
