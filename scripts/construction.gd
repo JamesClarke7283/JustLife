@@ -393,13 +393,114 @@ func _make_roof_proposal(p:Vector3)->Dictionary:
 	else:view["error"]=str(quote.error)
 	return view
 
+func _nearest_valid_stair(state:Dictionary,p:Vector3)->Dictionary:
+	# A stair must satisfy its structural geometry plus the whole-world checks
+	# (furnishings, actors, routes) in one placement. Rather than make the player
+	# hunt for the exact spot, walk outward in quarter-metre steps and return the
+	# nearest structurally valid candidate. A valid click keeps its exact
+	# coordinates, because it is the first candidate tried.
+	#
+	# This runs on every preview rebuild, so the search is deliberately
+	# structural-only and ring-bounded: the authoritative whole-world quote still
+	# runs once, on the chosen point, exactly as it did before. Searching with
+	# that quote for every candidate would cost tens of milliseconds per mouse
+	# move for no extra honesty, since its answer is already the one shown.
+	const MAX_RING:int=8
+	var rotation:int=posmod(roundi(world.placement_angle),360)
+	var best:Dictionary={}
+	var best_distance:float=INF
+	for ring:int in range(0,MAX_RING+1):
+		for step:int in range(-ring,ring+1):
+			# Ring zero is the clicked point itself, so an exact valid click is
+			# never nudged to a neighbour.
+			var offsets:Array=[Vector2.ZERO] if ring==0 else [Vector2(float(step),float(ring)),Vector2(float(step),-float(ring)),Vector2(float(ring),float(step)),Vector2(-float(ring),float(step))]
+			for offset:Vector2 in offsets:
+				var record:Dictionary={"x":snappedf(p.x+offset.x*.25,.25),"z":snappedf(p.z+offset.y*.25,.25),"rotation":rotation}
+				var distance:float=Vector2(record.x-p.x,record.z-p.z).length()
+				if distance>=best_distance:continue
+				# Reject the impossible spots with two rectangle tests before
+				# paying for a full structural proposal (about 2.5 ms each).
+				var stair:Dictionary={"x":record.x,"z":record.z,"rotation":rotation,"lower":0,"upper":1}
+				if not Building.LOT.encloses(Building.stair_rect(stair)) or not Building.LOT.encloses(Building.landing_rect(stair,false)) or not Building.LOT.encloses(Building.landing_rect(stair,true)):continue
+				if not Building.footprint_supported(state,1,Building.stair_rect(stair)):continue
+				if not Building.propose(state,{"op":"add","collection":"stairs","record":record.duplicate(true)},1000000).get("ok",false):continue
+				best_distance=distance;best=record
+		# A nearer ring already answered; an outer ring can only be worse.
+		if not best.is_empty():return best
+	return {}
+
+
+func _supported_upper_slab(state:Dictionary, area:Rect2) -> Dictionary:
+	# The slab must rest on two complete opposite ground walls. Instead of
+	# refusing a drag that runs past them, take the largest rectangle spanned by
+	# a pair of opposite bearing walls and clip it to what the player dragged:
+	# one rough rectangle then buys the whole floor instead of having to trace it.
+	var walls:Array=[]
+	for wall:Dictionary in state.walls:
+		if int(wall.level)!=0 or float(wall.height)<2.6:continue
+		var r:Rect2=Building.rect(wall)
+		if minf(r.size.x,r.size.y)>.20:continue
+		walls.append({"id":str(wall.id),"rect":r,"cx":r.get_center().x,"cz":r.get_center().y})
+	var best:Dictionary={};var best_area:float=0.0
+	for first:Dictionary in walls:
+		for second:Dictionary in walls:
+			if str(first.id)==str(second.id):continue
+			var a:Rect2=first.rect;var b:Rect2=second.rect
+			var slab:=Rect2()
+			if a.size.x>a.size.y and b.size.x>b.size.y:
+				# Two walls running along x, facing each other across z.
+				var low:float=minf(first.cz,second.cz);var high:float=maxf(first.cz,second.cz)
+				var left:float=maxf(a.position.x,b.position.x);var right:float=minf(a.end.x,b.end.x)
+				slab=Rect2(maxf(left,area.position.x),maxf(low,area.position.y),minf(right,area.end.x)-maxf(left,area.position.x),minf(high,area.end.y)-maxf(low,area.position.y))
+			elif a.size.y>=a.size.x and b.size.y>=b.size.x:
+				# Two walls running along z, facing each other across x.
+				var low2:float=minf(first.cx,second.cx);var high2:float=maxf(first.cx,second.cx)
+				var bottom:float=maxf(a.position.y,b.position.y);var top:float=minf(a.end.y,b.end.y)
+				slab=Rect2(maxf(low2,area.position.x),maxf(bottom,area.position.y),minf(high2,area.end.x)-maxf(low2,area.position.x),minf(top,area.end.y)-maxf(bottom,area.position.y))
+			else:continue
+			if slab.size.x<.5 or slab.size.y<.5:continue
+			var trial:Dictionary={"level":1,"x":slab.get_center().x,"z":slab.get_center().y,"w":slab.size.x,"d":slab.size.y,
+				"material":"cfa97e","supports":[str(first.id),str(second.id)]}
+			if not Building._perimeter_support_error(state,trial,0).is_empty():continue
+			if not Building.validate(_state_with_floor(state,trial)).is_empty():continue
+			if slab.get_area()>best_area:best_area=slab.get_area();best=trial
+	return best
+
+
+func _fit_to_ground_support(state:Dictionary, area:Rect2) -> Dictionary:
+	# The wall centrelines run a half-thickness past the ground slab, so a slab
+	# traced straight along them overhangs the floor below by a few centimetres
+	# and would be refused. Intersect each candidate with the lower floors and
+	# keep the largest fit that both rests on its two walls and stays supported.
+	var best:Dictionary={};var best_area:float=0.0
+	for floor:Dictionary in state.floors:
+		if int(floor.level)!=0:continue
+		var clipped:Rect2=area.intersection(Building.rect(floor))
+		if clipped.size.x<.5 or clipped.size.y<.5:continue
+		var fitted:Dictionary=_supported_upper_slab(state,clipped)
+		if fitted.is_empty():continue
+		var fit_area:float=float(fitted.w)*float(fitted.d)
+		if fit_area>best_area:best_area=fit_area;best=fitted
+	return best
+
+
+func _state_with_floor(state:Dictionary, record:Dictionary) -> Dictionary:
+	var trial:Dictionary=state.duplicate(true)
+	var copy:Dictionary=record.duplicate(true)
+	copy["id"]=Building._new_id(trial,"floors")
+	trial.floors.append(copy)
+	return trial
+
+
 func _make_level_proposal(p:Vector3)->Dictionary:
 	var state_result:Dictionary=validated_state()
 	if not bool(state_result.ok):return {"valid":false,"error":str(state_result.error)}
 	var state:Dictionary=state_result.state
 	var operation:Dictionary={};var view:Dictionary={"valid":false}
 	if tool=="stairs":
-		var record:Dictionary={"x":p.x,"z":p.z,"rotation":posmod(roundi(world.placement_angle),360)}
+		var spot:Dictionary=_nearest_valid_stair(state,p)
+		if spot.is_empty():return {"valid":false,"error":"There is no clear staircase spot here. Point at the floor beside the upper opening; R rotates."}
+		var record:Dictionary={"x":spot.x,"z":spot.z,"rotation":spot.rotation}
 		operation={"op":"add","collection":"stairs","record":record};view["stair_preview"]=record
 	elif tool=="floor":
 		if not anchored:return {}
@@ -408,13 +509,13 @@ func _make_level_proposal(p:Vector3)->Dictionary:
 		var record:Dictionary={"level":build_level,"x":(p.x+anchor.x)*.5,"z":(p.z+anchor.z)*.5,"w":width,"d":depth,"material":"cfa97e"}
 		view["floors"]=[record]
 		if build_level==1:
-			var found:bool=false
-			for first:Dictionary in state.walls:
-				for second:Dictionary in state.walls:
-					record["supports"]=[str(first.id),str(second.id)]
-					if Building._perimeter_support_error(state,record,0).is_empty():found=true;break
-				if found:break
-			if not found:view["error"]="An upper floor needs two complete opposite bearing walls below it. Enclose the room below with walls first (a closed room works), or drag a smaller rectangle over a walled room.";return view
+			# The slab rests on two complete opposite bearing walls. A drag that
+			# runs past them is fitted to the largest supported span, so a rough
+			# rectangle still buys the whole floor instead of being refused.
+			var fitted:Dictionary=_fit_to_ground_support(state,Rect2(Vector2(minf(p.x,anchor.x),minf(p.z,anchor.z)),Vector2(width,depth)))
+			if fitted.is_empty():view["error"]="An upper floor needs two complete opposite bearing walls below it. Enclose the room below with walls first (a closed room works), or drag a smaller rectangle over a walled room.";return view
+			record=fitted
+			view["floors"]=[record]
 		operation={"op":"add","collection":"floors","record":record}
 	else:
 		var selected:Dictionary={}

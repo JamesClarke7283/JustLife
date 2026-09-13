@@ -54,6 +54,8 @@ var material_cache: Dictionary = {}
 var construction: LifeConstruction
 var landscape_trees:Array[Node3D]=[]
 var ceiling_beams:Array[MeshInstance3D]=[]
+var indoor_lights:Array[Dictionary]=[]
+var indoor_lights_lit:bool=true
 var _desk_boosters:Dictionary={}
 var oven_presentations:Dictionary={}
 var oven_food_views:Dictionary={}
@@ -141,7 +143,7 @@ func create_home(layout: Array = []) -> void:
 	for a in actors.values():
 		if is_instance_valid(a): a.queue_free()
 	actors.clear()
-	landscape_trees.clear();ceiling_beams.clear()
+	landscape_trees.clear();ceiling_beams.clear();indoor_lights.clear()
 	starter_floor_nodes.clear();view_level=0
 	house = Node3D.new()
 	house.name = "JuniperHouse"
@@ -186,6 +188,14 @@ func create_home(layout: Array = []) -> void:
 	wall(Vector3(5.0,.47,-1.15),Vector3(2.1,.72,.13),"e4dfce",true)
 	for x in [-4.25,-1.25,3.3]: window_panel(Vector3(x,1.78,-4.945),false)
 	for z in [-2.3,2.2]: window_panel(Vector3(-5.945,1.75,z),true)
+	# One warm ceiling light per room. The kitchen, lounge, bedroom and bathroom
+	# can each be switched from their own light, and Build carries the state.
+	ceiling_light(house,Vector3(-3.4,2.52,-3.0),"kitchen")
+	ceiling_light(house,Vector3(-3.2,2.52,2.4),"lounge")
+	ceiling_light(house,Vector3(3.6,2.52,1.4),"bedroom")
+	ceiling_light(house,Vector3(3.6,2.52,-3.0),"bathroom")
+	ceiling_light(house,Vector3(-4.6,2.52,5.0),"hall")
+	set_indoor_lights(true)
 	# Wall accents, skirting, door thresholds and entry.
 	var back_skirting:MeshInstance3D=box(house,Vector3(0,.24,-4.94),Vector3(12,.18,.04),"fcf5e6")
 	back_skirting.set_meta("wall_decoration",true);back_skirting.set_meta("wall_support_normal",Vector3.FORWARD)
@@ -496,6 +506,21 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 		glow.position=Vector3(0,1.44,.38);glow.light_color=Color("ffd9a1");glow.light_energy=.95;glow.omni_range=4.2
 		glow.shadow_enabled=false;glow.visible=bool(entry.get("lit",true))
 		node.add_child(glow)
+	if kind=="rubbish_bin":
+		# A soft bag rises above the rim once the bin is full; the household
+		# service toggles it, so the bin visibly needs emptying.
+		var bag:MeshInstance3D=box(node,Vector3(0,.60,0),Vector3(.30,.20,.30),"2b3330")
+		bag.name="BinBag";bag.visible=false
+	if kind=="bookshelf":
+		# Empty slots wait on the shelf; buying a book fills one and colours it.
+		for index:int in range(6):
+			var shelf_book:MeshInstance3D=box(node,Vector3(-.42+float(index%3)*.42,.42+float(index/3)*.62,-.06),Vector3(.10,.34,.22),"b6b29c")
+			shelf_book.name="ShelfBook_%d" % index
+			shelf_book.visible=false
+			for face:Node in shelf_book.find_children("*","MeshInstance3D",true,false):pass
+			shelf_book.set_meta("book_cover",true)
+	if kind in LifeCatalog.INSTRUMENTS:
+		pass
 	var info:Dictionary=entry.duplicate(true)
 	info["node"]=node
 	info["label"]=data.label
@@ -528,7 +553,7 @@ func remove_item(id: String) -> Dictionary:
 func serialize_items() -> Array:
 	var out:Array=[]
 	for item in items:
-		if bool(item.get("transient_food",false)) or bool(item.get("transient_puddle",false)):continue
+		if bool(item.get("transient_food",false)) or bool(item.get("transient_puddle",false)) or bool(item.get("derived",false)):continue
 		var entry:Dictionary={"id":item.id,"kind":item.kind,"x":item.node.position.x,"z":item.node.position.z,"rotation":item.node.rotation_degrees.y}
 		if item_level(item)!=0:entry["level"]=item_level(item)
 		if str(item.kind)=="floor_lamp" and not bool(item.get("lit",true)):entry["lit"]=false
@@ -550,7 +575,7 @@ func rebuild_navigation() -> void:
 			var solid:bool = construction.point_blocked(p)
 			for item in items:
 				if item_level(item)!=0:continue
-				if item.kind in ["meal","plate","puddle"] or LifeCatalog.passable(str(item.kind)):continue
+				if item.kind in ["meal","plate","puddle"] or bool(item.get("derived",false)) or LifeCatalog.passable(str(item.kind)):continue
 				var local:Vector3=item.node.to_local(Vector3(p.x,.16,p.y))
 				var extent:Vector2=item.size*.5+Vector2(.16,.16)
 				if absf(local.x)<extent.x and absf(local.z)<extent.y:solid=true;break
@@ -559,7 +584,7 @@ func rebuild_navigation() -> void:
 	if not bool(result.ok):last_layout_error=str(result.error);return
 	var obstacles:Array=[]
 	for item:Dictionary in items:
-		if str(item.kind) in ["meal","plate","puddle"] or LifeCatalog.passable(str(item.kind)):continue
+		if str(item.kind) in ["meal","plate","puddle"] or bool(item.get("derived",false)) or LifeCatalog.passable(str(item.kind)):continue
 		var source:Dictionary={"kind":str(item.kind),"x":item.node.position.x,"z":item.node.position.z,"rotation":item.node.rotation_degrees.y}
 		var area:Rect2=furnishing_rect(source)
 		obstacles.append({"id":str(item.id),"level":item_level(item),"x":area.get_center().x,"z":area.get_center().y,"w":area.size.x,"d":area.size.y})
@@ -756,7 +781,7 @@ func can_place(kind:String,p:Vector3,angle:float) -> bool:
 	if construction.rect_blocked(rect,level):return false
 	for item in items:
 		if item_level(item)!=level:continue
-		if item.kind in ["meal","plate","puddle"] or LifeCatalog.passable(str(item.kind)):continue
+		if item.kind in ["meal","plate","puddle"] or bool(item.get("derived",false)) or LifeCatalog.passable(str(item.kind)):continue
 		var s:Vector2=item.size
 		if int(roundf(item.node.rotation_degrees.y/90))%2:s=Vector2(s.y,s.x)
 		var other=Rect2(Vector2(item.node.position.x,item.node.position.z)-s/2,s)
@@ -823,6 +848,8 @@ func pick(screen:Vector2) -> void:
 		var id:String=str(hit.collider.get_meta("item_id",""))
 		for item in items:
 			if item.id==id:object_clicked.emit(item,screen);return
+		var light:Dictionary=room_light_record(id)
+		if not light.is_empty():object_clicked.emit(light,screen);return
 		if actors.has(id) and not bool(actors[id].get_meta("away",false)):object_clicked.emit({"id":id,"kind":"neighbor","label":actors[id].get_meta("display_name"),"node":actors[id],"size":Vector2(.6,.6)},screen);return
 	ground_clicked.emit(floor_point(screen))
 
@@ -841,6 +868,69 @@ func set_cutaway(value:bool) -> void:
 	if construction:construction.update_cutaway(value)
 	for beam:MeshInstance3D in ceiling_beams:
 		if is_instance_valid(beam):beam.visible=not value
+
+
+## One ceiling light per enclosed room, switched from the room's own control.
+## The fixture is a flat disc plus a lit globe; `set_indoor_lights` toggles the
+## globes and the matching OmniLight3D together, so the light is visible state.
+func ceiling_light(parent:Node3D,at:Vector3,room:String) -> void:
+	var fixture:MeshInstance3D=box(parent,at+Vector3(0,.09,0),Vector3(.42,.06,.42),"f6f1e4")
+	fixture.name="LightFixture_"+room
+	var dome:MeshInstance3D=sphere(parent,at+Vector3(0,0.0,0),Vector3(.20,.13,.20),"fff3d8")
+	dome.name="LightDome_"+room
+	var light:=OmniLight3D.new()
+	light.name="IndoorLight_"+room
+	light.position=at+Vector3(0,-.06,0)
+	light.light_color=Color("ffe6bd");light.light_energy=1.05;light.omni_range=6.5
+	light.shadow_enabled=false
+	parent.add_child(light)
+	# Clicking the fitting switches the room. The dome is a real pickable body,
+	# and the derived record stays out of the saved layout: it is rebuilt from
+	# the construction, never stored as furniture.
+	var id:String="room_light_"+room
+	var body:=StaticBody3D.new()
+	body.collision_layer=PICK_GROUND if point_level(at)<=0 else PICK_UPPER
+	dome.add_child(body)
+	var shape:=CollisionShape3D.new()
+	var bounds:=BoxShape3D.new()
+	bounds.size=Vector3(.44,.34,.44)
+	shape.shape=bounds
+	body.add_child(shape)
+	body.set_meta("item_id",id)
+	var info:Dictionary={"id":id,"kind":"room_light","label":"%s light" % room.capitalize(),"node":fixture,"size":Vector2(.44,.44),"room":room,"derived":true,"level":0}
+	indoor_lights.append({"room":room,"light":light,"dome":dome,"fixture":fixture,"info":info})
+
+func room_light_record(id:String) -> Dictionary:
+	# Room lights are part of the house, not furnishings: they are rebuilt from
+	# the construction on every load and never enter the saved layout or the
+	# item list. Picking still resolves them here so a Lifelet can switch one.
+	for entry:Dictionary in indoor_lights:
+		var info:Dictionary=entry.info
+		if str(info.id)!=id:continue
+		info["lit"]=is_instance_valid(entry.light) and entry.light.visible
+		return info
+	return {}
+
+func set_indoor_lights(lit:bool,rooms:Array=[]) -> void:
+	indoor_lights_lit=lit
+	for entry:Dictionary in indoor_lights:
+		if not rooms.is_empty() and str(entry.room) not in rooms:continue
+		var light:OmniLight3D=entry.light
+		var dome:MeshInstance3D=entry.dome
+		if is_instance_valid(light):light.visible=lit
+		if is_instance_valid(dome):dome.material_override=material("fff3d8" if lit else "c9c3b6")
+
+func room_of(point:Vector3,level:int=0) -> String:
+	# The nearest ceiling light on this floor names the room a Lifelet stands in.
+	var best:String=""
+	var nearest:float=INF
+	for entry:Dictionary in indoor_lights:
+		var light:OmniLight3D=entry.light
+		if not is_instance_valid(light) or point_level(light.global_position)>1:continue
+		if absf(light.global_position.y-(Building.level_y(level)+2.55))>0.6:continue
+		var distance:float=Vector2(light.global_position.x-point.x,light.global_position.z-point.z).length()
+		if distance<nearest:nearest=distance;best=str(entry.room)
+	return best
 
 func _process(delta:float) -> void:
 	elapsed+=delta
@@ -1089,7 +1179,7 @@ func update_oven_presentations(states:Dictionary) -> void:
 
 func create_public_venue(place:String,layout:Array) -> void:
 	if house:house.queue_free()
-	actors.clear();items.clear();walls.clear();landscape_trees.clear();ceiling_beams.clear()
+	actors.clear();items.clear();walls.clear();landscape_trees.clear();ceiling_beams.clear();indoor_lights.clear()
 	starter_floor_nodes.clear();view_level=0
 	house=Node3D.new();house.name="Community_"+place;add_child(house)
 	construction=LifeConstruction.new();house.add_child(construction);construction.initialize(self)
@@ -1185,7 +1275,7 @@ func create_resident_home(place:String,layout:Array) -> void:
 	last_layout_error=validate_home_layout(layout)
 	if not last_layout_error.is_empty():return
 	if house:house.queue_free()
-	actors.clear();items.clear();walls.clear();landscape_trees.clear();ceiling_beams.clear();starter_floor_nodes.clear();view_level=0
+	actors.clear();items.clear();walls.clear();landscape_trees.clear();ceiling_beams.clear();indoor_lights.clear();starter_floor_nodes.clear();view_level=0
 	house=Node3D.new();house.name="ResidentHome_"+place;add_child(house)
 	construction=LifeConstruction.new();house.add_child(construction);construction.initialize(self)
 	furniture=Node3D.new();furniture.name="Furniture";house.add_child(furniture)

@@ -2,7 +2,7 @@ extends Node
 class_name LifeMealFlow
 ## Routes preparation, carrying, independent diners, leftovers and washing.
 const Building=preload("res://scripts/building_state.gd")
-const ACTIONS := ["serve_meal","eat_meal","store_meal","clean_plate","discard_meal"]
+const ACTIONS := ["serve_meal","eat_meal","store_meal","clean_plate","discard_meal","clear_table","put_in_fridge"]
 # Top faces in tools/create_furniture.py, measured from each furniture root.
 # Meal meshes have their underside at local Y=0; 2 mm avoids contact flicker.
 const SURFACE_HEIGHTS := LifeMeals.SURFACE_HEIGHTS
@@ -99,10 +99,21 @@ func action_availability(sim:LifeSim,id:String,target:String) -> String:
 		if not plate.is_empty() and str(plate.owner).is_empty() and float(plate.progress)<1 and now()<float(plate.expires):return ""
 		return "Choose an available serving or a plate with food."
 	if id=="store_meal":
+		var held_plate:Dictionary=food().portion(target)
+		if not held_plate.is_empty():
+			# A serving plated but left uneaten goes back to its dish in the fridge.
+			if not str(held_plate.owner).is_empty():return "That plate is being used."
+			if float(held_plate.progress)>=1.0:return "That plate is empty. Wash it instead."
+			if str(held_plate.storage) not in ["surface","table"]:return "That serving is not sitting out."
+			if now()>=float(held_plate.expires):return "This food has spoiled. Clear it away."
+			if app.world.closest_item("fridge",Vector3.ZERO).is_empty():return "Place a fridge for leftovers."
+			return ""
 		var batch:Dictionary=food().batch(target)
 		if batch.is_empty() or int(batch.remaining)<=0 or now()>=float(batch.expires):return "Only fresh remaining servings can be stored."
 		if str(batch.storage)!="surface" or not str(batch.owner).is_empty():return "That dish is already stored or being carried."
 		if app.world.closest_item("fridge",Vector3.ZERO).is_empty():return "Place a fridge for leftovers."
+	if id=="put_in_fridge":
+		if _out_serving().is_empty():return "No food is sitting out to put away."
 	if id=="discard_meal":
 		var batch:Dictionary=food().batch(target)
 		if batch.is_empty() or int(batch.remaining)<=0 or not str(batch.owner).is_empty():return "That serving dish is empty or being carried."
@@ -111,12 +122,18 @@ func action_availability(sim:LifeSim,id:String,target:String) -> String:
 		var plate:Dictionary=food().portion(target)
 		if plate.is_empty() or not str(plate.owner).is_empty():return "That plate is being used."
 		if app.world.closest_item("sink",Vector3.ZERO).is_empty():return "Place a sink to wash dishes."
+	if id=="clear_table":
+		if not _clear_target_dirty(target):return "There are no used plates or finished dishes on this surface to clear."
+		if not food().carried_by(person).is_empty():return "Put down the food you are carrying first."
+		if app.world.closest_item("sink",Vector3.ZERO).is_empty():return "Place a sink to wash the plates at."
 	return ""
 
 func actions_for(sim:LifeSim,kind:String,target:String) -> Array:
 	var ids:Array=[]
 	if kind=="meal":ids=["eat_meal","store_meal","discard_meal"]
-	if kind=="plate":ids=["eat_meal","clean_plate"]
+	if kind=="plate":ids=["eat_meal","clean_plate","store_meal"]
+	if kind=="surface":ids=["clear_table"]
+	if kind=="fridge":ids=["put_in_fridge"]
 	var result:Array=[]
 	for id:String in ids:
 		var definition:Dictionary=sim.get_action_definition(id)
@@ -129,6 +146,20 @@ func resolve(sim:LifeSim,action:Dictionary) -> void:
 	if str(action.id)=="cook" and str(action.get("recipe",""))=="harvest_bake":
 		var oven:Dictionary=item(str(action.target_id))
 		if not oven.is_empty():action.target_position=app.world.oven_approach(oven)
+		return
+	if action.id=="clear_table":
+		# The table is the target while picking up; once cleared, the Lifelet
+		# walks the plates to the sink. The stage change itself happens in
+		# before_begin, after they actually reach the table.
+		if action.get("table_stage")=="clear":
+			var sink:Dictionary=app.world.closest_item("sink",actor(member_id(sim)).position)
+			if not sink.is_empty():action.target_id=sink.id
+		return
+	if action.id=="put_in_fridge":
+		# Out to the dish while picking it up, then to the fridge to store it.
+		if str(action.get("fridge_stage",""))=="store":
+			var fridge:Dictionary=app.world.closest_item("fridge",actor(member_id(sim)).position)
+			if not fridge.is_empty():action.target_id=fridge.id
 		return
 	if str(action.id) not in ACTIONS:return
 	var person:String=member_id(sim)
@@ -152,6 +183,9 @@ func resolve(sim:LifeSim,action:Dictionary) -> void:
 	elif action.get("meal_stage") in ["wash","discard"]:
 		var sink:Dictionary=app.world.closest_item("sink",actor(person).position)
 		if not sink.is_empty():action.target_id=sink.id
+	elif action.get("table_stage")=="clear":
+		var sink:Dictionary=app.world.closest_item("sink",actor(person).position)
+		if not sink.is_empty():action.target_id=sink.id
 	var target:Dictionary=item(str(action.target_id))
 	if not target.is_empty():action.target_position=app.world.approach(target)
 
@@ -161,6 +195,30 @@ func before_begin(sim:LifeSim,action:Dictionary) -> bool:
 		if not problem.is_empty():_stop(sim,problem);return false
 	if str(action.id) not in ACTIONS:return true
 	var person:String=member_id(sim)
+	if action.id=="clear_table":
+		if not action.has("table_stage"):action.table_stage="pickup"
+		if action.get("table_stage")=="pickup":
+			action.table_id=str(action.target_id)
+			if not _clear_target_dirty(str(action.table_id)):_stop(sim,"There is nothing left to clear here.");return false
+			action.table_stage="clear"
+			sim._emit_action_started(action)
+			return false
+		return true
+	if action.id=="put_in_fridge":
+		if not action.has("fridge_stage"):action.fridge_stage="pickup"
+		if action.get("fridge_stage")=="pickup":
+			var out:Dictionary=_out_serving()
+			if out.is_empty():_stop(sim,"Nothing is sitting out to put away.");return false
+			if not food().take_portion(str(out.id),person,now()):_stop(sim,"That serving is no longer available.");return false
+			action.meal_plate=str(out.id)
+			action.target_id=str(out.host)
+			var surface:Dictionary=item(str(out.host))
+			if not surface.is_empty():action.target_position=app.world.approach(surface)
+			action.fridge_stage="store"
+			sync_due=true
+			sim._emit_action_started(action)
+			return false
+		return true
 	if action.id=="eat_meal" and action.get("meal_stage")=="pickup":
 		var plate:Dictionary=food().portion(str(action.get("meal_plate","")))
 		if plate.is_empty():
@@ -207,9 +265,52 @@ func carry_diner_plate(action:Dictionary) -> void:
 		plate.storage="carried"
 		plate.seat=""
 
+func _clear_target_dirty(host_id:String) -> bool:
+	return not _dirty_on(host_id).is_empty()
+
+func _out_serving(except_id:String="") -> Dictionary:
+	# One uneaten serving plated and left out on this venue's surfaces: the food
+	# the fridge's own menu gathers up. A carried, eaten or spoiled serving is
+	# not "out", and one already claimed by another diner is theirs.
+	for plate:Dictionary in food().portions:
+		if str(plate.id)==except_id or str(plate.venue)!=app.current_venue:continue
+		if str(plate.storage) not in ["surface","table"] or not str(plate.owner).is_empty():continue
+		if float(plate.progress)>=1.0 or now()>=float(plate.expires):continue
+		if app._find_item(str(plate.host)).is_empty():continue
+		return plate
+	return {}
+
+func _dirty_on(host_id:String) -> Array:
+	# Used plates and finished serving dishes left on one surface. A plate with
+	# a live owner is still in use; a serving dish with servings left is food.
+	var result:Array=[]
+	for plate:Dictionary in food().portions:
+		if str(plate.venue)!=app.current_venue or str(plate.host)!=host_id:continue
+		if str(plate.storage) not in ["table","surface","dirty"] or not str(plate.owner).is_empty():continue
+		result.append(plate)
+	for batch:Dictionary in food().batches:
+		if str(batch.venue)!=app.current_venue or str(batch.host)!=host_id or str(batch.storage)!="surface":continue
+		if not str(batch.owner).is_empty():continue
+		if int(batch.remaining)<=0 or now()>=float(batch.expires):result.append(batch)
+	return result
+
+func clear_surface(host_id:String) -> int:
+	# Carry the used plates to the sink and wash them there; a finished serving
+	# dish goes with them to the bin. The sink has no authored food surface, so
+	# clearing completes the wash rather than shelving plates on the basin.
+	var gathered:int=0
+	for value:Dictionary in _dirty_on(host_id):
+		if value.has("batch"):
+			food().discard_batch(str(value.id))
+			continue
+		food().finish_portion(str(value.id))
+		food().clean_portion(str(value.id),"")
+		gathered+=1
+	sync_due=true
+	return gathered
+
 func _footprint(value:Dictionary) -> Vector2:
 	return LifeMeals.PLATE_HALF_SIZE if value.has("batch") else LifeMeals.PLATTER_HALF_SIZE
-
 func _plate_offset(chair:Dictionary,table:Dictionary) -> Vector3:
 	var toward:Vector3=(table.node.position-chair.node.position).normalized()
 	var at:Vector3=table.node.to_local(chair.node.position+toward*.48)
@@ -641,7 +742,18 @@ func finished(sim:LifeSim,action:Dictionary) -> void:
 		food().set_batch_location(str(action.meal_source),"surface","",actor(person).position,now())
 		food().discard_batch(str(action.meal_source))
 	elif action.id=="clean_plate":food().clean_portion(str(action.meal_source),person)
-	_reconcile_guest_offer()
+	elif action.id=="put_in_fridge":
+		var fridge:Dictionary=item(str(action.target_id))
+		var serving:Dictionary=food().portion(str(action.get("meal_plate","")))
+		if not fridge.is_empty() and not serving.is_empty():
+			if food().restore_portion(str(serving.id),str(fridge.id),fridge.node.position,now(),person):
+				sim._emit_notice("The serving is back in the fridge, still fresh.")
+			else:_settle_food(serving,actor(person).position)
+	elif action.id=="clear_table":
+		var cleared:int=clear_surface(str(action.get("table_id",str(action.target_id))))
+		if cleared>0:
+			sim._emit_notice("%d used %s gathered for washing." % [cleared,"plate" if cleared==1 else "plates"])
+			if is_instance_valid(app.get("household_flow")):app.household_flow.add_rubbish(1)
 	sync_due=true
 
 func _prepend(sim:LifeSim,id:String,target:String,metadata:Dictionary) -> void:
@@ -862,6 +974,7 @@ func action_title(action:Dictionary) -> String:
 		"store_meal":return "Putting away leftovers"
 		"clean_plate":return "Taking a plate to the sink" if approaching else "Washing a plate"
 		"discard_meal":return "Clearing away the meal"
+		"clear_table":return "Walking the plates to the sink" if str(action.get("table_stage",""))=="clear" else "Clearing the table"
 	return ""
 
 
