@@ -120,6 +120,7 @@ green (`test_depth_v61` 98 checks, 0 failures).
 | `test_household` | 20 assertions, 0 failures |
 | `test_simulation` | 51 assertions, 0 failures |
 | `test_actor` | 612 checks, 0 failures |
+| `tools/verify_character_exports.py` after the iris pass | VERIFY_OK, 20/20 production hashes match |
 | `test_autonomy_policy` | 167 checks, 0 failures |
 | `test_career_day` | 89 checks, 0 failures |
 | `test_route_learning` | 6 checks, 0 failures |
@@ -144,6 +145,27 @@ green (`test_depth_v61` 98 checks, 0 failures).
 | `test_oven_reconstruction` | 371 checks, 0 failures |
 | `test_household_flow` | 16 assertions, 2 failures — **pre-existing**, reproduced with only the working tree's own price edits applied and none of this iteration's test changes |
 | fresh `git archive HEAD` export | 0 script parse errors |
+
+### A natural iris proportion (`tools/eye_iris_v61/`)
+
+The eye's iris was authored so large that it covered about **86% of the visible
+opening** — 0.031 m of iris across a 0.051 m sclera with a 0.026 m lid opening,
+where a human eye reads as 45–55%. That oversize disc was the dominant reason the
+character looked wide-eyed and unblinking.
+
+`tools/probe_eye_coverage.py` settled the cause rather than guessing: walking the
+eyeball in height bands and comparing the frontmost sclera point against the
+frontmost surrounding skin at the same height shows the lid is **already
+correct** (every band sits 3–12 mm behind the skin, covered on 11 of 14 bands on
+the left eye and 12 of 14 on the right). Neither the lid nor the socket needed
+work. Each of the six iris discs is scaled radially about its own centre by 0.70,
+which keeps the discs concentric and leaves the layering depth untouched so they
+cannot intersect; the catchlight is deliberately not scaled so the highlight
+stays readable. All four families share the identical eye structure, so one
+factor suits every age stage.
+
+Two earlier attempts at this were **rejected and removed** with the reasons
+recorded, rather than shipped as marginal changes — see the limits below.
 
 ## The in-flight WIP this iteration finished
 
@@ -180,24 +202,29 @@ committed revision was not a runnable artifact. That is now fixed: a clean
   iteration-60 reading of p50 6.2 / p95 8.3 ms on an RTX 5090. This is
   hardware-conditioned; the README already says other graphics hardware has not
   been qualified, and this number belongs beside that statement.
-- **The character close-up is still not finished art.** Eyes are flat elliptical
-  irises on a spherical sclera with a hard skin boundary and no upper-lid crease,
-  lash line or tear duct; the lips have no philtrum, vermilion border or cupid's
-  bow; and the hands are a fused paddle with no separated digits in the exported
-  GLB (`Hand_Grip_L/R` morphs sit on an arm-fill mesh). The creator's Face tab
-  zooms straight into the weakest surface. Hair — the largest of these — is now
-  fixed; the rest remain.
-- **Two eye repairs were attempted and rejected, with the reason recorded.**
+- **The character close-up is closer but still not finished art.** Hair was the
+  largest defect and the iris proportion was the second; both are now fixed, and
+  the creator's Face tab reads as a character rather than a mannequin. What
+  remains: the iris is now correctly proportioned but has no fibre striations or
+  limbal shading, so at extreme close-up it is a smooth disc; the upper-lid
+  boundary is still a hard edge with no crease, lash line or tear duct; the lips
+  have no philtrum, vermilion border or cupid's bow; and the hands are still a
+  fused paddle with no separated digits in the exported GLB (`Hand_Grip_L/R`
+  morphs sit on an arm-fill mesh).
+- **Three eye repairs were attempted; two were rejected and removed with the
+  reason recorded.**
   Projecting each surface piece onto the sclera through a nearest-surface BVH
   moved vertices laterally as well as in depth and broke the iris outline into a
   stepped edge (`evidence/face61/v61_adult_eyes.png`, a visible clipped notch at
   the bottom of each iris). A depth-only paraboloid bulge — zero at the disc
   outline, so every silhouette is preserved exactly — was correct but barely
-  visible in a matched render against the current build, because the eye's real
-  defect is the hard upper-lid boundary and an iris with no fibre or limbal
-  shading, not the iris's flatness. Neither earned another sixteen-GLB
+  visible in a matched render against the current build, because it treated the
+  iris's flatness rather than its size. Neither earned another sixteen-GLB
   re-qualification cycle, so both were removed rather than kept as marginal
-  changes. `evidence/face61/after_adult_eyes.png` is the current production eye.
+  changes. The third attempt — correcting the iris proportion, which
+  `tools/probe_eye_coverage.py` identified as the measured cause — is the one
+  that landed, in `tools/eye_iris_v61/`. `evidence/face61/after_adult_eyes.png`
+  is the eye at the point the first two were rejected.
 - **Breadth at the far end of a life.** Three recipes, one neighbourhood with
   four homes, and no death, inheritance, fears or whims. Households can grow but
   never shrink or end.
