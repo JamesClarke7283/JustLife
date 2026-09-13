@@ -225,16 +225,17 @@ committed revision was not a runnable artifact. That is now fixed: a clean
 
 ## Retained failures and limits
 
-- **The rendered home and neighbourhood runners do not pass on this machine.**
-  `python3 tests/run_playthrough.py --source . --suite home` reports 210
-  assertions / 24 failures, and `--suite neighborhood` 239 assertions / 15
-  failures, on this Intel HD 520 desktop. They fail identically on a pristine
-  `3b0aef5` export, so this is environmental, not an iteration-61 regression. The
-  dominant cause is `Input.warp_mouse` not reaching the requested coordinates
-  (observation distance ~450 px with a 1876×900 viewport against a requested
-  ~898), so the iteration-60 table's "exit 0, 0 runtime errors" describes the
-  RTX 5090 machine this project was verified on, not this one. The project's
-  documented 1440×900 override was not reproduced by the runner.
+- **The rendered home and neighbourhood runners still do not pass on this
+  machine, but their dominant cause is now fixed.** The pointer coordinate-space
+  bug above accounted for the `Viewport pointer reaches requested preview
+  coordinates` failures and the room/doorway construction cascade that depended
+  on them, and those now pass. What remains is machine-timing sensitive rather
+  than systematic: the project already documents that rendered fixtures need an
+  otherwise-idle machine, and the failure count varies run to run (13 and 21
+  across two consecutive runs at load average ~4 on a 2-core CPU). The
+  iteration-60 table's "exit 0, 0 runtime errors" describes the RTX 5090 machine
+  this project was verified on, not this one; on hardware that can actually run
+  these suites idle, the pointer fix should be re-measured.
 - **The frame budget is unqualified below the verified desktop.** `probe_frames`
   on this Intel HD 520 reads p50 70.8 ms / p95 104.2 ms uncapped, against the
   iteration-60 reading of p50 6.2 / p95 8.3 ms on an RTX 5090. This is
