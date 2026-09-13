@@ -7,7 +7,7 @@ primitive references and exporter version, must equal the qualified revision.
 import copy, hashlib, json, math, struct
 from pathlib import Path
 
-PINS = {'character.glb': 'bc3511bebf0129203c2090f85f20178edb532c9ec3aae671da7ac487ee8986b3', 'character_broad.glb': '7f3b9231263699917912695c04607a2e15e709aacac1d3309538a465f3d9dfe1', 'character_lod.glb': 'd98dc3be13437a35b4650626331633c1632e3c626547d62c87797d467b9d00d7', 'character_broad_lod.glb': '91fec8391dd418af89b57ab3029cd1e5bd10dc34ecdfb2544b0d908889fe8424'} # Qualified hair-lock v60 rounded tapered locks and seated hood; rig18/surface2 retained.
+PINS = {'character.glb': 'dd4d3212a92424054d59a38ffb04fa423a37145f1894209ded75141e4b02bfa3', 'character_broad.glb': '0d5769b314bf7df253d59546d998d80308a9d0bf0169101f6b8a8983f4dd5dfc', 'character_lod.glb': 'eab1c6a9c5b3eed0f3a1fb24f847b0f9b464a0e7ba5dede3bb820634b46ae3dd', 'character_broad_lod.glb': '3e45a79df7a8d67678f6f24b00a029780e88554420a2c1b7218e24eb4006aaa0'} # Qualified hair-lock v61 rounded lock sections and sealed shells.
 FORMATS = {5120:'b',5121:'B',5122:'h',5123:'H',5125:'I',5126:'f'}
 COUNTS = {'SCALAR':1,'VEC2':2,'VEC3':3,'VEC4':4,'MAT4':16}
 
