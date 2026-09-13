@@ -107,6 +107,7 @@ var creator_family_links:Array=[]
 var activity_bubbles:Control
 var sanitation_flow:LifeSanitationFlow
 var meal_flow:LifeMealFlow
+var household_flow:LifeHouseholdFlow
 var idle_space:RefCounted
 var guest_status_card:Control
 var guest_status_text:Label
@@ -128,6 +129,7 @@ func _ready() -> void:
 	world.name="World"
 	add_child(world)
 	meal_flow=LifeMealFlow.new();meal_flow.app=self;add_child(meal_flow)
+	household_flow=LifeHouseholdFlow.new(self);add_child(household_flow)
 	sanitation_flow=LifeSanitationFlow.new();sanitation_flow.app=self;add_child(sanitation_flow)
 	idle_space=preload("res://scripts/idle_space.gd").new();idle_space.app=self
 	adoption_flow=LifeAdoptionFlow.new(self)
@@ -137,6 +139,8 @@ func _ready() -> void:
 	household=LifeHousehold.new()
 	household.name="Household"
 	add_child(household)
+	household.extras_provider=household_flow.get_state
+	household.extras_restore_provider=household_flow.restore
 	household.new_household(household_profiles)
 	sim=household.selected()
 	build_transactions=LifeBuildTransactions.new(self)
@@ -1031,6 +1035,7 @@ func draw_household_bar() -> void:
 	center_button.name="CenterLifelet"
 	center_button.tooltip_text="Show this Lifelet and their floor; keep the current floor during stair transit"
 	button("Wishes",Vector2(165,841),Vector2(111,27),show_wishes)
+	button("Rewards",Vector2(279,841),Vector2(111,27),show_rewards)
 	action_context=text_label("TODAY IS YOURS",Vector2(327,738),Vector2(286,23),11,P.MUTED)
 	action_context.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	action_context.mouse_filter=Control.MOUSE_FILTER_PASS
@@ -1114,6 +1119,10 @@ func draw_household_bar() -> void:
 		career_labels["details"].tooltip_text="" if requirement.is_empty() else ("Promotion to %s needs %s level %d and full performance." % [str(requirement.next_title),str(requirement.skill).capitalize(),int(requirement.level)])
 		career_labels["work"]=button("Go to work",Vector2(1241,779),Vector2(149,37),_go_to_work,true)
 		button("Career details",Vector2(1241,824),Vector2(149,32),show_career_record)
+		if sim.character.traits.has("Active"):
+			# An Active Lifelet's own habit: out of the front door and around the
+			# block, offered beside the work departure it shares a target with.
+			button("Morning run",Vector2(989,848),Vector2(230,24),_morning_run)
 
 func _update_selection_marker(delta: float) -> void:
 	# The selected Lifelet wears a floating gem tinted by their current mood.
@@ -1490,7 +1499,7 @@ func set_build_level(level:int) -> void:
 		# Second-storey guidance: switching to Upper with no slab yet starts
 		# the floor tool itself, so the recipe is one press plus a drag.
 		begin_construction("floor")
-		show_notice("No upper floor yet, so the Floor tool is ready. Click two corners over the rooms below to lay it — the slab rests on two complete opposite ground walls, so an enclosed room works. Then choose Stairs and point at its lower end.")
+		show_notice("No upper floor yet, so the Floor tool is ready. Click two corners anywhere over the rooms below — the slab fits itself to the two bearing walls, so a rough rectangle buys the whole floor. Then choose Stairs; it snaps onto the free edge beside the opening.")
 	draw_live()
 
 func set_roof_pitch(value:float)->void:
@@ -1512,7 +1521,7 @@ func begin_construction(tool:String) -> void:
 		elif tool=="roof_edit":show_notice("Select a roof, then its two new corners. R rotates; pitch and finish changes are free.")
 		else:show_notice("Point at a roof to review its removal. Esc cancels.")
 	elif tool=="floor" and world.view_level==0:show_notice("This paints the ground-floor finish. For a second storey, press Upper first — it starts the upper floor tool for you.")
-	elif tool=="stairs":world.placement_angle=0;show_notice("Point at the stair's lower end. R rotates. The upper opening and guard are included.")
+	elif tool=="stairs":world.placement_angle=0;show_notice("Point near the upper slab's free edge. R rotates; the stair snaps to the nearest clear spot with its opening and guard included.")
 	elif tool=="remove_structure":show_notice("Point at a floor or staircase to review its removal. Esc cancels.")
 	else:show_notice("Click two corners to create a %s. Esc cancels." % tool if tool in ["wall","room","floor"] else "Click a wall to %s. Esc cancels." % ("add a doorway" if tool=="door" else "remove it"))
 
@@ -1661,10 +1670,22 @@ func dismiss_layer() -> void:
 	bg.pressed.connect(close_overlay)
 
 func switch_lamp(item:Dictionary) -> void:
-	var lamp:Dictionary=_find_item(str(item.id))
-	if lamp.is_empty() or str(lamp.kind)!="floor_lamp":return
-	world.set_item_lit(lamp,not world.item_lit(lamp))
-	show_notice("The reading lamp glows warm." if world.item_lit(lamp) else "The reading lamp goes dark.")
+	if str(item.kind)=="floor_lamp":
+		var lamp:Dictionary=_find_item(str(item.id))
+		if lamp.is_empty():return
+		world.set_item_lit(lamp,not world.item_lit(lamp))
+		show_notice("The reading lamp glows warm." if world.item_lit(lamp) else "The reading lamp goes dark.")
+		return
+	var room:String=str(item.get("room",""))
+	if room.is_empty():return
+	for entry:Dictionary in world.indoor_lights:
+		if str(entry.room)!=room:continue
+		var light:OmniLight3D=entry.light
+		var lit:bool=is_instance_valid(light) and light.visible
+		world.set_indoor_lights(not lit,[room])
+		show_notice("The %s light is on." % room if not lit else "The %s light is off." % room)
+		return
+
 
 func show_interactions(item:Dictionary,screen:Vector2) -> void:
 	close_overlay();overlay_open=true;dismiss_layer()
@@ -1686,6 +1707,10 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 	if str(item.kind)=="floor_lamp" and not _find_item(str(item.id)).is_empty():
 		var lamp:Dictionary=_find_item(str(item.id))
 		actions.append({"id":"switch_light","label":"Switch off" if world.item_lit(lamp) else "Switch on","cost":0,"duration":0,"available":true,"description":"A warm pool of light for evenings in."})
+	elif str(item.kind)=="room_light":
+		var room:String=str(item.get("room",""))
+		var lit:bool=bool(item.get("lit",true))
+		actions.append({"id":"switch_light","label":"Switch off" if lit else "Switch on","cost":0,"duration":0,"available":true,"description":"%s's own ceiling light. A dark room is cosy; a bright one is easier to work in." % room.capitalize()})
 	var control_index:int=-1
 	for i in range(household.members.size()):
 		if household.members[i].id==str(item.id) and i!=household.selected_index:control_index=i
@@ -1852,6 +1877,7 @@ func _refresh_member_targets(replan:bool=true) -> void:
 	if not is_instance_valid(sim) or not is_instance_valid(world.house):return
 	sim.meal_service=meal_flow
 	sim.sanitation_service=sanitation_flow
+	sim.household_service=household_flow
 	if sim.is_away():
 		if str(sim.get_away_state().get("phase",""))=="returning":away_phases.erase(bound_member_id)
 		return
@@ -1874,7 +1900,7 @@ func _refresh_member_targets(replan:bool=true) -> void:
 		# Queued socials resolve when they start. A current social retains its
 		# admitted endpoint until the shared reconciliation below can replan it.
 		if str(action.id) in LifeSim.SOCIAL_ACTIONS:continue
-		var destination:Vector3=world.lot_exit_position(_member_index(bound_member_id)) if str(action.id) in ["school_day","career_day"] else by_id[target_id].position
+		var destination:Vector3=world.lot_exit_position(_member_index(bound_member_id)) if str(action.id) in ["school_day","career_day","morning_run"] else by_id[target_id].position
 		if str(action.id)=="cook" and str(action.get("recipe",""))=="harvest_bake":
 			var oven:Dictionary=_find_item(target_id)
 			if not oven.is_empty() and str(oven.kind)=="stove":destination=world.oven_approach(oven)
@@ -2007,6 +2033,7 @@ func _bind_member(id:String) -> void:
 	sim.autonomy_activity_available=_activity_available_for_member.bind(id)
 	sim.meal_service=meal_flow
 	sim.sanitation_service=sanitation_flow
+	sim.household_service=household_flow
 	player=world.actors.get(id)
 	var motion:Dictionary=motion_states.get(id,_empty_motion())
 	path=motion.path;path_index=motion.index;walk_only=motion.walk;pending_action=motion.pending
@@ -2263,6 +2290,7 @@ func show_wishes() -> void:
 	small_caps("Little steps. A fuller life.",Vector2(500,139),Vector2(441,24),overlay)
 	text_label("Your wishes",Vector2(497,177),Vector2(440,60),40,P.INK,true,overlay)
 	text_label("%d satisfaction earned" % sim.satisfaction,Vector2(500,247),Vector2(440,34),17,P.TEAL,false,overlay)
+	button("Rewards store →",Vector2(795,247),Vector2(146,30),show_rewards,false,overlay)
 	for i in range(sim.wants.size()):
 		var w:Dictionary=sim.wants[i]
 		var y=304+i*105
@@ -2270,6 +2298,34 @@ func show_wishes() -> void:
 		paragraph(w.description,Vector2(527,y+36),Vector2(407,40),14,P.MUTED,overlay)
 		line(Vector2(500,y+91),Vector2(440,1),overlay)
 	button("Back to life",Vector2(500,695),Vector2(440,45),close_overlay,true,overlay)
+
+func show_rewards() -> void:
+	close_overlay();overlay_open=true;dismiss_layer()
+	card(Vector2(467,70),Vector2(506,741),P.WHITE,24,overlay)
+	small_caps("Spend what you have earned.",Vector2(500,92),Vector2(441,24),overlay)
+	text_label("Rewards store",Vector2(497,128),Vector2(440,52),38,P.INK,true,overlay)
+	text_label("%d satisfaction available" % sim.satisfaction,Vector2(500,187),Vector2(440,30),17,P.TEAL,false,overlay)
+	var scroll=ScrollContainer.new();rect(scroll,Vector2(492,228),Vector2(456,455),overlay)
+	var column=VBoxContainer.new();column.add_theme_constant_override("separation",12);scroll.add_child(column)
+	for reward:Dictionary in sim.available_rewards():
+		var row=Control.new();row.custom_minimum_size=Vector2(432,104);column.add_child(row)
+		var owned:bool=bool(reward.owned)
+		text_label(str(reward.label),Vector2(2,2),Vector2(300,28),20,P.INK,true,row)
+		var kind_label:String="Permanent" if bool(reward.permanent) else "One use"
+		text_label("%s  ·  %d satisfaction" % [kind_label,int(reward.cost)],Vector2(2,31),Vector2(300,22),13,P.TEAL,false,row)
+		paragraph(str(reward.description),Vector2(4,55),Vector2(294,44),12,P.MUTED,row)
+		var availability:Dictionary=sim.can_buy_reward(str(reward.id))
+		var buy=button("Owned" if owned else "Buy",Vector2(310,2),Vector2(118,38),func():buy_reward(str(reward.id)),false,row)
+		buy.disabled=not bool(availability.available)
+		buy.tooltip_text=str(availability.reason) if not bool(availability.available) else "Spend %d satisfaction on %s." % [int(reward.cost),str(reward.label)]
+		line(Vector2(2,98),Vector2(428,1),row)
+	button("Back to life",Vector2(500,700),Vector2(440,45),close_overlay,true,overlay)
+
+func buy_reward(id:String) -> void:
+	if sim.buy_reward(id):
+		household.adopt_selected_changes()
+		show_rewards()
+		refresh_hud()
 
 func _physical_snapshot_context() -> Dictionary:
 	return LifePhysicalSnapshot.capture(self)
@@ -2471,6 +2527,11 @@ func _prepare_loaded_world(data:Dictionary) -> Dictionary:
 	candidate.loading_game=true;candidate.mode="live";candidate.sound_enabled=false
 	candidate.household=LifeHousehold.new()
 	candidate.add_child(candidate.household)
+	candidate.household_flow=LifeHouseholdFlow.new(candidate);candidate.add_child(candidate.household_flow)
+	# The extras are validated and restored through the same provider the live
+	# household uses, so a load cannot silently drop the household's books or bins.
+	candidate.household.extras_provider=candidate.household_flow.get_state
+	candidate.household.extras_restore_provider=candidate.household_flow.restore
 	var checked:Dictionary=candidate.household.restore_state(data)
 	if not bool(checked.ok):candidate.free();return checked
 	candidate.sim=candidate.household.selected();candidate.bound_member_id=candidate.household.selected_id()
@@ -2515,6 +2576,7 @@ func _prepare_loaded_world(data:Dictionary) -> Dictionary:
 func _adopt_loaded_world(prepared:Dictionary,slot_id:String,title:String="") -> void:
 	var candidate:Node=prepared.candidate
 	var old_world:LifeWorld=world;var old_household:LifeHousehold=household;var old_meal_flow:LifeMealFlow=meal_flow;var old_sanitation_flow:LifeSanitationFlow=sanitation_flow
+	var old_household_flow:LifeHouseholdFlow=household_flow
 	# Every fallible layout, route and actual pose operation finished above.
 	# Commit the prepared nodes/services together, then retire the old world.
 	loading_game=true;load_epoch+=1
@@ -2524,6 +2586,7 @@ func _adopt_loaded_world(prepared:Dictionary,slot_id:String,title:String="") -> 
 	residents=candidate.residents;residents.app=self
 	meal_flow=candidate.meal_flow;meal_flow.app=self;meal_flow.reparent(self,false)
 	sanitation_flow=candidate.sanitation_flow;sanitation_flow.app=self;sanitation_flow.reparent(self,false)
+	household_flow=candidate.household_flow;household_flow.app=self;household_flow.reparent(self,false)
 	motion_states=candidate.motion_states
 	current_venue=candidate.current_venue;home_layout=candidate.home_layout;venue_layouts=candidate.venue_layouts
 	_connect_live_nodes()
@@ -2540,7 +2603,7 @@ func _adopt_loaded_world(prepared:Dictionary,slot_id:String,title:String="") -> 
 	player.set_selected(true)
 	prepared.viewport.free();candidate.free()
 	stage=null;preview=null
-	old_world.visible=false;old_world.queue_free();old_household.queue_free();old_meal_flow.queue_free();old_sanitation_flow.queue_free()
+	old_world.visible=false;old_world.queue_free();old_household.queue_free();old_meal_flow.queue_free();old_sanitation_flow.queue_free();old_household_flow.queue_free()
 	loading_game=false;_sync_actor_sound();draw_live()
 	show_notice("Welcome back, %s." % sim.character.name)
 
@@ -2572,6 +2635,7 @@ func _restore_journeys() -> Dictionary:
 		motion.resume_active=bool(saved.get("resource_action_active",false)) and str(current.get("phase",""))=="approach"
 		member.sim.meal_service=meal_flow
 		member.sim.sanitation_service=sanitation_flow
+		member.sim.household_service=household_flow
 		if str(current.get("phase","")) in ["approach","active"] and str(current.get("id","")) in ["plant_wee","mop_puddle"]:
 			var target_error:String=sanitation_flow.restore_action_error(id,current)
 			if not target_error.is_empty():return {"ok":false,"error":"The saved sanitation activity cannot resume: "+target_error}
@@ -3152,11 +3216,11 @@ func _update_activity_facing(delta:float,action:Dictionary,action_id:String) -> 
 		var direction:Vector3=world.actors[str(action.target_id)].position-player.position
 		player.rotation.y=lerp_angle(player.rotation.y,atan2(direction.x,direction.z),minf(delta*6,1))
 
-func _social_point_clear(point:Vector3,target:LifeActor)->bool:
+func _social_point_clear(point:Vector3,target:LifeActor,tolerance:float=0.0)->bool:
 	if not point.is_finite() or not target.visible:return false
 	if absf(point.y-target.position.y)>.1:return false
 	var distance:float=point.distance_to(target.position)
-	if distance<LifeTraversal.ROUTE_CLEARANCE or distance>1.6:return false
+	if distance<maxf(0.0,LifeTraversal.ROUTE_CLEARANCE-tolerance) or distance>1.6:return false
 	if not world.construction.building_state.is_empty():
 		if not traversal._free(bound_member_id,point):return false
 	else:
@@ -3255,7 +3319,7 @@ func _reconcile_social_routes()->void:
 
 
 func _resolve_activity_target(action:Dictionary) -> void:
-	if str(action.id) in ["school_day","career_day"]:
+	if str(action.id) in ["school_day","career_day","morning_run"]:
 		action.target_position=world.lot_exit_position(_member_index(bound_member_id));return
 	if world.actors.has(str(action.target_id)):
 		action.target_position=world.actors[str(action.target_id)].position+Vector3(0,0,.9)
@@ -3397,7 +3461,7 @@ func _partner_shares_bed(action:Dictionary,member_id:String,holder_id:String,oth
 	return str(mine.romantic_partner)==holder_id
 
 func _activity_resources(action:Dictionary) -> Array[String]:
-	if str(action.get("id","")) in ["school_day","career_day"]:return []
+	if str(action.get("id","")) in ["school_day","career_day","morning_run"]:return []
 	var target_id:String=str(action.get("target_id",""))
 	var item:Dictionary=_find_item(target_id)
 	var resources:Array[String]=[]
@@ -4002,6 +4066,9 @@ func _go_to_school() -> void:
 
 func _go_to_work() -> void:
 	if sim.queue_action("career_day","lot_exit",world.lot_exit_position(_member_index(bound_member_id))):refresh_hud()
+
+func _morning_run() -> void:
+	if sim.queue_action("morning_run","lot_exit",world.lot_exit_position(_member_index(bound_member_id))):refresh_hud()
 
 func show_career_record() -> void:
 	_begin_pause_overlay()

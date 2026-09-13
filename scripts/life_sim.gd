@@ -7,6 +7,7 @@ signal action_started(action: Dictionary)
 signal action_finished(action: Dictionary)
 var meal_service: Node
 var sanitation_service: Node
+var household_service: Node
 # Optional live resource admission; standalone simulations keep their old policy.
 var autonomy_activity_available: Callable
 const BLADDER_DESPERATE: float = 12.0
@@ -56,6 +57,7 @@ var action_queue: Array = []
 var satisfaction: int = 0
 var bills_paid: int = 0
 var last_bill_day: int = 0
+var purchased_perks: Array[String] = []  # reward ids bought from the store; permanent ones persist
 var _targets: Array = []
 var _idle_minutes: float = 0.0
 var autonomy_state: Dictionary = {"version":1,"contacts":{},"deferred":{}}
@@ -80,9 +82,25 @@ var story_events: Array = []
 var story_history: Array = []
 var _story_generated_day: int = 1
 const STORY_KINDS: Array[String] = ["neighbor_invitation", "career_opportunity", "hobby_exhibition", "garden_exchange", "learning_circle", "community_picnic", "block_party", "flea_market"]
-const SOCIAL_ACTIONS: Array[String] = ["friendly", "joke", "deep_talk", "hug", "share_interests", "sympathize", "gossip", "flirt", "argue", "ask_partner", "commit", "break_up"]
-const AGE_GATED_ACTIONS: Array[String] = ["jog", "play_toys"]
-const LEISURE_ACTIONS: Array[String] = ["paint", "read", "watch", "relax", "play_piano", "play_chess", "dance", "play_games", "practice_speech", "stretch", "warm_up", "jog", "play_toys"]
+const SOCIAL_ACTIONS: Array[String] = ["friendly", "joke", "deep_talk", "hug", "share_interests", "sympathize", "gossip", "flirt", "argue", "ask_partner", "commit", "break_up", "playful_prank", "bold_introduction"]
+# Spending satisfaction: a perk is bought once and changes a multiplier at the
+# same call sites the traits already use, while a potion acts on the spot.
+const REWARDS: Dictionary = {
+	"steel_bladder":{"label":"Steel Bladder","description":"Bedtimes and long journeys stop ruling the day. Bladder drains 30% slower, forever.","cost":250,"permanent":true,"effect":{"decay":{"bladder":0.7}}},
+	"hardy_constitution":{"label":"Hardy Constitution","description":"Late nights cost less. Energy drains 15% slower, forever.","cost":350,"permanent":true,"effect":{"decay":{"energy":0.85}}},
+	"carefree":{"label":"Carefree","description":"Boredom keeps its distance. Fun drains 15% slower, forever.","cost":300,"permanent":true,"effect":{"decay":{"fun":0.85}}},
+	"great_kisser":{"label":"Great Kisser","description":"Romance lands more easily: flirting earns 35% more romance, forever.","cost":300,"permanent":true,"effect":{"romance":1.35}},
+	"connections":{"label":"Connections","description":"A word in the right ear: every career performance gain rises 25%, forever.","cost":450,"permanent":true,"effect":{"performance":1.25}},
+	"instant_meal":{"label":"Instant Meal","description":"One use. A hot, filling plate appears at once and restores Hunger completely.","cost":120,"permanent":false,"effect":{"restore":{"hunger":100.0}}},
+	"rejuvenating_soak":{"label":"Rejuvenating Soak","description":"One use. Restores Energy and Hygiene completely in a single moment.","cost":180,"permanent":false,"effect":{"restore":{"energy":100.0,"hygiene":100.0}}},
+	"inspiring_presence":{"label":"Inspiring Presence","description":"One use. Grants the Inspired mood for 8 game hours, unlocking creative work.","cost":200,"permanent":false,"effect":{"moodlet":{"label":"Inspired by a gift","emotion":"Inspired","description":"Something in the air makes creating feel effortless.","remaining":480.0,"strength":3}}}
+}
+# One habit per trait: the option simply does not exist for anyone else.
+const TRAIT_ACTIONS: Dictionary = {"sketch_for_fun":"Creative", "host_a_chat":"Outgoing", "morning_run":"Active", "deep_read":"Bookworm", "experiment_recipe":"Foodie", "deep_clean":"Neat"}
+# One opportunity per mood: only offered while that feeling is the strongest one.
+const EMOTION_ACTIONS: Dictionary = {"paint_masterpiece":"Inspired", "study_hard":"Focused", "playful_prank":"Playful", "push_through":"Energized", "bold_introduction":"Confident"}
+const AGE_GATED_ACTIONS: Array[String] = ["jog", "play_toys", "morning_run"]
+const LEISURE_ACTIONS: Array[String] = ["paint", "read", "watch", "relax", "play_piano", "play_chess", "dance", "play_games", "practice_speech", "stretch", "warm_up", "jog", "play_toys", "sketch_for_fun", "deep_read", "experiment_recipe", "morning_run", "push_through"]
 const PRE_DUTY_LEISURE: Array[String] = ["relax", "read", "watch", "stretch", "warm_up", "paint"]  # brief pastimes before a school or work day; the short ones sit ahead of the canvas
 const DEPARTURE_WALK: float = 15.0  # game minutes allowed for the walk from a pastime to the lot exit in a busy home
 const LEISURE_APPROACH: float = 10.0  # game minutes allowed for the walk to a pastime before it starts
@@ -170,6 +188,7 @@ func new_household(profile: Dictionary) -> void:
 	satisfaction = 0
 	bills_paid = 0
 	last_bill_day = 0
+	purchased_perks.clear()
 	_idle_minutes = 0.0
 	autonomy_state = {"version":1,"contacts":{},"deferred":{}}
 	_leisure_history.clear()
@@ -180,8 +199,8 @@ func new_household(profile: Dictionary) -> void:
 
 func _build_actions() -> void:
 	_define("arrive_home","Arriving home",1.0,{},0,"",0.0,"Walk into your new home. Canceling the walk keeps this Lifelet in the family.")
-	_define("career_day", "Go to work", LifeCareerSchedule.LENGTH, {"hunger":30.0,"bladder":38.0,"social":24.0,"energy":-12.0,"fun":12.0}, 0, "", 0.0, "Weekday work, 09:00–17:00. Arrive by 10:00; late arrivals until noon reduce pay and performance. Lunch and bathroom breaks are included.")
-	_define("school_day", "Go to school", 420.0, {"hunger":22.0,"bladder":28.0,"social":35.0,"energy":-7.0,"fun":10.0}, 0, "", 0.0, "Leave for school on weekdays from 08:00. Arrive by 09:00 to be on time; late arrival is possible until 12:00. Return at 15:00. Lunch and bathroom breaks are part of the school day.")
+	_define("career_day", "Go to work", LifeCareerSchedule.LENGTH, {"hunger":30.0,"bladder":52.0,"hygiene":26.0,"social":24.0,"energy":-12.0,"fun":12.0}, 0, "", 0.0, "Weekday work, 09:00–17:00. Arrive by 10:00; late arrivals until noon reduce pay and performance. Lunch, bathroom and washroom breaks are included.")
+	_define("school_day", "Go to school", 420.0, {"hunger":22.0,"bladder":46.0,"hygiene":18.0,"social":35.0,"energy":-7.0,"fun":10.0}, 0, "", 0.0, "Leave for school on weekdays from 08:00. Arrive by 09:00 to be on time; late arrival is possible until 12:00. Return at 15:00. Lunch, bathroom and washroom breaks are part of the school day.")
 	_define("help_homework", "Help with homework", 45.0, {}, 0, "", 0.0, "Support a child or teen through one assignment and build Parenting skill.")
 	_define("school", "Attend online classes", 180.0, {}, 0, "", 0.0, "Weekday lessons at your desk, 08:00–14:00. Prepared homework improves learning and grades.")
 	_define("homework", "Do homework", 45.0, {}, 0, "", 0.0, "Complete a weekday assignment and prepare for the next attended class.")
@@ -189,15 +208,25 @@ func _build_actions() -> void:
 	_define("serve_meal","Serve the meal",2.0,{},0,"",0.0,"Carry the serving dish to a table or counter.")
 	_define("eat_meal","Take a serving",32.0,{},0,"",0.0,"Collect a plate and eat at an available dining chair.")
 	_define("store_meal","Put away leftovers",5.0,{},0,"",0.0,"Carry the remaining servings to the fridge to keep them fresh longer.")
+	_define("put_in_fridge","Put food in the fridge",5.0,{},0,"",0.0,"Gather the servings left out and put them back in the fridge while they are still fresh.")
 	_define("discard_meal","Clear this meal",5.0,{},0,"",0.0,"Carry the serving dish to the sink and discard its remaining food.")
 	_define("clean_plate","Wash this plate",10.0,{"hygiene":-1.0},0,"",0.0,"Carry the used plate to a sink and wash it.")
 	_define("snack", "Grab a snack", 15.0, {"hunger": 32.0}, 8, "", 0.0, "A quick bite to keep the day going.")
-	_define("cook", "Cook a fresh meal", 45.0, {"fun": 8.0, "hygiene": -5.0}, 25, "cooking", 34.0, "Choose a recipe to prepare and share. Cooking skill unlocks more dishes. Eating restores hunger.")
+	_define("cook", "Cook a fresh meal", 45.0, {"fun": 8.0, "hygiene": -5.0}, 12, "cooking", 34.0, "Choose a recipe to prepare and share. Cooking skill unlocks more dishes. Eating restores hunger. Ingredients start at §12.")
 	_define("sleep", "Sleep", 360.0, {"energy": 95.0, "fun": 15.0}, 0, "", 0.0, "A full night's rest restores energy and chases the boredom away.")
 	_define("try_for_baby", "Try for Baby", LifeBabyPlan.DURATION, {"social": 20.0, "fun": 14.0, "energy": -6.0}, 0, "", 0.0, "An intimate moment with your partner while you share the bed. If you both want to, this can begin a pregnancy.")
 	_define("nap", "Take a nap", 75.0, {"energy": 38.0}, 0, "", 0.0, "A short, refreshing nap.")
 	_define("shower", "Take a shower", 30.0, {"hygiene": 85.0, "fun": 4.0}, 0, "", 0.0, "Freshen up and feel ready for the day.")
-	_define("toilet", "Use toilet", 15.0, {"bladder": 95.0, "hygiene": -3.0}, 0, "", 0.0, "Take care of a pressing need.")
+	_define("wash_hands", "Wash your hands", 5.0, {"hygiene": 16.0}, 0, "", 0.0, "Soap and warm water at the sink. A quick freshen up after the bathroom, cooking or time outdoors.")
+	_define("brush_teeth", "Brush your teeth", 8.0, {"hygiene": 22.0, "fun": 2.0}, 0, "", 0.0, "Two minutes at the sink for a minty, clean feeling.")
+	_define("clear_table", "Clear the table", 10.0, {"hygiene": -1.0}, 0, "", 0.0, "Gather the used plates and finished dishes from this surface and take them to the sink.")
+	_define("empty_bin", "Empty the bin", 8.0, {"hygiene": -2.0}, 0, "", 0.0, "Take the full rubbish bag out to the street. A tidy home smells fresher.")
+	_define("practice_instrument", "Practise an instrument", 60.0, {"fun": 38.0, "energy": -5.0}, 0, "music", 36.0, "Play through a few pieces. Music skill grows with every session.")
+	_define("study_book", "Study from a book", 60.0, {"fun": 12.0, "energy": -4.0}, 0, "", 0.0, "Work through a book from the shelf. Skill books teach Cooking, Fitness, Gardening and Music.")
+	_define("buy_book", "Buy a skill book…", 0.0, {}, 0, "", 0.0, "Choose a skill book for this shelf. Books stay here ready to study.")
+	_define("switch_light", "Switch the light", 1.0, {}, 0, "", 0.0, "Turn this light on or off. A dark room is cosy; a bright one is easier to work in.")
+	_define("watch_together", "Watch TV together", 60.0, {"fun": 46.0, "social": 26.0, "energy": 4.0}, 0, "charisma", 8.0, "Share the sofa and a show with your guest. Company makes it twice the fun.")
+	_define("toilet", "Use toilet", 15.0, {"bladder": 95.0, "hygiene": -3.0}, 0, "", 0.0, "Take care of a pressing need. Your Lifelet washes their hands afterwards.")
 	_define("plant_wee", "Wee in plant pot (desperate)", 10.0, {"bladder":85.0,"hygiene":-12.0}, 0, "", 0.0, "An emergency option when bladder is 12 or lower. Walk to the pot first. A toilet is more hygienic.")
 	_define("mop_puddle", "Mop up accident", 8.0, {"hygiene":-2.0}, 0, "", 0.0, "Clean this puddle from the floor. Canceling leaves it for later.")
 	_define("relax", "Relax", 40.0, {"fun": 25.0, "energy": 12.0}, 0, "", 0.0, "Put your feet up and unwind.")
@@ -236,6 +265,19 @@ func _build_actions() -> void:
 	_define("ask_partner", "Ask to become partners", 35.0, {"social": 15.0, "fun": 8.0}, 0, "charisma", 12.0, "Choose a relationship together. Both adults need 45 friendship and 35 romance, and must be available.")
 	_define("commit", "Make a commitment", 45.0, {"social": 20.0, "fun": 10.0}, 0, "charisma", 16.0, "Affirm your shared future with your current partner, with 65 friendship and 65 romance.")
 	_define("break_up", "End the relationship", 25.0, {"social": 5.0, "fun": -8.0}, 0, "", 0.0, "End your partnership honestly. Friendship falls by 12 and romance by 35; both become available again.")
+	# Emotion-gated opportunities: offered only while that feeling is the strongest.
+	_define("paint_masterpiece", "Paint a masterpiece", 120.0, {"fun": 45.0, "hygiene": -7.0}, 30, "creativity", 60.0, "Ride the inspiration into something remarkable. Sells for far more than an ordinary canvas.")
+	_define("study_hard", "Study hard", 120.0, {"fun": 6.0, "energy": -12.0}, 0, "logic", 70.0, "Deep work while your mind is sharp. Builds Logic quickly.")
+	_define("push_through", "Push through", 60.0, {"fun": 14.0, "energy": -22.0, "hygiene": -22.0}, 0, "fitness", 65.0, "Sprint past the comfortable pace while the energy is there. Fitness grows fast.")
+	_define("playful_prank", "Play a playful prank", 20.0, {"social": 18.0, "fun": 20.0}, 0, "charisma", 18.0, "A joke with a little mischief in it. A big friendly swing, but a thin friendship can take it badly.")
+	_define("bold_introduction", "Give a bold introduction", 20.0, {"social": 30.0, "fun": 8.0}, 0, "charisma", 18.0, "Walk up and introduce yourself like you own the room. A larger friendship gain than an ordinary hello.")
+	# Trait habits: only a Lifelet with that trait ever sees the option.
+	_define("sketch_for_fun", "Sketch for fun", 30.0, {"fun": 26.0}, 0, "creativity", 12.0, "A quick sketch with no sale in mind. Cheap, short and good fun.")
+	_define("host_a_chat", "Host a chat", 60.0, {"social": 40.0, "fun": 20.0}, 0, "charisma", 16.0, "Gather the household for a proper conversation. Everyone nearby feels more connected.")
+	_define("morning_run", "Morning run", 45.0, {"fun": 16.0, "energy": -18.0, "hygiene": -20.0}, 0, "fitness", 60.0, "Head out of the front door for a long run around the block. Builds Fitness faster than the treadmill, and costs energy.")
+	_define("deep_read", "Deep read", 120.0, {"fun": 20.0, "energy": -6.0}, 0, "logic", 65.0, "Settle in with a demanding book for a long stretch. High Logic progress.")
+	_define("experiment_recipe", "Experiment with a recipe", 45.0, {"fun": 30.0, "hygiene": -5.0}, 0, "creativity", 30.0, "Try a dish nobody has written down. Fun and creativity, and something new to eat.")
+	_define("deep_clean", "Deep clean", 45.0, {"hygiene": 6.0, "fun": 10.0}, 0, "", 0.0, "Scrub the surfaces until the room sparkles. Slow, but oddly satisfying.")
 
 
 func _define(id: String, label: String, duration: float, changes: Dictionary, cost: int, skill: String, xp: float, description: String) -> void:
@@ -246,26 +288,32 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 	if is_instance_valid(meal_service) and kind in ["meal","plate"]:return meal_service.actions_for(self,kind,target_id)
 	var ids: Array = []
 	match kind:
-		"lot_exit": ids = ["school_day"] if str(character.age_stage) in LifeEducation.SCHOOL_STAGES else (["career_day"] if str(character.life_stage)=="adult" else [])
+		"lot_exit":
+			ids = ["school_day"] if str(character.age_stage) in LifeEducation.SCHOOL_STAGES else (["career_day"] if str(character.life_stage)=="adult" else [])
+			ids.append("morning_run")
 		"fridge": ids = ["cook", "snack", "birthday"]
-		"stove", "kitchen": ids = ["cook"]
+		"stove", "kitchen": ids = ["cook", "experiment_recipe"]
+		"sink": ids = ["wash_hands", "brush_teeth", "deep_clean"]
+		"dining", "counter", "coffee_table": ids = ["clear_table", "deep_clean"]
+		"rubbish_bin": ids = ["empty_bin"]
 		"bed": ids = ["sleep", "nap", "try_for_baby"]
 		"shower", "bath": ids = ["shower"]
 		"toilet": ids = ["toilet"]
-		"sofa", "chair", "armchair", "loveseat", "stool": ids = ["relax", "nap"]
-		"bench": ids = ["relax", "read", "nap"]
-		"tv": ids = ["watch"]
-		"bookshelf", "book_nook": ids = ["read", "study"]
-		"easel": ids = ["paint"]
-		"desk": ids = ["work", "study", "job"]
-		"computer": ids = ["work", "study", "job", "play_games"]
+		"sofa", "chair", "armchair", "loveseat", "stool": ids = ["relax", "nap", "host_a_chat"]
+		"bench": ids = ["relax", "read", "nap", "host_a_chat"]
+		"tv": ids = ["watch", "watch_together"]
+		"guitar", "violin": ids = ["practice_instrument"]
+		"bookshelf", "book_nook": ids = ["read", "study", "study_book", "buy_book", "deep_read"]
+		"easel": ids = ["paint", "paint_masterpiece", "sketch_for_fun"]
+		"desk": ids = ["work", "study", "job", "study_hard"]
+		"computer": ids = ["work", "study", "job", "play_games", "study_hard"]
 		"plant": ids = ["water","plant_wee"] if float(needs.bladder)<=BLADDER_DESPERATE else ["water"]
 		"puddle": ids = ["mop_puddle"]
 		"bathtub": ids = ["bath"]
 		"mirror": ids = ["practice_speech"]
 		"piano": ids = ["play_piano"]
 		"chess": ids = ["play_chess"]
-		"treadmill": ids = ["jog"]  # children see the disabled entry with its reason
+		"treadmill": ids = ["jog", "push_through"]  # children see the disabled entry with its reason
 		"yoga_mat": ids = ["stretch"]
 		"stereo": ids = ["dance"]
 		"toybox": ids = ["play_toys"]  # adults see the disabled entry with its reason
@@ -276,8 +324,8 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"fireplace": ids = ["warm_up"]
 		"neighbor", "maya", "leo", "priya", "tom": ids = SOCIAL_ACTIONS
 	if str(character.age_stage) in LifeEducation.SCHOOL_STAGES:
-		if kind in ["desk","computer"]: ids = ["school","homework","study"] + (["play_games"] if kind == "computer" else [])
-		elif kind == "bookshelf": ids = ["read","homework","study"]
+		if kind in ["desk","computer"]: ids = ["school","homework","study","study_hard"] + (["play_games"] if kind == "computer" else [])
+		elif kind == "bookshelf": ids = ["read","homework","study","study_book","buy_book","deep_read"]
 	var result: Array = []
 	for id: String in ids:
 		var data: Dictionary = _actions[id].duplicate(true)
@@ -286,6 +334,10 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		data["unavailable_reason"] = availability.reason
 		result.append(data)
 	if kind=="fridge" and is_instance_valid(meal_service):
+		var out:Dictionary={"id":"put_in_fridge","label":"Put away the food left out","cost":0,"duration":5,"available":true,"description":"Gather the servings sitting out and return them to the fridge while they are still fresh."}
+		var reason:String=meal_service.action_availability(self,"put_in_fridge",target_id)
+		out["available"]=reason.is_empty();out["unavailable_reason"]=reason
+		result.append(out)
 		result.append({"id":"choose_leftovers","label":"Choose leftovers…","available":true,"cost":0,"duration":0,"description":"See the food stored in this fridge."})
 	return result
 
@@ -467,7 +519,7 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 	if id in ["job","career_day"] and int(career["worked_day"]) == day:
 		_emit_notice("Today's shift is complete. You can work again tomorrow.")
 		return false
-	if id in SOCIAL_ACTIONS or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "jog", "play_toys"]:
+	if id in SOCIAL_ACTIONS or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "jog", "play_toys", "put_in_fridge"]:
 		var availability: Dictionary = get_action_availability(id, target_id)
 		if not bool(availability.available):
 			_emit_notice(str(availability.reason))
@@ -536,6 +588,14 @@ func begin_current_action() -> void:
 		var availability: Dictionary = get_action_availability(str(action.id), str(action.target_id))
 		if not bool(availability.available):
 			_emit_notice(str(availability.reason))
+			cancel_action()
+			return
+	# A queued emotion or trait opportunity is re-checked on arrival: a mood
+	# that has already passed cannot still pay for a prank or a masterpiece.
+	if EMOTION_ACTIONS.has(str(action.id)) or TRAIT_ACTIONS.has(str(action.id)):
+		var locked: Dictionary = get_action_availability(str(action.id), str(action.target_id))
+		if not bool(locked.available):
+			_emit_notice(str(locked.reason))
 			cancel_action()
 			return
 	if not bool(action["paid"]):
@@ -640,6 +700,7 @@ func _step(game_minutes: float) -> void:
 			decay *= 0.75
 		if need_name == "energy" and _has_trait("Active"):
 			decay *= 0.8
+		decay *= _perk_decay_multiplier(need_name)
 		needs[need_name] = clampf(float(needs[need_name]) - decay * game_minutes / 60.0, 0.0, 100.0)
 	if is_away():
 		bladder_grace=0.0 # School and work include bathroom breaks.
@@ -737,8 +798,11 @@ func _activity_emotion(id: String) -> String:
 	# The feeling an activity carries on its own, matching the live mood labels.
 	match id:
 		"paint": return "Inspired" if _has_trait("Creative") else ""
-		"read", "study", "work", "job", "school", "homework", "play_chess", "play_games": return "Focused"
-		"jog", "stretch", "dance": return "Energized"
+		"paint_masterpiece": return "Inspired"
+		"read", "study", "work", "job", "school", "homework", "play_chess", "play_games", "study_hard", "deep_read": return "Focused"
+		"jog", "stretch", "dance", "push_through", "morning_run": return "Energized"
+		"playful_prank": return "Playful"
+		"bold_introduction": return "Confident"
 	return ""
 
 
@@ -816,17 +880,31 @@ func _finish_front() -> void:
 		else: add_moodlet("Ready for class","Focused","The next assignment is prepared.",120,1)
 	elif id == "birthday":
 		if str(action.get("birthday_from_stage","")) == str(character.age_stage): celebrate_birthday(false)
-	elif id == "paint":
+	elif id == "paint" or id == "paint_masterpiece":
+		# A masterpiece rides the Inspired mood: its canvas is worth far more
+		# than an ordinary sale, and the mood bonus stacks on top.
 		var sale: int = 55 + int(skills["creativity"]["level"]) * 35
 		if str(get_mood().label) == "Inspired": sale = int(sale * 1.25)
+		if id == "paint_masterpiece":
+			sale = 130 + int(skills["creativity"]["level"]) * 60
+			if str(get_mood().label) == "Inspired": sale = int(sale * 1.5)
 		funds += sale
 		earned = sale
 		_emit_notice("Canvas sold for §%d. A little creativity goes a long way." % sale)
+	elif id == "host_a_chat":
+		# A host gathers the room: every nearby housemate shares the social lift.
+		var lifted: int = 0
+		for member: Dictionary in _autonomy_household_members():
+			if member.sim == self or is_instance_valid(member.sim) and member.sim.is_away(): continue
+			member.sim.needs["social"] = minf(100.0, float(member.sim.needs["social"]) + 25.0)
+			lifted += 1
+		if lifted > 0:
+			_emit_notice("%d %s drawn into the conversation." % [lifted, "housemate was" if lifted == 1 else "housemates were"])
 	elif id == "work":
 		var income: int = 55 + int(skills["logic"]["level"]) * 20
 		funds += income
 		earned = income
-		career["performance"] = minf(100.0, float(career["performance"]) + 8.0)
+		career["performance"] = minf(100.0, float(career["performance"]) + _career_performance_gain(8.0))
 		_emit_notice("Freelance project complete. Earned §%d." % income)
 	elif id == "job":
 		var income: int = int(career["salary"])
@@ -835,7 +913,7 @@ func _finish_front() -> void:
 		career["worked_day"] = day
 		career.schedule=LifeCareerSchedule.attend(career.get("schedule",LifeCareerSchedule.fresh(day)),day,0.0)
 		var comfort: float = (float(needs["hunger"]) + float(needs["energy"]) + float(needs["fun"])) / 3.0
-		career["performance"] = float(career["performance"]) + 18.0 + comfort * 0.15 + float(skills["logic"]["level"]) * 2.0
+		career["performance"] = float(career["performance"]) + _career_performance_gain(18.0 + comfort * 0.15 + float(skills["logic"]["level"]) * 2.0)
 		_emit_notice("Shift finished. Earned §%d." % income)
 		_check_promotion()
 	elif id in SOCIAL_ACTIONS:
@@ -850,6 +928,16 @@ func _finish_front() -> void:
 		add_moodlet("Freshly changed", "Confident", "A new outfit, a new outlook.", 120, 1)
 	elif id == "cook" and _has_trait("Foodie"):
 		_emit_notice("A delicious homemade meal! Your Foodie trait made it extra satisfying.")
+	elif id == "toilet" and not is_away():
+		# Washing hands afterwards is part of using the bathroom, not a separate
+		# chore the player has to remember. A sink in reach queues the short
+		# wash as this Lifelet's next action; without one the visit ends as before.
+		_queue_follow_up("wash_hands")
+	elif id == "empty_bin":
+		if is_instance_valid(household_service):household_service.empty_bin(str(action.get("target_id","")))
+		_emit_notice("The rubbish is out. The kitchen smells fresher already.")
+	elif id == "watch_together":
+		pass
 	_activity_memory(id)
 	_record_chapter_activity(id, earned, _social_target(str(action.get("target_id", ""))) if bool(action.get("social_accepted", false)) else "")
 	for want: Dictionary in wants:
@@ -955,11 +1043,18 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 	if id in ["plant_wee","mop_puddle"]:
 		reason=_sanitation_reason(id,target_id)
 		if not reason.is_empty():return {"available":false,"reason":reason}
-	if is_instance_valid(meal_service) and id in ["cook","eat_meal","store_meal","clean_plate","discard_meal"]:
+	if is_instance_valid(meal_service) and id in ["cook","eat_meal","store_meal","clean_plate","discard_meal","put_in_fridge"]:
 		reason=meal_service.action_availability(self,id,target_id)
 		if not reason.is_empty():return {"available":false,"reason":reason}
 	if not _actions.has(id):
 		return {"available":false, "reason":"That activity is unavailable."}
+	# A mood or a trait can be the price of admission. This sits before every
+	# target and queue rule, so a caller that never sees the option and one that
+	# asks for it directly are refused with the same reason.
+	if EMOTION_ACTIONS.has(id) and str(get_mood().label) != str(EMOTION_ACTIONS[id]):
+		return {"available":false, "reason":"Only available while %s." % str(EMOTION_ACTIONS[id])}
+	if TRAIT_ACTIONS.has(id) and not _has_trait(str(TRAIT_ACTIONS[id])):
+		return {"available":false, "reason":"Only a %s Lifelet thinks to do this." % str(TRAIT_ACTIONS[id])}
 	# A baby is driven by a caregiver: it keeps its recovery and play set and is
 	# refused everything else here, before any target or queue rule applies.
 	var stage_reason: String = LifeStagePolicy.action_error(str(character.age_stage), str(character.life_stage), id)
@@ -977,10 +1072,16 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 		reason = "This Lifelet has no further birthday stage."
 	elif id in ["job", "work"] and str(character.life_stage) != "adult":
 		reason = "Full-time careers and freelance work are available to adults."
+	elif is_instance_valid(household_service) and id in LifeHouseholdFlow.SERVICE_ACTIONS:
+		reason=household_service.action_availability(self,id,target_id)
 	elif id == "cook" and str(character.age_stage) == "child":
 		reason = "Children can grab a snack. An older Lifelet can use the stove."
 	elif id == "jog" and str(character.age_stage) == "child":
 		reason = "The treadmill is for teens and adults."
+	elif id in ["push_through"] and str(character.age_stage) == "child":
+		reason = "The treadmill is for teens and adults."
+	elif id == "morning_run" and str(character.age_stage) == "child":
+		reason = "Long runs around the block are for teens and adults."
 	elif id == "play_toys" and str(character.age_stage) != "child":
 		reason = "The toy chest is for children."
 	elif funds < int(_actions[id].cost):
@@ -1060,7 +1161,7 @@ func _record_social_milestones(target: String, action_id: String) -> void:
 	var person: Dictionary = relationships[target]
 	_normalize_relationship(person, false)
 	var achieved: Array[String] = []
-	if action_id in ["friendly", "joke", "deep_talk", "hug", "share_interests", "sympathize", "gossip"]: achieved.append("met")
+	if action_id in ["friendly", "joke", "deep_talk", "hug", "share_interests", "sympathize", "gossip", "playful_prank", "bold_introduction"]: achieved.append("met")
 	if float(person.friendship) >= 35.0: achieved.append("friends")
 	if float(person.friendship) >= 65.0: achieved.append("close_friends")
 	if float(person.romance) >= 20.0 and not LifeFamilyGraph.is_family(_family_role(target)): achieved.append("spark")
@@ -1162,7 +1263,7 @@ func _apply_social(action: Dictionary) -> bool:
 				change=5.0
 		"flirt":
 			if float(person["friendship"]) >= 30.0:
-				person["romance"] = minf(100.0, float(person["romance"]) + 16.0)
+				person["romance"] = minf(100.0, float(person["romance"]) + 16.0 * _perk_multiplier("romance"))
 				change = 5.0
 				_emit_notice("There is a spark between you and %s." % person["name"])
 			else:
@@ -1197,6 +1298,20 @@ func _apply_social(action: Dictionary) -> bool:
 			else:
 				change=9.0
 			last_gossip[target]=_autonomy_now()
+		"playful_prank":
+			# A big friendly swing, but a thin friendship can take mischief badly:
+			# below 30 friendship the joke lands as a slight and leaves the actor Tense.
+			if float(person["friendship"]) >= 30.0:
+				change=26.0
+				_emit_notice("%s laughs until they cry. That was a good one." % person["name"])
+			else:
+				change=-8.0
+				add_moodlet("That landed wrong","Tense","The prank did not read as a joke this time.",180,3)
+				_emit_notice("%s does not find that funny. Build the friendship first." % person["name"])
+		"bold_introduction":
+			# Confidence carries: an introduction lands harder than an ordinary hello.
+			change=22.0
+			_emit_notice("%s is clearly impressed by the confidence." % person["name"])
 	if _has_trait("Outgoing") and change > 0.0:
 		change *= 1.2
 	person["friendship"] = clampf(float(person["friendship"]) + change, -100.0, 100.0)
@@ -1281,6 +1396,20 @@ func remember(label:String,detail:String) -> void:
 	memories.push_front({"day":day,"minutes":int(minutes),"label":label,"detail":detail})
 	while memories.size()>40:memories.pop_back()
 
+func _queue_follow_up(id:String) -> bool:
+	# A short automatic continuation of the action that just finished (washing
+	# hands after the bathroom). It rides the same queue as a player instruction,
+	# so it survives a save and yields to any later plan the player already made.
+	if id not in _actions or is_away() or action_queue.size() >= MAX_QUEUE:return false
+	var chosen:Dictionary=_autonomy_target_for(id)
+	if chosen.is_empty():return false
+	var follow:Dictionary=_actions[id].duplicate(true)
+	follow.merge({"target_id":str(chosen.target_id),"target_position":chosen.position,"phase":"queued",
+		"elapsed":0.0,"progress":0.0,"paid":false,"autonomous":true},true)
+	action_queue.push_front(follow)
+	return true
+
+
 func _activity_memory(id:String) -> void:
 	match id:
 		"cook":add_moodlet("Made with love","Happy","A fresh meal is a small pleasure.",180,2)
@@ -1308,6 +1437,26 @@ func _activity_memory(id:String) -> void:
 		"play_toys":add_moodlet("Made-up worlds","Playful","Imagination made the afternoon fly by.",150,3)
 		"warm_up":add_moodlet("Hearthside calm","Happy","Warm hands and a quiet mind.",120,1)
 		"play_games":add_moodlet("One more level","Playful","That game is still on your mind.",120,2)
+		"wash_hands":add_moodlet("Clean hands","Confident","Freshly washed and ready for what's next.",90,1)
+		"brush_teeth":add_moodlet("Minty fresh","Confident","A clean, bright feeling that lasts.",150,1)
+		"empty_bin":add_moodlet("A tidy home","Happy","Taking the rubbish out makes the whole room feel lighter.",120,1)
+		"clear_table":add_moodlet("Tidied up","Happy","A cleared table makes the room feel calm again.",120,1)
+		"study_book":add_moodlet("A curious mind","Focused","A little learning goes a long way.",180,2)
+		"practice_instrument":add_moodlet("Music in the air","Inspired","A melody is still playing in your head.",180,3)
+		"watch_together":add_moodlet("Good company","Happy","Laughing at the same show is better than watching alone.",180,2)
+		"paint_masterpiece":
+			add_moodlet("A real masterpiece","Inspired","You made something remarkable while the feeling lasted.",300,4)
+			remember("A masterpiece finished","Painted and sold something far beyond an ordinary canvas.")
+		"study_hard":add_moodlet("Deep focus","Focused","Hours of uninterrupted work paid off.",180,3)
+		"push_through":add_moodlet("Pushed past the limit","Energized","The last stretch was worth the effort.",180,3)
+		"playful_prank":add_moodlet("A little mischief","Playful","That prank is still funny to think about.",150,3)
+		"bold_introduction":add_moodlet("Made an impression","Confident","Walking in like you own the room works.",180,2)
+		"sketch_for_fun":add_moodlet("Just for the joy of it","Inspired","No sale, no pressure, just a pencil and paper.",150,2)
+		"host_a_chat":add_moodlet("A full house","Happy","The room felt warmer with everyone talking.",180,2)
+		"morning_run":add_moodlet("Morning air","Energized","The block went past in a blur of good effort.",180,3)
+		"deep_read":add_moodlet("Lost in a book","Focused","The afternoon disappeared into the pages.",200,2)
+		"experiment_recipe":add_moodlet("Something new on the stove","Playful","An invented dish that actually worked.",150,2)
+		"deep_clean":add_moodlet("A tidy home","Happy","Every surface gleams, and it feels lighter in here.",180,2)
 
 
 func _new_day() -> void:
@@ -1435,7 +1584,7 @@ func _autonomy_decay(need:String) -> float:
 	if need=="fun" and _has_trait("Creative"):amount*=1.2
 	if need=="hygiene" and _has_trait("Neat"):amount*=.75
 	if need=="energy" and _has_trait("Active"):amount*=.8
-	return amount
+	return amount*_perk_decay_multiplier(need)
 
 func _autonomy_projection_need(id:String,travel_minutes:float=60.0,include_fun:bool=false) -> String:
 	if id not in ["school","school_day","career_day","homework","job"]:return ""
@@ -1615,7 +1764,7 @@ func _autonomy_need_choice(need:String,excluded_target_ids:Array=[],preparing:bo
 		"energy":
 			if preparing or (LifeEducation.weekday(day) and minutes>=240.0 and minutes<=960.0):candidates=["nap","sleep"]
 			else:candidates=["sleep","nap"]
-		"hygiene":candidates=["shower","bath"]
+		"hygiene":candidates=["shower","bath","brush_teeth","wash_hands"]
 		"bladder":candidates=["toilet"]
 		"fun":
 			var leisure_duty:String=_autonomy_preparation_duty_id()
@@ -1876,6 +2025,101 @@ func get_aspiration_progress() -> Dictionary:
 	return {"stage":aspiration_stage, "title":_aspiration_title(), "next_stage_day":aspiration_next_day, "history":aspiration_history.duplicate(true)}
 
 
+# ------------------------------------------------------------------- rewards
+# Satisfaction was earned and never spent. The store turns it into perks and
+# potions: permanent buys are remembered in purchased_perks and change the same
+# multipliers the traits already use, one-use potions act on the spot.
+
+func _perk_has(id: String) -> bool:
+	return purchased_perks.has(id)
+
+
+func _perk_multiplier(channel: String) -> float:
+	# Every permanent perk that names this channel, composed.
+	var result: float = 1.0
+	for reward_id: String in purchased_perks:
+		var reward: Variant = REWARDS.get(reward_id, {})
+		if not reward is Dictionary: continue
+		var effect: Variant = reward.get("effect", {})
+		if effect is Dictionary and effect.has(channel):
+			result *= float(effect[channel])
+	return result
+
+
+func _perk_decay_multiplier(need: String) -> float:
+	var result: float = 1.0
+	for reward_id: String in purchased_perks:
+		var reward: Variant = REWARDS.get(reward_id, {})
+		if not reward is Dictionary: continue
+		var effect: Variant = reward.get("effect", {})
+		if not effect is Dictionary: continue
+		var decay: Variant = effect.get("decay", {})
+		if decay is Dictionary and decay.has(need):
+			result *= float(decay[need])
+	return result
+
+
+func _career_performance_gain(base: float) -> float:
+	# "Connections" multiplies every performance gain, wherever it is earned.
+	return base * _perk_multiplier("performance")
+
+
+func available_rewards() -> Array:
+	# Every reward with its affordability, mirroring the action menu's shape.
+	var result: Array = []
+	for reward_id: String in REWARDS:
+		var reward: Dictionary = REWARDS[reward_id]
+		result.append({"id":reward_id, "label":str(reward.label), "description":str(reward.description),
+			"cost":int(reward.cost), "permanent":bool(reward.permanent), "owned":_perk_has(reward_id),
+			"affordable":satisfaction >= int(reward.cost)})
+	return result
+
+
+func can_buy_reward(id: String, reason: Variant = null) -> Dictionary:
+	# Same contract as get_action_availability: one gate the UI and the queue share.
+	var message: String = ""
+	if not REWARDS.has(id):
+		message = "That reward is not in the store."
+	elif _perk_has(id):
+		message = "You already own %s." % str(REWARDS[id].label)
+	elif satisfaction < int(REWARDS[id].cost):
+		message = "Requires %d satisfaction." % int(REWARDS[id].cost)
+	var result: Dictionary = {"available":message.is_empty(), "reason":message}
+	if reason is Array:
+		reason.append(message)
+	return result
+
+
+func buy_reward(id: String) -> bool:
+	if not REWARDS.has(id):
+		_emit_notice("That reward is not in the store.")
+		return false
+	if _perk_has(id):
+		_emit_notice("You already own %s." % str(REWARDS[id].label))
+		return false
+	var reward: Dictionary = REWARDS[id]
+	var cost: int = int(reward.cost)
+	if satisfaction < cost:
+		_emit_notice("You need %d satisfaction for %s. You have %d." % [cost, str(reward.label), satisfaction])
+		return false
+	satisfaction -= cost
+	if bool(reward.permanent):
+		purchased_perks.append(id)
+	var effect: Variant = reward.get("effect", {})
+	if effect is Dictionary:
+		var restore: Variant = effect.get("restore", {})
+		if restore is Dictionary:
+			for need_name: Variant in restore:
+				if needs.has(str(need_name)):
+					needs[str(need_name)] = clampf(float(restore[need_name]), 0.0, 100.0)
+		var moodlet: Variant = effect.get("moodlet", {})
+		if moodlet is Dictionary and not moodlet.is_empty():
+			add_moodlet(str(moodlet.label), str(moodlet.emotion), str(moodlet.description), float(moodlet.remaining), int(moodlet.strength))
+	_emit_notice("%s bought with %d satisfaction. %s" % [str(reward.label), cost, "It lasts for good." if bool(reward.permanent) else "Used at once."])
+	_emit_changed()
+	return true
+
+
 func _chapter_want(id: String, label: String, description: String, target: float, reward: int, metric: String, actions: Array = [], skill: String = "") -> Dictionary:
 	return {"id":id, "label":label, "description":description, "progress":0.0, "target":target, "reward":reward, "complete":false, "metric":metric, "actions":actions, "skill":skill, "seen":[], "seen_days":[]}
 
@@ -2099,7 +2343,7 @@ func choose_story_event(event_id: String, choice_id: String) -> bool:
 				relationships[neighbor].friendship = clampf(float(relationships[neighbor].friendship) + float(effects.friendship[neighbor]), -100.0, 100.0)
 				_update_relationship_status(relationships[neighbor])
 			if int(effects.get("performance", 0)) > 0:
-				career.performance = minf(1000.0, float(career.performance) + float(effects.performance))
+				career.performance = minf(1000.0, float(career.performance) + _career_performance_gain(float(effects.performance)))
 				_check_promotion()
 			satisfaction += int(effects.get("satisfaction", 0))
 			story_history.push_front({"event_id":event_id, "kind":ticket.kind, "title":event.title, "offered_day":ticket.day, "day":day, "minutes":int(minutes), "choice_id":choice_id, "choice_label":choice.label, "effects":choice.effects})
@@ -2147,7 +2391,7 @@ func get_mood() -> Dictionary:
 
 
 func get_state() -> Dictionary:
-	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "bladder_grace":bladder_grace, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "wants": wants.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "bills_paid": bills_paid, "last_bill_day": last_bill_day,"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "routine_memory_days":routine_memory_days.duplicate(true)}
+	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "bladder_grace":bladder_grace, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "wants": wants.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "bills_paid": bills_paid, "last_bill_day": last_bill_day, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "routine_memory_days":routine_memory_days.duplicate(true)}
 
 
 func save_game(world_data: Array = []) -> bool:
@@ -2279,6 +2523,10 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 	satisfaction = int(state.get("satisfaction", 0))
 	bills_paid = int(state.get("bills_paid", 0))
 	last_bill_day = int(state.get("last_bill_day", 0))
+	# Permanent perks survive the save; one-use potions were never recorded.
+	purchased_perks.clear()
+	for perk: Variant in state.get("purchased_perks", []):
+		purchased_perks.append(str(perk))
 	action_queue.clear()
 	for stored: Dictionary in state.get("action_queue", []):
 		var action: Dictionary = _actions[str(stored["id"])].duplicate(true)
@@ -2481,6 +2729,13 @@ func _validate_state(state: Dictionary) -> String:
 	for key: String in ["satisfaction", "bills_paid", "last_bill_day"]:
 		if not _number_in_range(state.get(key, 0), 0.0, 1000000000.0):
 			return "Save contains invalid progress."
+	if not state.get("purchased_perks", []) is Array or state.get("purchased_perks", []).size() > REWARDS.size():
+		return "Save contains invalid reward history."
+	var bought: Array[String] = []
+	for perk: Variant in state.get("purchased_perks", []):
+		if not perk is String or not REWARDS.has(str(perk)) or not bool(REWARDS[str(perk)].permanent) or bought.has(str(perk)):
+			return "Save contains an invalid purchased reward."
+		bought.append(str(perk))
 	if not state.get("moodlets",[]) is Array or state.get("moodlets",[]).size()>8 or not state.get("memories",[]) is Array or state.get("memories",[]).size()>40:
 		return "Save contains invalid memories."
 	for entry in state.get("moodlets",[]):
@@ -3028,7 +3283,7 @@ func _tick_career_away() -> void:
 		var career_skill:String=str(CAREER_TRACKS[str(away_state.career_track)].skill)
 		_gain_skill(career_skill,30.0*proportion)
 		var comfort:float=(float(needs.hunger)+float(needs.energy)+float(needs.fun))/3.0
-		career.performance=maxf(0.0,float(career.performance)+(18.0+comfort*.15+float(skills[career_skill].level)*2.0)*proportion-late/20.0)
+		career.performance=maxf(0.0,float(career.performance)+_career_performance_gain((18.0+comfort*.15+float(skills[career_skill].level)*2.0)*proportion)-late/20.0)
 		_emit_notice("Shift finished. Earned §%d for %d minutes at work%s."%[income,int(action.duration),"; arrived %d minutes late"%int(late) if late>0.0 else ""])
 		_check_promotion();_activity_memory("job");_record_chapter_activity("job",income)
 		for want:Dictionary in wants:

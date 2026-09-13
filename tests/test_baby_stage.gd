@@ -145,8 +145,11 @@ func _run() -> void:
 		check(bool(allowed.available), "A baby may still %s (%s)." % [str(pair[0]), str(allowed.reason)])
 	check(bool(sim.get_action_availability("birthday", "fridge").available), "A baby can still celebrate turning into a child.")
 	var treadmill: Array = sim.get_actions_for("treadmill")
-	check(treadmill.size() == 1 and str(treadmill[0].id) == "jog" and not bool(treadmill[0].available) and not str(treadmill[0].unavailable_reason).is_empty(),
-		"The treadmill still lists its entry for a baby, disabled with the caregiver reason, exactly as it does for a child.")
+	var jog_entry: Dictionary = {}
+	for entry: Dictionary in treadmill:
+		if str(entry.id) == "jog": jog_entry = entry
+	check(not jog_entry.is_empty() and not bool(jog_entry.available) and not str(jog_entry.unavailable_reason).is_empty(),
+		"The treadmill still lists its jog entry for a baby, disabled with the caregiver reason, exactly as it does for a child.")
 	check(str(sim.get_action_availability("flirt", "maya").reason) != "", "A baby cannot flirt.")
 
 	baby.queue_free()
