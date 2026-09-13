@@ -43,11 +43,17 @@ const ITEMS = {
 	"wall_clock": {"label":"Steady hours wall clock", "category":"Decor", "price":40, "size":Vector2(.45,.1), "height":1.9, "color":"624435"},
 	"book_nook": {"label":"Storybook reading nook", "category":"Activities", "price":240, "size":Vector2(1.5,.75), "height":1.7, "color":"8c5a4a"},
 	"coffee_table": {"label":"Teatime coffee table", "category":"Decor", "price":150, "size":Vector2(1.15,.62), "height":.5, "color":"d7ae7e"},
-	"floor_lamp": {"label":"Reading arc floor lamp", "category":"Decor", "price":110, "size":Vector2(.55,.55), "height":1.85, "color":"c8a562"}
+	"floor_lamp": {"label":"Reading arc floor lamp", "category":"Decor", "price":110, "size":Vector2(.55,.55), "height":1.85, "color":"c8a562"},
+	"rubbish_bin": {"label":"Pedal rubbish bin", "category":"Kitchen", "price":45, "size":Vector2(.45,.45), "height":.72, "color":"4a4f55"},
+	"guitar": {"label":"Sit-and-strum guitar", "category":"Activities", "price":320, "size":Vector2(.5,.55), "height":1.05, "color":"d7ae7e"},
+	"violin": {"label":"Evening violin", "category":"Activities", "price":380, "size":Vector2(.4,.5), "height":.65, "color":"624435"}
 }
 
+# Instruments share one practice action; the authored model is the difference.
+const INSTRUMENTS: Array[String] = ["guitar", "violin"]
+
 # Floor coverings and wall decor: they never block routes, walls or other furnishings.
-const PASSABLE: Array[String] = ["rug", "painting", "wall_clock", "shelf", "yoga_mat"]
+const PASSABLE: Array[String] = ["rug", "painting", "wall_clock", "shelf", "yoga_mat", "room_light"]
 const WALL_MOUNTED: Array[String] = ["painting", "wall_clock", "shelf"]
 
 static func passable(kind: String) -> bool:
@@ -66,7 +72,7 @@ static func starter_layout(lot: int = 0) -> Array:
 		["bed",3.5,1.5,0],["nightstand",2.03,.65,0],["nightstand",4.98,.65,0],
 		["desk",3.4,4.3,180],["chair",3.4,3.48,0],["plant",5.2,4.2,180],
 		["shower",4.9,-4.13,0],["toilet",2.35,-4.1,0],["sink",5.15,-2.13,-90],
-		["painting",-2.1,-4.91,0],["mirror",5.45,2.3,0]
+		["painting",-2.1,-4.91,0],["mirror",5.45,2.3,0],["rubbish_bin",-1.35,-4.55,0]
 	]
 	if lot == 2:
 		entries = [["fridge",-5.2,-4.3,0],["bed",3.5,2.1,0],["toilet",2.35,-4.1,0],["shower",4.9,-4.13,0],["stove",-3.1,-4.4,0]]
@@ -79,7 +85,7 @@ static func starter_layout(lot: int = 0) -> Array:
 			["bed",4.65,1.6,-90],["nightstand",5.3,-.1,0],["plant",2,3.7,0],
 			["desk",3.6,4.3,180],["chair",3.6,3.48,0],
 			["shower",4.9,-4.13,0],["toilet",2.35,-4.1,0],["sink",5.15,-2.13,-90],
-			["painting",-3.6,-4.91,0]
+			["painting",-3.6,-4.91,0],["rubbish_bin",-1.35,-4.55,0]
 		]
 	for i in range(entries.size()):
 		var e: Array = entries[i]

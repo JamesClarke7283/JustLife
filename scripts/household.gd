@@ -21,6 +21,8 @@ var targets: Array = []
 var restoring: bool = false
 var journeys: Dictionary = {}
 var physical_snapshot_provider:Callable=Callable()
+var extras_provider:Callable=Callable()
+var extras_restore_provider:Callable=Callable()
 var family_graph: Dictionary = LifeFamilyGraph.fresh()
 var adoptions: Dictionary = LifeAdoption.fresh()
 var pregnancy: Dictionary = LifeBabyPlan.fresh()
@@ -246,7 +248,7 @@ func get_state(world_data: Array = []) -> Dictionary:
 	adopt_selected_changes()
 	var states:Array=[]
 	for member in members:states.append({"id":member.id,"state":member.sim.get_state()})
-	var result:Dictionary={"household_version":2 if not journeys.is_empty() else 1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"pregnancy":pregnancy.duplicate(true),"birth_serial":birth_serial,"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state(),"sanitation":sanitation.get_state()}
+	var result:Dictionary={"household_version":2 if not journeys.is_empty() else 1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"pregnancy":pregnancy.duplicate(true),"birth_serial":birth_serial,"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state(),"sanitation":sanitation.get_state(),"extras":extras_provider.call() if extras_provider.is_valid() else {}}
 	if not journeys.is_empty():result.journeys=journeys.duplicate(true)
 	if physical_snapshot_provider.is_valid():
 		var physical:Dictionary=physical_snapshot_provider.call()
@@ -460,6 +462,10 @@ func restore_state(data: Dictionary) -> Dictionary:
 	if not meal_error.is_empty():
 		for c in candidates:c.sim.free()
 		return {"ok":false,"error":meal_error}
+	var extras_error:String=LifeHouseholdFlow.validate(data.get("extras",null),data.get("world",[]))
+	if not extras_error.is_empty():
+		for c in candidates:c.sim.free()
+		return {"ok":false,"error":extras_error}
 	restoring=true
 	journeys=data.get("journeys",{}).duplicate(true)
 	if not journeys.is_empty():
@@ -471,6 +477,7 @@ func restore_state(data: Dictionary) -> Dictionary:
 	birth_serial=int(data.get("birth_serial",1))
 	meals.restore(meal_data)
 	sanitation.restore(sanitation_data)
+	if extras_restore_provider.is_valid():extras_restore_provider.call(data.get("extras",null))
 	for old in members:old.sim.queue_free()
 	members=candidates
 	# The saved world is rebuilt after restoration; old target IDs belong to the previous venue.
