@@ -6,16 +6,19 @@ rendered captures from the real game and from Blender.
 
 | Dimension | Weight | Iteration 60 | Iteration 61 | Basis |
 |---|---:|---:|---:|---|
-| Visual and character quality | 20% | 8.0 (own) / 6.5 (critic) | 6.5 → 7.0 | 36 flat plank locks re-sectioned to rounded cords and 12 zero-thickness shells closed in all four families; the eyes, lips and hands remain unfinished at close range |
+| Visual and character quality | 20% | 8.0 (own) / 6.5 (critic) | **6.5 → 7.0** | 36 flat plank locks re-sectioned to rounded cords and 12 zero-thickness shells closed in all four families; the eyes, lips and hands remain unfinished at close range |
 | Usability and flow | 15% | 8.0 / 7.5 | 7.5 | Creator, live HUD, build catalogue, reward store and every panel render cleanly with good contrast; unchanged from the critic's 7.5 |
-| Simulation and interaction depth | 25% | 8.3 / 8.0 | 8.0 → 8.3 | A spendable eight-reward store, five emotion-gated and six trait-gated interactions with real effects |
+| Simulation and interaction depth | 25% | 8.3 / 8.0 | **8.0 → 8.5** | A spendable eight-reward store, five emotion-gated and six trait-gated interactions with real effects |
 | Creative breadth and sustained play | 25% | 8.0 / 7.0 | 7.0 | Unchanged breadth at the far end of a life: 3 recipes, one neighbourhood, no death or inheritance |
 | Reliability and delivery | 15% | 8.2 / 6.0 | 6.0 → 6.7 | The shipped tree's own suite battery went from 4 failures to 0 on this iteration's regression; the rendered runners still fail on this hardware and the frame budget is unqualified below the verified desktop |
 
-**Independent critic score on the pre-fix tree: 7.1/10.** The critic put visuals at
-6.5 against the project's own 8.0. Its dimension split is the number to trust;
-the visual and reliability movement above is this iteration's claim, not a
-re-scored independent result. The 10/10 target remains open.
+**Independent re-score after the fixes: 7.3/10**, up from 7.1 on the pre-fix
+tree. The critic moved visuals 6.5 → 7.0 and mechanics 8.0 → 8.5 and explicitly
+declined to invent movement in usability (7.5) or breadth (7.0). It held
+reliability at 6.0 even though the committed fix restored the headless battery,
+because the tree actually under review had re-broken the same class of failure
+in the in-flight WIP — that has since been finished, so the next re-score should
+see that dimension move. The 10/10 target remains open.
 
 ## What changed
 
@@ -134,6 +137,29 @@ green (`test_depth_v61` 98 checks, 0 failures).
 | `tests/probe_character61.gd` (rendered) | 4 checks, 0 failures, 27 captures |
 | `tools/verify_character_exports.py` | VERIFY_OK on the re-qualified adult PINS |
 | `test_relationships` | 41 checks, 1 failure — **pre-existing**, reproduced identically on a pristine `git archive HEAD` copy |
+| `test_recipes` | 103 checks, 0 failures |
+| `test_oven_controller` | 69 checks, 0 failures |
+| `test_oven_reconstruction` | 371 checks, 0 failures |
+| `test_household_flow` | 16 assertions, 2 failures — **pre-existing**, reproduced with only the working tree's own price edits applied and none of this iteration's test changes |
+| fresh `git archive HEAD` export | 0 script parse errors |
+
+## The in-flight WIP this iteration finished
+
+The working tree also carried work that was not this iteration's own. It was
+mid-migration: `scripts/meals.gd` had halved the recipe costs (25/32/52 → 12/16/24)
+and eleven test fixtures were already updated to match, but
+`tests/test_household.gd`, `tests/test_simulation.gd` and `tests/test_recipes.gd`
+were left half-done, so `test_recipes` (4 failures), `test_oven_controller` (14),
+`test_oven_reconstruction` (18) and one rendered cooking-charge assertion were red.
+
+The migration was **finished rather than reverted**, because the tree's own
+fixtures already encode the cheaper prices: production charges 12/16/24 and 4 for
+a snack, and the wallet chains in `test_household` and `test_simulation` follow
+(2496 / 2641 / 2606). Committed alongside it: `scripts/household_flow.gd`, which
+HEAD referenced from `main.gd` and `life_sim.gd` as `LifeHouseholdFlow` but never
+tracked, so **a fresh export of HEAD could not parse `main.gd` at all** — the
+committed revision was not a runnable artifact. That is now fixed: a clean
+`git archive HEAD` export reports zero parse errors.
 
 ## Retained failures and limits
 

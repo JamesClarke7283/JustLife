@@ -26,7 +26,8 @@ func run() -> void:
 	await process_frame
 	press("Start living  →")
 	await process_frame
-	check(app.household.members.size()==2 and app.world.actors.size()==4,"Two playable Lifelets and two neighbors move into the world.")
+	check(app.household.members.size()==2 and app.world.actors.size()==2+LifeResidentCatalogue.IDS.size(),
+		"Two playable Lifelets and the lane's residents move into the world.")
 	for member:Dictionary in app.household.members:member.sim.autonomy=false
 	app.set_sound(false)
 	app.set_game_speed(8)
