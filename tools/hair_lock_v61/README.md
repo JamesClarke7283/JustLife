@@ -76,8 +76,12 @@ reproduces the qualified adult bytes through the established
 Unlike v60 the driver takes its baseline from the working tree, because the v60
 artwork is the committed state, and it does not run the v60 evidence renderer
 (that renderer takes ~20 minutes per family on this machine). Evidence captures
-come from `tests/probe_character61.gd` in the real game and from
-`tools/render_face_macro.py` in Blender.
+come from `tests/probe_character61.gd` in the real game, from
+`tools/render_face_macro.py` in Blender, and — for the hair specifically — the
+adult family's before/after set in `evidence/hair61/`. The other three families
+are covered by the per-family contract assertions rather than by their own
+renders, because they run the identical author code path and the author asserts
+the same 48-object change set and the same twelve sealed shells for each.
 
 ## Known limitations
 
