@@ -435,16 +435,26 @@ func _queue_and_activity_flow() -> void:
 
 func mouse_move(screen: Vector2) -> void:
 	var before: Vector2 = root.get_mouse_position()
-	# The world previews use Viewport.get_mouse_position(), which reads the OS
-	# pointer. parse_input_event alone does not update it (verified separately).
-	Input.warp_mouse(screen)
+	# Coordinate-space trap, measured in tests/probe_pointer_map.gd:
+	# `Viewport.get_mouse_position()` and every `unproject_position` call site
+	# report CANVAS coordinates under the `canvas_items` stretch mode, while
+	# `Input.warp_mouse` takes WINDOW pixels. The two differ by exactly
+	# canvas_size / window_size (measured uniform to 1e-6 across four probes),
+	# so an unconverted warp lands short by that factor — on the recorded
+	# hardware 1.466x, which is the ~450 px miss this harness used to report.
+	# The synthetic motion event is fed as if it came from the OS, so it takes
+	# the same window-space point.
+	var window_size: Vector2 = Vector2(DisplayServer.window_get_size())
+	var canvas_size: Vector2 = root.get_visible_rect().size
+	var window_point: Vector2 = screen * window_size / canvas_size
+	Input.warp_mouse(window_point)
 	var event := InputEventMouseMotion.new()
-	event.position = screen
-	event.global_position = screen
+	event.position = window_point
+	event.global_position = window_point
 	Input.parse_input_event(event)
 	await frames(4)
 	var actual: Vector2 = root.get_mouse_position()
-	var sample: Dictionary = {"ticks_ms":Time.get_ticks_msec(),"requested":[screen.x,screen.y],"before":[before.x,before.y],"actual":[actual.x,actual.y],"distance":actual.distance_to(screen),"window_focused":app.get_window().has_focus(),"window_position":[app.get_window().position.x,app.get_window().position.y],"window_size":[app.get_window().size.x,app.get_window().size.y],"viewport_size":[root.get_visible_rect().size.x,root.get_visible_rect().size.y],"ghost_position":vec(app.world.ghost.position) if is_instance_valid(app.world.ghost) else [],"ghost_valid":app.world.ghost_valid,"placement_kind":app.world.placement_kind,"construction_tool":app.world.construction.tool}
+	var sample: Dictionary = {"ticks_ms":Time.get_ticks_msec(),"requested":[screen.x,screen.y],"window_point":[window_point.x,window_point.y],"before":[before.x,before.y],"actual":[actual.x,actual.y],"distance":actual.distance_to(screen),"window_focused":app.get_window().has_focus(),"window_position":[app.get_window().position.x,app.get_window().position.y],"window_size":[app.get_window().size.x,app.get_window().size.y],"canvas_size":[canvas_size.x,canvas_size.y],"viewport_size":[root.get_visible_rect().size.x,root.get_visible_rect().size.y],"ghost_position":vec(app.world.ghost.position) if is_instance_valid(app.world.ghost) else [],"ghost_valid":app.world.ghost_valid,"placement_kind":app.world.placement_kind,"construction_tool":app.world.construction.tool}
 	pointer_observations.append(sample)
 	print("POINTER_OBSERVATION ",JSON.stringify(sample))
 	check(actual.distance_to(screen) < 2.0, "Viewport pointer reaches requested preview coordinates.")
