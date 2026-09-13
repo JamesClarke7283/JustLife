@@ -35,7 +35,7 @@ func _run()->void:
 	var actor:=Node3D.new();app.world.add_child(actor);actor.position=Vector3(-.7,.16,3);app.world.actors["player"]=actor
 	app.sim.register_targets(app.world.simulation_targets())
 	check(app.sim.queue_action("snack","fridge",Vector3(0,.16,-1)),"Existing snack enters the real controlled queue.")
-	app.sim.begin_current_action();check(bool(app.sim.get_current_action().paid) and app.sim.funds==2992,"One actual paid snack is the positive queue preservation control.")
+	app.sim.begin_current_action();check(bool(app.sim.get_current_action().paid) and app.sim.funds==2996,"One actual paid snack is the positive queue preservation control.")
 	check(app.sim.queue_action("read","book",Vector3(-3,.16,3)),"A later explicit instruction is retained behind that paid action.")
 	var queue:Array=app.sim.action_queue.duplicate(true);var needs:Dictionary=app.sim.needs.duplicate(true);var minutes:float=app.sim.minutes;var funds:int=app.sim.funds
 	var tx=Transactions.new(app);var add:Dictionary={"op":"add","collection":"roofs","record":record()}

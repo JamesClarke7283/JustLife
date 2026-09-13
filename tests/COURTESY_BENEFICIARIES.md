@@ -51,7 +51,7 @@ Fixture provenance (bytes are unchanged):
 | Fixture | Genuine named slot | SHA-256 |
 | --- | --- | --- |
 | `courtesy_stair_clear.json` | `life_1788959163926_31350169` | `1b40410cf9f85af78af2d484360a3679454d7e251523f52e6ef686e9ddfbcb95` |
-| `courtesy_empty_walk.json` | `life_1788958789245_369321256` | `dc47e12c8b67bd8c857d0728dd44d49c5cdffd01b027de52b1da7c4b82060b6e` |
+| `courtesy_empty_walk.json` | `life_1788958789245_369321256` | `a8b966da2a2489072ad6c113ed0b7bb44ce56a39d12b1725f1d47006274e848c` |
 
 Both came from the same four-member, default-funded public creator/Build
 composition. The early checkpoint stopped at the actual 120-minute stationary

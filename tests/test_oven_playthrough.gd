@@ -63,7 +63,7 @@ func _start_bake()->void:
 	if not await wait_until(func()->bool:return active_is("cook"),"real physical approach to the oven",45):return
 	var current:Dictionary=app.sim.get_current_action()
 	check(app.player.position.distance_to(starting_position)>.5 and app.player.position.distance_to(current.target_position)<.02,"The cook moved through real frames and reached the exact oven endpoint.")
-	check(app.household.funds==int(expected.funds_before)-52 and bool(current.paid),"Actual arrival charges the one §52 ingredient payment.")
+	check(app.household.funds==int(expected.funds_before)-24 and bool(current.paid),"Actual arrival charges the one §24 ingredient payment.")
 	if not await wait_until(_mid_load,"actual dish insertion midway between held and rack transforms",90):return
 	await press("Ⅱ");await frames(3)
 	check(_phase()=="load" and _transfer_fraction()>.1 and _transfer_fraction()<.9,"The first pause captures a transfer, rather than a fully held or interior dish.")
@@ -109,7 +109,7 @@ func _assert_preparation(label:String)->void:
 	var action:Dictionary=app.sim.get_current_action();var oven:Dictionary=app._find_item(str(action.target_id))
 	var inside:bool=LifeOvenSequence.inside(float(action.progress))
 	check(app.sim.speed==0 and bool(action.paid) and str(action.recipe)=="harvest_bake",label+": paused paid recipe is unchanged.")
-	check(app.household.funds==int(expected.funds_before)-52 and app.household.meals.batches.is_empty(),label+": exactly one ingredient charge and no prematurely edible batch.")
+	check(app.household.funds==int(expected.funds_before)-24 and app.household.meals.batches.is_empty(),label+": exactly one ingredient charge and no prematurely edible batch.")
 	check(app.sim.action_queue.size()==2 and str(app.sim.action_queue[1].id)=="read",label+": the later reading queue survives.")
 	check(is_instance_valid(oven.node.find_child("OvenDoor",true,false)) and absf(oven.node.find_child("OvenDoor",true,false).rotation.x-PI*.5*LifeOvenSequence.door_open(float(action.progress)))<.002,label+": actual door matches the persisted cooking phase.")
 	check(app.world.oven_food_views.size()==(1 if inside else 0),label+": exactly one world interior dish exists only in its owning phase.")
@@ -176,9 +176,9 @@ func _assert_completed_wallet(label:String)->void:
 		var before:Array=expected.wants_before.filter(func(w:Dictionary)->bool:return str(w.id)==str(want.id))
 		if bool(want.complete) and not before.is_empty() and not bool(before[0].complete):earned.append(want)
 	check(earned.size()==1 and str(earned[0].id)=="first_meal" and int(earned[0].reward)==60,label+": the actual first-meal wish earned its one §60 reward.")
-	check(wallet_events.filter(func(event:Dictionary)->bool:return int(event.delta)<0).map(func(event:Dictionary)->int:return int(event.delta))==[-52],label+": all observed debits contain exactly one §52 ingredient charge across both restarts.")
+	check(wallet_events.filter(func(event:Dictionary)->bool:return int(event.delta)<0).map(func(event:Dictionary)->int:return int(event.delta))==[-24],label+": all observed debits contain exactly one §24 ingredient charge across both restarts.")
 	check(wallet_events.filter(func(event:Dictionary)->bool:return int(event.delta)>0).map(func(event:Dictionary)->int:return int(event.delta))==[60],label+": all observed credits contain exactly the one §60 first-meal reward.")
-	check(app.household.funds==int(expected.funds_before)-52+60,label+": the wallet accounts for ingredients and the independently verified earned reward.")
+	check(app.household.funds==int(expected.funds_before)-24+60,label+": the wallet accounts for ingredients and the independently verified earned reward.")
 
 func _observe_oven(delta:float)->void:
 	if not observe_oven or not is_instance_valid(app.player):return

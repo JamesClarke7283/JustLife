@@ -55,7 +55,7 @@ func cooking_custody()->void:
 	check(cooking_paid,"Actual paid cooking carries its original serving dish onto the real staircase.")
 	if not cooking_paid:return
 	var batch:Dictionary=app.household.meals.batches[0];var id:String=str(batch.id)
-	check(app.household.funds==funds-25 and int(batch.remaining)==4,"The fixture paid exactly once for four genuine cooked servings.")
+	check(app.household.funds==funds-12 and int(batch.remaining)==4,"The fixture paid exactly once for four genuine cooked servings.")
 	app.queue_interaction(app._find_item("ground_shelf"),"read");app.cancel_current_action()
 	var later:Dictionary=app.sim.get_current_action();var ledger:Dictionary=app.household.meals.get_state()
 	var identity:int=int(route().identity);var ticket:int=int(route().ticket)
@@ -72,7 +72,7 @@ func cooking_custody()->void:
 	check(not app.traversal.busy("player") and str(batch.owner).is_empty() and int(batch.remaining)==4,"The existing meal controller releases the same four-serving dish once at its supported upper landing.")
 	app._process(.05)
 	check(app.household.sanitation.puddles.size()==1 and int(app.household.sanitation.puddles[0].level)==1,"Only after genuine custody clearance does the upper landing receive one accident.")
-	check(app.household.funds==funds-25 and app.household.meals.batches.size()==1 and app.household.meals.portions.is_empty(),"The accident grants no food, serving, refund or extra cooking charge.")
+	check(app.household.funds==funds-12 and app.household.meals.batches.size()==1 and app.household.meals.portions.is_empty(),"The accident grants no food, serving, refund or extra cooking charge.")
 	check(until(func()->bool:return str(later.phase)=="active",400.0) and is_same(later,app.sim.get_current_action()) and app.world.point_level(app.player.position)==0,"The original later read descends naturally and starts at its intended ground-floor shelf.")
 	support_facts.append({"paid_cooking":true,"sanitation":app.household.sanitation.get_state(),"food":app.household.meals.get_state()})
 func run()->void:

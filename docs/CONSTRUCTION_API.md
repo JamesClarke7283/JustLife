@@ -12,6 +12,8 @@ Roofs use `LifeRoofEdits`, `LifeRoofRules` and `LifeRoofGeometry`. A record cont
 
 The UI offers Ground/Upper, wall/room/door/erase, stair tools and New/Edit/Remove roof. Roof creation and replacement use two corners; R turns the ridge. Cancelling a replacement restores the original roof. New roof area costs §18/m²; replacement charges or refunds the rounded area difference. Pitch, rotation and finish changes alone are free. Floor area costs §12/m² and stairs cost §650.
 
+An upper-floor drag does not have to trace the walls exactly: the slab is fitted to the largest rectangle spanned by two complete opposite ground bearing walls and clipped to the drag and to the ground floor below, so one rough rectangle buys the whole storey. The Stairs tool then finds the nearest structurally valid spot within three metres of the click and quotes it through the same public transaction as a confirm, so a slightly misplaced click still lands one stair with its opening and supported guard. Pressing Upper with no slab starts the Floor tool automatically.
+
 Build history is LIFO and shared with furnishing operations. Undo validates the former geometry against current physical constraints and refunds its recorded amount exactly once. History is cleared when leaving Build mode; it is not a persisted unlimited undo stack.
 
 `world.serialize_items()` includes the canonical marker alongside furnishings. Saved household loads prepare the complete world and routes off-tree before adoption. See [SAVE_LIBRARY_API.md](SAVE_LIBRARY_API.md) for the load boundary and [HOUSEHOLD_API.md](HOUSEHOLD_API.md) for physical snapshots.

@@ -14,9 +14,9 @@ const PLATE_HALF_SIZE := Vector2(.15,.15)
 const PLATTER_HALF_SIZE := Vector2(.25,.168)
 const SURFACE_INSET := .01
 const RECIPES := {
-	"garden_skillet":{"label":"Garden skillet", "servings":4, "cost":25, "skill":1, "nutrition":70.0, "duration":45.0, "xp":34.0, "description":"Toasted grains, roasted vegetables and fresh basil.", "model":"meal"},
-	"herb_pasta":{"label":"Herb garden pasta", "servings":4, "cost":32, "skill":2, "nutrition":76.0, "duration":50.0, "xp":40.0, "description":"Curled pasta folded with garden herbs and tomato.", "model":"meal_herb_pasta"},
-	"harvest_bake":{"label":"Harvest vegetable bake", "servings":8, "cost":52, "skill":4, "nutrition":82.0, "duration":70.0, "xp":55.0, "description":"A generous dish of vegetables under a golden baked topping.", "model":"meal_harvest_bake"}
+	"garden_skillet":{"label":"Garden skillet", "servings":4, "cost":12, "skill":1, "nutrition":70.0, "duration":45.0, "xp":34.0, "description":"Toasted grains, roasted vegetables and fresh basil.", "model":"meal"},
+	"herb_pasta":{"label":"Herb garden pasta", "servings":4, "cost":16, "skill":2, "nutrition":76.0, "duration":50.0, "xp":40.0, "description":"Curled pasta folded with garden herbs and tomato.", "model":"meal_herb_pasta"},
+	"harvest_bake":{"label":"Harvest vegetable bake", "servings":8, "cost":24, "skill":4, "nutrition":82.0, "duration":70.0, "xp":55.0, "description":"A generous dish of vegetables under a golden baked topping.", "model":"meal_harvest_bake"}
 }
 const QUALITY_LABELS := ["", "Homestyle", "Delicious", "Excellent"]
 
@@ -159,6 +159,27 @@ func clean_portion(id: String, member_id: String) -> bool:
 	var value: Dictionary=portion(id)
 	if value.is_empty() or str(value.owner) not in ["",member_id]:return false
 	portions.erase(value);_prune_empty();return true
+
+func restore_portion(id: String, fridge_id: String, position: Vector3, now: float, carrier: String="") -> bool:
+	# A serving that was plated but never finished goes back to its dish and into
+	# the fridge, rather than being washed away. The owning batch still exists:
+	# _prune_empty keeps any batch a live portion still refers to, so the serving
+	# simply returns to its remaining count and the fresh fridge timer.
+	var value: Dictionary=portion(id)
+	if value.is_empty() or float(value.progress)>=1.0:return false
+	# The carrier may still hold it when the walk to the fridge completes.
+	if not str(value.owner).is_empty() and str(value.owner)!=carrier:return false
+	if str(value.storage) not in ["carried","surface","table"] or now>=float(value.expires):return false
+	var dish: Dictionary=batch(str(value.batch))
+	if dish.is_empty() or int(dish.served)<=0 or int(dish.remaining)+1>int(dish.initial):return false
+	value.owner="";value.storage="surface";value.seat=""
+	var placed: Vector3=position
+	if not set_batch_location(str(dish.id),"fridge",fridge_id,placed,now):return false
+	dish.remaining=int(dish.remaining)+1
+	dish.served=int(dish.served)-1
+	dish.offset=[0.0,0.0,0.0]
+	portions.erase(value);_prune_empty()
+	return true
 
 func _prune_empty() -> void:
 	for value: Dictionary in batches.duplicate():

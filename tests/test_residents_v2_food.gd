@@ -20,7 +20,7 @@ func _run()->void:
   check(app.mode=="travel" and app.household.meals.carried_by("player").is_empty(),"Departure uses normal cancellation to put the cooked meal down before boarding")
   var released:Dictionary=app.household.meals.batch(id)
   check(str(released.venue)=="home" and str(released.storage)=="surface" and str(released.owner).is_empty() and int(released.remaining)==4,"The same original meal remains at home with all four servings and no carrier")
-  check(app.household.funds==wallet-25,"Departure does not refund or charge the cooked meal again")
+  check(app.household.funds==wallet-12,"Departure does not refund or charge the cooked meal again")
   var position:Vector3=_food_position(released)
   check(app.world.point_level(Vector3(position.x,.16,position.z))==0 and is_finite(app.meal_flow._floor_support(Vector3(position.x,.16,position.z),LifeMeals.PLATTER_HALF_SIZE)) if str(released.host).is_empty() else not app._find_item(str(released.host)).is_empty(),"Released dish rests on supported departure-lot floor or furnishing")
   for frame:int in 2400:

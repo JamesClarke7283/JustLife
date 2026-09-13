@@ -41,7 +41,7 @@ func _cook_and_serve() -> void:
 	await frames(3);await press("Cook a fresh meal",true);await press("Cook garden skillet");await press("▶")
 	if not await wait_until(func()->bool:return active_is("cook",.1),"the cook reaches the stove",40):return
 	await press("Ⅱ")
-	check(app.household.funds==int(expected.funds)-25,"Cooking spends its ingredient cost once after physical arrival.")
+	check(app.household.funds==int(expected.funds)-12,"Cooking spends its ingredient cost once after physical arrival.")
 	check(app.sim.needs.hunger<float(expected.hunger),"Preparing food does not feed the cook.")
 	await screenshot("01_preparing",false,false)
 	await press("▶")

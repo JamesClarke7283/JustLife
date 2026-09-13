@@ -2,7 +2,7 @@
 
 Run `python tests/run_current_floor.py` on Linux. The runner copies an explicit dependency set into an ignored private project, removes development plugins there, and isolates all five data/config/cache/temp paths. Existing UI helpers disable all four Node input modes, GUI input, automatic app/world processing and direct camera polling; only declared controller steps advance the household. Each stage uses a new engine process. Reports, input/save hashes and raw logs remain in the printed private work directory.
 
-The sole committed fixture is an actual public save from the original four-member household at game minute4107. Its producer matched all237 sampled rows and the unchanged public command prefix of the original three-day replay. No body, need, queue or movement state was created for this fixture. Its exact SHA256 is `b4026e446bc8a330fc572fb9bdbc5d59ad30b4a1fd05280c6fcfec21f06bf688`.
+The sole committed fixture is an actual public save from the original four-member household at game minute4107. Its producer matched all237 sampled rows and the unchanged public command prefix of the original three-day replay. No body, need, queue or movement state was created for this fixture. Its exact SHA256 is `5cb3a9a7fb6ff189b5177bb8cf055f3c11d0c1bb101fdc2dc2e165b4fdd5f4d4`.
 
 Morgan has unpaid Sleep route219 to the original upstairs bed, an ordinary current-floor leg, chosen stair wait(-2.5,.16,-3.5), and ticket0. Rowan has unpaid Read route218 returning to the now-free bookcase, original FIFO4058.999999999738, and later explicit Cook. The temporary retreat leaves both full instructions and destinations intact. Rowan must physically reach the bookcase before Read starts; actual route retirement releases Morgan. Expiry does not count as recovery.
 
