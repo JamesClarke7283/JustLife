@@ -1,0 +1,13 @@
+{
+  "tool": "eye_iris_v61",
+  "baseline": {
+    "note": "the committed hair-lock-v61 character artwork (d0b3beb and later)",
+    "taken_from": "working tree"
+  },
+  "blender": "5.2.1",
+  "expected": {
+    "changed_objects_per_family": 6,
+    "iris_scale": 0.70
+  },
+  "policy": "generate.py reads the working tree as the baseline (the v61 hair is the committed state), authors candidates in fresh Blender processes, exports the sixteen GLBs through the established wardrobe export path, asserts each family's decoded glTF contract against its own qualified export, records every hash in RECEIPT.json and only --apply writes the working tree and re-qualifies the production hashes and the adult decoded PINS."
+}
