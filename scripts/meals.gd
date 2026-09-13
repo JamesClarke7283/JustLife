@@ -16,7 +16,9 @@ const SURFACE_INSET := .01
 const RECIPES := {
 	"garden_skillet":{"label":"Garden skillet", "servings":4, "cost":12, "skill":1, "nutrition":70.0, "duration":45.0, "xp":34.0, "description":"Toasted grains, roasted vegetables and fresh basil.", "model":"meal"},
 	"herb_pasta":{"label":"Herb garden pasta", "servings":4, "cost":16, "skill":2, "nutrition":76.0, "duration":50.0, "xp":40.0, "description":"Curled pasta folded with garden herbs and tomato.", "model":"meal_herb_pasta"},
-	"harvest_bake":{"label":"Harvest vegetable bake", "servings":8, "cost":24, "skill":4, "nutrition":82.0, "duration":70.0, "xp":55.0, "description":"A generous dish of vegetables under a golden baked topping.", "model":"meal_harvest_bake"}
+	"harvest_bake":{"label":"Harvest vegetable bake", "servings":8, "cost":24, "skill":4, "nutrition":82.0, "duration":70.0, "xp":55.0, "description":"A generous dish of vegetables under a golden baked topping.", "model":"meal_harvest_bake"},
+	"mushroom_soup":{"label":"Mushroom soup", "servings":4, "cost":20, "skill":3, "nutrition":74.0, "duration":60.0, "xp":46.0, "description":"Sliced mushrooms simmered in a herbed cream broth.", "model":"meal_mushroom_soup"},
+	"berry_crumble":{"label":"Berry crumble", "servings":6, "cost":28, "skill":5, "nutrition":78.0, "duration":80.0, "xp":62.0, "description":"Baked berries under an uneven golden crumble.", "model":"meal_berry_crumble"}
 }
 const QUALITY_LABELS := ["", "Homestyle", "Delicious", "Excellent"]
 

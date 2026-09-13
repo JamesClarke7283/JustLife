@@ -30,10 +30,13 @@ func run()->void:
  child.free()
  for recipe:String in LifeMeals.RECIPES:
   var definition:Dictionary=LifeMeals.RECIPES[recipe]
-  var poor:LifeSim=fresh(4,int(definition.cost)-1)
+  # Each recipe is exercised at its OWN required cooking level rather than a
+  # literal 4, which was simply the highest requirement the old three-dish set
+  # happened to have. Pinning the literal silently excluded any recipe above it.
+  var poor:LifeSim=fresh(int(definition.skill),int(definition.cost)-1)
   check(not poor.queue_action("cook","stove",Vector3.ZERO,recipe),recipe+" exact ingredient cost is enforced")
   poor.free()
-  var sim:LifeSim=fresh(4,int(definition.cost))
+  var sim:LifeSim=fresh(int(definition.skill),int(definition.cost))
   check(sim.queue_action("cook","stove",Vector3.ZERO,recipe),recipe+" queues with exact funds")
   check(sim.funds==int(definition.cost),recipe+" queueing does not charge")
   sim.begin_current_action();sim.begin_current_action()
