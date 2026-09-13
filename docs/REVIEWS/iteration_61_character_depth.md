@@ -159,6 +159,17 @@ green (`test_depth_v61` 98 checks, 0 failures).
   GLB (`Hand_Grip_L/R` morphs sit on an arm-fill mesh). The creator's Face tab
   zooms straight into the weakest surface. Hair — the largest of these — is now
   fixed; the rest remain.
+- **Two eye repairs were attempted and rejected, with the reason recorded.**
+  Projecting each surface piece onto the sclera through a nearest-surface BVH
+  moved vertices laterally as well as in depth and broke the iris outline into a
+  stepped edge (`evidence/face61/v61_adult_eyes.png`, a visible clipped notch at
+  the bottom of each iris). A depth-only paraboloid bulge — zero at the disc
+  outline, so every silhouette is preserved exactly — was correct but barely
+  visible in a matched render against the current build, because the eye's real
+  defect is the hard upper-lid boundary and an iris with no fibre or limbal
+  shading, not the iris's flatness. Neither earned another sixteen-GLB
+  re-qualification cycle, so both were removed rather than kept as marginal
+  changes. `evidence/face61/after_adult_eyes.png` is the current production eye.
 - **Breadth at the far end of a life.** Three recipes, one neighbourhood with
   four homes, and no death, inheritance, fears or whims. Households can grow but
   never shrink or end.

@@ -56,6 +56,9 @@ var _book: Node3D
 var _brush: Node3D
 var _snack: Node3D
 var _watering_can: Node3D
+var _toothbrush: Node3D
+var _instrument: Node3D
+var _books: Array[Node3D] = []
 var _mop: Node3D
 var _birthday_cake: Node3D
 var _cake_center: Node3D
@@ -674,6 +677,32 @@ func _create_props() -> void:
 	spout.position = Vector3(0.03, -0.043, 0.12)
 	_watering_can.scale = Vector3.ONE * _proportion
 	_watering_can.visible = false
+	# Brushing teeth: a slim handle with a bristle head, held in the right hand.
+	_toothbrush = _hand_anchor("Toothbrush", "R")
+	var brush_handle: MeshInstance3D = _cylinder(_toothbrush, 0.010, 0.19, Color("8fc4c6"))
+	brush_handle.rotation.x = PI / 2.0
+	brush_handle.position.z = 0.07
+	var brush_neck: MeshInstance3D = _cylinder(_toothbrush, 0.007, 0.035, Color("cfe7e8"))
+	brush_neck.rotation.x = PI / 2.0
+	brush_neck.position.z = 0.172
+	var brush_head: MeshInstance3D = _box(_toothbrush, Vector3(0.021, 0.009, 0.045), Color("f4f8f6"))
+	brush_head.position.z = 0.212
+	var brush_bristles: MeshInstance3D = _box(_toothbrush, Vector3(0.019, 0.011, 0.038), Color("eef6f4"))
+	brush_bristles.position = Vector3(0, 0.010, 0.212)
+	_toothbrush.scale = Vector3.ONE * _proportion
+	_toothbrush.visible = false
+	# An instrument in the left hand: the authored model differs, the anchor does not.
+	_instrument = _hand_anchor("Instrument", "L")
+	_instrument.scale = Vector3.ONE * _proportion
+	_instrument.visible = false
+	# A held skill book, shown while reading or shelving one.
+	for index: int in range(2):
+		var held_book: Node3D = _hand_anchor("HeldBook_%d" % index, "L" if index == 0 else "R")
+		var held_cover: MeshInstance3D = _box(held_book, Vector3(0.20, 0.028, 0.145), Color("b6b29c"))
+		held_cover.set_meta("book_cover", true)
+		held_book.scale = Vector3.ONE * _proportion
+		held_book.visible = false
+		_books.append(held_book)
 
 
 func _hand_anchor(anchor_name: String, side: String) -> Node3D:
@@ -706,6 +735,13 @@ func _update_grips(delta: float, moving: bool, action_id: String) -> void:
 			"snack": targets.R = .45
 			"eat_meal": targets.R = .78
 			"paint": targets.R = .80
+			"brush_teeth": targets.R = .62
+			"wash_hands": targets = {"L":.34,"R":.34}
+			"clear_table": targets = {"L":.30,"R":.30}
+			"study_book": targets = {"L":.22,"R":.22}
+			"buy_book": targets = {"L":.22,"R":.22}
+			"practice_instrument": targets = {"L":.55,"R":.55}
+			"hug": targets = {"L":.30,"R":.30}
 			"water": targets.R = .55
 			"mop_puddle": targets = {"L":.8,"R":.8}
 			"read": targets = {"L":.20,"R":.20}
@@ -1029,6 +1065,9 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 	_book.visible = false
 	_brush.visible = false
 	_watering_can.visible = false
+	if is_instance_valid(_toothbrush):_toothbrush.visible = false
+	if is_instance_valid(_instrument):_instrument.visible = false
+	for held_book: Node3D in _books:if is_instance_valid(held_book):held_book.visible = false
 	_mop.visible=false
 	if _model_age == "baby":
 		# The baby never walks. Moving is a hands-and-knees crawl; idle is a
@@ -1091,11 +1130,11 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 					pose["Forearm_R"] = Vector3(-0.55, 0, 0)
 					pose["Leg_L"] = Vector3(-0.08, 0, 0)
 					pose["Shin_L"] = Vector3(0.12, 0, 0)
-			"relax", "watch", "toilet", "work", "study", "job", "school", "homework", "play_games":
+			"relax", "watch", "toilet", "work", "study", "job", "school", "homework", "play_games", "study_hard", "deep_read":
 				if anchor_kind != "standing":
 					_seated_pose(pose)
 					offset.y -= 0.43 * _height * _proportion
-				if action_id in ["work", "study", "job", "school", "homework", "play_games"]:
+				if action_id in ["work", "study", "job", "school", "homework", "play_games", "study_hard"]:
 					pose["Arm_L"] = Vector3(-0.42, 0, 0.05)
 					pose["Arm_R"] = Vector3(-0.42, 0, -0.05)
 					pose["Forearm_L"] = Vector3(-0.85 + sin(t * 9.0) * 0.05, 0, 0)
@@ -1163,17 +1202,17 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 				_reach_hand(pose,"R",hand_target,Vector3(.65,-.7,-.05))
 				pose["Arm_L"] = Vector3(-.10,0,.025)
 				pose["Forearm_L"] = Vector3(-.20,0,0)
-			"cook":
-				if _has_oven():lean.x=.90*LifeOvenSequence.crouch(_cooking_progress())
+			"cook", "experiment_recipe":
+				if _has_oven() and action_id=="cook":lean.x=.90*LifeOvenSequence.crouch(_cooking_progress())
 				else:_cooking_pose(pose)
-			"read":
+			"read", "deep_read":
 				pose["Arm_L"] = Vector3(-0.43, 0, 0.17)
 				pose["Arm_R"] = Vector3(-0.43, 0, -0.17)
 				pose["Forearm_L"] = Vector3(-1.05, 0, 0.06)
 				pose["Forearm_R"] = Vector3(-1.05 + sin(t * 0.8) * 0.06, 0, -0.06)
 				pose["Head"] = Vector3(0.27, sin(t * 0.55) * 0.025, 0)
 				_book.visible = true
-			"paint":
+			"paint", "paint_masterpiece", "sketch_for_fun":
 				pose["Arm_R"] = Vector3(-0.80 + sin(t * 2.1) * 0.20, 0.08 * cos(t * 1.5), -0.13)
 				pose["Forearm_R"] = Vector3(-0.68 + sin(t * 2.1 + 1.0) * 0.22, 0, 0)
 				pose["Arm_L"] = Vector3(-0.10, 0, -0.08)
@@ -1219,7 +1258,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 				pose["Arm_R"] = Vector3(-0.45 - 0.25 * think, 0, -0.05)
 				pose["Forearm_R"] = Vector3(-0.70 - 0.30 * think, 0, 0)
 				pose["Head"] = Vector3(0.30 - 0.10 * think, 0.05 * sin(t * 0.5), 0)
-			"jog":
+			"jog", "push_through", "morning_run":
 				var run_cycle: float = t * 10.5
 				var stride: float = sin(run_cycle)
 				pose["Leg_L"] = Vector3(stride * 0.62, 0, 0)
@@ -1260,8 +1299,72 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 				_reach_hand(pose,"R",Vector3(.14*_proportion,_hip_height+(.20+.08*(1.0-play))*_proportion,.32*_proportion),Vector3(.7,-.8,-.1))
 				pose["Head"] = Vector3(0.30, 0.06 * sin(t * 1.5), 0)
 				lean.x = 0.12
-			"practice_speech":
-				_conversation_pose(pose, "friendly" if fmod(t, 8.0) < 4.0 else "joke", t)
+			"wash_hands":
+				# Both hands under the tap at the basin, a small rubbing motion.
+				var rub: float = sin(t * 4.2) * 0.05
+				_reach_hand(pose,"L",Vector3(-.09*_proportion,_hip_height+.34*_proportion,.30*_proportion),Vector3(-.7,-.8,-.1))
+				_reach_hand(pose,"R",Vector3(.05*_proportion+rub*_proportion,_hip_height+.31*_proportion,.31*_proportion),Vector3(.7,-.8,-.1))
+				pose["Head"] = Vector3(.13,.03*sin(t*1.1),0)
+				lean.x = .04
+			"brush_teeth":
+				# The brush comes up to the mouth and works back and forth.
+				var work: float = sin(_action_time * 6.0)
+				var mouth: Vector3 = _model.to_local(_joints["Head"].to_global(Vector3(0,_mouth_anchor.y-.012,_mouth_anchor.z))) if _joints.has("Head") else Vector3(0,1.50,.10)
+				_reach_hand(pose,"R",mouth+Vector3(.028*work*_proportion,-.012*_proportion,.028*_proportion),Vector3(.75,-.6,-.1))
+				pose["Arm_L"] = Vector3(-.14,0,.10)
+				pose["Forearm_L"] = Vector3(-.42,0,0)
+				pose["Head"] = Vector3(.06+work*.02,.05*sin(t*.9),0)
+				_toothbrush.visible = true
+			"clear_table", "deep_clean":
+				# Gather plates at waist height, then walk them to the sink.
+				var gather: float = 0.5 + 0.5 * sin(t * 1.6)
+				_reach_hand(pose,"L",Vector3(-.16*_proportion,_hip_height+(.22+.03*gather)*_proportion,.28*_proportion),Vector3(-.7,-.8,-.1))
+				_reach_hand(pose,"R",Vector3(.16*_proportion,_hip_height+(.24-.03*gather)*_proportion,.29*_proportion),Vector3(.7,-.8,-.1))
+				pose["Head"] = Vector3(.22,.04*sin(t*1.3),0)
+				lean.x = .07
+			"study_book":
+				pose["Arm_L"] = Vector3(-0.43, 0, 0.17)
+				pose["Arm_R"] = Vector3(-0.43, 0, -0.17)
+				pose["Forearm_L"] = Vector3(-1.05, 0, 0.06)
+				pose["Forearm_R"] = Vector3(-1.05 + sin(t * 0.8) * 0.06, 0, -0.06)
+				pose["Head"] = Vector3(0.27, sin(t * 0.55) * 0.025, 0)
+				_book.visible = true
+			"buy_book":
+				pose["Arm_L"] = Vector3(-0.50, 0, 0.20)
+				pose["Arm_R"] = Vector3(-0.50, 0, -0.20)
+				pose["Forearm_L"] = Vector3(-0.95, 0, 0.04)
+				pose["Forearm_R"] = Vector3(-0.95, 0, -0.04)
+				pose["Head"] = Vector3(0.22, 0.04 * sin(t * 1.4), 0)
+				for held_book: Node3D in _books: held_book.visible = true
+			"practice_instrument":
+				# Both hands on the instrument: a strumming right hand over a fretting left.
+				var strum: float = sin(t * 3.4)
+				_reach_hand(pose,"L",Vector3(-.14*_proportion,_hip_height+.30*_proportion,.30*_proportion),Vector3(-.8,-.5,-.1))
+				_reach_hand(pose,"R",Vector3(.10*_proportion,_hip_height+(.26+.02*strum)*_proportion,.31*_proportion),Vector3(.8,-.5,-.1))
+				pose["Head"] = Vector3(.14+.03*sin(t*1.7),-.04*strum,0)
+				_instrument.visible = true
+			"watch_together":
+				# Settle back and react to the screen with an occasional nod.
+				if anchor_kind != "standing":
+					_seated_pose(pose)
+					offset.y -= 0.43 * _height * _proportion
+				var react: float = 0.5 + 0.5 * sin(t * 0.9)
+				pose["Arm_L"] = Vector3(-0.20, 0, -0.24)
+				pose["Arm_R"] = Vector3(-0.22, 0, 0.22)
+				pose["Forearm_L"] = Vector3(-0.55, 0, 0)
+				pose["Forearm_R"] = Vector3(-0.50, 0, 0)
+				pose["Head"] = Vector3(-0.04 + 0.05 * react, 0.06 * sin(t * 0.7), 0)
+			"hug":
+				# Both arms come up and around the other Lifelet, holding close.
+				var cling: float = smoothstep(0.0, 0.55, _action_time)
+				var squeeze: float = 0.5 + 0.5 * sin(_action_time * 1.9)
+				var reach: float = (0.34 + 0.05 * squeeze) * cling
+				_reach_hand(pose,"L",Vector3(-0.11*_proportion,_hip_height+(.30+reach*.30)*_proportion,(.18+reach*.30)*_proportion),Vector3(-.85,-.35,-.20))
+				_reach_hand(pose,"R",Vector3( 0.11*_proportion,_hip_height+(.30+reach*.30)*_proportion,(.18+reach*.30)*_proportion),Vector3(.85,-.35,-.20))
+				pose["Forearm_L"] = Vector3(pose.Forearm_L) + Vector3(-0.35*cling,0,0)
+				pose["Forearm_R"] = Vector3(pose.Forearm_R) + Vector3(-0.35*cling,0,0)
+				pose["Head"] = Vector3(-0.05*cling,0.09*cling*sin(_action_time*1.1),0.10*cling)
+				lean.x = 0.05*cling
 			"change_outfit":
 				pose["Arm_L"] = Vector3(-1.1, 0, 0.12)
 				pose["Forearm_L"] = Vector3(-1.3, 0, 0)
@@ -1274,8 +1377,8 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 				pose["Forearm_L"] = Vector3(-0.55 + 0.05 * sin(t * 1.5), 0, 0)
 				pose["Forearm_R"] = Vector3(-0.55 + 0.05 * cos(t * 1.5), 0, 0)
 				pose["Head"] = Vector3(0.06, 0.05 * sin(t * 0.5), 0)
-			"friendly", "joke", "deep_talk", "flirt", "argue", "ask_partner", "commit", "break_up":
-				var gesture_aliases: Dictionary = {"ask_partner":"deep_talk", "commit":"flirt", "break_up":"deep_talk"}
+			"friendly", "joke", "deep_talk", "flirt", "argue", "ask_partner", "commit", "break_up", "playful_prank", "bold_introduction", "host_a_chat":
+				var gesture_aliases: Dictionary = {"ask_partner":"deep_talk", "commit":"flirt", "break_up":"deep_talk", "playful_prank":"joke", "bold_introduction":"friendly", "host_a_chat":"deep_talk"}
 				_conversation_pose(pose, str(gesture_aliases.get(action_id, action_id)), t)
 	if _accident_visible:_accident_pose(pose)
 	if bool(meal_presentation.get("carrying",false)):
@@ -1288,7 +1391,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		var direction:Vector3=_model.to_local(_activity_anchor.attention_target)-_model.to_local(_joints.Head.global_position)
 		var gaze:Vector3=Vector3(clampf(-atan2(direction.y,Vector2(direction.x,direction.z).length()),-.38,.4),clampf(atan2(direction.x,direction.z),-.72,.72),0)
 		pose["Head"]=Vector3(pose.Head).lerp(gaze,attention_weight)
-	if anchored and anchor_kind == "seat" and _activity_anchor.has("hand_center") and action_id in ["work","study","job","school","homework","play_games"]:
+	if anchored and anchor_kind == "seat" and _activity_anchor.has("hand_center") and action_id in ["work","study","job","school","homework","play_games","study_hard"]:
 		lean.x = _desk_lean()
 		# Keep thighs horizontal while the torso leans from its supported hips.
 		pose["Leg_L"].x -= lean.x
@@ -1358,7 +1461,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		var shoe:Node3D=rest.shoe
 		if not moving and ((action_id=="cook" and _has_oven()) or (anchored and action_id in ["plant_wee","mop_puddle"])):shoe.global_basis=Basis(Vector3.UP,float(_activity_anchor.yaw))*Basis(rest.shoe_basis)
 		else:shoe.basis=Basis.IDENTITY
-	var seated: bool = not moving and ((action_id in ["relax", "watch", "toilet", "work", "study", "job", "school", "homework", "play_games", "homework_wait", "eat_meal", "bath", "play_piano", "play_chess"] and anchor_kind != "standing") or (action_id in ["sleep", "nap"] and anchor_kind == "seat"))
+	var seated: bool = not moving and ((action_id in ["relax", "watch", "toilet", "work", "study", "job", "school", "homework", "play_games", "homework_wait", "eat_meal", "bath", "play_piano", "play_chess", "study_hard", "deep_read", "host_a_chat"] and anchor_kind != "standing") or (action_id in ["sleep", "nap"] and anchor_kind == "seat"))
 	_sit_amount = lerpf(_sit_amount, 1.0 if seated else 0.0, blend)
 	for entry: Dictionary in _sit_shapes:
 		entry.mesh.set_blend_shape_value(int(entry.index), _sit_amount)
@@ -1504,8 +1607,8 @@ func _update_expression(delta: float,action_id: String,blend: float) -> void:
 	for entry: Dictionary in _blink_shapes:
 		entry.mesh.set_blend_shape_value(int(entry.index),blink)
 	var target_smile: float = 0.10
-	if action_id in ["friendly","joke","flirt","ask_partner","commit","help_homework"]:
-		target_smile = 0.55 if action_id == "joke" else 0.34
+	if action_id in ["friendly","joke","flirt","ask_partner","commit","help_homework","playful_prank","bold_introduction","host_a_chat"]:
+		target_smile = 0.55 if action_id in ["joke","playful_prank"] else 0.34
 	elif action_id == "birthday":
 		target_smile = .12 if _action_time > 1.7 and _action_time < 3.2 else .55
 	elif action_id in ["argue","sleep","nap","break_up","plant_wee"] or _accident_visible:
@@ -1532,7 +1635,7 @@ func _update_voice(delta: float, speed_factor: float, moving: bool, action_id: S
 		if _speech_remaining > 0.0:
 			_play_voice(_pending_voice)
 		_pending_voice = ""
-	var categories: Dictionary = {"friendly": "greeting", "joke": "happy", "deep_talk": "thoughtful", "flirt": "happy", "argue": "argument", "ask_partner":"thoughtful", "commit":"happy", "break_up":"thoughtful","birthday":"happy","help_homework":"thoughtful"}
+	var categories: Dictionary = {"friendly": "greeting", "joke": "happy", "deep_talk": "thoughtful", "flirt": "happy", "argue": "argument", "ask_partner":"thoughtful", "commit":"happy", "break_up":"thoughtful","birthday":"happy","help_homework":"thoughtful","playful_prank":"happy","bold_introduction":"greeting","host_a_chat":"thoughtful"}
 	if moving or not categories.has(action_id):
 		_last_voice_action = ""
 		return
@@ -2005,6 +2108,9 @@ func _reset_stair_pose()->void:
 	visual.position=Vector3.ZERO;visual.rotation=Vector3.ZERO
 	stair_pose_valid=true;stair_pose_error=""
 	_book.visible=false;_brush.visible=false;_watering_can.visible=false
+	if is_instance_valid(_toothbrush):_toothbrush.visible=false
+	if is_instance_valid(_instrument):_instrument.visible=false
+	for held_book:Node3D in _books:if is_instance_valid(held_book):held_book.visible=false
 	var pose:Dictionary={}
 	for name:String in JOINT_NAMES:pose[name]=Vector3.ZERO
 	_update_grips(0,false,"")
