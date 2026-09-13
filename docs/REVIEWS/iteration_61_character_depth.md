@@ -6,8 +6,8 @@ rendered captures from the real game and from Blender.
 
 | Dimension | Weight | Iteration 60 | Iteration 61 | Basis |
 |---|---:|---:|---:|---|
-| Visual and character quality | 20% | 8.0 (own) / 6.5 (critic) | **6.5 → 7.0** | 36 flat plank locks re-sectioned to rounded cords and 12 zero-thickness shells closed in all four families; the eyes, lips and hands remain unfinished at close range |
-| Usability and flow | 15% | 8.0 / 7.5 | 7.5 | Creator, live HUD, build catalogue, reward store and every panel render cleanly with good contrast; unchanged from the critic's 7.5 |
+| Visual and character quality | 20% | 8.0 (own) / 6.5 (critic) | **6.5 → 7.0** (iris proportion fixed after the re-score) | 36 flat plank locks re-sectioned to rounded cords and 12 zero-thickness shells closed in all four families; the eyes, lips and hands remain unfinished at close range |
+| Usability and flow | 15% | 8.0 / 7.5 | 7.5 (resolution fit now verified, not assumed) | Creator, live HUD, build catalogue, reward store and every panel render cleanly with good contrast; unchanged from the critic's 7.5 |
 | Simulation and interaction depth | 25% | 8.3 / 8.0 | **8.0 → 8.5** | A spendable eight-reward store, five emotion-gated and six trait-gated interactions with real effects |
 | Creative breadth and sustained play | 25% | 8.0 / 7.0 | 7.0 | Unchanged breadth at the far end of a life: 3 recipes, one neighbourhood, no death or inheritance |
 | Reliability and delivery | 15% | 8.2 / 6.0 | 6.0 → 6.7 | The shipped tree's own suite battery went from 4 failures to 0 on this iteration's regression; the rendered runners still fail on this hardware and the frame budget is unqualified below the verified desktop |
@@ -167,6 +167,44 @@ factor suits every age stage.
 Two earlier attempts at this were **rejected and removed** with the reasons
 recorded, rather than shipped as marginal changes — see the limits below.
 
+### The rendered runner's pointer failure, root-caused and fixed
+
+Iterations 60 and 61 both recorded the rendered home and neighbourhood runners as
+failing "environmentally" with `Input.warp_mouse` not reaching its target, and
+left it at that. It is not environmental — it is a coordinate-space bug in the
+harness, and it is now identified by measurement and fixed.
+
+The harness warps in **window** space but compares in **canvas** space. Under the
+game's `canvas_items` stretch mode those differ: `Viewport.get_mouse_position()`
+and every `unproject_position` call site report canvas coordinates, while
+`Input.warp_mouse` takes window pixels. `tests/probe_pointer_map.gd` measures the
+mapping directly by warping to four known window points and reading back the
+canvas pointer: the ratio is **1.46562** at every point, spread 0.000000, exactly
+`canvas_size / window_size` (1876/1280 on this hardware). So an unconverted warp
+lands short by that factor — the ~450 px miss both reviews recorded.
+
+`mouse_move()` now converts before warping. Verified: the pointer assertion runs
+5 times and fails **0** times, with the reported distance down from ~450 px to
+**1.04–1.26 px**. The runtime-error count for the rendered home suite fell from a
+pristine-baseline 24 to 13 in the first run.
+
+The remaining rendered-suite failures are machine-timing sensitive rather than
+systematic — the project already documents that rendered fixtures need an
+otherwise-idle machine, and the run-to-run count varies (13 and 21 across two
+consecutive runs at load average ~4 on a 2-core CPU). They are recorded as open,
+not as passing.
+
+### The interface fits its supported resolutions
+
+`tests/probe_resolution61.gd` walks every visible `Control` and checks it lies
+inside the canvas at three window sizes (1440×900, 960×600, 1280×720), at both
+the live HUD and the creator, and it fails the check if the walk visits too few
+controls to have run at all. All six checks pass. This closes the rubric's
+"UI fits supported resolutions" gap that the iteration 60 and 61 reviews both
+listed as unverified, and it names the exact stretch-mode behaviour — the window
+resizes to what is asked for while the canvas stays a fixed 1876×900 — which is
+what made the earlier pointer failures so hard to read.
+
 ## The in-flight WIP this iteration finished
 
 The working tree also carried work that was not this iteration's own. It was
@@ -225,6 +263,31 @@ committed revision was not a runnable artifact. That is now fixed: a clean
   `tools/probe_eye_coverage.py` identified as the measured cause — is the one
   that landed, in `tools/eye_iris_v61/`. `evidence/face61/after_adult_eyes.png`
   is the eye at the point the first two were rejected.
+- **The lips and nose were measured, and the measurement changed the plan.**
+  Three probes were needed to get an honest answer, and the first two were
+  misleading in opposite directions. Comparing the frontmost lip point against
+  the frontmost face point said the lips stick out 6.3 mm (wrong: that face point
+  is the nose). Comparing each lip vertex against its nearest skin vertex said
+  every lip vertex sits 2.5–10 mm *behind* the skin (also wrong: head vertices are
+  sparse across the mouth, so the nearest one is elsewhere). A ray-cast from each
+  lip vertex read as fully occluded too — and the reason is the key fact: **the
+  outer skin has a mouth opening**, so a ray cast forward from a lip vertex
+  escapes through that opening, and one cast backward from in front of the face
+  passes through it and strikes the cavity's back-facing inner wall. That inner
+  wall is culled in render, which is exactly why the lips are visible. At the
+  mouth centre the outer skin's first surface is at y=-0.1124 while the lip front
+  is at -0.1053, so the lips are correctly seated inside the opening.
+  So the lip *construction* is sound — the real gap is surface refinement, which
+  `tools/adult_lip_volume/README.md` already states in its own words ("a modest
+  front-view gain, while the profile retains an angular tip and abrupt return",
+  scoped face assessment about 5.5/10). Adding a philtrum, a cupid's bow and a
+  vermilion border, and rounding the angular profile, needs that pinned
+  generator's geometry re-authored and re-qualified — a genuine sculpting change,
+  not a parameter fix, and not something to attempt without the tool's own
+  hash-pinned review path. The nose was measured at the same time and has formed
+  wings, a bridge, a tip and separate nostril openings (protruding 6 mm at
+  0.031 m nose height against a 0.133 m head depth), so it is low-volume rather
+  than absent. Both remain open.
 - **Breadth at the far end of a life.** Three recipes, one neighbourhood with
   four homes, and no death, inheritance, fears or whims. Households can grow but
   never shrink or end.
