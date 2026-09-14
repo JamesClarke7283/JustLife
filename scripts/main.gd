@@ -59,6 +59,8 @@ var away_phases: Dictionary = {}
 var need_bars: Dictionary = {}
 var need_fills: Dictionary = {}
 var need_values: Dictionary = {}
+var pregnancy_meter: ProgressBar
+var pregnancy_label: Label
 var queue_box: HBoxContainer
 var last_queue: String = ""
 var notice_label: Label
@@ -79,6 +81,7 @@ var selected_item: Dictionary = {}
 var build_undo: Array = []
 var build_transactions:LifeBuildTransactions
 var audio_player: AudioStreamPlayer
+var chime_player: AudioStreamPlayer
 var ambience_player: AudioStreamPlayer
 var sound_enabled: bool = true
 var pending_move: Dictionary = {}
@@ -191,11 +194,13 @@ func _connect_live_nodes() -> void:
 	household.physical_snapshot_provider=_physical_snapshot_context
 	for member:Dictionary in household.members:
 		member.sim.autonomy_activity_available=_activity_available_for_member.bind(str(member.id))
+		member.sim.social_witness=Callable(self,"_members_can_see_each_other")
 	var sender:LifeHousehold=household
 	household.notice.connect(show_notice)
 	household.member_action_started.connect(_member_action_started)
 	household.member_action_finished.connect(_member_action_finished)
 	household.baby_born.connect(_on_baby_born)
+	household.pregnancy_began.connect(_on_pregnancy_began)
 	household.member_age_changed.connect(func(id: String, _previous: String, _current: String): _refresh_aged_member.call_deferred(id,load_epoch,sender))
 	world.object_clicked.connect(on_object_clicked)
 	world.placement_reach_check=func(kind:String,p:Vector3,angle:float)->bool:
@@ -309,6 +314,7 @@ func clear_ui() -> void:
 	household_chips.clear();cancel_action_button=null
 	skill_labels.clear();skill_bars.clear();skill_progress_labels.clear();relationship_labels.clear();career_labels.clear();goal_labels.clear()
 	queue_box=null;time_label=null;funds_label=null;mood_label=null;action_label=null;action_context=null;action_bar=null;mood_ring=null;mood_pill=null;moodlet_tiles.clear()
+	pregnancy_meter=null;pregnancy_label=null
 	build_quote=null;build_quote_card=null;roof_visibility_button=null
 	last_queue=""
 	close_overlay()
@@ -455,7 +461,7 @@ func draw_creator() -> void:
 		for i in range(2):
 			var gender_name:String=["Female","Male"][i]
 			var selected:bool=int(profile.get("frame",0))==i
-			var choice=button(gender_name,Vector2(1100+i*146,228),Vector2(137,36),func():profile.frame=i;refresh_preview(),selected)
+			var choice=button(gender_name,Vector2(1100+i*146,228),Vector2(137,36),func():set_creator_gender(i),selected)
 			choice.name="Creator"+gender_name
 			choice.toggle_mode=true
 			choice.button_group=gender_group
@@ -535,7 +541,9 @@ func draw_creator() -> void:
 		# The baby's creator is the ordinary creator with the baby stage seeded:
 		# same drawing, same control handlers, one confirm instead of a move-in.
 		small_caps("A new arrival",Vector2(42,743),Vector2(162,24))
-		text_label("Everything here belongs to the new baby. Name them and make the face your own.",Vector2(42,772),Vector2(1000,32),15,P.MUTED)
+		text_label("Everything here belongs to the new baby. Name them and make the face your own — or roll the dice for a surprise.",Vector2(42,772),Vector2(1000,32),15,P.MUTED)
+		var dice=button("Roll the dice",Vector2(742,802),Vector2(322,62),roll_baby_dice)
+		dice.tooltip_text="Randomise the baby's name and gender, keeping the rest of the family's look."
 		button("Welcome the baby  →",Vector2(1080,802),Vector2(322,62),confirm_baby_creator,true)
 		return
 	small_caps("Household · %d / 8" % household_profiles.size(),Vector2(42,743),Vector2(162,24))
@@ -612,6 +620,21 @@ func _update_cover_beat(delta:float) -> void:
 		var data:Dictionary=LifeCatalog.get_item(str(item.kind))
 		cover_beat.position=Vector3(0,float(data.get("height",1.4))*.62,0)
 
+## The player can let the dice settle the two things they were going to pick:
+## the baby's name and gender. The rest of the child (face, skin, hair) keeps
+## the family's inherited look that the conception roll already chose.
+func roll_baby_dice() -> void:
+	if creator_purpose!="baby":return
+	var rng:=RandomNumberGenerator.new()
+	rng.randomize()
+	var rolled:Dictionary=LifeBabyPlan.roll({},{},rng.randi_range(1,LifeBabyPlan.MAX_BIRTHS))
+	profile.name=str(rolled.get("name","Wren Vale"))
+	var gender:String=str(rolled.get("gender","female"))
+	profile["gender"]=gender
+	profile.frame=LifeBabyPlan.frame_for(gender)
+	refresh_preview()
+	show_notice("The dice decided: %s, a %s." % [str(profile.name),gender])
+
 func confirm_baby_creator() -> void:
 	if creator_purpose!="baby" or household.members.size()>=LifeHousehold.MAX_MEMBERS:
 		show_notice("Your household already has eight Lifelets.");return
@@ -660,6 +683,14 @@ func set_creator_tab(value:String) -> void:
 	creator_tab=value
 	frame_creator_camera()
 	draw_creator()
+
+## The gender buttons set both the authored model frame and the declared gender,
+## so a chosen gender is what the household, the save and the model all agree on
+## (a stale declared gender otherwise wins over the frame, ignoring the click).
+func set_creator_gender(frame:int) -> void:
+	profile.frame=frame
+	profile["gender"]="male" if frame==1 else "female"
+	refresh_preview()
 
 func set_creator_face_group(value:String) -> void:
 	if not CREATOR_FACE_GROUPS.has(value):return
@@ -1139,6 +1170,19 @@ func draw_household_bar() -> void:
 			value.mouse_filter=Control.MOUSE_FILTER_PASS
 			value.gui_input.connect(func(event:InputEvent):_need_row_clicked(event,key))
 			need_values[key]=value
+		# A pregnancy is not a need, but it is a meter the mother watches fill.
+		# It appears under the needs grid only while somebody is expecting.
+		pregnancy_meter=null;pregnancy_label=null
+		if household.pregnancy_mother_id()==bound_member_id:
+			var pp:=Vector2(989,858)
+			pregnancy_label=text_label("Pregnancy",pp,Vector2(120,19),12,P.TEAL)
+			pregnancy_label.tooltip_text="The baby is on the way. The meter fills toward the birth."
+			pregnancy_meter=ProgressBar.new();pregnancy_meter.show_percentage=false
+			rect(pregnancy_meter,pp+Vector2(120,8),Vector2(290,7))
+			var pfill:StyleBoxFlat=P.panel(Color("d98cb0"),5)
+			pfill.content_margin_top=0;pfill.content_margin_bottom=0
+			pregnancy_meter.add_theme_stylebox_override("fill",pfill)
+			pregnancy_meter.add_theme_stylebox_override("background",P.panel(Color("e6dcd4"),5))
 	elif panel_tab=="Skills":
 		for i in range(mini(8,sim.skills.size())):
 			var key:String=sim.skills.keys()[i]
@@ -1271,6 +1315,11 @@ func refresh_hud() -> void:
 		need_values[key].text=str(int(value))
 		need_bars[key].tooltip_text=_need_tooltip(key,value)
 		need_values[key].tooltip_text=_need_tooltip(key,value)
+	if is_instance_valid(pregnancy_meter):
+		var progress:float=household.pregnancy_progress()
+		pregnancy_meter.value=maxf(0.0,progress)*100.0
+		if is_instance_valid(pregnancy_label):
+			pregnancy_label.text="Pregnancy · %d%%" % int(maxf(0.0,progress)*100.0)
 	var away:Dictionary=sim.get_away_state()
 	for id:String in household_chips:
 		var chip:Button=household_chips[id]
@@ -1441,6 +1490,8 @@ func draw_build_catalog() -> void:
 		var category:String=["All","Comfort","Kitchen","Bathroom","Activities","Decor","Structure"][i]
 		button(category,Vector2(296+i*132,663),Vector2(123,35),func():catalog_category=category;draw_live(),catalog_category==category)
 	button("Undo",Vector2(1250,663),Vector2(144,35),undo_build)
+	var storage_button=button("Storage",Vector2(266,745),Vector2(105,37),show_storage)
+	storage_button.tooltip_text="Your household storage unit. Store furnishing away, take it out, or sell it."
 	button("Ground",Vector2(40,745),Vector2(105,37),func():set_build_level(0),world.view_level==0)
 	button("Upper",Vector2(153,745),Vector2(105,37),func():set_build_level(1),world.view_level==1)
 	var search:=LineEdit.new();search.placeholder_text="Search furnishings";search.text=catalog_search
@@ -1678,6 +1729,59 @@ func undo_build() -> void:
 	refresh_hud()
 	show_notice("Your last furnishing change was undone.")
 
+## The household storage unit. Every stored furnishing can be taken out (which
+## begins an ordinary placement, so the destination is validated like any
+## purchase) or sold for its usual value. It holds up to MAX_STORAGE items.
+func show_storage() -> void:
+	if mode!="build":return
+	cancel_placement()
+	overlay_open=true;dismiss_layer()
+	var p=Vector2(430,150)
+	card(p,Vector2(580,600),P.WHITE,22,overlay)
+	text_label("Storage unit",p+Vector2(34,24),Vector2(500,49),32,P.INK,true,overlay)
+	paragraph("Furnishings kept here are out of the way but not gone. Take one out to place it again, or sell it on. Holding %d of %d." % [household_flow.storage_count(),LifeHouseholdFlow.MAX_STORAGE],p+Vector2(36,84),Vector2(508,58),15,P.MUTED,overlay)
+	var scroll=ScrollContainer.new();rect(scroll,p+Vector2(32,158),Vector2(516,356),overlay)
+	var column=VBoxContainer.new();column.add_theme_constant_override("separation",10);scroll.add_child(column)
+	if household_flow.storage.is_empty():
+		paragraph("Nothing is in storage yet. In Build & buy, click a furnishing and choose Put in storage.",p+Vector2(44,196),Vector2(492,80),17,P.MUTED,overlay)
+	for entry:Dictionary in household_flow.storage.duplicate():
+		var kind:String=str(entry.kind)
+		if not LifeCatalog.ITEMS.has(kind):continue
+		var row=Control.new();row.custom_minimum_size=Vector2(492,62);column.add_child(row)
+		var label:=text_label(str(LifeCatalog.ITEMS[kind].label),Vector2(4,6),Vector2(280,26),17,P.INK,true,row)
+		label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+		text_label("Level %d" % (int(entry.get("level",0))+1),Vector2(4,32),Vector2(120,22),12,P.MUTED,false,row)
+		var take=button("Take out",Vector2(292,10),Vector2(96,42),func():withdraw_stored(str(entry.id)),false,row)
+		take.tooltip_text="Place this furnishing back into the home."
+		var sale=button("Sell  +§%d" % int(LifeCatalog.ITEMS[kind].price*.7),Vector2(394,10),Vector2(96,42),func():sell_stored(str(entry.id)),false,row)
+	button("Back to Build & buy",p+Vector2(32,522),Vector2(516,48),func():close_overlay();draw_live(),true,overlay)
+
+## Withdraw a stored furnishing and begin placing it. The placement path is the
+## ordinary one, so the same reach/support checks that guard a purchase apply.
+func withdraw_stored(id:String) -> void:
+	var result:Dictionary=household_flow.withdraw_furnishing(id)
+	if not bool(result.ok):show_notice(str(result.error));show_storage();return
+	var record:Dictionary=result.record
+	var kind:String=str(record.kind)
+	# A withdrawn item reuses its own identity so an in-flight action that still
+	# names it can find the furnishing once it lands, exactly like a move.
+	pending_move={"entry":record,"snapshot":_build_snapshot(),"from_storage":true}
+	close_overlay()
+	world.begin_placement(kind)
+	world.placement_angle=float(record.get("rotation",0))
+	_refresh_sim_targets(false)
+	refresh_hud()
+	show_notice("Place the %s. Esc returns it to storage." % LifeCatalog.ITEMS[kind].label.to_lower())
+
+## Sell a stored furnishing outright and credit the household.
+func sell_stored(id:String) -> void:
+	var result:Dictionary=household_flow.sell_stored(id)
+	if not bool(result.ok):show_notice(str(result.error));return
+	household.set_funds(sim.funds+int(result.credit))
+	refresh_hud()
+	show_storage()
+	show_notice("Sold the %s from storage. +§%d" % [LifeCatalog.ITEMS[str(result.kind)].label, int(result.credit)])
+
 func on_object_clicked(item:Dictionary,screen:Vector2) -> void:
 	if bool(item.get("transient_puddle",false)) and mode=="build":show_notice("Return to Live mode to mop this puddle.");return
 	selected_item=item
@@ -1851,10 +1955,29 @@ func show_build_object(item:Dictionary,screen:Vector2) -> void:
 	if bool(item.get("transient_food",false)) or not LifeCatalog.ITEMS.has(str(item.get("kind",""))):return
 	overlay_open=true;dismiss_layer()
 	var p=Vector2(clampf(screen.x-140,300,1100),clampf(screen.y-70,99,440))
-	card(p,Vector2(290,176),P.WHITE,17,overlay)
+	card(p,Vector2(290,228),P.WHITE,17,overlay)
 	text_label(item.label,p+Vector2(18,14),Vector2(261,38),22,P.INK,true,overlay)
 	button("Sell  +§%d" % int(LifeCatalog.ITEMS[item.kind].price*.7),p+Vector2(16,71),Vector2(258,40),func():sell_item(item);close_overlay(),false,overlay)
 	button("Move furnishing",p+Vector2(16,122),Vector2(258,40),func():move_item(item);close_overlay(),false,overlay)
+	var store=button("Put in storage",p+Vector2(16,173),Vector2(258,40),func():store_item(item);close_overlay(),false,overlay)
+	store.tooltip_text="File this furnishing away in the household storage unit ("+str(household_flow.storage_count())+"/%d used)." % LifeHouseholdFlow.MAX_STORAGE
+
+func store_item(item:Dictionary) -> void:
+	if mode!="build":return
+	var existing:Dictionary=_find_item(str(item.get("id","")))
+	if existing.is_empty() or bool(existing.get("transient_food",false)) or not LifeCatalog.ITEMS.has(str(existing.get("kind",""))):return
+	cancel_placement()
+	var entry:Dictionary={"id":str(existing.id),"kind":str(existing.kind),"x":existing.node.position.x,"z":existing.node.position.z,"rotation":existing.node.rotation_degrees.y,"level":world.item_level(existing)}
+	if _find_item(str(existing.id)).has("lit"):entry["lit"]=bool(existing.get("lit",true))
+	var result:Dictionary=household_flow.store_furnishing(entry)
+	if not bool(result.ok):show_notice(str(result.error));return
+	var protection:Dictionary=build_protection_context()
+	_cancel_all_cooperative_actions()
+	world.remove_item(str(existing.id))
+	build_transactions.furnishing_rebuilt(protection)
+	_refresh_sim_targets()
+	refresh_hud()
+	show_notice("%s is in storage. Open Storage to take it out or sell it." % LifeCatalog.ITEMS[str(existing.kind)].label)
 
 func sell_item(item:Dictionary) -> void:
 	if mode!="build":return
@@ -1905,7 +2028,12 @@ func cancel_placement() -> void:
 	if not is_instance_valid(world):return
 	world.clear_placement()
 	if not pending_move.is_empty():
-		world.add_item(pending_move.entry)
+		# A withdrawal that the player escapes returns to storage; a move puts
+		# the furnishing back where it was.
+		if bool(pending_move.get("from_storage",false)):
+			household_flow.store_furnishing(pending_move.entry)
+		else:
+			world.add_item(pending_move.entry)
 		pending_move.clear()
 		_refresh_sim_targets()
 
@@ -1934,6 +2062,7 @@ func _refresh_member_targets(replan:bool=true) -> void:
 	sim.meal_service=meal_flow
 	sim.sanitation_service=sanitation_flow
 	sim.household_service=household_flow
+	sim.social_witness=Callable(self,"_members_can_see_each_other")
 	if sim.is_away():
 		if str(sim.get_away_state().get("phase",""))=="returning":away_phases.erase(bound_member_id)
 		return
@@ -2090,6 +2219,7 @@ func _bind_member(id:String) -> void:
 	sim.meal_service=meal_flow
 	sim.sanitation_service=sanitation_flow
 	sim.household_service=household_flow
+	sim.social_witness=Callable(self,"_members_can_see_each_other")
 	player=world.actors.get(id)
 	var motion:Dictionary=motion_states.get(id,_empty_motion())
 	path=motion.path;path_index=motion.index;walk_only=motion.walk;pending_action=motion.pending
@@ -2125,6 +2255,14 @@ func _on_baby_born(mother_id: String) -> void:
 	if not bool(household.birth_ready()):return
 	show_notice("The baby has arrived.")
 	show_baby_creator.call_deferred()
+
+func _on_pregnancy_began(mother_id: String) -> void:
+	# The moment a baby is conceived the player hears a chime and reads the
+	# news, so they know whether the night worked before the birth days later.
+	if sound_enabled and is_instance_valid(chime_player) and chime_player.stream:chime_player.play()
+	var mother:LifeSim=household.member_sim(mother_id)
+	var name:String=str(mother.character.name).split(" ")[0] if is_instance_valid(mother) else "Your Lifelet"
+	show_notice("%s is expecting! A baby is on the way in about three days." % name)
 
 func _member_action_finished(id:String,action:Dictionary) -> void:
 	if loading_game:return
@@ -2768,6 +2906,10 @@ func setup_audio() -> void:
 	if ResourceLoader.exists("res://assets/audio/soft_click.wav"):
 		audio_player.stream=load("res://assets/audio/soft_click.wav")
 	audio_player.volume_db=0
+	chime_player=AudioStreamPlayer.new();add_child(chime_player)
+	if ResourceLoader.exists("res://assets/audio/chime_pregnancy.wav"):
+		chime_player.stream=load("res://assets/audio/chime_pregnancy.wav")
+	chime_player.volume_db=0
 	ambience_player=AudioStreamPlayer.new();add_child(ambience_player)
 	if ResourceLoader.exists("res://assets/audio/ambience_garden.wav"):
 		var stream:AudioStreamWAV=load("res://assets/audio/ambience_garden.wav").duplicate()
@@ -2782,6 +2924,7 @@ func set_sound(enabled:bool) -> void:
 	sound_enabled=enabled
 	if is_instance_valid(ambience_player):ambience_player.stream_paused=not enabled
 	if not enabled and is_instance_valid(audio_player):audio_player.stop()
+	if not enabled and is_instance_valid(chime_player):chime_player.stop()
 	_sync_actor_sound()
 
 func _sync_actor_sound() -> void:
@@ -2852,6 +2995,11 @@ func _process(delta:float) -> void:
 			if int(player.profile.get("outfit",0))!=int(sim.character.get("outfit",0)):
 				player.set_outfit(int(sim.character.get("outfit",0)))
 				if member.id==selected_id and not overlay_open:portrait_stale=true
+			# A mother's bump grows with the household pregnancy clock.
+			if is_instance_valid(player):
+				var bump:float=-1.0
+				if household.pregnancy_mother_id()==str(member.id):bump=household.pregnancy_progress()
+				player.pregnancy_bump=bump if bump>=0.0 else 0.0
 			player.animate(delta,float(sim.speed),moving,action_id)
 			_store_motion()
 		meal_flow.sync_world(household.speed>0)
@@ -3273,11 +3421,23 @@ func _update_activity_facing(delta:float,action:Dictionary,action_id:String) -> 
 		var direction:Vector3=world.actors[str(action.target_id)].position-player.position
 		player.rotation.y=lerp_angle(player.rotation.y,atan2(direction.x,direction.z),minf(delta*6,1))
 
+func _members_can_see_each_other(first:String,second:String)->bool:
+	# Two household members share a moment only if they are physically visible to
+	# each other: both present and no wall between them. Absent actors (away at
+	# work, or never spawned in a headless simulation) are never witnesses.
+	var a:LifeActor=world.actors.get(first)
+	var b:LifeActor=world.actors.get(second)
+	if not is_instance_valid(a) or not is_instance_valid(b):return false
+	if not a.visible or not b.visible:return false
+	if bool(a.get_meta("away",false)) or bool(b.get_meta("away",false)):return false
+	return world.sight_line_clear(a.position,b.position)
+
 func _social_point_clear(point:Vector3,target:LifeActor,tolerance:float=0.0)->bool:
 	if not point.is_finite() or not target.visible:return false
 	if absf(point.y-target.position.y)>.1:return false
 	var distance:float=point.distance_to(target.position)
 	if distance<maxf(0.0,LifeTraversal.ROUTE_CLEARANCE-tolerance) or distance>1.6:return false
+	if not world.sight_line_clear(point,target.position):return false
 	if not world.construction.building_state.is_empty():
 		if not traversal._free(bound_member_id,point):return false
 	else:
@@ -3356,7 +3516,13 @@ func _tick_resident_contacts()->void:
 		var state:Dictionary=residents.locations.get(residents.active_place,{}).get(resident_id,{})
 		var actor:LifeActor=world.actors.get(resident_id)
 		if state.is_empty() or not is_instance_valid(actor):continue
-		var contact:Dictionary=residents.resident_initiation(resident_id,str(state.get("phase","")),actor.position,positions,LifeEducation.weekday(sim.day),sim.minutes,sim.day)
+		# A resident who is merely nearby across a partition must not start a
+		# chat through it: only members the resident can actually see qualify.
+		var visible_positions:Dictionary={}
+		for member_id:String in positions:
+			if world.sight_line_clear(actor.position,positions[member_id]):visible_positions[member_id]=positions[member_id]
+		if visible_positions.is_empty():continue
+		var contact:Dictionary=residents.resident_initiation(resident_id,str(state.get("phase","")),actor.position,visible_positions,LifeEducation.weekday(sim.day),sim.minutes,sim.day)
 		if not contact.is_empty():_apply_resident_contact(contact)
 
 func _apply_resident_contact(contact:Dictionary)->void:
@@ -4106,10 +4272,49 @@ func _sync_away_presence() -> bool:
 			# Re-enter the rendered lot only at its sidewalk. Saved return walks
 			# retain their actual position; saved away members reappear at exit.
 			if previous=="away" or not player.visible:player.position=_saved_vector(state.get("exit_position"),world.lot_exit_position(_member_index(bound_member_id)))
-			var destination:Vector3=world.lot_return_position(_member_index(bound_member_id))
-			_set_route(destination)
-			if path.is_empty():show_notice("The return path is blocked. Clear the front garden to let this Lifelet come home.")
+			var destination:Vector3=_return_destination(_member_index(bound_member_id))
+			if destination.is_finite():
+				_set_route(destination)
+				if path.is_empty():show_notice("The return path is blocked. Clear the front garden to let this Lifelet come home.")
+			else:
+				# Every nearby return spot is occupied; try again shortly rather
+				# than leaving the Lifelet stranded at the curb forever.
+				show_notice("The front garden is crowded. Making room to come home.")
 	return changed
+
+## A clear curb spot for a returning Lifelet. The household's assigned return
+## position is preferred, but if it is occupied (a housemate standing there, or
+## furniture placed over it) nearby free spots are tried, so a returning member
+## is not left stuck behind a body or a chair.
+func _return_destination(member_index:int) -> Vector3:
+	var preferred:Vector3=world.lot_return_position(member_index)
+	if _wait_position_clear(preferred):return preferred
+	# Keep a returning member's fallback clear of the household's other return
+	# spots, so two members never resolve to the same crowded corner.
+	var taken:Array[Vector3]=[]
+	for member:Dictionary in household.members:
+		if str(member.id)==bound_member_id:continue
+		var motion:Dictionary=motion_states.get(str(member.id),_empty_motion())
+		var reserved:Vector3=motion.get("wait_destination",Vector3.INF)
+		if reserved.is_finite():taken.append(reserved)
+	for radius:int in range(1,8):
+		for x:int in range(-radius,radius+1):
+			for z:int in range(-radius,radius+1):
+				if absi(x)!=radius and absi(z)!=radius:continue
+				var at:=preferred+Vector3(x*.75,0,z*.75)
+				if not _wait_position_clear(at):continue
+				if taken.any(func(point:Vector3)->bool:return point.distance_to(at)<.8):continue
+				var level:int=world.point_level(at)
+				if level<0:continue
+				if world.construction.building_state.is_empty():
+					var cell:=Vector2i(roundi(at.x*4),roundi(at.z*4))
+					if not world.navigation.region.has_point(cell) or world.navigation.is_point_solid(cell):continue
+					if world.path_to(player.position,at).is_empty():continue
+				else:
+					var route:Dictionary=world.lot_navigation.route_avoiding(LifeLotNavigation.floor_location(world.point_level(player.position),player.position),LifeLotNavigation.floor_location(level,at),traversal._occupied(bound_member_id),LifeTraversal.ROUTE_CLEARANCE)
+					if not bool(route.ok):continue
+				return at
+	return Vector3.INF
 
 func _advance_away_movement(delta:float) -> bool:
 	var state:Dictionary=sim.get_away_state()
@@ -4119,6 +4324,12 @@ func _advance_away_movement(delta:float) -> bool:
 		_clear_motion()
 		away_phases[bound_member_id]=""
 		sim.complete_away_return()
+	elif not moved and path.is_empty():
+		# A return whose route could not start (a body or furniture now fills the
+		# only way in) keeps trying from the current spot instead of standing
+		# still at the curb for the rest of the day.
+		var destination:Vector3=_return_destination(_member_index(bound_member_id))
+		if destination.is_finite():_set_route(destination)
 	return moved
 
 func _go_to_school() -> void:

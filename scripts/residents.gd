@@ -552,10 +552,13 @@ func _arrive() -> void:
  app.loading_game=true;app.setup_live(layout);app.loading_game=false
  var note:=routine_note(destination)
  if not note.is_empty():app.show_notice(note)
+ var taken_spots:Array[Vector3]=[]
  for index:int in range(app.household.members.size()):
   var member:Dictionary=app.household.members[index]
   var actor:LifeActor=app.world.actors[member.id]
-  actor.position=_curb(index);actor.visible=false
+  var spot:Vector3=_curb(index,taken_spots)
+  actor.position=spot;actor.visible=false
+  taken_spots.append(spot)
   member.sim.remember("A visit across town","Drove to "+str(LifeNeighborhood.PLACES[destination].name)+".")
  app.world.refresh_actor_layers()
  app.clear_ui();app.mode="travel";app.world.live_enabled=false
@@ -567,9 +570,30 @@ func _arrive() -> void:
  app.paragraph("Pulling up outside · Saving is available when everyone steps out.",Vector2(464,791),Vector2(515,47),14,app.P.MUTED,app.overlay)
  trip.phase="arrival";trip.time=0.0
 
-func _curb(index:int) -> Vector3:
- # Quarter-grid aligned places leave more than the 72cm body clearance.
- return Vector3(-1.5+float(index%4),.16,7.5-float(index/4))
+func _curb(index:int,taken:Array[Vector3]=[]) -> Vector3:
+ # Quarter-grid aligned places leave more than the 72cm body clearance, and a
+ # spot under furniture, another body or a place already claimed by an earlier
+ # returning member is skipped, so the household does not come home standing
+ # inside a chair or on top of each other.
+ var preferred:=Vector3(-1.5+float(index%4),.16,7.5-float(index/4))
+ return _clear_curb(preferred,index,taken)
+
+func _clear_curb(preferred:Vector3,index:int,taken:Array[Vector3]) -> Vector3:
+ var reserved:Array[Vector3]=taken.duplicate()
+ for other:Dictionary in app.household.members:
+  if str(other.id)==str(app.household.members[index].id):continue
+  var body:LifeActor=app.world.actors.get(str(other.id))
+  if body!=null and body.visible:reserved.append(body.position)
+ for candidate:Vector3 in [preferred,preferred+Vector3(.5,0,0),preferred+Vector3(-.5,0,0),preferred+Vector3(0,0,.5),preferred+Vector3(0,0,-.5),preferred+Vector3(1,0,0),preferred+Vector3(-1,0,0),preferred+Vector3(0,0,1),preferred+Vector3(0,0,-1)]:
+  if reserved.any(func(other:Vector3):return other.distance_to(candidate)<LifeTraversal.BODY_GAP):continue
+  if not app.world.construction.building_state.is_empty():
+   if not app.world.lot_navigation.point_clear(0,candidate):continue
+  else:
+   var cell:=Vector2i(roundi(candidate.x*4),roundi(candidate.z*4))
+   if not app.world.navigation.region.has_point(cell) or app.world.navigation.is_point_solid(cell):continue
+  return candidate
+ # Every nearby spot is taken: keep the authored place rather than fail.
+ return preferred
 
 func _boarding_point(index:int,id:String,reserved:Array[Vector3]) -> Vector3:
  var candidates:Array[Vector3]=[_curb(index)]

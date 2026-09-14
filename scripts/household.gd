@@ -6,6 +6,9 @@ signal member_age_changed(member_id: String, previous: String, current: String)
 signal member_action_started(member_id: String, action: Dictionary)
 signal member_action_finished(member_id: String, action: Dictionary)
 signal baby_born(mother_id: String)
+## Raised the moment a couple conceives, so the view can tell the player the
+## news with a sound and a notice before the birth arrives days later.
+signal pregnancy_began(mother_id: String)
 signal notice(message: String)
 signal selection_changed(member_id: String)
 
@@ -853,6 +856,7 @@ func finish_try_for_baby(session: Dictionary) -> void:
 		# comes later, and the Expecting countdown stays the strongest tile.
 		mother.add_moodlet("A little one on the way","Happy","The family is expecting. The baby arrives in about three days.",LifeBabyPlan.PREGNANCY_MINUTES,2)
 		mother.remember("A new beginning","The family is welcoming a new baby.")
+	pregnancy_began.emit(str(session.mother_id))
 	var father:LifeSim = member_sim(str(session.father_id))
 	if father != null:
 		father.add_moodlet("A shared secret","Confident","Something wonderful is beginning for the family.",720,2)
@@ -1124,6 +1128,18 @@ func pregnancy_tick() -> void:
 
 func birth_ready() -> bool:
 	return bool(pregnancy.get("pending",false))
+
+## How far the current pregnancy has advanced, 0..1, or -1 when nobody is
+## expecting. The bump, the HUD meter and any notice all read this one number.
+func pregnancy_progress() -> float:
+	if not bool(pregnancy.get("active",false)):return -1.0
+	var total:float=float(LifeBabyPlan.PREGNANCY_MINUTES)
+	if total<=0.0:return 0.0
+	return clampf(1.0-float(LifeBabyPlan.remaining_minutes(pregnancy,day,minutes))/total,0.0,1.0)
+
+func pregnancy_mother_id() -> String:
+	if not bool(pregnancy.get("active",false)):return ""
+	return str(pregnancy.get("mother_id",""))
 
 func pending_baby_profile() -> Dictionary:
 	if not birth_ready():return {}

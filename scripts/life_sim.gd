@@ -10,6 +10,11 @@ var sanitation_service: Node
 var household_service: Node
 # Optional live resource admission; standalone simulations keep their old policy.
 var autonomy_activity_available: Callable
+## Optional live witness test for group social actions (host_a_chat). Given two
+## member ids it answers whether they can actually see each other; a standalone
+## simulation without a world leaves it invalid and keeps the old everyone-nearby
+## policy.
+var social_witness: Callable
 const BLADDER_DESPERATE: float = 12.0
 const BLADDER_GRACE_MINUTES: float = 10.0
 var bladder_grace: float = 0.0
@@ -22,6 +27,10 @@ const SAVE_VERSION: int = 1
 const GAME_MINUTES_PER_SECOND: float = 1.0
 const MAX_QUEUE: int = 8
 const NEED_NAMES: Array[String] = ["hunger", "energy", "hygiene", "bladder", "fun", "social"]
+## At-home work that may be paused for a need and resumed with its progress
+## intact. A break from these keeps the action's `elapsed`, so the progress bar
+## continues where it stopped instead of restarting the whole shift.
+const RESUMABLE_BREAK_ACTIONS: Array[String] = ["job"]
 const TRAIT_NAMES: Array[String] = ["Creative", "Outgoing", "Active", "Bookworm", "Foodie", "Neat"]
 const ASPIRATION_NAMES: Array[String] = ["Maker", "Connected", "Successful", "Balanced"]
 const NEED_DECAY: Dictionary = {"hunger": 3.5, "energy": 3.0, "hygiene": 2.1, "bladder": 4.0, "fun": 2.5, "social": 2.0}
@@ -210,6 +219,7 @@ func _build_actions() -> void:
 	_define("store_meal","Put away leftovers",5.0,{},0,"",0.0,"Carry the remaining servings to the fridge to keep them fresh longer.")
 	_define("put_in_fridge","Put food in the fridge",5.0,{},0,"",0.0,"Gather the servings left out and put them back in the fridge while they are still fresh.")
 	_define("discard_meal","Clear this meal",5.0,{},0,"",0.0,"Carry the serving dish to the sink and discard its remaining food.")
+	_define("bin_meal","Throw it in the bin",5.0,{},0,"",0.0,"Carry spoiled food to the rubbish bin and tip it out. The bin takes it; nothing is eaten.")
 	_define("clean_plate","Wash this plate",10.0,{"hygiene":-1.0},0,"",0.0,"Carry the used plate to a sink and wash it.")
 	_define("snack", "Grab a snack", 15.0, {"hunger": 32.0}, 4, "", 0.0, "A quick bite to keep the day going.")
 	_define("cook", "Cook a fresh meal", 45.0, {"fun": 8.0, "hygiene": -5.0}, 12, "cooking", 34.0, "Choose a recipe to prepare and share. Cooking skill unlocks more dishes. Eating restores hunger. Ingredients start at §12.")
@@ -519,7 +529,7 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 	if id in ["job","career_day"] and int(career["worked_day"]) == day:
 		_emit_notice("Today's shift is complete. You can work again tomorrow.")
 		return false
-	if id in SOCIAL_ACTIONS or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "jog", "play_toys", "put_in_fridge"]:
+	if id in SOCIAL_ACTIONS or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "bin_meal", "jog", "play_toys", "put_in_fridge"]:
 		var availability: Dictionary = get_action_availability(id, target_id)
 		if not bool(availability.available):
 			_emit_notice(str(availability.reason))
@@ -900,10 +910,13 @@ func _finish_front() -> void:
 		earned = sale
 		_emit_notice("Canvas sold for §%d. A little creativity goes a long way." % sale)
 	elif id == "host_a_chat":
-		# A host gathers the room: every nearby housemate shares the social lift.
+		# A host gathers the room: every housemate who can actually see the host
+		# shares the social lift. Somebody on the far side of a partition is not
+		# in the room and hears none of it.
 		var lifted: int = 0
 		for member: Dictionary in _autonomy_household_members():
 			if member.sim == self or is_instance_valid(member.sim) and member.sim.is_away(): continue
+			if social_witness.is_valid() and not bool(social_witness.call(_social_member_id,str(member.id))): continue
 			member.sim.needs["social"] = minf(100.0, float(member.sim.needs["social"]) + 25.0)
 			lifted += 1
 		if lifted > 0:
@@ -1051,7 +1064,7 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 	if id in ["plant_wee","mop_puddle"]:
 		reason=_sanitation_reason(id,target_id)
 		if not reason.is_empty():return {"available":false,"reason":reason}
-	if is_instance_valid(meal_service) and id in ["cook","eat_meal","store_meal","clean_plate","discard_meal","put_in_fridge"]:
+	if is_instance_valid(meal_service) and id in ["cook","eat_meal","store_meal","clean_plate","discard_meal","bin_meal","put_in_fridge"]:
 		reason=meal_service.action_availability(self,id,target_id)
 		if not reason.is_empty():return {"available":false,"reason":reason}
 	if not _actions.has(id):
@@ -1938,7 +1951,23 @@ func _reconsider_active_autonomy() -> void:
 	# A waiting alternative must not immediately lose its turn to the same
 	# still-occupied furnishing during ordinary emergency reconsideration.
 	if autonomy_activity_available.is_valid() and not bool(autonomy_activity_available.call({"id":str(next.id),"target_id":str(next.target_id),"target_position":next.position})):return
+	# Work from home pauses for a need it cannot meet at the desk, then resumes
+	# with its progress bar intact: the half-finished shift goes back onto the
+	# queue (behind the recovery) instead of being thrown away and restarted.
+	var resumable:bool=str(current.id) in RESUMABLE_BREAK_ACTIONS and float(current.get("elapsed",0.0))>0.0
+	var paused:Dictionary={}
+	if resumable:
+		paused=current.duplicate(true)
+		paused.phase="queued"
 	cancel_action()
+	if resumable:
+		if action_queue.is_empty():_choose_autonomous_action()
+		# Insert behind the recovery that was just chosen, and ahead of any later
+		# autonomous plans, so the shift resumes as soon as the need is met.
+		var insert_at:int=mini(1,action_queue.size())
+		action_queue.insert(insert_at,paused)
+		_emit_changed()
+		return
 	if action_queue.is_empty():_choose_autonomous_action()
 
 func _choose_autonomous_action() -> void:

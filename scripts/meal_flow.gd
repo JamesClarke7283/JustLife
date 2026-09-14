@@ -2,7 +2,7 @@ extends Node
 class_name LifeMealFlow
 ## Routes preparation, carrying, independent diners, leftovers and washing.
 const Building=preload("res://scripts/building_state.gd")
-const ACTIONS := ["serve_meal","eat_meal","store_meal","clean_plate","discard_meal","clear_table","put_in_fridge"]
+const ACTIONS := ["serve_meal","eat_meal","store_meal","clean_plate","discard_meal","bin_meal","clear_table","put_in_fridge"]
 # Top faces in tools/create_furniture.py, measured from each furniture root.
 # Meal meshes have their underside at local Y=0; 2 mm avoids contact flicker.
 const SURFACE_HEIGHTS := LifeMeals.SURFACE_HEIGHTS
@@ -118,6 +118,20 @@ func action_availability(sim:LifeSim,id:String,target:String) -> String:
 		var batch:Dictionary=food().batch(target)
 		if batch.is_empty() or int(batch.remaining)<=0 or not str(batch.owner).is_empty():return "That serving dish is empty or being carried."
 		if app.world.closest_item("sink",Vector3.ZERO).is_empty():return "Place a sink to clear the dish."
+	if id=="bin_meal":
+		# Spoiled food goes in the bin. A plate or serving dish left out may be
+		# thrown away once it has spoiled; fresh food is stored or eaten instead.
+		if app.world.closest_item("rubbish_bin",Vector3.ZERO).is_empty():return "Place a rubbish bin to throw food away."
+		var bin_plate:Dictionary=food().portion(target)
+		if not bin_plate.is_empty():
+			if not str(bin_plate.owner).is_empty():return "That plate is being used."
+			if now()<float(bin_plate.expires):return "This food is still fresh. Eat it or put it away."
+			if str(bin_plate.storage) not in ["surface","table"]:return "That serving is not sitting out."
+			return ""
+		var bin_batch:Dictionary=food().batch(target)
+		if bin_batch.is_empty() or int(bin_batch.remaining)<=0 or not str(bin_batch.owner).is_empty():return "That serving dish is empty or being carried."
+		if now()<float(bin_batch.expires):return "This food is still fresh. Eat it or put it away."
+		return ""
 	if id=="clean_plate":
 		var plate:Dictionary=food().portion(target)
 		if plate.is_empty() or not str(plate.owner).is_empty():return "That plate is being used."
@@ -130,8 +144,8 @@ func action_availability(sim:LifeSim,id:String,target:String) -> String:
 
 func actions_for(sim:LifeSim,kind:String,target:String) -> Array:
 	var ids:Array=[]
-	if kind=="meal":ids=["eat_meal","store_meal","discard_meal"]
-	if kind=="plate":ids=["eat_meal","clean_plate","store_meal"]
+	if kind=="meal":ids=["eat_meal","store_meal","discard_meal","bin_meal"]
+	if kind=="plate":ids=["eat_meal","clean_plate","store_meal","bin_meal"]
 	if kind=="surface":ids=["clear_table"]
 	if kind=="fridge":ids=["put_in_fridge"]
 	var result:Array=[]
@@ -183,6 +197,9 @@ func resolve(sim:LifeSim,action:Dictionary) -> void:
 	elif action.get("meal_stage") in ["wash","discard"]:
 		var sink:Dictionary=app.world.closest_item("sink",actor(person).position)
 		if not sink.is_empty():action.target_id=sink.id
+	elif action.get("meal_stage")=="bin":
+		var bin:Dictionary=app.world.closest_item("rubbish_bin",actor(person).position)
+		if not bin.is_empty():action.target_id=bin.id
 	elif action.get("table_stage")=="clear":
 		var sink:Dictionary=app.world.closest_item("sink",actor(person).position)
 		if not sink.is_empty():action.target_id=sink.id
@@ -249,6 +266,16 @@ func before_begin(sim:LifeSim,action:Dictionary) -> bool:
 		var batch:Dictionary=food().batch(str(action.meal_source))
 		if batch.is_empty() or str(batch.storage) not in (["surface"] if action.id=="store_meal" else ["surface","fridge"]) or not str(batch.owner).is_empty() or (action.id=="store_meal" and now()>=float(batch.expires)) or not food().set_batch_location(str(batch.id),"carried","",actor(person).position,now(),person):_stop(sim,"That dish is no longer available.");return false
 		action.meal_stage="store" if action.id=="store_meal" else "discard";_reconcile_guest_offer();sim._emit_action_started(action);return false
+	if action.id=="bin_meal" and action.get("meal_stage")=="pickup":
+		var bin_plate:Dictionary=food().portion(str(action.meal_source))
+		if not bin_plate.is_empty():
+			# A spoiled serving left out: the carrier picks the plate up, walks it
+			# to the bin, and it disappears with the dish.
+			if not str(bin_plate.owner).is_empty() or now()<float(bin_plate.expires) or str(bin_plate.storage) not in ["surface","table"] or not food().take_portion(str(bin_plate.id),person,now()):_stop(sim,"That food is no longer available.");return false
+			action.meal_stage="bin";sync_due=true;sim._emit_action_started(action);return false
+		var bin_batch:Dictionary=food().batch(str(action.meal_source))
+		if bin_batch.is_empty() or int(bin_batch.remaining)<=0 or not str(bin_batch.owner).is_empty() or now()<float(bin_batch.expires) or not food().set_batch_location(str(bin_batch.id),"carried","",actor(person).position,now(),person):_stop(sim,"That dish is no longer available.");return false
+		action.meal_stage="bin";_reconcile_guest_offer();sim._emit_action_started(action);return false
 	if action.id=="clean_plate" and action.get("meal_stage")=="pickup":
 		var plate:Dictionary=food().portion(str(action.meal_source))
 		if plate.is_empty() or not str(plate.owner).is_empty() or not food().carried_by(person).is_empty():_stop(sim,"That plate is no longer available.");return false
@@ -741,6 +768,17 @@ func finished(sim:LifeSim,action:Dictionary) -> void:
 	elif action.id=="discard_meal":
 		food().set_batch_location(str(action.meal_source),"surface","",actor(person).position,now())
 		food().discard_batch(str(action.meal_source))
+	elif action.id=="bin_meal":
+		# Spoiled food tips into the bin: a carried plate is washed away, a
+		# carried dish is discarded, and the bin takes one more unit of rubbish.
+		var binned_plate:Dictionary=food().portion(str(action.meal_source))
+		if not binned_plate.is_empty():
+			food().clean_portion(str(binned_plate.id),person)
+		elif not food().batch(str(action.meal_source)).is_empty():
+			food().set_batch_location(str(action.meal_source),"surface","",actor(person).position,now())
+			food().discard_batch(str(action.meal_source))
+		if is_instance_valid(app.get("household_flow")):app.household_flow.add_rubbish(1)
+		sim._emit_notice("Spoiled food goes in the bin. Best not to leave it out next time.")
 	elif action.id=="clean_plate":food().clean_portion(str(action.meal_source),person)
 	elif action.id=="put_in_fridge":
 		var fridge:Dictionary=item(str(action.target_id))
@@ -815,7 +853,42 @@ func _mesh_view(value:Dictionary) -> Node3D:
 	var shape:CollisionShape3D=CollisionShape3D.new();var bounds:BoxShape3D=BoxShape3D.new()
 	bounds.size=Vector3(.3,.10,.3) if value.has("batch") else Vector3(.5,.12,.335)
 	shape.shape=bounds;shape.position.y=.04;body.add_child(shape)
+	root.add_child(_spoilage_mist(value.has("batch")))
 	return root
+
+func _spoilage_mist(on_platter:bool) -> Node3D:
+	# A small green haze over spoiled food, so a dish that has gone off reads at
+	# a glance instead of only being refused in its menu. Hidden until the food
+	# actually expires; `sync_world` toggles it with the ledger's deadline.
+	var mist:=GPUParticles3D.new()
+	mist.name="SpoilMist"
+	mist.amount=12
+	mist.lifetime=2.2
+	mist.local_coords=false
+	mist.emitting=false
+	var material:=ParticleProcessMaterial.new()
+	material.emission_shape=ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	material.emission_box_extents=Vector3(.16,.02,.16) if on_platter else Vector3(.26,.02,.18)
+	material.direction=Vector3.UP
+	material.spread=28.0
+	material.initial_velocity_min=.05
+	material.initial_velocity_max=.16
+	material.gravity=Vector3(0,.06,0)
+	material.scale_min=.5
+	material.scale_max=1.2
+	material.color=Color("7fae5a")
+	mist.process_material=material
+	var puff:=QuadMesh.new()
+	puff.size=Vector2(.16,.16)
+	var puff_material:=StandardMaterial3D.new()
+	puff_material.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED
+	puff_material.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
+	puff_material.albedo_color=Color("8fbf6a")
+	puff_material.billboard_mode=BaseMaterial3D.BILLBOARD_ENABLED
+	puff.material=puff_material
+	mist.draw_pass_1=puff
+	mist.position=Vector3(0,.14,0)
+	return mist
 
 func sync_world(reconcile:bool=true) -> void:
 	if not is_instance_valid(app.world.house):return
@@ -867,6 +940,13 @@ func sync_world(reconcile:bool=true) -> void:
 		var food_view:Node3D=view.find_child("Food",true,false)
 		food_view.visible=not value.has("batch") or float(value.progress)<1.0
 		if value.has("batch"):food_view.scale=Vector3(1.0,maxf(.05,1.0-float(value.progress)*.85),1.0)
+		var mist:Node=view.find_child("SpoilMist",true,false)
+		if mist!=null:
+			# Spoiled food visibly turns: the mist rises only while the ledger
+			# says this dish is past its deadline.
+			var spoiled:bool=now()>=float(value.expires)
+			mist.visible=spoiled
+			if mist is GPUParticles3D:mist.emitting=spoiled
 	for key:String in views.keys():
 		if not present.has(key) or not is_instance_valid(views[key]):
 			if is_instance_valid(views[key]):views[key].queue_free()
@@ -974,6 +1054,7 @@ func action_title(action:Dictionary) -> String:
 		"store_meal":return "Putting away leftovers"
 		"clean_plate":return "Taking a plate to the sink" if approaching else "Washing a plate"
 		"discard_meal":return "Clearing away the meal"
+		"bin_meal":return "Throwing spoiled food away"
 		"clear_table":return "Walking the plates to the sink" if str(action.get("table_stage",""))=="clear" else "Clearing the table"
 	return ""
 

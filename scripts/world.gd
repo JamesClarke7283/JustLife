@@ -823,6 +823,38 @@ func wall_behind(kind:String,p:Vector3,angle:float) -> bool:
 		if construction.wall_rect(e).grow(.06).has_point(Vector2(back.x,back.z)):return true
 	return false
 
+func sight_line_clear(from:Vector3,to:Vector3) -> bool:
+	# True when a straight line between two same-floor points meets no wall.
+	# Conversation needs this: standing clear of furniture is not the same as
+	# being able to see and speak to somebody across a partition. Walls are the
+	# only occluders; open doorways (a wall split with a gap) stay clear because
+	# the segment simply misses every remaining wall rectangle.
+	if not from.is_finite() or not to.is_finite():return false
+	var level:int=point_level(from)
+	if level<0 or level!=point_level(to):return false
+	var a:=Vector2(from.x,from.z);var b:=Vector2(to.x,to.z)
+	if construction and not construction.building_state.is_empty():
+		for wall:Dictionary in construction.building_state.walls:
+			if int(wall.level)!=level:continue
+			if _rect_crosses_segment(Building.rect(wall).grow(.02),a,b):return false
+		return true
+	if not is_instance_valid(construction):return true
+	# Legacy meshes keep their own rectangles in `records`.
+	for record:Dictionary in construction.records:
+		if int(record.get("level",0))!=level:continue
+		if _rect_crosses_segment(construction.wall_rect(record).grow(.02),a,b):return false
+	return true
+
+func _rect_crosses_segment(rect:Rect2,from:Vector2,to:Vector2) -> bool:
+	# Rect2 has no segment test, so compare against its four edges. A segment
+	# whose endpoints both fall inside the rectangle also blocks, matching two
+	# bodies standing either side of a thick wall at close range.
+	if rect.has_point(from) and rect.has_point(to):return true
+	var corners:Array[Vector2]=[rect.position,Vector2(rect.end.x,rect.position.y),rect.end,Vector2(rect.position.x,rect.end.y)]
+	for index:int in range(4):
+		if Geometry2D.segment_intersects_segment(from,to,corners[index],corners[(index+1)%4])!=null:return true
+	return false
+
 func floor_point(screen:Vector2) -> Vector3:
 	var origin=camera.project_ray_origin(screen)
 	var direction=camera.project_ray_normal(screen)

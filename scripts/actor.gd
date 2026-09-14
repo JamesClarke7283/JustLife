@@ -101,6 +101,14 @@ var _grip_amounts: Dictionary = {"L":0.0,"R":0.0}
 var _grip_anchors: Dictionary = {}
 var _hand_props: Array = []
 var _sit_amount: float = 0.0
+## 0..1 pregnancy belly: a mother's bump grows from conception to birth. It is
+## presentation only — the household owns the real pregnancy clock — and is
+## rebuilt with the model so it survives a reload.
+var pregnancy_bump: float = 0.0:
+	set(value):
+		pregnancy_bump = clampf(value,0.0,1.0)
+		_update_bump()
+var _bump: MeshInstance3D
 var _hair_bob: Node3D
 var _hair_bob_rest_scale: Vector3 = Vector3.ONE
 var _blink_wait: float = 2.5
@@ -740,6 +748,28 @@ func _create_props() -> void:
 		held_book.scale = Vector3.ONE * _proportion
 		held_book.visible = false
 		_books.append(held_book)
+	# The pregnancy bump rides the torso model so it moves, sits and lies with
+	# the body. It is scaled up as the term advances and hidden when not expectant.
+	_bump = _sphere(_model, Vector3(.19,.21,.17), Color("e6c4ae"))
+	_bump.name = "PregnancyBump"
+	_bump.position = Vector3(0,1.02,.14) * _proportion
+	_bump.scale = Vector3.ONE * _proportion
+	_bump.visible = false
+	_update_bump()
+
+
+func _update_bump() -> void:
+	if not is_instance_valid(_bump):return
+	var shown:bool=pregnancy_bump > 0.001
+	_bump.visible = shown
+	if not shown:return
+	# The belly starts subtle and rounds out toward birth. The authored top
+	# stays under the clothing line, so the bump reads as a body change, not
+	# a floating prop.
+	var amount:float=clampf(pregnancy_bump,0.0,1.0)
+	var s:float=.55+.45*amount
+	_bump.scale=Vector3(s,s,s)*_proportion
+	_bump.position=Vector3(0.0,1.02-.05*amount,.14+.03*amount)*_proportion
 
 
 func _hand_anchor(anchor_name: String, side: String) -> Node3D:

@@ -6,6 +6,14 @@ const VERSION := 2
 const MAX_BATCHES := 64
 const MAX_PORTIONS := 128
 const EATING_MINUTES := 32.0
+## A serving left out keeps for one game day before it spoils; refrigeration
+## stretches that window by FRIDGE_LIFE_MULTIPLIER. `expires` is always an
+## absolute game-minute deadline, so the clock and a reload both agree.
+const FRESH_MINUTES := 1440.0
+const FRIDGE_LIFE_MULTIPLIER := 12.0
+## The furthest a dish's deadline can sit ahead of now: fresh for one day, then
+## up to the fridge multiplier when it is refrigerated at its freshest.
+const MAX_LIFE_MINUTES := FRESH_MINUTES * FRIDGE_LIFE_MULTIPLIER
 # Authored support dimensions in tools/create_furniture.py. Keep the entire
 # ceramic footprint on the surface, with a 1 cm inset from its outer edge.
 const SURFACE_HEIGHTS := {"dining":.847,"counter":.952,"stove":.997,"coffee_table":.46}
@@ -79,7 +87,7 @@ func carried_by(member_id: String) -> Dictionary:
 func create_batch(recipe: String, chef: String, quality: int, venue: String, now: float) -> Dictionary:
 	if not RECIPES.has(recipe) or batches.size()>=MAX_BATCHES or not carried_by(chef).is_empty():return {}
 	var definition: Dictionary=RECIPES[recipe]
-	var result: Dictionary={"id":_id("meal_"),"recipe":recipe,"chef":chef,"quality":clampi(quality,1,3),"initial":int(definition.servings),"remaining":int(definition.servings),"served":0,"discarded":0,"created":now,"expires":now+360.0,"venue":venue,"storage":"carried","owner":chef,"host":"","position":[0.0,0.0,0.0],"offset":[0.0,0.0,0.0]}
+	var result: Dictionary={"id":_id("meal_"),"recipe":recipe,"chef":chef,"quality":clampi(quality,1,3),"initial":int(definition.servings),"remaining":int(definition.servings),"served":0,"discarded":0,"created":now,"expires":now+FRESH_MINUTES,"venue":venue,"storage":"carried","owner":chef,"host":"","position":[0.0,0.0,0.0],"offset":[0.0,0.0,0.0]}
 	batches.append(result)
 	return result
 
@@ -93,8 +101,8 @@ func set_batch_location(id: String, storage: String, host: String, position: Vec
 		var carried: Dictionary=carried_by(owner)
 		if not carried.is_empty() and str(carried.id)!=id:return false
 	var freshness: float=maxf(0.0,float(value.expires)-now)
-	if str(value.storage)=="fridge" and storage!="fridge":freshness/=12.0
-	elif str(value.storage)!="fridge" and storage=="fridge":freshness*=12.0
+	if str(value.storage)=="fridge" and storage!="fridge":freshness/=FRIDGE_LIFE_MULTIPLIER
+	elif str(value.storage)!="fridge" and storage=="fridge":freshness*=FRIDGE_LIFE_MULTIPLIER
 	value.expires=now+freshness
 	value.merge({"storage":storage,"host":host,"position":[position.x,position.y,position.z],"owner":owner},true)
 	return true
@@ -105,7 +113,7 @@ func claim(id: String, member_id: String, now: float) -> Dictionary:
 	var value: Dictionary=batch(id)
 	if value.is_empty() or int(value.remaining)<=0 or now>=float(value.expires) or str(value.storage)=="carried" or not carried_by(member_id).is_empty() or portions.size()>=MAX_PORTIONS:return {}
 	var freshness: float=maxf(0.0,float(value.expires)-now)
-	if str(value.storage)=="fridge":freshness/=12.0
+	if str(value.storage)=="fridge":freshness/=FRIDGE_LIFE_MULTIPLIER
 	var result: Dictionary={"id":_id("plate_"),"batch":id,"owner":member_id,"venue":str(value.venue),"storage":"carried","host":"","seat":"","position":value.position.duplicate(),"offset":[0.0,0.0,0.0],"progress":0.0,"expires":now+freshness,"shared_minutes":0.0,"company":[]}
 	value.remaining=int(value.remaining)-1
 	value.served=int(value.served)+1
@@ -211,7 +219,7 @@ static func validate(data: Variant, member_ids: Array, now: float,guest:Dictiona
 		if not RECIPES.has(str(value.get("recipe",""))) or str(value.get("chef","")) not in member_ids or not _number(value.get("quality"),1,3,true):return "The saved meal recipe or cook is invalid."
 		var total: int=int(RECIPES[str(value.recipe)].servings)
 		if value.get("initial")!=total or not _number(value.get("remaining"),0,total,true) or not _number(value.get("served"),0,total,true) or not _number(value.get("discarded"),0,total,true) or int(value.remaining)+int(value.served)+int(value.discarded)!=total:return "The meal's serving counts do not add up."
-		if not _number(value.get("created"),0,now) or not _number(value.get("expires"),float(value.created),now+4320.0) or not _position(value.get("position")) or not _offset(value.get("offset",[0,0,0])):return "The saved meal freshness or position is invalid."
+		if not _number(value.get("created"),0,now) or not _number(value.get("expires"),float(value.created),now+MAX_LIFE_MINUTES) or not _position(value.get("position")) or not _offset(value.get("offset",[0,0,0])):return "The saved meal freshness or position is invalid."
 		if str(value.get("storage","")) not in ["surface","fridge","carried"] or not value.get("venue") is String or not value.get("host") is String or not value.get("owner") is String:return "The saved meal location is invalid."
 		if str(value.storage)=="carried":
 			if str(value.owner) not in member_ids or owners.has(value.owner):return "Two foods have the same carrier."
@@ -222,7 +230,7 @@ static func validate(data: Variant, member_ids: Array, now: float,guest:Dictiona
 		if not value.get("id") is String or not str(value.id).begins_with("plate_") or not str(value.id).trim_prefix("plate_").is_valid_int() or int(str(value.id).trim_prefix("plate_"))>int(data.serial) or ids.has(value.id) or not batch_ids.has(str(value.get("batch",""))):return "The save contains an invalid plate identity or meal reference."
 		ids[value.id]=true;claimed[value.batch]+=1
 		if int(claimed[value.batch])>int(batch_ids[value.batch].served):return "More plates exist than servings were taken."
-		if not _number(value.get("progress"),0,1) or not _number(value.get("expires"),0,now+4320) or not _number(value.get("shared_minutes"),0,EATING_MINUTES) or not _position(value.get("position")) or not _offset(value.get("offset",[0,0,0])):return "The saved plate progress is invalid."
+		if not _number(value.get("progress"),0,1) or not _number(value.get("expires"),0,now+MAX_LIFE_MINUTES) or not _number(value.get("shared_minutes"),0,EATING_MINUTES) or not _position(value.get("position")) or not _offset(value.get("offset",[0,0,0])):return "The saved plate progress is invalid."
 		if not value.get("company") is Array or value.company.size()>8 or not value.company.all(func(id:Variant)->bool:return id is String and id in company_ids):return "The saved meal company is invalid."
 		var unique_company:Dictionary={}
 		for companion:String in value.company:
@@ -368,7 +376,7 @@ static func validate_actions(data:Dictionary,members:Array,custody:Dictionary={}
 		for index:int in range(queue.size()):
 			var action:Dictionary=queue[index]
 			var action_id:String=str(action.id)
-			var meal_action:bool=action_id in ["serve_meal","eat_meal","store_meal","clean_plate","discard_meal"]
+			var meal_action:bool=action_id in ["serve_meal","eat_meal","store_meal","clean_plate","discard_meal","bin_meal"]
 			if not meal_action:
 				for key:String in ["meal_source","meal_stage","meal_plate","meal_seat","meal_standing"]:
 					if action.has(key):return "A non-meal action contains food ownership."
@@ -387,6 +395,11 @@ static func validate_actions(data:Dictionary,members:Array,custody:Dictionary={}
 				"store_meal","discard_meal":
 					if value.has("batch") or stage not in ["pickup","store" if action_id=="store_meal" else "discard"]:return "The leftovers action is invalid."
 					if stage in ["store","discard"]:owner_id=str(source)
+				"bin_meal":
+					# A spoiled serving travels as its plate, a whole spoiled dish
+					# as its batch; either way `meal_source` names the carried food.
+					if stage not in ["pickup","bin"]:return "The rubbish action is invalid."
+					if stage=="bin":owner_id=str(source)
 				"clean_plate":
 					if not value.has("batch") or stage not in ["pickup","wash"]:return "The dish-washing action is invalid."
 					if stage=="wash":owner_id=str(source)

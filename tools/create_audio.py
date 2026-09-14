@@ -143,6 +143,32 @@ def click() -> list[float]:
     return lowpass(result, 2900)
 
 
+def chime() -> list[float]:
+    """A soft three-note rising chime: the news that a baby is on the way.
+
+    Original synthesis like the rest of the set. A gentle bell arpeggio with a
+    warm fundamental, a fifth and an octave, each note decaying naturally.
+    """
+    duration = 1.9
+    count = int(duration * RATE)
+    result = [0.0] * count
+    # Rising major triad, then a held octave: C5, E5, G5, C6.
+    for offset, frequency, gain in ((0.00, 523.25, 0.62),
+                                    (0.34, 659.25, 0.58),
+                                    (0.68, 783.99, 0.54),
+                                    (1.02, 1046.50, 0.50)):
+        start = int(offset * RATE)
+        for index in range(start, count):
+            t = (index - start) / RATE
+            envelope = smooth(t / 0.012) * math.exp(-t * 2.6)
+            # A bell-like partial above the fundamental gives it a soft sparkle.
+            voice = (math.sin(TAU * frequency * t) * 0.82
+                     + math.sin(TAU * frequency * 2.01 * t) * 0.14
+                     + math.sin(TAU * frequency * 3.97 * t) * 0.05)
+            result[index] += voice * envelope * gain
+    return lowpass(result, 5200)
+
+
 def ambience() -> list[float]:
     rng = random.Random(719)
     duration = 18.0
@@ -211,6 +237,7 @@ def main() -> None:
     }
     measurements = [save(name, data, -20.0) for name, data in clips.items()]
     measurements.append(save("soft_click", click(), -28.0, 0.30))
+    measurements.append(save("chime_pregnancy", chime(), -20.0, 0.62))
     measurements.append(save("ambience_garden", ambience(), -38.0, 0.13))
     (OUT / "measurements.json").write_text(json.dumps(measurements, indent=2) + "\n")
     for item in measurements:
