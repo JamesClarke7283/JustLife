@@ -1,0 +1,44 @@
+{
+  "source": "art/characters_teen.blend",
+  "new_keys": [
+    "Nose_Length",
+    "Lip_Fullness",
+    "Brow_Arch",
+    "Chin_Length"
+  ],
+  "scale": 0.9187893288308893,
+  "amplitude_scale": 0.9187893288308893,
+  "baby": false,
+  "new_brows": [],
+  "objects": {
+    "Lips_Lower_soft": {
+      "Nose_Length": 4.1729285241407255e-07,
+      "Lip_Fullness": 0.002419009660750632
+    },
+    "Lips_Smile_seam": {
+      "Nose_Length": 2.0083384846037555e-07,
+      "Lip_Fullness": 0.0022133277258365555
+    },
+    "Lips_Upper_soft": {
+      "Nose_Length": 1.1034984714268792e-06,
+      "Lip_Fullness": 0.002406300713930328
+    },
+    "Nose_Nostril": {
+      "Nose_Length": 0.004659939671993284
+    },
+    "Nose_Nostril.001": {
+      "Nose_Length": 0.004659939671993284
+    },
+    "Skin_Head_continuous": {
+      "Nose_Length": 0.0049475890994623295,
+      "Lip_Fullness": 0.0023542227509123236,
+      "Chin_Length": 0.006454972988455728
+    },
+    "Hair_Brow": {
+      "Brow_Arch": 0.0036751573153235573
+    },
+    "Hair_Brow.001": {
+      "Brow_Arch": 0.0036751573153235573
+    }
+  }
+}

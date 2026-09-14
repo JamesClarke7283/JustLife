@@ -1,0 +1,197 @@
+{
+  "source": "/tmp/jl_age/teen_identity.blend",
+  "source_sha256": "7e4327263ceed34955e9059b821164a7d1e0c63ce85a4b4fb23febc95f12581d",
+  "output": "/tmp/jl_age/teen_full.blend",
+  "anchors": {
+    "age_stage": "teen",
+    "age_amplitude": 0.85,
+    "eye_center_world": [
+      -3.725290298461914e-09,
+      -0.06417886167764664,
+      1.4007759094238281
+    ],
+    "interpupillary_distance_m": 0.07859323968778534,
+    "eye_height_m": 0.023347139358520508,
+    "nostril_center_world": [
+      0.0,
+      -0.10150070488452911,
+      1.3500030040740967
+    ],
+    "eye_medial_distance_m": 0.015856925398111343,
+    "nostril_halfwidth_m": 0.016938727349042892,
+    "mouth_seam_ring": [
+      384,
+      385,
+      386,
+      387,
+      388,
+      389,
+      390,
+      391
+    ],
+    "mouth_seam_center_world": [
+      1.6660992585570966e-09,
+      -0.09120960533618927,
+      1.3185834884643555
+    ],
+    "mouth_halfwidth_m": 0.027692314040810295,
+    "lip_halfheight_m": 0.006238341331481934,
+    "head_lowest_world_z": 1.2090198993682861,
+    "eye_to_mouth_m": 0.08219242095947266,
+    "welded_apertures": []
+  },
+  "objects": {
+    "Ear_Concha": {
+      "Face_Length": {
+        "affected_vertices": 481,
+        "max_displacement_m": 0.0046812714217464215
+      }
+    },
+    "Ear_Concha.001": {
+      "Face_Length": {
+        "affected_vertices": 481,
+        "max_displacement_m": 0.0046812714217464215
+      }
+    },
+    "Jewelry_Stud": {
+      "Face_Length": {
+        "affected_vertices": 222,
+        "max_displacement_m": 0.005144101582384684
+      }
+    },
+    "Jewelry_Stud.001": {
+      "Face_Length": {
+        "affected_vertices": 222,
+        "max_displacement_m": 0.005144101582384684
+      }
+    },
+    "Lips_Lower_soft": {
+      "Face_Length": {
+        "affected_vertices": 1170,
+        "max_displacement_m": 0.008883302976645432
+      },
+      "Mouth_Width": {
+        "affected_vertices": 1155,
+        "max_displacement_m": 0.005649231791956015
+      }
+    },
+    "Lips_Smile_seam": {
+      "Face_Length": {
+        "affected_vertices": 776,
+        "max_displacement_m": 0.008433698670141892
+      },
+      "Mouth_Width": {
+        "affected_vertices": 768,
+        "max_displacement_m": 0.005593876674793802
+      }
+    },
+    "Lips_Upper_soft": {
+      "Face_Length": {
+        "affected_vertices": 1170,
+        "max_displacement_m": 0.008382909858650192
+      },
+      "Mouth_Width": {
+        "affected_vertices": 1159,
+        "max_displacement_m": 0.005649231791956015
+      }
+    },
+    "Nose_Nostril": {
+      "Face_Length": {
+        "affected_vertices": 33,
+        "max_displacement_m": 0.005318571295092321
+      },
+      "Nose_Bridge": {
+        "affected_vertices": 7,
+        "max_displacement_m": 3.3809251742115496e-06
+      }
+    },
+    "Nose_Nostril.001": {
+      "Face_Length": {
+        "affected_vertices": 33,
+        "max_displacement_m": 0.005318571295092321
+      },
+      "Nose_Bridge": {
+        "affected_vertices": 7,
+        "max_displacement_m": 3.3809251742115496e-06
+      }
+    },
+    "Skin_Head_continuous": {
+      "Face_Length": {
+        "affected_vertices": 4072,
+        "max_displacement_m": 0.012535239745297676
+      },
+      "Mouth_Width": {
+        "affected_vertices": 518,
+        "max_displacement_m": 0.006849966915933751
+      },
+      "Nose_Bridge": {
+        "affected_vertices": 382,
+        "max_displacement_m": 0.006012346526555127
+      }
+    }
+  },
+  "mouth_anchor_unchanged": [
+    0.0,
+    0.044508,
+    0.095814
+  ],
+  "mouth_identity_offsets": {
+    "face_round": [
+      -1.6532815116931943e-09,
+      0.0006787776947021484,
+      6.061047315597534e-05
+    ],
+    "jaw_strong": [
+      -1.6606831465537653e-09,
+      -0.00038695335388183594,
+      0.003533884882926941
+    ],
+    "nose_wide": [
+      -1.6606014341391528e-09,
+      0.0,
+      7.450580596923828e-09
+    ],
+    "eye_spacing": [
+      0.0,
+      0.0,
+      -0.0
+    ],
+    "nose_length": [
+      0.0,
+      0.0,
+      -0.0
+    ],
+    "lip_fullness": [
+      0.0,
+      -1.0013580322265625e-05,
+      0.002205096185207367
+    ],
+    "brow_arch": [
+      0.0,
+      0.0,
+      -0.0
+    ],
+    "chin_length": [
+      0.0,
+      0.0,
+      -0.0
+    ],
+    "face_length": [
+      0.0,
+      -0.008383631706237793,
+      -0.0
+    ],
+    "mouth_width": [
+      2.6645352591003757e-15,
+      0.0,
+      -0.0
+    ],
+    "nose_bridge": [
+      0.0,
+      0.0,
+      -0.0
+    ]
+  },
+  "neutral_geometry_policy": "Preserved exactly; all new keys are relative to existing Basis, neutral zero.",
+  "output_sha256": "707230c79687ab8ad5b927253bf1d97f93020e448163ac5b94545d1863aac4aa"
+}

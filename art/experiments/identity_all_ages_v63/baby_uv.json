@@ -1,0 +1,11 @@
+{
+  "source": "/tmp/jl_age/baby_final.blend",
+  "source_sha256": "5730935f93ff1e9b2d684066f2c85a7133a2a45719914c635656ad03ff6b1489",
+  "output": "/tmp/jl_age/baby_uv.blend",
+  "uv_layers_added": {
+    "Hair_Brow_L": 128,
+    "Hair_Brow_R": 128
+  },
+  "policy": "Only meshes without a UV layer are projected; existing UVs are untouched.",
+  "output_sha256": "ddc542b7ab365ac5b55058340150be98cfae4b2eafa6ff9275be8f634cca987b"
+}
