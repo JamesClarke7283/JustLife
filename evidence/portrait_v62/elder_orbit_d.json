@@ -1,0 +1,30 @@
+{
+  "source": "art/experiments/portrait_v62/characters_elder_orbit_c.blend",
+  "output": "art/experiments/portrait_v62/characters_elder_orbit_d.blend",
+  "reset_key_values": [
+    {
+      "object": "Eyes_Catchlight",
+      "key": "Nose_Wide",
+      "old_value": 1.0
+    },
+    {
+      "object": "Eyes_Catchlight.001",
+      "key": "Nose_Wide",
+      "old_value": 1.0
+    },
+    {
+      "object": "Eyes_Pupil",
+      "key": "Nose_Wide",
+      "old_value": 1.0
+    },
+    {
+      "object": "Eyes_Pupil.001",
+      "key": "Nose_Wide",
+      "old_value": 1.0
+    }
+  ],
+  "reset_pose_bones": [],
+  "authored_data_digest_before_and_after": "88e515e794cd172021688d1d7e7fceeb534dc1724eeaeef56dbc2320983ca476",
+  "output_sha256": "5db7b65ee44084def1d43bbf267bc14bca9764741ed7b8d6172fe8f908a4d68f",
+  "geometry_changed": false
+}

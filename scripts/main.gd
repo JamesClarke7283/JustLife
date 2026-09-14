@@ -1,6 +1,17 @@
 extends Node
 
 const P = preload("res://scripts/palette.gd")
+const CREATOR_FACE_GROUPS: Dictionary = {
+	"Shape":["face_round","jaw_strong","chin_length","face_length"],
+	"Eyes":["eye_spacing","brow_arch"],
+	"Nose":["nose_wide","nose_length","nose_bridge"],
+	"Mouth":["lip_fullness","mouth_width"],
+}
+const CREATOR_FACE_LABELS: Dictionary = {
+	"face_round":"Cheek fullness", "jaw_strong":"Jaw definition", "chin_length":"Chin length", "face_length":"Face length",
+	"eye_spacing":"Eye spacing", "brow_arch":"Brow arch", "nose_wide":"Nose width", "nose_length":"Nose length",
+	"nose_bridge":"Nose bridge", "lip_fullness":"Lip fullness", "mouth_width":"Mouth width",
+}
 var household: LifeHousehold
 var household_profiles: Array = []
 var creator_index: int = 0
@@ -15,6 +26,8 @@ var preview: LifeActor
 var player: LifeActor
 var mode: String = "creator"
 var creator_tab: String = "Look"
+var creator_face_group: String = "Shape"
+var _studio_render_restore: Dictionary = {}
 var creator_purpose: String = ""
 var cover_beat: Node3D
 var cover_beat_time: float = 0.0
@@ -326,6 +339,7 @@ func show_creator(purpose:String="") -> void:
 	close_overlay(false)
 	cancel_placement()
 	mode="creator"
+	_set_studio_render_quality(true)
 	world.live_enabled=false
 	world.set_build(false)
 	_sync_actor_sound()
@@ -337,7 +351,10 @@ func show_creator(purpose:String="") -> void:
 	world.add_child(stage)
 	world.environment.background_color=Color("e8ede2")
 	world.environment.ambient_light_energy=.35
-	world.sun.light_energy=.65
+	# The outdoor sun's 60 m shadow map cannot resolve millimetre facial detail.
+	# A local portrait key gives the face clean shadows; live daylight restores
+	# the sun's energy when the studio is removed.
+	world.sun.light_energy=0.0
 	world.sun.rotation_degrees=Vector3(-38,-28,0)
 	var studio_floor=world.box(stage,Vector3(0,-.085,0),Vector3(180,.10,180),"e8ede2")
 	var studio_mat=StandardMaterial3D.new()
@@ -355,11 +372,35 @@ func show_creator(purpose:String="") -> void:
 	preview.configure(profile)
 	preview.rotation.y=creator_spin
 	frame_creator_camera()
+	var key=SpotLight3D.new()
+	key.name="PortraitKey"
+	stage.add_child(key)
+	key.position=Vector3(-1.6,2.6,2.8)
+	key.look_at(Vector3(0,1.15,0),Vector3.UP)
+	key.light_color=Color("fff5eb")
+	key.light_energy=3.0
+	key.light_size=.18
+	key.spot_range=6.0
+	key.spot_angle=47.0
+	key.spot_attenuation=1.0
+	key.shadow_enabled=true
+	key.shadow_bias=.05
+	key.shadow_normal_bias=1.0
 	var fill=OmniLight3D.new()
-	fill.position=Vector3(-2,2,2)
-	fill.light_energy=.12
-	fill.omni_range=8
+	fill.name="PortraitFill"
+	fill.position=Vector3(1.8,1.7,2.0)
+	fill.light_color=Color("e9f1ff")
+	fill.light_energy=.8
+	fill.omni_range=6.0
 	stage.add_child(fill)
+	var rim=OmniLight3D.new()
+	rim.name="PortraitRim"
+	rim.position=Vector3(.5,2.2,-1.6)
+	rim.light_color=Color("fff2dc")
+	rim.light_energy=.8
+	rim.light_specular=.2
+	rim.omni_range=5.0
+	stage.add_child(rim)
 	draw_creator()
 
 func draw_creator() -> void:
@@ -447,18 +488,24 @@ func draw_creator() -> void:
 		var l=text_label("Fuller",Vector2(1290,688),Vector2(85,25),12,P.MUTED);l.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT
 	elif creator_tab=="Face":
 		text_label("A face of your own",Vector2(1100,207),Vector2(287,37),25,P.INK,true)
-		paragraph("Small changes give each Lifelet a familiar face. Turn your Lifelet to see their profile.",Vector2(1102,264),Vector2(274,72),15)
-		var features=["face_round","jaw_strong","nose_wide","eye_spacing"]
-		var labels=["Cheek fullness","Jaw definition","Nose width","Eye spacing"]
-		for i in range(4):
+		paragraph("Shape their features. Turn your Lifelet to see every angle.",Vector2(1102,264),Vector2(274,52),15)
+		var groups:Array=CREATOR_FACE_GROUPS.keys()
+		for group_index:int in groups.size():
+			var group_name:String=groups[group_index]
+			var group_button=button(group_name,Vector2(1100+group_index*71,322),Vector2(66,36),func():set_creator_face_group(group_name),creator_face_group==group_name)
+			group_button.add_theme_font_size_override("font_size",13)
+		var features:Array=CREATOR_FACE_GROUPS[creator_face_group]
+		for i in range(features.size()):
 			var key:String=features[i]
-			small_caps(labels[i],Vector2(1102,359+i*75))
-			var slider=HSlider.new();slider.min_value=0;slider.max_value=1;slider.step=.01;slider.value=float(profile.get(key,0))
-			slider.tooltip_text=labels[i]
-			rect(slider,Vector2(1105,391+i*75),Vector2(271,24))
+			var label_text:String=CREATOR_FACE_LABELS[key]
+			small_caps(label_text,Vector2(1102,379+i*66),Vector2(260,21))
+			var slider=HSlider.new();slider.min_value=-1 if key in LifeActor.SIGNED_IDENTITY_KEYS else 0;slider.max_value=1;slider.step=.01;slider.value=float(profile.get(key,0))
+			slider.tooltip_text=label_text
+			slider.name="FaceFeature_"+key
+			rect(slider,Vector2(1105,402+i*66),Vector2(271,28))
 			slider.value_changed.connect(func(value:float):profile[key]=value;preview.set_face_feature(key,value))
 		button("Reset face",Vector2(1102,681),Vector2(275,40),func():
-			for key:String in features:profile[key]=0.0
+			for key:String in LifeActor.IDENTITY_KEYS:profile[key]=0.0
 			refresh_preview())
 	else:
 		small_caps("Everyday collection",Vector2(1102,200))
@@ -614,6 +661,26 @@ func set_creator_tab(value:String) -> void:
 	frame_creator_camera()
 	draw_creator()
 
+func set_creator_face_group(value:String) -> void:
+	if not CREATOR_FACE_GROUPS.has(value):return
+	creator_face_group=value
+	draw_creator()
+
+func _set_studio_render_quality(enabled:bool) -> void:
+	var viewport:Viewport=get_viewport()
+	if enabled:
+		if _studio_render_restore.is_empty():
+			_studio_render_restore={"msaa":viewport.msaa_3d,"scale":viewport.scaling_3d_scale}
+		# At portrait distance reduced-resolution specular edges shimmer. The
+		# single-character studio can render native pixels and cleaner edges;
+		# restore the player's world settings when returning to a busy lot.
+		viewport.msaa_3d=maxi(viewport.msaa_3d,Viewport.MSAA_4X)
+		viewport.scaling_3d_scale=maxf(viewport.scaling_3d_scale,1.0)
+	elif not _studio_render_restore.is_empty():
+		viewport.msaa_3d=int(_studio_render_restore.msaa)
+		viewport.scaling_3d_scale=float(_studio_render_restore.scale)
+		_studio_render_restore.clear()
+
 func toggle_trait(tr:String) -> void:
 	if profile.traits.has(tr):profile.traits.erase(tr)
 	elif profile.traits.size()<3:profile.traits.append(tr)
@@ -644,21 +711,12 @@ func set_body_scale(value:float) -> void:
 		preview.visual.scale=Vector3(profile.body_scale,clampf(float(profile.height_scale),.93,1.08),profile.body_scale)
 
 func randomize_person() -> void:
-	profile.name=["Mara Vale","Alex Rowan","Ellis Park","Jules Rivera","Noa Ellis","Robin Ash"][randi()%6]
-	profile.frame=randi()%2;profile.outfit=0;profile.bottom=0
+	var styling:Dictionary={}
 	if is_instance_valid(preview) and preview.has_method("authored_hair_styles"):
-		var styles:Array=preview.authored_hair_styles()
-		profile.hair=int(styles[randi()%styles.size()])
 		var wardrobe:Dictionary=preview.authored_wardrobe()
-		var outfits:Array=wardrobe.get("outfits",[0]);var bottoms:Array=wardrobe.get("bottoms",[0])
-		profile.outfit=int(outfits[randi()%outfits.size()]);profile.bottom=int(bottoms[randi()%bottoms.size()])
-	else:
-		profile.hair=randi()%8;profile.outfit=randi()%5;profile.bottom=randi()%2
-	for feature:String in ["face_round","jaw_strong","nose_wide","eye_spacing"]:profile[feature]=randf_range(0,.75)
-	profile.skin_color=["f2d1b1","e7b98f","d9a17d","b77e58","925c40","613e30"][randi()%6]
-	profile.hair_color=["2a2420","54382a","89563a","c2a16b","dfccb0"][randi()%5]
-	profile.top_color=["c97c66","417a71","efeadb","7195b3"][randi()%4]
-	profile.bottom_color=["eadfc9","3e5955","51697c","493e37"][randi()%4]
+		styling={"hair":preview.authored_hair_styles(),"outfits":wardrobe.outfits,"bottoms":wardrobe.bottoms}
+	# Merge in place: this Dictionary is also the selected household member.
+	profile.merge(preload("res://scripts/character_identity.gd").generate(randi(),profile,household_profiles,styling),true)
 	refresh_preview()
 
 func show_lot_selection() -> void:
@@ -669,8 +727,11 @@ func show_lot_selection() -> void:
 		show_notice("A child needs a teen or adult in the household."); return
 	if str(profile.name).strip_edges().is_empty():profile.name="Mara Vale"
 	mode="lots"
+	_set_studio_render_quality(false)
 	clear_ui()
 	if stage:stage.visible=false
+	world.sun.light_energy=.8
+	world.sun.rotation_degrees=Vector3(-52,-35,0)
 	world.create_home(LifeCatalog.starter_layout(selected_lot))
 	world.camera.projection=Camera3D.PROJECTION_ORTHOGONAL
 	world.camera.size=19.5
@@ -705,14 +766,7 @@ func select_creator_member(index:int) -> void:
 
 func add_creator_member() -> void:
 	if household_profiles.size()>=LifeHousehold.MAX_MEMBERS:return
-	var person:Dictionary=profile.duplicate(true)
-	person.erase("world_state")
-	person.name=["Ellis Rowan","Jules Park","Noa Rivera","Robin Ash","Avery Woods","Morgan Bell","Jamie Reed"][household_profiles.size()-1]
-	person.frame=household_profiles.size()%2
-	person.hair=household_profiles.size()%8
-	person.outfit=household_profiles.size()%5
-	person.bottom=household_profiles.size()%2
-	person.top_color=["417a71","7195b3","bd9b68","efeadb"][household_profiles.size()%4]
+	var person:Dictionary=preload("res://scripts/character_identity.gd").generate(randi(),profile,household_profiles)
 	household_profiles.append(person)
 	select_creator_member(household_profiles.size()-1)
 
@@ -763,6 +817,7 @@ func start_household() -> void:
 	show_notice("Welcome home, %s. Click a furnishing to choose what happens next." % str(sim.character.name).split(" ")[0])
 
 func setup_live(layout:Array) -> void:
+	_set_studio_render_quality(false)
 	close_overlay(false)
 	pending_move.clear()
 	route_generation+=1
@@ -796,6 +851,7 @@ func setup_live(layout:Array) -> void:
 	world.update_camera()
 	world.sun.rotation_degrees=Vector3(-52,-35,0)
 	world.environment.background_color=Color("cddfd6")
+	world.sun.light_energy=.8
 	motion_states.clear()
 	traversal.reset()
 	away_phases.clear()
@@ -2746,6 +2802,7 @@ func quit_game() -> void:
 	tree.create_timer(.2).timeout.connect(tree.quit,CONNECT_ONE_SHOT)
 
 func _exit_tree() -> void:
+	_set_studio_render_quality(false)
 	for audio:AudioStreamPlayer in [audio_player,ambience_player]:
 		if is_instance_valid(audio):
 			audio.stream_paused=false
@@ -3616,6 +3673,7 @@ func show_main_menu() -> void:
 		if not overlay_open:capture_save_preview()
 	close_overlay(false)
 	mode="menu"
+	_set_studio_render_quality(false)
 	world.live_enabled=false
 	world.set_build(false)
 	_sync_actor_sound()
@@ -3893,7 +3951,9 @@ func frame_creator_camera() -> void:
 	var height:float=float(preview.call("get_display_height")) if preview.has_method("get_display_height") else 1.76
 	if creator_tab=="Face":
 		var ratio:float=clampf(height/1.76,.8,1.1)
-		world.camera.position=center+Vector3(0,.07*ratio,1.37*ratio)
+		# Give small facial edits enough screen space to judge, with headroom
+		# for taller hairstyles below the creator's progress header.
+		world.camera.position=center+Vector3(0,.055*ratio,1.10*ratio)
 		world.camera.look_at(center,Vector3.UP)
 	else:
 		world.camera.position=Vector3(0,height*.67045,height*2.47159)

@@ -1,0 +1,89 @@
+{
+  "source": "art/experiments/portrait_v62/characters_identity.blend",
+  "eye_depth_adult_m": 0.007,
+  "eye_identity_rigid": true,
+  "eye_aperture_adult_m": [
+    0.045,
+    0.0133
+  ],
+  "eyes": [
+    {
+      "sign": -1,
+      "scale": 1.0000004870246868,
+      "collar_vertices": 704,
+      "keys": [
+        "Basis",
+        "Blink",
+        "Smile",
+        "Face_Round",
+        "Jaw_Strong",
+        "Nose_Wide",
+        "Eye_Spacing",
+        "Nose_Length",
+        "Lip_Fullness",
+        "Chin_Length"
+      ],
+      "lash_vertices": 66
+    },
+    {
+      "sign": 1,
+      "scale": 1.0000005235758083,
+      "collar_vertices": 704,
+      "keys": [
+        "Basis",
+        "Blink",
+        "Smile",
+        "Face_Round",
+        "Jaw_Strong",
+        "Nose_Wide",
+        "Eye_Spacing",
+        "Nose_Length",
+        "Lip_Fullness",
+        "Chin_Length"
+      ],
+      "lash_vertices": 66
+    }
+  ],
+  "head": {
+    "Basis": {
+      "vertices_recessed": 387,
+      "maximum_depth_m": 0.009595501065558315
+    },
+    "Blink": {
+      "vertices_recessed": 785,
+      "maximum_depth_m": 0.013421231310586534
+    },
+    "Smile": {
+      "vertices_recessed": 387,
+      "maximum_depth_m": 0.009595508516138912
+    },
+    "Face_Round": {
+      "vertices_recessed": 390,
+      "maximum_depth_m": 0.00946554803878677
+    },
+    "Jaw_Strong": {
+      "vertices_recessed": 387,
+      "maximum_depth_m": 0.009597155094450832
+    },
+    "Nose_Wide": {
+      "vertices_recessed": 387,
+      "maximum_depth_m": 0.009597065687483669
+    },
+    "Eye_Spacing": {
+      "vertices_recessed": 388,
+      "maximum_depth_m": 0.009595426559752346
+    },
+    "Nose_Length": {
+      "vertices_recessed": 387,
+      "maximum_depth_m": 0.009595523417300106
+    },
+    "Lip_Fullness": {
+      "vertices_recessed": 387,
+      "maximum_depth_m": 0.009595508516138912
+    },
+    "Chin_Length": {
+      "vertices_recessed": 387,
+      "maximum_depth_m": 0.009595508516138912
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "glb": "/home/impulse/Projects/JustLife/art/experiments/integrated_v62/models/character.glb",
+  "sha256": "a256a78ed2a0075e7e73de91c1f033d3baeac647d40c57c8e66b4305f107fdb0",
+  "bytes": 19809044,
+  "head_morphs": [
+    "Blink",
+    "Smile",
+    "Face_Round",
+    "Jaw_Strong",
+    "Nose_Wide",
+    "Eye_Spacing",
+    "Nose_Length",
+    "Lip_Fullness",
+    "Chin_Length",
+    "Face_Length",
+    "Mouth_Width",
+    "Nose_Bridge"
+  ],
+  "mouth_anchor_exact": true,
+  "eleven_measured_offsets_exact": true,
+  "neutral_morph_weights_zero": true,
+  "ocular_meshes_without_new_deformations": [
+    "Eyes_Catchlight",
+    "Eyes_Catchlight.001",
+    "Eyes_Iris",
+    "Eyes_Iris.001",
+    "Eyes_Iris_edge",
+    "Eyes_Iris_edge.001",
+    "Eyes_Pupil",
+    "Eyes_Pupil.001",
+    "Eyes_Sclera",
+    "Eyes_Sclera.001",
+    "Hair_Brow",
+    "Hair_Brow.001"
+  ],
+  "skins": 1,
+  "passed": true
+}

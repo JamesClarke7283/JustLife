@@ -1,0 +1,184 @@
+{
+  "baseline": "/home/impulse/Projects/JustLife/art/characters.blend",
+  "baseline_sha256": "b4b5b722b486fa757dcc0e034d27eb80ce4658bf2c79f1b045dffb9a6753d049",
+  "candidate": "/home/impulse/Projects/JustLife/art/experiments/garment_v62/characters_shirt_c.blend",
+  "candidate_sha256": "408045a4ac7f23d2c89028b6619f1f6f2159fda19540b771db47b00a6f914089",
+  "changed_objects": [
+    "Outfit_Casual_Shirt",
+    "Outfit_Tee_Shirt"
+  ],
+  "protected_objects": 458,
+  "input_garment_geometry_sha256": {
+    "Outfit_Casual_Shirt": "e8c130a0ed2dc6da850b49d3c232f09c1a501898507c559707a5802ca919b17a",
+    "Outfit_Tee_Shirt": "e8c130a0ed2dc6da850b49d3c232f09c1a501898507c559707a5802ca919b17a"
+  },
+  "output_garment_geometry_sha256": {
+    "Outfit_Casual_Shirt": "f316bee35a8754e2710d7c0f1ac19e8ab99a2efc1b7665dfdd9f57a6cf1b0362",
+    "Outfit_Tee_Shirt": "f316bee35a8754e2710d7c0f1ac19e8ab99a2efc1b7665dfdd9f57a6cf1b0362"
+  },
+  "fresh_reopen_exact_topology_uv_weights_rig_material_assignments_other_objects": true,
+  "pose_checks": [
+    {
+      "pose": "rest",
+      "shirt": "Outfit_Casual_Shirt",
+      "triangles_tested": 12000,
+      "orientation_reversals_from_same_source_pose": 0,
+      "minimum_triangle_area_ratio": 0.3973690689806989,
+      "protected_trim_vertex_count": 1151,
+      "upper_arm_skin_samples": 4064,
+      "source_skin_vertices_outside_cloth_over_0_5mm": 1,
+      "candidate_skin_vertices_outside_cloth_over_0_5mm": 0,
+      "new_or_worsened_upper_arm_exposure": 0,
+      "max_skin_distance_increase_m": 0.016792684997199103
+    },
+    {
+      "pose": "rest",
+      "shirt": "Outfit_Tee_Shirt",
+      "triangles_tested": 12000,
+      "orientation_reversals_from_same_source_pose": 0,
+      "minimum_triangle_area_ratio": 0.3973690689806989,
+      "protected_trim_vertex_count": 1151,
+      "upper_arm_skin_samples": 4064,
+      "source_skin_vertices_outside_cloth_over_0_5mm": 1,
+      "candidate_skin_vertices_outside_cloth_over_0_5mm": 0,
+      "new_or_worsened_upper_arm_exposure": 0,
+      "max_skin_distance_increase_m": 0.016792684997199103
+    },
+    {
+      "pose": "walk",
+      "shirt": "Outfit_Casual_Shirt",
+      "triangles_tested": 12000,
+      "orientation_reversals_from_same_source_pose": 1,
+      "minimum_triangle_area_ratio": 0.5835859057227867,
+      "protected_trim_vertex_count": 1151,
+      "upper_arm_skin_samples": 4064,
+      "source_skin_vertices_outside_cloth_over_0_5mm": 9,
+      "candidate_skin_vertices_outside_cloth_over_0_5mm": 9,
+      "new_or_worsened_upper_arm_exposure": 0,
+      "max_skin_distance_increase_m": 0.0159126618236769
+    },
+    {
+      "pose": "walk",
+      "shirt": "Outfit_Tee_Shirt",
+      "triangles_tested": 12000,
+      "orientation_reversals_from_same_source_pose": 1,
+      "minimum_triangle_area_ratio": 0.5835859057227867,
+      "protected_trim_vertex_count": 1151,
+      "upper_arm_skin_samples": 4064,
+      "source_skin_vertices_outside_cloth_over_0_5mm": 9,
+      "candidate_skin_vertices_outside_cloth_over_0_5mm": 9,
+      "new_or_worsened_upper_arm_exposure": 0,
+      "max_skin_distance_increase_m": 0.0159126618236769
+    },
+    {
+      "pose": "reach",
+      "shirt": "Outfit_Casual_Shirt",
+      "triangles_tested": 12000,
+      "orientation_reversals_from_same_source_pose": 0,
+      "minimum_triangle_area_ratio": 0.5785686252845728,
+      "protected_trim_vertex_count": 1151,
+      "upper_arm_skin_samples": 4064,
+      "source_skin_vertices_outside_cloth_over_0_5mm": 75,
+      "candidate_skin_vertices_outside_cloth_over_0_5mm": 8,
+      "new_or_worsened_upper_arm_exposure": 0,
+      "max_skin_distance_increase_m": 0.01559269754216075
+    },
+    {
+      "pose": "reach",
+      "shirt": "Outfit_Tee_Shirt",
+      "triangles_tested": 12000,
+      "orientation_reversals_from_same_source_pose": 0,
+      "minimum_triangle_area_ratio": 0.5785686252845728,
+      "protected_trim_vertex_count": 1151,
+      "upper_arm_skin_samples": 4064,
+      "source_skin_vertices_outside_cloth_over_0_5mm": 75,
+      "candidate_skin_vertices_outside_cloth_over_0_5mm": 8,
+      "new_or_worsened_upper_arm_exposure": 0,
+      "max_skin_distance_increase_m": 0.01559269754216075
+    },
+    {
+      "pose": "arms_out",
+      "shirt": "Outfit_Casual_Shirt",
+      "triangles_tested": 12000,
+      "orientation_reversals_from_same_source_pose": 0,
+      "minimum_triangle_area_ratio": 0.5844248674351378,
+      "protected_trim_vertex_count": 1151,
+      "upper_arm_skin_samples": 4064,
+      "source_skin_vertices_outside_cloth_over_0_5mm": 0,
+      "candidate_skin_vertices_outside_cloth_over_0_5mm": 0,
+      "new_or_worsened_upper_arm_exposure": 0,
+      "max_skin_distance_increase_m": 0.02147837428492494
+    },
+    {
+      "pose": "arms_out",
+      "shirt": "Outfit_Tee_Shirt",
+      "triangles_tested": 12000,
+      "orientation_reversals_from_same_source_pose": 0,
+      "minimum_triangle_area_ratio": 0.5844248674351378,
+      "protected_trim_vertex_count": 1151,
+      "upper_arm_skin_samples": 4064,
+      "source_skin_vertices_outside_cloth_over_0_5mm": 0,
+      "candidate_skin_vertices_outside_cloth_over_0_5mm": 0,
+      "new_or_worsened_upper_arm_exposure": 0,
+      "max_skin_distance_increase_m": 0.02147837428492494
+    },
+    {
+      "pose": "one_arm_raised",
+      "shirt": "Outfit_Casual_Shirt",
+      "triangles_tested": 12000,
+      "orientation_reversals_from_same_source_pose": 0,
+      "minimum_triangle_area_ratio": 0.3973690689806989,
+      "protected_trim_vertex_count": 1151,
+      "upper_arm_skin_samples": 4064,
+      "source_skin_vertices_outside_cloth_over_0_5mm": 0,
+      "candidate_skin_vertices_outside_cloth_over_0_5mm": 1,
+      "new_or_worsened_upper_arm_exposure": 1,
+      "max_skin_distance_increase_m": 0.02145560074131936
+    },
+    {
+      "pose": "one_arm_raised",
+      "shirt": "Outfit_Tee_Shirt",
+      "triangles_tested": 12000,
+      "orientation_reversals_from_same_source_pose": 0,
+      "minimum_triangle_area_ratio": 0.3973690689806989,
+      "protected_trim_vertex_count": 1151,
+      "upper_arm_skin_samples": 4064,
+      "source_skin_vertices_outside_cloth_over_0_5mm": 0,
+      "candidate_skin_vertices_outside_cloth_over_0_5mm": 1,
+      "new_or_worsened_upper_arm_exposure": 1,
+      "max_skin_distance_increase_m": 0.02145560074131936
+    }
+  ],
+  "failures": [
+    [
+      "walk",
+      "Outfit_Casual_Shirt",
+      "triangle_orientation_or_area",
+      1,
+      0.5835859057227867
+    ],
+    [
+      "walk",
+      "Outfit_Tee_Shirt",
+      "triangle_orientation_or_area",
+      1,
+      0.5835859057227867
+    ],
+    [
+      "one_arm_raised",
+      "Outfit_Casual_Shirt",
+      "new_upper_arm_exposure",
+      1,
+      0.001969611388631165
+    ],
+    [
+      "one_arm_raised",
+      "Outfit_Tee_Shirt",
+      "new_upper_arm_exposure",
+      1,
+      0.001969611388631165
+    ]
+  ],
+  "passed": false,
+  "limits": "Compared with identical source poses using actual ARMATURE evaluation. Existing source intersections are reported separately; this is not arbitrary-pose cloth simulation."
+}

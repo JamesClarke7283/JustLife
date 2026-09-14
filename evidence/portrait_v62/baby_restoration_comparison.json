@@ -1,0 +1,1635 @@
+{
+  "baseline": "assets/models/character_baby.glb",
+  "candidate": "art/experiments/portrait_v62/baby_baseline/character_baby.glb",
+  "meshes": 62,
+  "metadata_changes": [],
+  "resolved_data_changes": [
+    {
+      "attribute": "Bottom_Continuous_Romper/0/POSITION",
+      "changed_rows": 10989,
+      "total_rows": 14784,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Bottom_Continuous_Romper/0/NORMAL",
+      "changed_rows": 173,
+      "total_rows": 14784,
+      "max_difference": 9.999709436669946e-05
+    },
+    {
+      "attribute": "Bottom_Continuous_Romper/0/TEXCOORD_0",
+      "changed_rows": 514,
+      "total_rows": 14784,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Bottom_Continuous_Romper/0/JOINTS_0",
+      "changed_rows": 24,
+      "total_rows": 14784,
+      "max_difference": 2
+    },
+    {
+      "attribute": "Bottom_Continuous_Romper/0/WEIGHTS_0",
+      "changed_rows": 3966,
+      "total_rows": 14784,
+      "max_difference": 1.4156103134155273e-06
+    },
+    {
+      "attribute": "Bottom_Continuous_Romper/0/morph0/POSITION",
+      "changed_rows": 2080,
+      "total_rows": 14784,
+      "max_difference": 1.4901161193847656e-08
+    },
+    {
+      "attribute": "Bottom_Continuous_Romper/0/morph0/NORMAL",
+      "changed_rows": 357,
+      "total_rows": 14784,
+      "max_difference": 9.999709436669946e-05
+    },
+    {
+      "attribute": "Bottom_Continuous_Romper_Leg_L/0/POSITION",
+      "changed_rows": 654,
+      "total_rows": 840,
+      "max_difference": 2.9802322387695312e-08
+    },
+    {
+      "attribute": "Bottom_Continuous_Romper_Leg_L/0/NORMAL",
+      "changed_rows": 6,
+      "total_rows": 840,
+      "max_difference": 8.386373519897461e-05
+    },
+    {
+      "attribute": "Bottom_Continuous_Romper_Leg_L/0/TEXCOORD_0",
+      "changed_rows": 36,
+      "total_rows": 840,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Bottom_Continuous_Romper_Leg_L/0/WEIGHTS_0",
+      "changed_rows": 195,
+      "total_rows": 840,
+      "max_difference": 8.940696716308594e-07
+    },
+    {
+      "attribute": "Bottom_Continuous_Romper_Leg_L/0/morph0/POSITION",
+      "changed_rows": 249,
+      "total_rows": 840,
+      "max_difference": 1.4901161193847656e-08
+    },
+    {
+      "attribute": "Bottom_Continuous_Romper_Leg_L/0/morph0/NORMAL",
+      "changed_rows": 16,
+      "total_rows": 840,
+      "max_difference": 8.386373519897461e-05
+    },
+    {
+      "attribute": "Bottom_Continuous_Romper_Leg_R/0/POSITION",
+      "changed_rows": 678,
+      "total_rows": 840,
+      "max_difference": 2.9802322387695312e-08
+    },
+    {
+      "attribute": "Bottom_Continuous_Romper_Leg_R/0/TEXCOORD_0",
+      "changed_rows": 32,
+      "total_rows": 840,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Bottom_Continuous_Romper_Leg_R/0/WEIGHTS_0",
+      "changed_rows": 214,
+      "total_rows": 840,
+      "max_difference": 6.556510925292969e-07
+    },
+    {
+      "attribute": "Bottom_Continuous_Romper_Leg_R/0/morph0/POSITION",
+      "changed_rows": 329,
+      "total_rows": 840,
+      "max_difference": 1.4901161193847656e-08
+    },
+    {
+      "attribute": "Bottom_Continuous_Romper_Leg_R/0/morph0/NORMAL",
+      "changed_rows": 23,
+      "total_rows": 840,
+      "max_difference": 9.517371654510498e-05
+    },
+    {
+      "attribute": "Bottom_Shorts_Cuff_L/0/POSITION",
+      "changed_rows": 736,
+      "total_rows": 960,
+      "max_difference": 2.9802322387695312e-08
+    },
+    {
+      "attribute": "Bottom_Shorts_Cuff_L/0/NORMAL",
+      "changed_rows": 27,
+      "total_rows": 960,
+      "max_difference": 9.980052709579468e-05
+    },
+    {
+      "attribute": "Bottom_Shorts_Cuff_L/0/TEXCOORD_0",
+      "changed_rows": 53,
+      "total_rows": 960,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Bottom_Shorts_Cuff_L/0/WEIGHTS_0",
+      "changed_rows": 106,
+      "total_rows": 960,
+      "max_difference": 2.980232238769531e-07
+    },
+    {
+      "attribute": "Bottom_Shorts_Cuff_L/0/morph0/POSITION",
+      "changed_rows": 407,
+      "total_rows": 960,
+      "max_difference": 1.4901161193847656e-08
+    },
+    {
+      "attribute": "Bottom_Shorts_Cuff_L/0/morph0/NORMAL",
+      "changed_rows": 39,
+      "total_rows": 960,
+      "max_difference": 0.00011095404624938965
+    },
+    {
+      "attribute": "Bottom_Shorts_Cuff_R/0/POSITION",
+      "changed_rows": 778,
+      "total_rows": 960,
+      "max_difference": 2.9802322387695312e-08
+    },
+    {
+      "attribute": "Bottom_Shorts_Cuff_R/0/NORMAL",
+      "changed_rows": 46,
+      "total_rows": 960,
+      "max_difference": 9.99346375465393e-05
+    },
+    {
+      "attribute": "Bottom_Shorts_Cuff_R/0/TEXCOORD_0",
+      "changed_rows": 41,
+      "total_rows": 960,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Bottom_Shorts_Cuff_R/0/WEIGHTS_0",
+      "changed_rows": 129,
+      "total_rows": 960,
+      "max_difference": 2.980232238769531e-07
+    },
+    {
+      "attribute": "Bottom_Shorts_Cuff_R/0/morph0/POSITION",
+      "changed_rows": 433,
+      "total_rows": 960,
+      "max_difference": 1.4901161193847656e-08
+    },
+    {
+      "attribute": "Bottom_Shorts_Cuff_R/0/morph0/NORMAL",
+      "changed_rows": 58,
+      "total_rows": 960,
+      "max_difference": 9.99346375465393e-05
+    },
+    {
+      "attribute": "Sphere.001/0/POSITION",
+      "changed_rows": 819,
+      "total_rows": 864,
+      "max_difference": 0.01951056532561779
+    },
+    {
+      "attribute": "Sphere.001/0/NORMAL",
+      "changed_rows": 819,
+      "total_rows": 864,
+      "max_difference": 1.8824630975723267
+    },
+    {
+      "attribute": "Sphere.001/0/TEXCOORD_0",
+      "changed_rows": 819,
+      "total_rows": 864,
+      "max_difference": 0.9000000357627869
+    },
+    {
+      "attribute": "Sphere.003/0/POSITION",
+      "changed_rows": 470,
+      "total_rows": 864,
+      "max_difference": 0.017600735649466515
+    },
+    {
+      "attribute": "Sphere.003/0/NORMAL",
+      "changed_rows": 470,
+      "total_rows": 864,
+      "max_difference": 1.6094741821289062
+    },
+    {
+      "attribute": "Sphere.003/0/TEXCOORD_0",
+      "changed_rows": 470,
+      "total_rows": 864,
+      "max_difference": 0.7000001072883606
+    },
+    {
+      "attribute": "Sphere.013/0/POSITION",
+      "changed_rows": 444,
+      "total_rows": 504,
+      "max_difference": 0.004232534905895591
+    },
+    {
+      "attribute": "Sphere.013/0/NORMAL",
+      "changed_rows": 444,
+      "total_rows": 504,
+      "max_difference": 1.908120334148407
+    },
+    {
+      "attribute": "Sphere.013/0/TEXCOORD_0",
+      "changed_rows": 444,
+      "total_rows": 504,
+      "max_difference": 0.875
+    },
+    {
+      "attribute": "Sphere.013/0/morph0/POSITION",
+      "changed_rows": 122,
+      "total_rows": 504,
+      "max_difference": 9.313225746154785e-10
+    },
+    {
+      "attribute": "Sphere.013/0/morph0/NORMAL",
+      "changed_rows": 441,
+      "total_rows": 504,
+      "max_difference": 9.995698928833008e-05
+    },
+    {
+      "attribute": "Sphere.018/0/POSITION",
+      "changed_rows": 444,
+      "total_rows": 504,
+      "max_difference": 0.004232534905895591
+    },
+    {
+      "attribute": "Sphere.018/0/NORMAL",
+      "changed_rows": 444,
+      "total_rows": 504,
+      "max_difference": 1.908120334148407
+    },
+    {
+      "attribute": "Sphere.018/0/TEXCOORD_0",
+      "changed_rows": 444,
+      "total_rows": 504,
+      "max_difference": 0.875
+    },
+    {
+      "attribute": "Sphere.018/0/morph0/POSITION",
+      "changed_rows": 122,
+      "total_rows": 504,
+      "max_difference": 9.313225746154785e-10
+    },
+    {
+      "attribute": "Sphere.018/0/morph0/NORMAL",
+      "changed_rows": 441,
+      "total_rows": 504,
+      "max_difference": 9.995698928833008e-05
+    },
+    {
+      "attribute": "Sphere.010/0/POSITION",
+      "changed_rows": 1386,
+      "total_rows": 1452,
+      "max_difference": 0.019318515434861183
+    },
+    {
+      "attribute": "Sphere.010/0/NORMAL",
+      "changed_rows": 1388,
+      "total_rows": 1452,
+      "max_difference": 1.847485899925232
+    },
+    {
+      "attribute": "Sphere.010/0/TEXCOORD_0",
+      "changed_rows": 1386,
+      "total_rows": 1452,
+      "max_difference": 0.833333432674408
+    },
+    {
+      "attribute": "Sphere.010/0/morph0/POSITION",
+      "changed_rows": 364,
+      "total_rows": 1452,
+      "max_difference": 9.313225746154785e-10
+    },
+    {
+      "attribute": "Sphere.010/0/morph0/NORMAL",
+      "changed_rows": 1386,
+      "total_rows": 1452,
+      "max_difference": 0.00011408329010009766
+    },
+    {
+      "attribute": "Sphere.010/0/morph1/NORMAL",
+      "changed_rows": 1386,
+      "total_rows": 1452,
+      "max_difference": 0.00011408329010009766
+    },
+    {
+      "attribute": "Sphere.010/0/morph2/NORMAL",
+      "changed_rows": 1386,
+      "total_rows": 1452,
+      "max_difference": 0.00011408329010009766
+    },
+    {
+      "attribute": "Sphere.010/0/morph3/NORMAL",
+      "changed_rows": 1386,
+      "total_rows": 1452,
+      "max_difference": 0.00011408329010009766
+    },
+    {
+      "attribute": "Sphere.010/0/morph4/NORMAL",
+      "changed_rows": 1386,
+      "total_rows": 1452,
+      "max_difference": 0.00011408329010009766
+    },
+    {
+      "attribute": "Sphere.015/0/POSITION",
+      "changed_rows": 1374,
+      "total_rows": 1452,
+      "max_difference": 0.019318515434861183
+    },
+    {
+      "attribute": "Sphere.015/0/NORMAL",
+      "changed_rows": 1375,
+      "total_rows": 1452,
+      "max_difference": 1.847485899925232
+    },
+    {
+      "attribute": "Sphere.015/0/TEXCOORD_0",
+      "changed_rows": 1374,
+      "total_rows": 1452,
+      "max_difference": 0.833333432674408
+    },
+    {
+      "attribute": "Sphere.015/0/morph0/POSITION",
+      "changed_rows": 346,
+      "total_rows": 1452,
+      "max_difference": 9.313225746154785e-10
+    },
+    {
+      "attribute": "Sphere.015/0/morph0/NORMAL",
+      "changed_rows": 1375,
+      "total_rows": 1452,
+      "max_difference": 0.00017511844635009766
+    },
+    {
+      "attribute": "Sphere.015/0/morph1/NORMAL",
+      "changed_rows": 1375,
+      "total_rows": 1452,
+      "max_difference": 0.00011408329010009766
+    },
+    {
+      "attribute": "Sphere.015/0/morph2/NORMAL",
+      "changed_rows": 1375,
+      "total_rows": 1452,
+      "max_difference": 0.00011408329010009766
+    },
+    {
+      "attribute": "Sphere.015/0/morph3/NORMAL",
+      "changed_rows": 1375,
+      "total_rows": 1452,
+      "max_difference": 0.00011408329010009766
+    },
+    {
+      "attribute": "Sphere.015/0/morph4/NORMAL",
+      "changed_rows": 1375,
+      "total_rows": 1452,
+      "max_difference": 0.00011408329010009766
+    },
+    {
+      "attribute": "Sphere.011/0/POSITION",
+      "changed_rows": 1386,
+      "total_rows": 1452,
+      "max_difference": 0.017000293359160423
+    },
+    {
+      "attribute": "Sphere.011/0/NORMAL",
+      "changed_rows": 1386,
+      "total_rows": 1452,
+      "max_difference": 1.861419916152954
+    },
+    {
+      "attribute": "Sphere.011/0/TEXCOORD_0",
+      "changed_rows": 1386,
+      "total_rows": 1452,
+      "max_difference": 0.833333432674408
+    },
+    {
+      "attribute": "Sphere.011/0/morph0/POSITION",
+      "changed_rows": 366,
+      "total_rows": 1452,
+      "max_difference": 9.313225746154785e-10
+    },
+    {
+      "attribute": "Sphere.011/0/morph0/NORMAL",
+      "changed_rows": 1382,
+      "total_rows": 1452,
+      "max_difference": 7.969141006469727e-05
+    },
+    {
+      "attribute": "Sphere.011/0/morph1/NORMAL",
+      "changed_rows": 1382,
+      "total_rows": 1452,
+      "max_difference": 7.969141006469727e-05
+    },
+    {
+      "attribute": "Sphere.011/0/morph2/NORMAL",
+      "changed_rows": 1382,
+      "total_rows": 1452,
+      "max_difference": 7.969141006469727e-05
+    },
+    {
+      "attribute": "Sphere.011/0/morph3/NORMAL",
+      "changed_rows": 1382,
+      "total_rows": 1452,
+      "max_difference": 7.969141006469727e-05
+    },
+    {
+      "attribute": "Sphere.011/0/morph4/NORMAL",
+      "changed_rows": 1382,
+      "total_rows": 1452,
+      "max_difference": 7.969141006469727e-05
+    },
+    {
+      "attribute": "Sphere.016/0/POSITION",
+      "changed_rows": 1374,
+      "total_rows": 1452,
+      "max_difference": 0.017000293359160423
+    },
+    {
+      "attribute": "Sphere.016/0/NORMAL",
+      "changed_rows": 1374,
+      "total_rows": 1452,
+      "max_difference": 1.861419916152954
+    },
+    {
+      "attribute": "Sphere.016/0/TEXCOORD_0",
+      "changed_rows": 1374,
+      "total_rows": 1452,
+      "max_difference": 0.833333432674408
+    },
+    {
+      "attribute": "Sphere.016/0/morph0/POSITION",
+      "changed_rows": 344,
+      "total_rows": 1452,
+      "max_difference": 9.313225746154785e-10
+    },
+    {
+      "attribute": "Sphere.016/0/morph0/NORMAL",
+      "changed_rows": 1370,
+      "total_rows": 1452,
+      "max_difference": 7.969141006469727e-05
+    },
+    {
+      "attribute": "Sphere.016/0/morph1/NORMAL",
+      "changed_rows": 1370,
+      "total_rows": 1452,
+      "max_difference": 7.969141006469727e-05
+    },
+    {
+      "attribute": "Sphere.016/0/morph2/NORMAL",
+      "changed_rows": 1370,
+      "total_rows": 1452,
+      "max_difference": 7.969141006469727e-05
+    },
+    {
+      "attribute": "Sphere.016/0/morph3/NORMAL",
+      "changed_rows": 1370,
+      "total_rows": 1452,
+      "max_difference": 7.969141006469727e-05
+    },
+    {
+      "attribute": "Sphere.016/0/morph4/NORMAL",
+      "changed_rows": 1370,
+      "total_rows": 1452,
+      "max_difference": 7.969141006469727e-05
+    },
+    {
+      "attribute": "Sphere.012/0/POSITION",
+      "changed_rows": 532,
+      "total_rows": 864,
+      "max_difference": 0.007568316301330924
+    },
+    {
+      "attribute": "Sphere.012/0/NORMAL",
+      "changed_rows": 532,
+      "total_rows": 864,
+      "max_difference": 1.7226064801216125
+    },
+    {
+      "attribute": "Sphere.012/0/TEXCOORD_0",
+      "changed_rows": 532,
+      "total_rows": 864,
+      "max_difference": 0.7000001072883606
+    },
+    {
+      "attribute": "Sphere.012/0/morph0/POSITION",
+      "changed_rows": 94,
+      "total_rows": 864,
+      "max_difference": 9.313225746154785e-10
+    },
+    {
+      "attribute": "Sphere.012/0/morph0/NORMAL",
+      "changed_rows": 532,
+      "total_rows": 864,
+      "max_difference": 7.69495964050293e-05
+    },
+    {
+      "attribute": "Sphere.012/0/morph1/NORMAL",
+      "changed_rows": 532,
+      "total_rows": 864,
+      "max_difference": 7.69495964050293e-05
+    },
+    {
+      "attribute": "Sphere.012/0/morph2/NORMAL",
+      "changed_rows": 532,
+      "total_rows": 864,
+      "max_difference": 7.69495964050293e-05
+    },
+    {
+      "attribute": "Sphere.012/0/morph3/NORMAL",
+      "changed_rows": 532,
+      "total_rows": 864,
+      "max_difference": 7.69495964050293e-05
+    },
+    {
+      "attribute": "Sphere.012/0/morph4/NORMAL",
+      "changed_rows": 532,
+      "total_rows": 864,
+      "max_difference": 7.69495964050293e-05
+    },
+    {
+      "attribute": "Sphere.017/0/POSITION",
+      "changed_rows": 578,
+      "total_rows": 864,
+      "max_difference": 0.007568316301330924
+    },
+    {
+      "attribute": "Sphere.017/0/NORMAL",
+      "changed_rows": 578,
+      "total_rows": 864,
+      "max_difference": 1.7226064801216125
+    },
+    {
+      "attribute": "Sphere.017/0/TEXCOORD_0",
+      "changed_rows": 578,
+      "total_rows": 864,
+      "max_difference": 0.7000001072883606
+    },
+    {
+      "attribute": "Sphere.017/0/morph0/POSITION",
+      "changed_rows": 110,
+      "total_rows": 864,
+      "max_difference": 9.313225746154785e-10
+    },
+    {
+      "attribute": "Sphere.017/0/morph0/NORMAL",
+      "changed_rows": 578,
+      "total_rows": 864,
+      "max_difference": 7.69495964050293e-05
+    },
+    {
+      "attribute": "Sphere.017/0/morph1/NORMAL",
+      "changed_rows": 578,
+      "total_rows": 864,
+      "max_difference": 7.69495964050293e-05
+    },
+    {
+      "attribute": "Sphere.017/0/morph2/NORMAL",
+      "changed_rows": 578,
+      "total_rows": 864,
+      "max_difference": 7.69495964050293e-05
+    },
+    {
+      "attribute": "Sphere.017/0/morph3/NORMAL",
+      "changed_rows": 578,
+      "total_rows": 864,
+      "max_difference": 7.69495964050293e-05
+    },
+    {
+      "attribute": "Sphere.017/0/morph4/NORMAL",
+      "changed_rows": 578,
+      "total_rows": 864,
+      "max_difference": 7.69495964050293e-05
+    },
+    {
+      "attribute": "Sphere.009/0/POSITION",
+      "changed_rows": 2340,
+      "total_rows": 2340,
+      "max_difference": 0.03726983815431595
+    },
+    {
+      "attribute": "Sphere.009/0/NORMAL",
+      "changed_rows": 2340,
+      "total_rows": 2340,
+      "max_difference": 1.922105312347412
+    },
+    {
+      "attribute": "Sphere.009/0/TEXCOORD_0",
+      "changed_rows": 2340,
+      "total_rows": 2340,
+      "max_difference": 0.8749998211860657
+    },
+    {
+      "attribute": "Sphere.009/0/morph0/POSITION",
+      "changed_rows": 988,
+      "total_rows": 2340,
+      "max_difference": 9.313225746154785e-10
+    },
+    {
+      "attribute": "Sphere.009/0/morph0/NORMAL",
+      "changed_rows": 2340,
+      "total_rows": 2340,
+      "max_difference": 0.00010195374488830566
+    },
+    {
+      "attribute": "Sphere.009/0/morph1/NORMAL",
+      "changed_rows": 2340,
+      "total_rows": 2340,
+      "max_difference": 9.465217590332031e-05
+    },
+    {
+      "attribute": "Sphere.009/0/morph2/NORMAL",
+      "changed_rows": 2340,
+      "total_rows": 2340,
+      "max_difference": 9.465217590332031e-05
+    },
+    {
+      "attribute": "Sphere.009/0/morph3/NORMAL",
+      "changed_rows": 2340,
+      "total_rows": 2340,
+      "max_difference": 9.465217590332031e-05
+    },
+    {
+      "attribute": "Sphere.009/0/morph4/NORMAL",
+      "changed_rows": 2340,
+      "total_rows": 2340,
+      "max_difference": 9.465217590332031e-05
+    },
+    {
+      "attribute": "Sphere.014/0/POSITION",
+      "changed_rows": 2340,
+      "total_rows": 2340,
+      "max_difference": 0.03726983815431595
+    },
+    {
+      "attribute": "Sphere.014/0/NORMAL",
+      "changed_rows": 2340,
+      "total_rows": 2340,
+      "max_difference": 1.9427777528762817
+    },
+    {
+      "attribute": "Sphere.014/0/TEXCOORD_0",
+      "changed_rows": 2340,
+      "total_rows": 2340,
+      "max_difference": 0.8750001192092896
+    },
+    {
+      "attribute": "Sphere.014/0/morph0/POSITION",
+      "changed_rows": 928,
+      "total_rows": 2340,
+      "max_difference": 9.313225746154785e-10
+    },
+    {
+      "attribute": "Sphere.014/0/morph0/NORMAL",
+      "changed_rows": 2340,
+      "total_rows": 2340,
+      "max_difference": 9.238719940185547e-05
+    },
+    {
+      "attribute": "Sphere.014/0/morph1/NORMAL",
+      "changed_rows": 2340,
+      "total_rows": 2340,
+      "max_difference": 9.238719940185547e-05
+    },
+    {
+      "attribute": "Sphere.014/0/morph2/NORMAL",
+      "changed_rows": 2340,
+      "total_rows": 2340,
+      "max_difference": 9.238719940185547e-05
+    },
+    {
+      "attribute": "Sphere.014/0/morph3/NORMAL",
+      "changed_rows": 2340,
+      "total_rows": 2340,
+      "max_difference": 9.238719940185547e-05
+    },
+    {
+      "attribute": "Sphere.014/0/morph4/NORMAL",
+      "changed_rows": 2340,
+      "total_rows": 2340,
+      "max_difference": 9.238719940185547e-05
+    },
+    {
+      "attribute": ".Hair_Bob_Cap/0/POSITION",
+      "changed_rows": 41733,
+      "total_rows": 47712,
+      "max_difference": 2.421438694000244e-07
+    },
+    {
+      "attribute": ".Hair_Bob_Cap/0/NORMAL",
+      "changed_rows": 2916,
+      "total_rows": 47712,
+      "max_difference": 0.0008273720741271973
+    },
+    {
+      "attribute": ".Hair_Bob_Cap/0/TEXCOORD_0",
+      "changed_rows": 21176,
+      "total_rows": 47712,
+      "max_difference": 1.1920928955078125e-07
+    },
+    {
+      "attribute": "Hair_Bob_Lock/0/POSITION",
+      "changed_rows": 554,
+      "total_rows": 720,
+      "max_difference": 8.940696716308594e-08
+    },
+    {
+      "attribute": "Hair_Bob_Lock/0/NORMAL",
+      "changed_rows": 27,
+      "total_rows": 720,
+      "max_difference": 8.869171142578125e-05
+    },
+    {
+      "attribute": "Hair_Bob_Lock/0/TEXCOORD_0",
+      "changed_rows": 265,
+      "total_rows": 720,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Hair_Bob_Lock.001/0/POSITION",
+      "changed_rows": 557,
+      "total_rows": 720,
+      "max_difference": 8.940696716308594e-08
+    },
+    {
+      "attribute": "Hair_Bob_Lock.001/0/NORMAL",
+      "changed_rows": 28,
+      "total_rows": 720,
+      "max_difference": 9.036064147949219e-05
+    },
+    {
+      "attribute": "Hair_Bob_Lock.001/0/TEXCOORD_0",
+      "changed_rows": 293,
+      "total_rows": 720,
+      "max_difference": 1.1920928955078125e-07
+    },
+    {
+      "attribute": ".Hair_Crop_Cap/0/POSITION",
+      "changed_rows": 42872,
+      "total_rows": 47712,
+      "max_difference": 3.3527612686157227e-07
+    },
+    {
+      "attribute": ".Hair_Crop_Cap/0/NORMAL",
+      "changed_rows": 3350,
+      "total_rows": 47712,
+      "max_difference": 0.0063107311725616455
+    },
+    {
+      "attribute": ".Hair_Crop_Cap/0/TEXCOORD_0",
+      "changed_rows": 20366,
+      "total_rows": 47712,
+      "max_difference": 1.1920928955078125e-07
+    },
+    {
+      "attribute": "Hair_Crop_Crown/0/POSITION",
+      "changed_rows": 421,
+      "total_rows": 600,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Hair_Crop_Crown/0/NORMAL",
+      "changed_rows": 37,
+      "total_rows": 600,
+      "max_difference": 9.999051690101624e-05
+    },
+    {
+      "attribute": "Hair_Crop_Crown/0/TEXCOORD_0",
+      "changed_rows": 217,
+      "total_rows": 600,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": ".Hair_Curls_Cap/0/POSITION",
+      "changed_rows": 42094,
+      "total_rows": 47712,
+      "max_difference": 4.295259714126587e-06
+    },
+    {
+      "attribute": ".Hair_Curls_Cap/0/NORMAL",
+      "changed_rows": 3170,
+      "total_rows": 47712,
+      "max_difference": 0.002819061279296875
+    },
+    {
+      "attribute": ".Hair_Curls_Cap/0/TEXCOORD_0",
+      "changed_rows": 20651,
+      "total_rows": 47712,
+      "max_difference": 1.1920928955078125e-07
+    },
+    {
+      "attribute": "Sphere.027/0/POSITION",
+      "changed_rows": 470,
+      "total_rows": 864,
+      "max_difference": 0.03872161731123924
+    },
+    {
+      "attribute": "Sphere.027/0/NORMAL",
+      "changed_rows": 470,
+      "total_rows": 864,
+      "max_difference": 1.7755321860313416
+    },
+    {
+      "attribute": "Sphere.027/0/TEXCOORD_0",
+      "changed_rows": 470,
+      "total_rows": 864,
+      "max_difference": 0.7000001072883606
+    },
+    {
+      "attribute": "Sphere.028/0/POSITION",
+      "changed_rows": 811,
+      "total_rows": 864,
+      "max_difference": 0.04292324371635914
+    },
+    {
+      "attribute": "Sphere.028/0/NORMAL",
+      "changed_rows": 811,
+      "total_rows": 864,
+      "max_difference": 1.9529914855957031
+    },
+    {
+      "attribute": "Sphere.028/0/TEXCOORD_0",
+      "changed_rows": 811,
+      "total_rows": 864,
+      "max_difference": 0.9000000357627869
+    },
+    {
+      "attribute": "Sphere.029/0/POSITION",
+      "changed_rows": 820,
+      "total_rows": 864,
+      "max_difference": 0.04292324371635914
+    },
+    {
+      "attribute": "Sphere.029/0/NORMAL",
+      "changed_rows": 820,
+      "total_rows": 864,
+      "max_difference": 1.9529914855957031
+    },
+    {
+      "attribute": "Sphere.029/0/TEXCOORD_0",
+      "changed_rows": 820,
+      "total_rows": 864,
+      "max_difference": 0.9000000357627869
+    },
+    {
+      "attribute": "Sphere.030/0/POSITION",
+      "changed_rows": 810,
+      "total_rows": 864,
+      "max_difference": 0.04292324371635914
+    },
+    {
+      "attribute": "Sphere.030/0/NORMAL",
+      "changed_rows": 810,
+      "total_rows": 864,
+      "max_difference": 1.9529914855957031
+    },
+    {
+      "attribute": "Sphere.030/0/TEXCOORD_0",
+      "changed_rows": 810,
+      "total_rows": 864,
+      "max_difference": 0.9000000357627869
+    },
+    {
+      "attribute": "Sphere.031/0/POSITION",
+      "changed_rows": 819,
+      "total_rows": 864,
+      "max_difference": 0.04292324371635914
+    },
+    {
+      "attribute": "Sphere.031/0/NORMAL",
+      "changed_rows": 819,
+      "total_rows": 864,
+      "max_difference": 1.9529914855957031
+    },
+    {
+      "attribute": "Sphere.031/0/TEXCOORD_0",
+      "changed_rows": 819,
+      "total_rows": 864,
+      "max_difference": 0.9000000357627869
+    },
+    {
+      "attribute": "Sphere.032/0/POSITION",
+      "changed_rows": 470,
+      "total_rows": 864,
+      "max_difference": 0.03872161731123924
+    },
+    {
+      "attribute": "Sphere.032/0/NORMAL",
+      "changed_rows": 470,
+      "total_rows": 864,
+      "max_difference": 1.7755321860313416
+    },
+    {
+      "attribute": "Sphere.032/0/TEXCOORD_0",
+      "changed_rows": 470,
+      "total_rows": 864,
+      "max_difference": 0.7000001072883606
+    },
+    {
+      "attribute": "Sphere.033/0/POSITION",
+      "changed_rows": 462,
+      "total_rows": 864,
+      "max_difference": 0.03872161731123924
+    },
+    {
+      "attribute": "Sphere.033/0/NORMAL",
+      "changed_rows": 462,
+      "total_rows": 864,
+      "max_difference": 1.7755321860313416
+    },
+    {
+      "attribute": "Sphere.033/0/TEXCOORD_0",
+      "changed_rows": 462,
+      "total_rows": 864,
+      "max_difference": 0.7000001072883606
+    },
+    {
+      "attribute": "Sphere.034/0/POSITION",
+      "changed_rows": 524,
+      "total_rows": 864,
+      "max_difference": 0.03872161731123924
+    },
+    {
+      "attribute": "Sphere.034/0/NORMAL",
+      "changed_rows": 524,
+      "total_rows": 864,
+      "max_difference": 1.7755321860313416
+    },
+    {
+      "attribute": "Sphere.034/0/TEXCOORD_0",
+      "changed_rows": 524,
+      "total_rows": 864,
+      "max_difference": 0.7000001072883606
+    },
+    {
+      "attribute": "Sphere.035/0/POSITION",
+      "changed_rows": 524,
+      "total_rows": 864,
+      "max_difference": 0.03872161731123924
+    },
+    {
+      "attribute": "Sphere.035/0/NORMAL",
+      "changed_rows": 524,
+      "total_rows": 864,
+      "max_difference": 1.7755321860313416
+    },
+    {
+      "attribute": "Sphere.035/0/TEXCOORD_0",
+      "changed_rows": 524,
+      "total_rows": 864,
+      "max_difference": 0.7000001072883606
+    },
+    {
+      "attribute": "Sphere.008/0/POSITION",
+      "changed_rows": 970,
+      "total_rows": 1320,
+      "max_difference": 0.012363857589662075
+    },
+    {
+      "attribute": "Sphere.008/0/NORMAL",
+      "changed_rows": 970,
+      "total_rows": 1320,
+      "max_difference": 1.989793300628662
+    },
+    {
+      "attribute": "Sphere.008/0/TEXCOORD_0",
+      "changed_rows": 970,
+      "total_rows": 1320,
+      "max_difference": 0.833333432674408
+    },
+    {
+      "attribute": "Lips_Smile_seam/0/POSITION",
+      "changed_rows": 627,
+      "total_rows": 864,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Lips_Smile_seam/0/NORMAL",
+      "changed_rows": 217,
+      "total_rows": 864,
+      "max_difference": 0.0001195669174194336
+    },
+    {
+      "attribute": "Lips_Smile_seam/0/TEXCOORD_0",
+      "changed_rows": 311,
+      "total_rows": 864,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Sphere.007/0/POSITION",
+      "changed_rows": 960,
+      "total_rows": 1320,
+      "max_difference": 0.013329784385859966
+    },
+    {
+      "attribute": "Sphere.007/0/NORMAL",
+      "changed_rows": 960,
+      "total_rows": 1320,
+      "max_difference": 1.9912382364273071
+    },
+    {
+      "attribute": "Sphere.007/0/TEXCOORD_0",
+      "changed_rows": 960,
+      "total_rows": 1320,
+      "max_difference": 0.833333432674408
+    },
+    {
+      "attribute": "Sphere.005/0/POSITION",
+      "changed_rows": 450,
+      "total_rows": 504,
+      "max_difference": 0.003655371139757335
+    },
+    {
+      "attribute": "Sphere.005/0/NORMAL",
+      "changed_rows": 450,
+      "total_rows": 504,
+      "max_difference": 1.9442005157470703
+    },
+    {
+      "attribute": "Sphere.005/0/TEXCOORD_0",
+      "changed_rows": 450,
+      "total_rows": 504,
+      "max_difference": 0.875
+    },
+    {
+      "attribute": "Sphere.006/0/POSITION",
+      "changed_rows": 408,
+      "total_rows": 504,
+      "max_difference": 0.003655371139757335
+    },
+    {
+      "attribute": "Sphere.006/0/NORMAL",
+      "changed_rows": 408,
+      "total_rows": 504,
+      "max_difference": 1.9640588760375977
+    },
+    {
+      "attribute": "Sphere.006/0/TEXCOORD_0",
+      "changed_rows": 408,
+      "total_rows": 504,
+      "max_difference": 0.875
+    },
+    {
+      "attribute": "Sphere/0/POSITION",
+      "changed_rows": 904,
+      "total_rows": 1320,
+      "max_difference": 0.03670518100261688
+    },
+    {
+      "attribute": "Sphere/0/NORMAL",
+      "changed_rows": 904,
+      "total_rows": 1320,
+      "max_difference": 1.8627039194107056
+    },
+    {
+      "attribute": "Sphere/0/TEXCOORD_0",
+      "changed_rows": 904,
+      "total_rows": 1320,
+      "max_difference": 0.833333432674408
+    },
+    {
+      "attribute": "Sphere.002/0/POSITION",
+      "changed_rows": 1260,
+      "total_rows": 1320,
+      "max_difference": 0.03670518100261688
+    },
+    {
+      "attribute": "Sphere.002/0/NORMAL",
+      "changed_rows": 1260,
+      "total_rows": 1320,
+      "max_difference": 1.8627039194107056
+    },
+    {
+      "attribute": "Sphere.002/0/TEXCOORD_0",
+      "changed_rows": 1260,
+      "total_rows": 1320,
+      "max_difference": 0.833333432674408
+    },
+    {
+      "attribute": "Sphere.004/0/POSITION",
+      "changed_rows": 904,
+      "total_rows": 1320,
+      "max_difference": 0.01738666370511055
+    },
+    {
+      "attribute": "Sphere.004/0/NORMAL",
+      "changed_rows": 904,
+      "total_rows": 1320,
+      "max_difference": 1.9566783905029297
+    },
+    {
+      "attribute": "Sphere.004/0/TEXCOORD_0",
+      "changed_rows": 904,
+      "total_rows": 1320,
+      "max_difference": 0.833333432674408
+    },
+    {
+      "attribute": "Shoes_Accent_L/0/POSITION",
+      "changed_rows": 294,
+      "total_rows": 480,
+      "max_difference": 3.725290298461914e-09
+    },
+    {
+      "attribute": "Shoes_Accent_L/0/NORMAL",
+      "changed_rows": 16,
+      "total_rows": 480,
+      "max_difference": 9.994953870773315e-05
+    },
+    {
+      "attribute": "Shoes_Accent_L/0/TEXCOORD_0",
+      "changed_rows": 134,
+      "total_rows": 480,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Sphere.023/0/POSITION",
+      "changed_rows": 524,
+      "total_rows": 972,
+      "max_difference": 0.028161178342998028
+    },
+    {
+      "attribute": "Sphere.023/0/NORMAL",
+      "changed_rows": 524,
+      "total_rows": 972,
+      "max_difference": 1.8408587574958801
+    },
+    {
+      "attribute": "Sphere.023/0/TEXCOORD_0",
+      "changed_rows": 524,
+      "total_rows": 972,
+      "max_difference": 0.7000000476837158
+    },
+    {
+      "attribute": "Sphere.021/0/POSITION",
+      "changed_rows": 1386,
+      "total_rows": 1452,
+      "max_difference": 0.038379717618227005
+    },
+    {
+      "attribute": "Sphere.021/0/NORMAL",
+      "changed_rows": 1386,
+      "total_rows": 1452,
+      "max_difference": 1.9792943000793457
+    },
+    {
+      "attribute": "Sphere.021/0/TEXCOORD_0",
+      "changed_rows": 1386,
+      "total_rows": 1452,
+      "max_difference": 0.833333432674408
+    },
+    {
+      "attribute": "Sphere.022/0/POSITION",
+      "changed_rows": 970,
+      "total_rows": 1452,
+      "max_difference": 0.050228144973516464
+    },
+    {
+      "attribute": "Sphere.022/0/NORMAL",
+      "changed_rows": 970,
+      "total_rows": 1452,
+      "max_difference": 1.9580639600753784
+    },
+    {
+      "attribute": "Sphere.022/0/TEXCOORD_0",
+      "changed_rows": 970,
+      "total_rows": 1452,
+      "max_difference": 0.833333432674408
+    },
+    {
+      "attribute": "Shoes_Accent_R/0/POSITION",
+      "changed_rows": 339,
+      "total_rows": 480,
+      "max_difference": 3.725290298461914e-09
+    },
+    {
+      "attribute": "Shoes_Accent_R/0/NORMAL",
+      "changed_rows": 11,
+      "total_rows": 480,
+      "max_difference": 7.69495964050293e-05
+    },
+    {
+      "attribute": "Shoes_Accent_R/0/TEXCOORD_0",
+      "changed_rows": 93,
+      "total_rows": 480,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Sphere.026/0/POSITION",
+      "changed_rows": 524,
+      "total_rows": 972,
+      "max_difference": 0.028161178342998028
+    },
+    {
+      "attribute": "Sphere.026/0/NORMAL",
+      "changed_rows": 524,
+      "total_rows": 972,
+      "max_difference": 1.8408587574958801
+    },
+    {
+      "attribute": "Sphere.026/0/TEXCOORD_0",
+      "changed_rows": 524,
+      "total_rows": 972,
+      "max_difference": 0.7000000476837158
+    },
+    {
+      "attribute": "Sphere.024/0/POSITION",
+      "changed_rows": 1386,
+      "total_rows": 1452,
+      "max_difference": 0.03999999538064003
+    },
+    {
+      "attribute": "Sphere.024/0/NORMAL",
+      "changed_rows": 1386,
+      "total_rows": 1452,
+      "max_difference": 1.9811433553695679
+    },
+    {
+      "attribute": "Sphere.024/0/TEXCOORD_0",
+      "changed_rows": 1386,
+      "total_rows": 1452,
+      "max_difference": 0.833333432674408
+    },
+    {
+      "attribute": "Sphere.025/0/POSITION",
+      "changed_rows": 970,
+      "total_rows": 1452,
+      "max_difference": 0.050228144973516464
+    },
+    {
+      "attribute": "Sphere.025/0/NORMAL",
+      "changed_rows": 970,
+      "total_rows": 1452,
+      "max_difference": 1.9580639600753784
+    },
+    {
+      "attribute": "Sphere.025/0/TEXCOORD_0",
+      "changed_rows": 970,
+      "total_rows": 1452,
+      "max_difference": 0.833333432674408
+    },
+    {
+      "attribute": "Outfit_Casual_Collar/0/POSITION",
+      "changed_rows": 4681,
+      "total_rows": 6240,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Outfit_Casual_Collar/0/NORMAL",
+      "changed_rows": 516,
+      "total_rows": 6240,
+      "max_difference": 0.0034142732620239258
+    },
+    {
+      "attribute": "Outfit_Casual_Collar/0/TEXCOORD_0",
+      "changed_rows": 1925,
+      "total_rows": 6240,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Outfit_Casual_Romper/0/POSITION",
+      "changed_rows": 10596,
+      "total_rows": 14784,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Outfit_Casual_Romper/0/NORMAL",
+      "changed_rows": 273,
+      "total_rows": 14784,
+      "max_difference": 0.00010000250767916441
+    },
+    {
+      "attribute": "Outfit_Casual_Romper/0/TEXCOORD_0",
+      "changed_rows": 1381,
+      "total_rows": 14784,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Outfit_Casual_Romper/0/WEIGHTS_0",
+      "changed_rows": 1633,
+      "total_rows": 14784,
+      "max_difference": 2.205371856689453e-06
+    },
+    {
+      "attribute": "Outfit_Casual_Sleeve_L/0/POSITION",
+      "changed_rows": 606,
+      "total_rows": 840,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Outfit_Casual_Sleeve_L/0/NORMAL",
+      "changed_rows": 22,
+      "total_rows": 840,
+      "max_difference": 9.983405470848083e-05
+    },
+    {
+      "attribute": "Outfit_Casual_Sleeve_L/0/TEXCOORD_0",
+      "changed_rows": 94,
+      "total_rows": 840,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Outfit_Casual_Sleeve_R/0/POSITION",
+      "changed_rows": 618,
+      "total_rows": 840,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Outfit_Casual_Sleeve_R/0/NORMAL",
+      "changed_rows": 11,
+      "total_rows": 840,
+      "max_difference": 9.812414646148682e-05
+    },
+    {
+      "attribute": "Outfit_Casual_Sleeve_R/0/TEXCOORD_0",
+      "changed_rows": 75,
+      "total_rows": 840,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Skin_Arm_continuous_L/0/POSITION",
+      "changed_rows": 5160,
+      "total_rows": 7392,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Skin_Arm_continuous_L/0/NORMAL",
+      "changed_rows": 170,
+      "total_rows": 7392,
+      "max_difference": 9.994581341743469e-05
+    },
+    {
+      "attribute": "Skin_Arm_continuous_L/0/TEXCOORD_0",
+      "changed_rows": 712,
+      "total_rows": 7392,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Skin_Arm_continuous_L/0/WEIGHTS_0",
+      "changed_rows": 330,
+      "total_rows": 7392,
+      "max_difference": 9.5367431640625e-07
+    },
+    {
+      "attribute": "Skin_Arm_continuous_R/0/POSITION",
+      "changed_rows": 5376,
+      "total_rows": 7392,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Skin_Arm_continuous_R/0/NORMAL",
+      "changed_rows": 141,
+      "total_rows": 7392,
+      "max_difference": 9.999144822359085e-05
+    },
+    {
+      "attribute": "Skin_Arm_continuous_R/0/TEXCOORD_0",
+      "changed_rows": 735,
+      "total_rows": 7392,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Skin_Arm_continuous_R/0/WEIGHTS_0",
+      "changed_rows": 402,
+      "total_rows": 7392,
+      "max_difference": 9.5367431640625e-07
+    },
+    {
+      "attribute": "Skin_Body_continuous/0/POSITION",
+      "changed_rows": 23873,
+      "total_rows": 33600,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Skin_Body_continuous/0/NORMAL",
+      "changed_rows": 915,
+      "total_rows": 33600,
+      "max_difference": 0.00010000484326155856
+    },
+    {
+      "attribute": "Skin_Body_continuous/0/TEXCOORD_0",
+      "changed_rows": 2993,
+      "total_rows": 33600,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Skin_Body_continuous/0/WEIGHTS_0",
+      "changed_rows": 5252,
+      "total_rows": 33600,
+      "max_difference": 1.1324882507324219e-06
+    },
+    {
+      "attribute": "Sphere.019/0/POSITION",
+      "changed_rows": 814,
+      "total_rows": 864,
+      "max_difference": 0.01951056532561779
+    },
+    {
+      "attribute": "Sphere.019/0/NORMAL",
+      "changed_rows": 814,
+      "total_rows": 864,
+      "max_difference": 1.965418517589569
+    },
+    {
+      "attribute": "Sphere.019/0/TEXCOORD_0",
+      "changed_rows": 814,
+      "total_rows": 864,
+      "max_difference": 0.9000000357627869
+    },
+    {
+      "attribute": "Sphere.020/0/POSITION",
+      "changed_rows": 810,
+      "total_rows": 864,
+      "max_difference": 0.01951056532561779
+    },
+    {
+      "attribute": "Sphere.020/0/NORMAL",
+      "changed_rows": 810,
+      "total_rows": 864,
+      "max_difference": 1.965418517589569
+    },
+    {
+      "attribute": "Sphere.020/0/TEXCOORD_0",
+      "changed_rows": 810,
+      "total_rows": 864,
+      "max_difference": 0.9000000357627869
+    },
+    {
+      "attribute": "Skin_Head_continuous/0/POSITION",
+      "changed_rows": 21809,
+      "total_rows": 30912,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Skin_Head_continuous/0/NORMAL",
+      "changed_rows": 1482,
+      "total_rows": 30912,
+      "max_difference": 0.0001137852668762207
+    },
+    {
+      "attribute": "Skin_Head_continuous/0/TEXCOORD_0",
+      "changed_rows": 2700,
+      "total_rows": 30912,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Skin_Head_continuous/0/morph0/POSITION",
+      "changed_rows": 564,
+      "total_rows": 30912,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Skin_Head_continuous/0/morph0/NORMAL",
+      "changed_rows": 596,
+      "total_rows": 30912,
+      "max_difference": 0.00010000169277191162
+    },
+    {
+      "attribute": "Skin_Head_continuous/0/morph1/POSITION",
+      "changed_rows": 12,
+      "total_rows": 30912,
+      "max_difference": 3.725290298461914e-09
+    },
+    {
+      "attribute": "Skin_Head_continuous/0/morph1/NORMAL",
+      "changed_rows": 446,
+      "total_rows": 30912,
+      "max_difference": 9.935349225997925e-05
+    },
+    {
+      "attribute": "Skin_Head_continuous/0/morph2/POSITION",
+      "changed_rows": 9570,
+      "total_rows": 30912,
+      "max_difference": 2.9802322387695312e-08
+    },
+    {
+      "attribute": "Skin_Head_continuous/0/morph2/NORMAL",
+      "changed_rows": 2852,
+      "total_rows": 30912,
+      "max_difference": 0.00019928067922592163
+    },
+    {
+      "attribute": "Skin_Head_continuous/0/morph3/POSITION",
+      "changed_rows": 5473,
+      "total_rows": 30912,
+      "max_difference": 5.21540641784668e-08
+    },
+    {
+      "attribute": "Skin_Head_continuous/0/morph3/NORMAL",
+      "changed_rows": 1523,
+      "total_rows": 30912,
+      "max_difference": 0.0001137852668762207
+    },
+    {
+      "attribute": "Skin_Head_continuous/0/morph4/POSITION",
+      "changed_rows": 432,
+      "total_rows": 30912,
+      "max_difference": 1.955777406692505e-08
+    },
+    {
+      "attribute": "Skin_Head_continuous/0/morph4/NORMAL",
+      "changed_rows": 452,
+      "total_rows": 30912,
+      "max_difference": 8.860230445861816e-05
+    },
+    {
+      "attribute": "Skin_Head_continuous/0/morph5/POSITION",
+      "changed_rows": 1626,
+      "total_rows": 30912,
+      "max_difference": 2.2351741790771484e-08
+    },
+    {
+      "attribute": "Skin_Head_continuous/0/morph5/NORMAL",
+      "changed_rows": 782,
+      "total_rows": 30912,
+      "max_difference": 0.00010061264038085938
+    },
+    {
+      "attribute": "Skin_Leg_continuous_L/0/POSITION",
+      "changed_rows": 4361,
+      "total_rows": 6048,
+      "max_difference": 2.9802322387695312e-08
+    },
+    {
+      "attribute": "Skin_Leg_continuous_L/0/NORMAL",
+      "changed_rows": 65,
+      "total_rows": 6048,
+      "max_difference": 9.99346375465393e-05
+    },
+    {
+      "attribute": "Skin_Leg_continuous_L/0/TEXCOORD_0",
+      "changed_rows": 189,
+      "total_rows": 6048,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Skin_Leg_continuous_L/0/WEIGHTS_0",
+      "changed_rows": 498,
+      "total_rows": 6048,
+      "max_difference": 4.76837158203125e-07
+    },
+    {
+      "attribute": "Skin_Leg_continuous_R/0/POSITION",
+      "changed_rows": 4326,
+      "total_rows": 6048,
+      "max_difference": 2.9802322387695312e-08
+    },
+    {
+      "attribute": "Skin_Leg_continuous_R/0/NORMAL",
+      "changed_rows": 51,
+      "total_rows": 6048,
+      "max_difference": 9.999144822359085e-05
+    },
+    {
+      "attribute": "Skin_Leg_continuous_R/0/TEXCOORD_0",
+      "changed_rows": 281,
+      "total_rows": 6048,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Skin_Leg_continuous_R/0/WEIGHTS_0",
+      "changed_rows": 480,
+      "total_rows": 6048,
+      "max_difference": 8.344650268554688e-07
+    },
+    {
+      "attribute": "Skin_Thumb_L/0/POSITION",
+      "changed_rows": 425,
+      "total_rows": 600,
+      "max_difference": 2.9802322387695312e-08
+    },
+    {
+      "attribute": "Skin_Thumb_L/0/NORMAL",
+      "changed_rows": 17,
+      "total_rows": 600,
+      "max_difference": 9.670853614807129e-05
+    },
+    {
+      "attribute": "Skin_Thumb_L/0/TEXCOORD_0",
+      "changed_rows": 59,
+      "total_rows": 600,
+      "max_difference": 5.960464477539063e-08
+    },
+    {
+      "attribute": "Skin_Thumb_R/0/POSITION",
+      "changed_rows": 404,
+      "total_rows": 600,
+      "max_difference": 2.9802322387695312e-08
+    },
+    {
+      "attribute": "Skin_Thumb_R/0/NORMAL",
+      "changed_rows": 21,
+      "total_rows": 600,
+      "max_difference": 9.419023990631104e-05
+    },
+    {
+      "attribute": "Skin_Thumb_R/0/TEXCOORD_0",
+      "changed_rows": 55,
+      "total_rows": 600,
+      "max_difference": 5.960464477539063e-08
+    }
+  ],
+  "exact_resolved_match": false
+}

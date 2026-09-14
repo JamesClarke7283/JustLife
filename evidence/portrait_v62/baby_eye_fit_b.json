@@ -1,0 +1,85 @@
+{
+  "source": "art/experiments/portrait_v62/characters_baby_identity.blend",
+  "sha256": "c9502143a7dea27903d841b837fde737c40878b1534d8ef0b7cf47609e87ccfd",
+  "iris": [
+    {
+      "name": "Eyes_Iris_edge_L",
+      "repaired_mesh_basis_mismatch": 0.0,
+      "diameter": 0.01929939073894986,
+      "morphs": [
+        "Basis",
+        "Blink",
+        "Face_Round",
+        "Jaw_Strong",
+        "Nose_Wide",
+        "Eye_Spacing"
+      ]
+    },
+    {
+      "name": "Eyes_Iris_L",
+      "repaired_mesh_basis_mismatch": 0.0,
+      "diameter": 0.017755439479833872,
+      "morphs": [
+        "Basis",
+        "Blink",
+        "Face_Round",
+        "Jaw_Strong",
+        "Nose_Wide",
+        "Eye_Spacing"
+      ]
+    },
+    {
+      "name": "Eyes_Pupil_L",
+      "repaired_mesh_basis_mismatch": 0.0,
+      "diameter": 0.007816253249274693,
+      "morphs": [
+        "Basis",
+        "Blink",
+        "Face_Round",
+        "Jaw_Strong",
+        "Nose_Wide",
+        "Eye_Spacing"
+      ]
+    },
+    {
+      "name": "Eyes_Iris_edge_R",
+      "repaired_mesh_basis_mismatch": 0.0,
+      "diameter": 0.019299389686277563,
+      "morphs": [
+        "Basis",
+        "Blink",
+        "Face_Round",
+        "Jaw_Strong",
+        "Nose_Wide",
+        "Eye_Spacing"
+      ]
+    },
+    {
+      "name": "Eyes_Iris_R",
+      "repaired_mesh_basis_mismatch": 0.0,
+      "diameter": 0.017755438511375357,
+      "morphs": [
+        "Basis",
+        "Blink",
+        "Face_Round",
+        "Jaw_Strong",
+        "Nose_Wide",
+        "Eye_Spacing"
+      ]
+    },
+    {
+      "name": "Eyes_Pupil_R",
+      "repaired_mesh_basis_mismatch": 0.0,
+      "diameter": 0.007816252822942413,
+      "morphs": [
+        "Basis",
+        "Blink",
+        "Face_Round",
+        "Jaw_Strong",
+        "Nose_Wide",
+        "Eye_Spacing"
+      ]
+    }
+  ],
+  "brows": []
+}

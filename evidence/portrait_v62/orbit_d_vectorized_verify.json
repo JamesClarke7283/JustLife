@@ -1,0 +1,215 @@
+{
+  "source": "art/experiments/portrait_v62/characters_orbit_d.blend",
+  "extended_identity": false,
+  "case_definitions": [
+    {
+      "name": "neutral",
+      "values": {}
+    },
+    {
+      "name": "all_existing_max",
+      "values": {
+        "Face_Round": 1.0,
+        "Jaw_Strong": 1.0,
+        "Nose_Wide": 1.0,
+        "Eye_Spacing": 1.0
+      }
+    },
+    {
+      "name": "new_max",
+      "values": {
+        "Nose_Length": 1.0,
+        "Lip_Fullness": 1.0,
+        "Chin_Length": 1.0
+      }
+    },
+    {
+      "name": "new_min",
+      "values": {
+        "Nose_Length": -1.0,
+        "Lip_Fullness": -1.0,
+        "Chin_Length": -1.0
+      }
+    }
+  ],
+  "full_blink_checks": [
+    {
+      "case": "neutral",
+      "side": -1,
+      "closure_gap_max_m": 0.0,
+      "globe_samples": 801,
+      "exposed_globe_samples": 0,
+      "maximum_exposure_m": 0
+    },
+    {
+      "case": "neutral",
+      "side": 1,
+      "closure_gap_max_m": 0.0,
+      "globe_samples": 801,
+      "exposed_globe_samples": 0,
+      "maximum_exposure_m": 0
+    },
+    {
+      "case": "all_existing_max",
+      "side": -1,
+      "closure_gap_max_m": 7.82310962677002e-07,
+      "globe_samples": 801,
+      "exposed_globe_samples": 0,
+      "maximum_exposure_m": 0
+    },
+    {
+      "case": "all_existing_max",
+      "side": 1,
+      "closure_gap_max_m": 7.972121238708496e-07,
+      "globe_samples": 801,
+      "exposed_globe_samples": 0,
+      "maximum_exposure_m": 0
+    },
+    {
+      "case": "new_max",
+      "side": -1,
+      "closure_gap_max_m": 0.0,
+      "globe_samples": 801,
+      "exposed_globe_samples": 0,
+      "maximum_exposure_m": 0
+    },
+    {
+      "case": "new_max",
+      "side": 1,
+      "closure_gap_max_m": 0.0,
+      "globe_samples": 801,
+      "exposed_globe_samples": 0,
+      "maximum_exposure_m": 0
+    },
+    {
+      "case": "new_min",
+      "side": -1,
+      "closure_gap_max_m": 0.0,
+      "globe_samples": 801,
+      "exposed_globe_samples": 0,
+      "maximum_exposure_m": 0
+    },
+    {
+      "case": "new_min",
+      "side": 1,
+      "closure_gap_max_m": 0.0,
+      "globe_samples": 801,
+      "exposed_globe_samples": 0,
+      "maximum_exposure_m": 0
+    }
+  ],
+  "open_and_partial_blink_checks": [
+    {
+      "case": "neutral",
+      "blink": 0.0,
+      "side": 0,
+      "outside_aperture_samples": 427,
+      "exposed_globe_samples": 0
+    },
+    {
+      "case": "neutral",
+      "blink": 0.0,
+      "side": 1,
+      "outside_aperture_samples": 427,
+      "exposed_globe_samples": 0
+    },
+    {
+      "case": "neutral",
+      "blink": 0.5,
+      "side": 0,
+      "outside_aperture_samples": 622,
+      "exposed_globe_samples": 0
+    },
+    {
+      "case": "neutral",
+      "blink": 0.5,
+      "side": 1,
+      "outside_aperture_samples": 622,
+      "exposed_globe_samples": 0
+    },
+    {
+      "case": "all_existing_max",
+      "blink": 0.0,
+      "side": 0,
+      "outside_aperture_samples": 427,
+      "exposed_globe_samples": 0
+    },
+    {
+      "case": "all_existing_max",
+      "blink": 0.0,
+      "side": 1,
+      "outside_aperture_samples": 427,
+      "exposed_globe_samples": 0
+    },
+    {
+      "case": "all_existing_max",
+      "blink": 0.5,
+      "side": 0,
+      "outside_aperture_samples": 622,
+      "exposed_globe_samples": 0
+    },
+    {
+      "case": "all_existing_max",
+      "blink": 0.5,
+      "side": 1,
+      "outside_aperture_samples": 622,
+      "exposed_globe_samples": 0
+    },
+    {
+      "case": "new_max",
+      "blink": 0.0,
+      "side": 0,
+      "outside_aperture_samples": 427,
+      "exposed_globe_samples": 0
+    },
+    {
+      "case": "new_max",
+      "blink": 0.0,
+      "side": 1,
+      "outside_aperture_samples": 427,
+      "exposed_globe_samples": 0
+    },
+    {
+      "case": "new_max",
+      "blink": 0.5,
+      "side": 0,
+      "outside_aperture_samples": 622,
+      "exposed_globe_samples": 0
+    },
+    {
+      "case": "new_max",
+      "blink": 0.5,
+      "side": 1,
+      "outside_aperture_samples": 622,
+      "exposed_globe_samples": 0
+    },
+    {
+      "case": "new_min",
+      "blink": 0.0,
+      "side": 0,
+      "outside_aperture_samples": 427,
+      "exposed_globe_samples": 0
+    },
+    {
+      "case": "new_min",
+      "blink": 0.0,
+      "side": 1,
+      "outside_aperture_samples": 427,
+      "exposed_globe_samples": 0
+    },
+    {
+      "case": "new_min",
+      "blink": 0.5,
+      "side": 0,
+      "outside_aperture_samples": 622,
+      "exposed_globe_samples": 0
+    },
+    {
+      "case": "new_min",
+      "blink": 0.5,
+      "side": 1,
+      "outside_aperture_samples": 622,
+      "exposed_globe_samples": 0
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "source": "art/experiments/portrait_v62/baby_baseline/characters_baby.blend",
+  "new_keys": [
+    "Nose_Length",
+    "Lip_Fullness",
+    "Brow_Arch",
+    "Chin_Length"
+  ],
+  "scale": 0.7481880177675576,
+  "amplitude_scale": 0.29927520710702304,
+  "baby": true,
+  "new_brows": [
+    "Hair_Brow_L",
+    "Hair_Brow_R"
+  ],
+  "objects": {
+    "Lips_Lower_soft": {
+      "Nose_Length": 0.00013902390176521412,
+      "Lip_Fullness": 0.000786244234370835,
+      "Chin_Length": 0.0011607899010390092
+    },
+    "Lips_Smile_seam": {
+      "Nose_Length": 0.0001406404630467894,
+      "Lip_Fullness": 0.0007372710756490757
+    },
+    "Lips_Upper_soft": {
+      "Nose_Length": 0.0010281436886068092,
+      "Lip_Fullness": 0.0007878648637010825
+    },
+    "Nose_Nostril_L": {
+      "Nose_Length": 0.001590477957382105,
+      "Lip_Fullness": 5.125866302314149e-05
+    },
+    "Nose_Nostril_R": {
+      "Nose_Length": 0.001590477957382105,
+      "Lip_Fullness": 5.125866302314149e-05
+    },
+    "Skin_Head_continuous": {
+      "Nose_Length": 0.0016116461356919794,
+      "Lip_Fullness": 0.0007726535549361992,
+      "Chin_Length": 0.0010228738871229642
+    },
+    "Skin_Nose": {
+      "Nose_Length": 0.0016116457829878476,
+      "Lip_Fullness": 0.00033547660873562167
+    },
+    "Hair_Brow_L": {
+      "Brow_Arch": 0.0011971008284280922
+    },
+    "Hair_Brow_R": {
+      "Brow_Arch": 0.0011971008284280922
+    }
+  }
+}

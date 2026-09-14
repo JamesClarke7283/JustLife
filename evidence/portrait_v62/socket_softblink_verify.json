@@ -1,0 +1,69 @@
+{
+  "source": "art/experiments/portrait_v62/characters_socket_softblink.blend",
+  "full_blink_checks": [
+    {
+      "case": "neutral",
+      "side": -1,
+      "closure_gap_max_m": 0.0,
+      "globe_samples": 801,
+      "exposed_globe_samples": 0,
+      "maximum_exposure_m": 0
+    },
+    {
+      "case": "neutral",
+      "side": 1,
+      "closure_gap_max_m": 0.0,
+      "globe_samples": 801,
+      "exposed_globe_samples": 0,
+      "maximum_exposure_m": 0
+    },
+    {
+      "case": "all_existing_max",
+      "side": -1,
+      "closure_gap_max_m": 7.897615432739258e-07,
+      "globe_samples": 801,
+      "exposed_globe_samples": 0,
+      "maximum_exposure_m": 0
+    },
+    {
+      "case": "all_existing_max",
+      "side": 1,
+      "closure_gap_max_m": 8.121132850646973e-07,
+      "globe_samples": 801,
+      "exposed_globe_samples": 0,
+      "maximum_exposure_m": 0
+    },
+    {
+      "case": "new_max",
+      "side": -1,
+      "closure_gap_max_m": 0.0,
+      "globe_samples": 801,
+      "exposed_globe_samples": 0,
+      "maximum_exposure_m": 0
+    },
+    {
+      "case": "new_max",
+      "side": 1,
+      "closure_gap_max_m": 0.0,
+      "globe_samples": 801,
+      "exposed_globe_samples": 0,
+      "maximum_exposure_m": 0
+    },
+    {
+      "case": "new_min",
+      "side": -1,
+      "closure_gap_max_m": 0.0,
+      "globe_samples": 801,
+      "exposed_globe_samples": 0,
+      "maximum_exposure_m": 0
+    },
+    {
+      "case": "new_min",
+      "side": 1,
+      "closure_gap_max_m": 0.0,
+      "globe_samples": 801,
+      "exposed_globe_samples": 0,
+      "maximum_exposure_m": 0
+    }
+  ]
+}

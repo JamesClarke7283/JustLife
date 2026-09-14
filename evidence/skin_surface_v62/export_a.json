@@ -1,0 +1,67 @@
+{
+  "baseline": "/home/impulse/Projects/JustLife/art/experiments/integrated_v62/models/character.glb",
+  "baseline_sha256": "a256a78ed2a0075e7e73de91c1f033d3baeac647d40c57c8e66b4305f107fdb0",
+  "candidate": "/home/impulse/Projects/JustLife/art/experiments/skin_surface_v62/models_a/character.glb",
+  "candidate_sha256": "fde8763313abd9c095601fde162471eefdab39ad42766a130c0361f3058eb342",
+  "geometry_accessors_exact": 2017,
+  "node_transforms_extras_skins_exact": true,
+  "unowned_materials_exact": true,
+  "surfaces": {
+    "Eyes_Iris": {
+      "material": "Eyes_Iris_Surface",
+      "vertex_colors": 307,
+      "base_factor": [
+        0.08865558356046677,
+        0.17144110798835754,
+        0.13013647496700287,
+        1
+      ],
+      "roughness": 0.28999999165534973
+    },
+    "Eyes_Iris.001": {
+      "material": "Eyes_Iris_Surface",
+      "vertex_colors": 307,
+      "base_factor": [
+        0.08865558356046677,
+        0.17144110798835754,
+        0.13013647496700287,
+        1
+      ],
+      "roughness": 0.28999999165534973
+    },
+    "Eyes_Sclera": {
+      "material": "Eyes_Sclera_Surface",
+      "vertex_colors": 1023,
+      "base_factor": [
+        0.8600000143051147,
+        0.8899999856948853,
+        0.9100000262260437,
+        1
+      ],
+      "roughness": 0.23999999463558197
+    },
+    "Eyes_Sclera.001": {
+      "material": "Eyes_Sclera_Surface",
+      "vertex_colors": 1023,
+      "base_factor": [
+        0.8600000143051147,
+        0.8899999856948853,
+        0.9100000262260437,
+        1
+      ],
+      "roughness": 0.23999999463558197
+    },
+    "Skin_Head_continuous": {
+      "material": "Skin_Face_Surface",
+      "vertex_colors": 9152,
+      "base_factor": [
+        0.520995557308197,
+        0.22322796285152435,
+        0.11443537473678589,
+        1
+      ],
+      "roughness": 0.5699999928474426
+    }
+  },
+  "passed": true
+}

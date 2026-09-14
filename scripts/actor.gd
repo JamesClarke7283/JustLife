@@ -26,7 +26,8 @@ const BABY_CRAWL_SHIN_LIFT: float = 0.420
 const BABY_CRAWL_HEAD: float = -1.320
 ## How far a kneeling baby's body drops so it sits back on its heels.
 const BABY_KNEEL_DROP: float = -0.110
-const IDENTITY_KEYS: Array[String] = ["face_round", "jaw_strong", "nose_wide", "eye_spacing"]
+const SIGNED_IDENTITY_KEYS: Array[String] = ["nose_length", "lip_fullness", "brow_arch", "chin_length", "face_length", "mouth_width", "nose_bridge"]
+const IDENTITY_KEYS: Array[String] = ["face_round", "jaw_strong", "nose_wide", "eye_spacing", "nose_length", "lip_fullness", "brow_arch", "chin_length", "face_length", "mouth_width", "nose_bridge"]
 
 var profile: Dictionary = {}
 var visual: Node3D
@@ -85,6 +86,8 @@ var _hip_height: float = .90
 var _knee_height: float = .548
 var _proportion: float = 1.0
 var _mouth_anchor: Vector3 = Vector3(0,.054,.114)
+var _mouth_anchor_rest: Vector3 = Vector3(0,.054,.114)
+var _mouth_identity_offsets: Dictionary = {}
 var _palm_anchors: Dictionary = {}
 var _model_age: String = "young_adult"
 var _phase_offset: float = 0.0
@@ -316,7 +319,7 @@ func configure(new_profile: Dictionary) -> void:
 		set_face_feature(key, float(value) if value is float or value is int else 0.0)
 	set_outfit(clampi(int(profile.get("outfit",0)),0,OUTFIT_NAMES.size()-1))
 	set_bottom(clampi(int(profile.get("bottom",0)),0,BOTTOM_NAMES.size()-1))
-	_recolor(_model)
+	_recolor(_model, {})
 	_create_props()
 	_marker.position.y = (_authored_height+.21) * _height
 	_speech.position.y = (_authored_height+.54) * _height
@@ -350,7 +353,7 @@ func get_display_height() -> float:
 func get_portrait_center() -> Vector3:
 	var head: Node3D = _joints.get("Head")
 	if head != null:
-		return to_local(head.to_global(Vector3(0,_mouth_anchor.y+.03,.015)))
+		return to_local(head.to_global(Vector3(0,_mouth_anchor_rest.y+.03,.015)))
 	return Vector3(0,get_display_height()*.86,0)
 
 
@@ -379,6 +382,13 @@ func _read_age_landmarks(stage: String) -> void:
 	_knee_height = _landmark_number(extras,"knee_height",.548,.04,.8)
 	_proportion = _authored_height/1.76
 	_mouth_anchor = _landmark_vector(extras.get("mouth_anchor"),Vector3(0,.054,.114))
+	_mouth_anchor_rest = _mouth_anchor
+	_mouth_identity_offsets.clear()
+	var mouth_offsets: Variant = extras.get("mouth_identity_offsets", {})
+	if mouth_offsets is Dictionary:
+		for key: String in IDENTITY_KEYS:
+			var offset: Vector3 = _landmark_vector(mouth_offsets.get(key), Vector3.ZERO)
+			if offset.length() <= .08: _mouth_identity_offsets[key] = offset
 	_palm_anchors = {"L":_landmark_vector(extras.get("palm_anchor_l"),Vector3(-.024,-.274,.026)),
 		"R":_landmark_vector(extras.get("palm_anchor_r"),Vector3(.024,-.274,.026))}
 	_grip_anchors = {"L":_landmark_vector(extras.get("grip_anchor_l"),_palm_anchors.L),
@@ -447,10 +457,20 @@ func set_face_feature(feature: String, value: float) -> void:
 	var key: String = feature.to_lower()
 	if key not in IDENTITY_KEYS:
 		return
-	var amount: float = clampf(value, 0.0, 1.0) if is_finite(value) else 0.0
+	var minimum: float = -1.0 if key in SIGNED_IDENTITY_KEYS else 0.0
+	var amount: float = clampf(value, minimum, 1.0) if is_finite(value) else 0.0
 	profile[key] = amount
 	for entry: Dictionary in _identity_shapes.get(key, []):
 		entry.mesh.set_blend_shape_value(int(entry.index), amount)
+	# Identity changes can move the mouth. Transport gameplay contacts with the
+	# authored seam, retaining legacy landmarks for assets without this metadata.
+	_mouth_anchor = _mouth_anchor_rest
+	for offset_key: String in _mouth_identity_offsets:
+		var raw: Variant = profile.get(offset_key, 0.0)
+		var weight: float = float(raw) if raw is float or raw is int else 0.0
+		if not is_finite(weight): weight = 0.0
+		weight = clampf(weight, -1.0 if offset_key in SIGNED_IDENTITY_KEYS else 0.0, 1.0)
+		_mouth_anchor += Vector3(_mouth_identity_offsets[offset_key]) * weight
 	if _hair_bob != null:
 		var expansion: float = 1.0 + .04 * float(profile.get("face_round", 0.0)) + .03 * float(profile.get("jaw_strong", 0.0))
 		_hair_bob.scale = _hair_bob_rest_scale * Vector3(expansion, 1.0, 1.0)
@@ -531,9 +551,12 @@ func _profile_color(key: String, fallback: String) -> Color:
 	return Color.from_string(str(value), Color(fallback))
 
 
-func _recolor(node: Node) -> void:
+func _recolor(node: Node, material_cache: Dictionary) -> void:
 	var skin: Color = _profile_color("skin_color", "bf825f")
 	var hair: Color = _profile_color("hair_color", "32221f")
+	# Brows retain definition with pale or dyed hair; explicit styling can
+	# still override the natural, slightly darker default independently.
+	var brow: Color = hair.darkened(.28).lerp(skin.darkened(.40), .10)
 	var top: Color = _profile_color("top_color", "658a83")
 	var bottom: Color = _profile_color("bottom_color", "675d73")
 	if node is MeshInstance3D:
@@ -543,26 +566,40 @@ func _recolor(node: Node) -> void:
 				var original: Material = mesh_node.mesh.surface_get_material(surface_index)
 				if not original is StandardMaterial3D:
 					continue
+				# Share one recoloured material per source within this actor. Each
+				# configure call starts a new cache, so housemates stay independent.
+				var material_id: int = original.get_instance_id()
+				if material_cache.has(material_id):
+					mesh_node.set_surface_override_material(surface_index, material_cache[material_id])
+					continue
 				var material: StandardMaterial3D = original.duplicate() as StandardMaterial3D
 				var name_key: String = original.resource_name
+				# glTF imports retain COLOR_0 but can leave its albedo switch off.
+				# These authored linear colour zones must multiply the player's
+				# chosen complexion/iris colour, including after actor recolouring.
+				if name_key in ["Skin_Face_Surface", "Eyes_Iris_Surface", "Eyes_Sclera_Surface"]:
+					material.vertex_color_use_as_albedo = true
+					material.vertex_color_is_srgb = false
 				match name_key:
-					"Skin": material.albedo_color = skin
+					"Skin", "Skin_Face_Surface": material.albedo_color = skin
 					"Ear_detail": material.albedo_color = skin.darkened(0.12).lerp(Color("b87565"), 0.12)
 					"Nose_detail": material.albedo_color = skin.darkened(0.40)
 					"Lips": material.albedo_color = skin.darkened(0.12).lerp(Color("b87070"), 0.42)
-					"Hair": material.albedo_color = hair
+					"Hair", "Hair_Bob_Surface", "Hair_Buzz_Surface": material.albedo_color = hair
+					"Brows": material.albedo_color = _profile_color("brow_color", brow.to_html(false))
 					"Hair_highlight": material.albedo_color = hair.lightened(0.15)
 					"Hair_shadow": material.albedo_color = hair.darkened(0.25)
 					"Top": material.albedo_color = top
 					"Top_seam": material.albedo_color = top.darkened(0.20)
 					"Bottom": material.albedo_color = bottom
 					"Bottom_seam": material.albedo_color = bottom.darkened(0.19)
-					"Eyes": material.albedo_color = _profile_color("eye_color", "547365")
+					"Eyes", "Eyes_Iris_Surface": material.albedo_color = _profile_color("eye_color", "547365")
 					"Eyes_edge": material.albedo_color = _profile_color("eye_color", "547365").darkened(0.40)
 					"Shoes": material.albedo_color = _profile_color("shoe_color", "e9e4d9")
+				material_cache[material_id] = material
 				mesh_node.set_surface_override_material(surface_index, material)
 	for child: Node in node.get_children():
-		_recolor(child)
+		_recolor(child, material_cache)
 
 
 func _create_props() -> void:

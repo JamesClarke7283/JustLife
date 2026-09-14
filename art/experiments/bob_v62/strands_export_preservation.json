@@ -1,0 +1,21 @@
+{
+  "before": "art/experiments/bob_v62/combined_models/character.glb",
+  "after": "art/experiments/bob_v62/strands_models/character.glb",
+  "protected_nodes": 426,
+  "protected_primitives": 400,
+  "protected_morph_targets": 108,
+  "skeleton_exact": true,
+  "bob_nodes_before": [
+    "Hair_Bob_Cap",
+    "Hair_Bob_Sweep",
+    "Hair_Bob_TempleLayer",
+    "Hair_Bob_TuckLayer"
+  ],
+  "bob_nodes_after": [
+    "Hair_Bob_Cap",
+    "Hair_Bob_Sweep",
+    "Hair_Bob_TempleLayer",
+    "Hair_Bob_TuckLayer"
+  ],
+  "result": "All decoded non-Bob primitives, morphs, materials and skeleton are exact"
+}

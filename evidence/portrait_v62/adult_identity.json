@@ -1,0 +1,43 @@
+{
+  "source": "art/experiments/portrait_v62/characters.blend",
+  "new_keys": [
+    "Nose_Length",
+    "Lip_Fullness",
+    "Brow_Arch",
+    "Chin_Length"
+  ],
+  "scale": 0.9999999605330011,
+  "amplitude_scale": 0.9999999605330011,
+  "baby": false,
+  "new_brows": [],
+  "objects": {
+    "Lips_Lower_soft": {
+      "Nose_Length": 1.0831542663535994e-07,
+      "Lip_Fullness": 0.0026326407082818927
+    },
+    "Lips_Smile_seam": {
+      "Lip_Fullness": 0.002400689175351244
+    },
+    "Lips_Upper_soft": {
+      "Nose_Length": 5.34565475811669e-06,
+      "Lip_Fullness": 0.002632173139785033
+    },
+    "Nose_Nostril": {
+      "Nose_Length": 0.00507465940582138
+    },
+    "Nose_Nostril.001": {
+      "Nose_Length": 0.00507465940582138
+    },
+    "Skin_Head_continuous": {
+      "Nose_Length": 0.005384884764659697,
+      "Lip_Fullness": 0.0025513311288053353,
+      "Chin_Length": 0.006998062296243802
+    },
+    "Hair_Brow": {
+      "Brow_Arch": 0.0039999998421320045
+    },
+    "Hair_Brow.001": {
+      "Brow_Arch": 0.0039999998421320045
+    }
+  }
+}

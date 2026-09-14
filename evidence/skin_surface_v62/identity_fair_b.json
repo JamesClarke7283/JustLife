@@ -1,0 +1,38 @@
+{
+  "glb": "/home/impulse/Projects/JustLife/art/experiments/skin_surface_v62/models_fair_b/character.glb",
+  "sha256": "3629de835cef45343f520c9be070896ad2520164e74b98235fd2512674756738",
+  "bytes": 20042836,
+  "head_morphs": [
+    "Blink",
+    "Smile",
+    "Face_Round",
+    "Jaw_Strong",
+    "Nose_Wide",
+    "Eye_Spacing",
+    "Nose_Length",
+    "Lip_Fullness",
+    "Chin_Length",
+    "Face_Length",
+    "Mouth_Width",
+    "Nose_Bridge"
+  ],
+  "mouth_anchor_exact": true,
+  "eleven_measured_offsets_exact": true,
+  "neutral_morph_weights_zero": true,
+  "ocular_meshes_without_new_deformations": [
+    "Eyes_Catchlight",
+    "Eyes_Catchlight.001",
+    "Eyes_Iris",
+    "Eyes_Iris.001",
+    "Eyes_Iris_edge",
+    "Eyes_Iris_edge.001",
+    "Eyes_Pupil",
+    "Eyes_Pupil.001",
+    "Eyes_Sclera",
+    "Eyes_Sclera.001",
+    "Hair_Brow",
+    "Hair_Brow.001"
+  ],
+  "skins": 1,
+  "passed": true
+}

@@ -1,0 +1,72 @@
+{
+  "source": "art/experiments/buzz_v62/integrated_fair_b/authored.blend",
+  "output": "art/experiments/buzz_v62/integrated_fair_b/ready.blend",
+  "reset_key_values": [
+    {
+      "object": "Hair_Buzz_Cap",
+      "key": "Basis",
+      "old_value": 1.0
+    }
+  ],
+  "reset_rotation_euler_bones": [],
+  "preserved_pose_bone_scales": {
+    "LifeRig/Root": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "LifeRig/Spine": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "LifeRig/Head": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "LifeRig/Arm_L": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "LifeRig/Forearm_L": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "LifeRig/Arm_R": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "LifeRig/Forearm_R": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "LifeRig/Leg_L": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "LifeRig/Shin_L": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "LifeRig/Leg_R": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "LifeRig/Shin_R": [
+      1.0,
+      1.0,
+      1.0
+    ]
+  },
+  "authored_data_digest_before_and_after": "c0861c131155ecc544f2362332fac80e35b0b547d59932afb4944c03a3d5ca0b",
+  "output_sha256": "01ade04129a1a9056eeb1c83afe2e838abe433e45c088699b3fa026144d5dd81",
+  "geometry_changed": false
+}

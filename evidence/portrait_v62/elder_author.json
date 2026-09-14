@@ -1,0 +1,102 @@
+{
+  "source": "art/characters_elder.blend",
+  "sha256": "a38a5d991083f98c4f773ffab552de84897ea72d83fb924ecfbea19a8ee605c7",
+  "iris": [
+    {
+      "name": "Eyes_Iris_edge",
+      "repaired_mesh_basis_mismatch": 0.005383790473412634,
+      "diameter": 0.020555495445322675,
+      "morphs": [
+        "Basis",
+        "Blink",
+        "Face_Round",
+        "Jaw_Strong",
+        "Nose_Wide",
+        "Eye_Spacing"
+      ]
+    },
+    {
+      "name": "Eyes_Iris",
+      "repaired_mesh_basis_mismatch": 0.004606604254125745,
+      "diameter": 0.01891105580969686,
+      "morphs": [
+        "Basis",
+        "Blink",
+        "Face_Round",
+        "Jaw_Strong",
+        "Nose_Wide",
+        "Eye_Spacing"
+      ]
+    },
+    {
+      "name": "Eyes_Pupil",
+      "repaired_mesh_basis_mismatch": 0.0022278739757740484,
+      "diameter": 0.008324975655355683,
+      "morphs": [
+        "Basis",
+        "Blink",
+        "Face_Round",
+        "Jaw_Strong",
+        "Eye_Spacing"
+      ]
+    },
+    {
+      "name": "Eyes_Iris_edge.001",
+      "repaired_mesh_basis_mismatch": 0.005383790293592395,
+      "diameter": 0.020555496198275774,
+      "morphs": [
+        "Basis",
+        "Blink",
+        "Face_Round",
+        "Jaw_Strong",
+        "Nose_Wide",
+        "Eye_Spacing"
+      ]
+    },
+    {
+      "name": "Eyes_Iris.001",
+      "repaired_mesh_basis_mismatch": 0.004606604254125745,
+      "diameter": 0.018911056502413714,
+      "morphs": [
+        "Basis",
+        "Blink",
+        "Face_Round",
+        "Jaw_Strong",
+        "Nose_Wide",
+        "Eye_Spacing"
+      ]
+    },
+    {
+      "name": "Eyes_Pupil.001",
+      "repaired_mesh_basis_mismatch": 0.0022278739924682022,
+      "diameter": 0.008324975960301689,
+      "morphs": [
+        "Basis",
+        "Blink",
+        "Face_Round",
+        "Jaw_Strong",
+        "Eye_Spacing"
+      ]
+    }
+  ],
+  "brows": [
+    {
+      "name": "Hair_Brow",
+      "previously_occluded_vertices": 729,
+      "vertices": 729,
+      "old_depth_range": [
+        0.0005460828542709351,
+        0.0015355944633483887
+      ]
+    },
+    {
+      "name": "Hair_Brow.001",
+      "previously_occluded_vertices": 729,
+      "vertices": 729,
+      "old_depth_range": [
+        0.000553518533706665,
+        0.0015121996402740479
+      ]
+    }
+  ]
+}

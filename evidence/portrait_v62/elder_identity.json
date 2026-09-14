@@ -1,0 +1,44 @@
+{
+  "source": "art/experiments/portrait_v62/characters_elder.blend",
+  "new_keys": [
+    "Nose_Length",
+    "Lip_Fullness",
+    "Brow_Arch",
+    "Chin_Length"
+  ],
+  "scale": 0.9983941748902038,
+  "amplitude_scale": 0.9983941748902038,
+  "baby": false,
+  "new_brows": [],
+  "objects": {
+    "Lips_Lower_soft": {
+      "Nose_Length": 3.0148540812867373e-07,
+      "Lip_Fullness": 0.0026286503935748946
+    },
+    "Lips_Smile_seam": {
+      "Nose_Length": 1.4058990144631455e-07,
+      "Lip_Fullness": 0.002404430258813792
+    },
+    "Lips_Upper_soft": {
+      "Nose_Length": 1.8444610229112714e-06,
+      "Lip_Fullness": 0.0026160037902236955
+    },
+    "Nose_Nostril": {
+      "Nose_Length": 0.005078523255527274
+    },
+    "Nose_Nostril.001": {
+      "Nose_Length": 0.005078523255527274
+    },
+    "Skin_Head_continuous": {
+      "Nose_Length": 0.005376209904544911,
+      "Lip_Fullness": 0.002556143928493941,
+      "Chin_Length": 0.007028532157436869
+    },
+    "Hair_Brow": {
+      "Brow_Arch": 0.003993576699560815
+    },
+    "Hair_Brow.001": {
+      "Brow_Arch": 0.003993576699560815
+    }
+  }
+}

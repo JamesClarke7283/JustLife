@@ -1,0 +1,51 @@
+{
+  "baseline": "art/characters.blend",
+  "candidate": "art/experiments/portrait_v62/characters.blend",
+  "changed_objects": [
+    "Eyes_Catchlight",
+    "Eyes_Catchlight.001",
+    "Eyes_Iris",
+    "Eyes_Iris.001",
+    "Eyes_Iris_edge",
+    "Eyes_Iris_edge.001",
+    "Eyes_Pupil",
+    "Eyes_Pupil.001",
+    "Hair_Brow",
+    "Hair_Brow.001"
+  ],
+  "protected_objects": 450,
+  "rig_and_topology_preserved": true,
+  "mesh_basis_exact": true,
+  "round_iris_all_morphs": [
+    {
+      "mesh": "Eyes_Iris",
+      "morph_count": 6,
+      "diameter": 0.018952004611492157
+    },
+    {
+      "mesh": "Eyes_Iris.001",
+      "morph_count": 6,
+      "diameter": 0.018952008336782455
+    },
+    {
+      "mesh": "Eyes_Iris_edge",
+      "morph_count": 6,
+      "diameter": 0.020600005984306335
+    },
+    {
+      "mesh": "Eyes_Iris_edge.001",
+      "morph_count": 6,
+      "diameter": 0.020600005984306335
+    },
+    {
+      "mesh": "Eyes_Pupil",
+      "morph_count": 5,
+      "diameter": 0.008343003690242767
+    },
+    {
+      "mesh": "Eyes_Pupil.001",
+      "morph_count": 5,
+      "diameter": 0.008342999964952469
+    }
+  ]
+}

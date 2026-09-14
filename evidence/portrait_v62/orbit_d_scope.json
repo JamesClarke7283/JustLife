@@ -1,0 +1,48 @@
+{
+  "baseline": "art/experiments/portrait_v62/characters_identity.blend",
+  "candidate": "art/experiments/portrait_v62/characters_orbit_d.blend",
+  "candidate_sha256": "e976fb9aa1b918cf1b1c70cd4746764bcb54eba38656faf012286ec907bcafa2",
+  "protected_object_count": 445,
+  "changed_objects": [
+    "Eyes_Catchlight",
+    "Eyes_Catchlight.001",
+    "Eyes_Iris",
+    "Eyes_Iris.001",
+    "Eyes_Iris_edge",
+    "Eyes_Iris_edge.001",
+    "Eyes_Pupil",
+    "Eyes_Pupil.001",
+    "Eyes_Sclera",
+    "Eyes_Sclera.001",
+    "Hair_Brow",
+    "Hair_Brow.001",
+    "Skin_Head_continuous"
+  ],
+  "removed_objects": [
+    "Skin_Upper_lid_-1",
+    "Skin_Upper_lid_1"
+  ],
+  "added_objects": [
+    "Lash_Upper_-1",
+    "Lash_Upper_1"
+  ],
+  "rig_hierarchy_mouth_anchor_preserved": true,
+  "basis_exact_and_morph_values_zero": true,
+  "uv_coverage": [
+    {
+      "object": "Skin_Head_continuous",
+      "unique_uvs": 1845,
+      "smooth_faces": 17280
+    },
+    {
+      "object": "Lash_Upper_-1",
+      "unique_uvs": 66,
+      "smooth_faces": 32
+    },
+    {
+      "object": "Lash_Upper_1",
+      "unique_uvs": 66,
+      "smooth_faces": 32
+    }
+  ]
+}

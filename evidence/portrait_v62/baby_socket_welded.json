@@ -1,0 +1,109 @@
+{
+  "source": "art/experiments/portrait_v62/characters_baby_eye_fit.blend",
+  "eye_depth_adult_m": 0.002,
+  "eye_identity_rigid": true,
+  "eye_aperture_adult_m": [
+    0.045,
+    0.0133
+  ],
+  "eyes": [
+    {
+      "sign": -1,
+      "scale": 0.6701177339913146,
+      "collar_vertices": 704,
+      "keys": [
+        "Basis",
+        "Blink",
+        "Smile",
+        "Face_Round",
+        "Jaw_Strong",
+        "Nose_Wide",
+        "Eye_Spacing",
+        "Nose_Length",
+        "Lip_Fullness",
+        "Chin_Length"
+      ],
+      "lash_vertices": 66
+    },
+    {
+      "sign": 1,
+      "scale": 0.6701176974401931,
+      "collar_vertices": 704,
+      "keys": [
+        "Basis",
+        "Blink",
+        "Smile",
+        "Face_Round",
+        "Jaw_Strong",
+        "Nose_Wide",
+        "Eye_Spacing",
+        "Nose_Length",
+        "Lip_Fullness",
+        "Chin_Length"
+      ],
+      "lash_vertices": 66
+    }
+  ],
+  "head": {
+    "Basis": {
+      "vertices_recessed": 134,
+      "maximum_depth_m": 0.012214405231142714
+    },
+    "Blink": {
+      "vertices_recessed": 108,
+      "maximum_depth_m": 0.02045465796437331
+    },
+    "Smile": {
+      "vertices_recessed": 134,
+      "maximum_depth_m": 0.012214405231142714
+    },
+    "Face_Round": {
+      "vertices_recessed": 148,
+      "maximum_depth_m": 0.014161355910439696
+    },
+    "Jaw_Strong": {
+      "vertices_recessed": 134,
+      "maximum_depth_m": 0.01220579221376819
+    },
+    "Nose_Wide": {
+      "vertices_recessed": 134,
+      "maximum_depth_m": 0.011898329104274935
+    },
+    "Eye_Spacing": {
+      "vertices_recessed": 132,
+      "maximum_depth_m": 0.010436244425912108
+    },
+    "Nose_Length": {
+      "vertices_recessed": 134,
+      "maximum_depth_m": 0.012225171320105269
+    },
+    "Lip_Fullness": {
+      "vertices_recessed": 134,
+      "maximum_depth_m": 0.012214405231142714
+    },
+    "Chin_Length": {
+      "vertices_recessed": 134,
+      "maximum_depth_m": 0.012214405231142714
+    }
+  },
+  "weld": {
+    "vertices_before": 5154,
+    "vertices_after": 6146,
+    "faces_after": 11268,
+    "eyes": [
+      {
+        "side": -1,
+        "shared_boundary_vertices": 70,
+        "radial_rows": 9,
+        "new_collar_vertices": 512
+      },
+      {
+        "side": 1,
+        "shared_boundary_vertices": 72,
+        "radial_rows": 9,
+        "new_collar_vertices": 512
+      }
+    ],
+    "method": "shared clipped head boundary, unified shape keys and smooth normals"
+  }
+}

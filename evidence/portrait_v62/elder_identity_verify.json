@@ -1,0 +1,119 @@
+{
+  "baseline": "art/experiments/portrait_v62/characters_elder.blend",
+  "candidate": "art/experiments/portrait_v62/characters_elder_identity.blend",
+  "neutral_and_existing_morphs_exact": true,
+  "protected_existing_objects": 468,
+  "added_objects": [],
+  "new_morphs": [
+    "Brow_Arch",
+    "Chin_Length",
+    "Lip_Fullness",
+    "Nose_Length"
+  ],
+  "signed_extreme_checks": [
+    {
+      "case": "all_positive",
+      "head_orientation_reversals": 0,
+      "minimum_triangle_area_ratio": 0.7705113342645205,
+      "max_head_displacement": 0.007028498084617854,
+      "brow_vertices_over_0_25mm_inside_skin": 0,
+      "maximum_brow_skin_depth": -0.0004199892282485962
+    },
+    {
+      "case": "all_negative",
+      "head_orientation_reversals": 0,
+      "minimum_triangle_area_ratio": 0.5964780002981084,
+      "max_head_displacement": 0.007028498084617854,
+      "brow_vertices_over_0_25mm_inside_skin": 0,
+      "maximum_brow_skin_depth": -0.0004265308380126953
+    },
+    {
+      "case": "mixed",
+      "head_orientation_reversals": 0,
+      "minimum_triangle_area_ratio": 0.7705113342645205,
+      "max_head_displacement": 0.007028498084617854,
+      "brow_vertices_over_0_25mm_inside_skin": 0,
+      "maximum_brow_skin_depth": -0.0004265308380126953
+    },
+    {
+      "case": "identity_max_positive",
+      "head_orientation_reversals": 0,
+      "minimum_triangle_area_ratio": 0.7750906666419413,
+      "max_head_displacement": 0.007028498084617854,
+      "brow_vertices_over_0_25mm_inside_skin": 0,
+      "maximum_brow_skin_depth": -0.00037270039319992065
+    },
+    {
+      "case": "identity_max_negative",
+      "head_orientation_reversals": 0,
+      "minimum_triangle_area_ratio": 0.6153345165604208,
+      "max_head_displacement": 0.007028498084617854,
+      "brow_vertices_over_0_25mm_inside_skin": 0,
+      "maximum_brow_skin_depth": -1.3113021850585938e-06
+    },
+    {
+      "case": "Nose_Length_min",
+      "head_orientation_reversals": 0,
+      "minimum_triangle_area_ratio": 0.7596188811306042,
+      "max_head_displacement": 0.005376191042030435,
+      "brow_vertices_over_0_25mm_inside_skin": 0,
+      "maximum_brow_skin_depth": -0.0004199892282485962
+    },
+    {
+      "case": "Nose_Length_max",
+      "head_orientation_reversals": 0,
+      "minimum_triangle_area_ratio": 0.7741024960808206,
+      "max_head_displacement": 0.005376191042030435,
+      "brow_vertices_over_0_25mm_inside_skin": 0,
+      "maximum_brow_skin_depth": -0.0004199892282485962
+    },
+    {
+      "case": "Lip_Fullness_min",
+      "head_orientation_reversals": 0,
+      "minimum_triangle_area_ratio": 0.7708691093915077,
+      "max_head_displacement": 0.00255616065138293,
+      "brow_vertices_over_0_25mm_inside_skin": 0,
+      "maximum_brow_skin_depth": -0.0004199892282485962
+    },
+    {
+      "case": "Lip_Fullness_max",
+      "head_orientation_reversals": 0,
+      "minimum_triangle_area_ratio": 0.8605633150050018,
+      "max_head_displacement": 0.00255616065138293,
+      "brow_vertices_over_0_25mm_inside_skin": 0,
+      "maximum_brow_skin_depth": -0.0004199892282485962
+    },
+    {
+      "case": "Brow_Arch_min",
+      "head_orientation_reversals": 0,
+      "minimum_triangle_area_ratio": 1.0,
+      "max_head_displacement": 0.0,
+      "brow_vertices_over_0_25mm_inside_skin": 0,
+      "maximum_brow_skin_depth": -0.0004265308380126953
+    },
+    {
+      "case": "Brow_Arch_max",
+      "head_orientation_reversals": 0,
+      "minimum_triangle_area_ratio": 1.0,
+      "max_head_displacement": 0.0,
+      "brow_vertices_over_0_25mm_inside_skin": 0,
+      "maximum_brow_skin_depth": -0.0004199892282485962
+    },
+    {
+      "case": "Chin_Length_min",
+      "head_orientation_reversals": 0,
+      "minimum_triangle_area_ratio": 0.6059594143478085,
+      "max_head_displacement": 0.007028498084617854,
+      "brow_vertices_over_0_25mm_inside_skin": 0,
+      "maximum_brow_skin_depth": -0.0004199892282485962
+    },
+    {
+      "case": "Chin_Length_max",
+      "head_orientation_reversals": 0,
+      "minimum_triangle_area_ratio": 0.7705113342645205,
+      "max_head_displacement": 0.007028498084617854,
+      "brow_vertices_over_0_25mm_inside_skin": 0,
+      "maximum_brow_skin_depth": -0.0004199892282485962
+    }
+  ]
+}

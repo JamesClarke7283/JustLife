@@ -1,0 +1,93 @@
+{
+  "source": "/home/impulse/Projects/JustLife/art/experiments/buzz_v62/integrated_fair_b/authored.blend",
+  "cases": {
+    "neutral": {
+      "settings": {},
+      "vertices": 2604,
+      "minimum_signed_clearance": 0.00032595288212178275,
+      "penetrating_vertices": 0,
+      "maximum_coupling_error": 0.0
+    },
+    "Face_Round_max": {
+      "settings": {
+        "Face_Round": 1.0
+      },
+      "vertices": 2604,
+      "minimum_signed_clearance": 0.00011070585605921224,
+      "penetrating_vertices": 0,
+      "maximum_coupling_error": 1.1926748300777466e-07
+    },
+    "Jaw_Strong_max": {
+      "settings": {
+        "Jaw_Strong": 1.0
+      },
+      "vertices": 2604,
+      "minimum_signed_clearance": 0.00032595288212178275,
+      "penetrating_vertices": 0,
+      "maximum_coupling_error": 1.1920928955078125e-07
+    },
+    "Eye_Spacing_max": {
+      "settings": {
+        "Eye_Spacing": 1.0
+      },
+      "vertices": 2604,
+      "minimum_signed_clearance": 0.0002916467983595794,
+      "penetrating_vertices": 0,
+      "maximum_coupling_error": 7.450580596923828e-09
+    },
+    "Face_Length_max": {
+      "settings": {
+        "Face_Length": 1.0
+      },
+      "vertices": 2604,
+      "minimum_signed_clearance": 0.00032596502933301963,
+      "penetrating_vertices": 0,
+      "maximum_coupling_error": 0.0
+    },
+    "Face_Length_min": {
+      "settings": {
+        "Face_Length": -1.0
+      },
+      "vertices": 2604,
+      "minimum_signed_clearance": 0.0003258287651988212,
+      "penetrating_vertices": 0,
+      "maximum_coupling_error": 1.1920928955078125e-07
+    },
+    "round_and_jaw": {
+      "settings": {
+        "Face_Round": 1.0,
+        "Jaw_Strong": 1.0
+      },
+      "vertices": 2604,
+      "minimum_signed_clearance": 0.00011070585605921224,
+      "penetrating_vertices": 0,
+      "maximum_coupling_error": 1.1944189326376765e-07
+    },
+    "all_positive": {
+      "settings": {
+        "Face_Round": 1.0,
+        "Jaw_Strong": 1.0,
+        "Eye_Spacing": 1.0,
+        "Face_Length": 1.0
+      },
+      "vertices": 2604,
+      "minimum_signed_clearance": 0.0002913932016781473,
+      "penetrating_vertices": 0,
+      "maximum_coupling_error": 1.1944189326376765e-07
+    },
+    "mixed": {
+      "settings": {
+        "Face_Round": 0.65,
+        "Jaw_Strong": 0.65,
+        "Eye_Spacing": 0.65,
+        "Face_Length": -0.6
+      },
+      "vertices": 2604,
+      "minimum_signed_clearance": 0.00030025571686564945,
+      "penetrating_vertices": 0,
+      "maximum_coupling_error": 1.1944189326376765e-07
+    }
+  },
+  "surface_model": "Scalp-backed, alpha-masked hair surface with no hollow shell",
+  "material": "Hair_Buzz_Surface"
+}

@@ -1,0 +1,59 @@
+{
+  "status": "Frozen candidate sources; no production promotion",
+  "art_direction": "Original stylized life-sim faces with integrated eye sockets, surface-fitted irises and readable independently tintable brows",
+  "native_identity_controls": ["Face_Round", "Jaw_Strong", "Nose_Wide", "Eye_Spacing", "Nose_Length", "Lip_Fullness", "Brow_Arch", "Chin_Length"],
+  "families": [
+    {
+      "age": "adult",
+      "source": "art/experiments/portrait_v62/characters_orbit_d.blend",
+      "sha256": "e976fb9aa1b918cf1b1c70cd4746764bcb54eba38656faf012286ec907bcafa2",
+      "coverage_receipt": "evidence/portrait_v62/orbit_d_vectorized_verify.json"
+    },
+    {
+      "age": "child",
+      "source": "art/experiments/portrait_v62/characters_child_orbit_d.blend",
+      "sha256": "b7bfcfd5baa73b7d30a25f78dd03cf2bb2a2b0ce2d12376710b3fddfad27c252",
+      "coverage_receipt": "evidence/portrait_v62/child_orbit_d_verify.json"
+    },
+    {
+      "age": "teen",
+      "source": "art/experiments/portrait_v62/characters_teen_orbit_d.blend",
+      "sha256": "4c9e12054bd2e0b476cffb326aa42a1379dbe5adaedc5093e8e62a2f80789a24",
+      "coverage_receipt": "evidence/portrait_v62/teen_orbit_d_verify.json"
+    },
+    {
+      "age": "elder",
+      "source": "art/experiments/portrait_v62/characters_elder_orbit_d.blend",
+      "sha256": "5db7b65ee44084def1d43bbf267bc14bca9764741ed7b8d6172fe8f908a4d68f",
+      "coverage_receipt": "evidence/portrait_v62/elder_orbit_d_verify.json"
+    },
+    {
+      "age": "baby",
+      "source": "art/experiments/portrait_v62/characters_baby_orbit_d.blend",
+      "sha256": "9ee7d090b23dd0370b1e5f956d2d89e80be64d69fcf50122dda58e2038e9c24a",
+      "coverage_receipt": "evidence/portrait_v62/baby_orbit_d_verify.json",
+      "age_specific_eye_fit": "Reduced tall sclera extent, thin noncoincident iris layers, taller aperture and smaller posterior offset"
+    }
+  ],
+  "native_coverage_summary": {
+    "eye_state_checks": 120,
+    "globe_coverage_rays": 73304,
+    "exposed_globe_samples": 0,
+    "maximum_closed_seam_gap_m": 0.0000016242265701293945
+  },
+  "adult_scope_receipt": "evidence/portrait_v62/orbit_d_scope.json",
+  "adult_evaluated_c_d_equivalence": "evidence/portrait_v62/orbit_c_d_evaluated_equivalence.json",
+  "adult_evaluated_equivalence_summary": "431 mesh/curve objects, exactly0.0m maximum world-vertex delta at neutral export pose; authored Head scale and bone scales/locations preserved",
+  "adult_preview_glb": {
+    "path": "art/experiments/portrait_v62/orbit_c_models/character.glb",
+    "sha256": "0c5c37c94be3f2a7eaf43dc481dfa7931991c0224b7ebd0ab6e979e4fecd9b44",
+    "note": "Export worker neutralized all values before export; equivalent to normalized adult d geometry. Parent verified actual Godot open/closed appearance and clean import."
+  },
+  "remaining_integration_gates": [
+    "Compose the parent's three additional signed proportion controls and accepted Bob on separate native outputs",
+    "Run verify_socket.py --extended-identity on assembled eleven-control sources",
+    "Review age-specific characters in actual Godot creator and life cameras",
+    "Export and verify all twenty frame/detail variants before production promotion",
+    "Obtain independent visual critique; no numerical test or this handoff claims10/10 quality"
+  ]
+}

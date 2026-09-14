@@ -1,0 +1,150 @@
+{
+  "baseline": "/home/impulse/Projects/JustLife/art/experiments/skin_surface_v62/adult_fair_surface_b.blend",
+  "candidate": "/home/impulse/Projects/JustLife/art/experiments/buzz_v62/integrated_fair_b/ready.blend",
+  "baseline_sha256": "6447b13ae4080253fbd68e2c1e0b99e869123e7cb8e984123c5e82388e17c507",
+  "candidate_sha256": "01ade04129a1a9056eeb1c83afe2e838abe433e45c088699b3fa026144d5dd81",
+  "non_buzz_objects_exact": 433,
+  "non_buzz_materials_exact": 25,
+  "preserved_vertex_colors": {
+    "Eyes_Iris": [
+      [
+        "JustLife_Surface",
+        "POINT",
+        "FLOAT_COLOR",
+        241
+      ]
+    ],
+    "Eyes_Iris.001": [
+      [
+        "JustLife_Surface",
+        "POINT",
+        "FLOAT_COLOR",
+        241
+      ]
+    ],
+    "Eyes_Sclera": [
+      [
+        "JustLife_Surface",
+        "POINT",
+        "FLOAT_COLOR",
+        922
+      ]
+    ],
+    "Eyes_Sclera.001": [
+      [
+        "JustLife_Surface",
+        "POINT",
+        "FLOAT_COLOR",
+        922
+      ]
+    ],
+    "Skin_Head_continuous": [
+      [
+        "JustLife_Surface",
+        "POINT",
+        "FLOAT_COLOR",
+        9152
+      ]
+    ]
+  },
+  "identity_and_mouth_metadata": {
+    "identity_morphs": "Face_Round,Jaw_Strong,Nose_Wide,Eye_Spacing,Nose_Length,Lip_Fullness,Brow_Arch,Chin_Length,Face_Length,Mouth_Width,Nose_Bridge",
+    "mouth_anchor": [
+      -0.0,
+      0.054,
+      0.118866
+    ],
+    "mouth_identity_offsets": [
+      [
+        "brow_arch",
+        [
+          0.0,
+          0.0,
+          -0.0
+        ]
+      ],
+      [
+        "chin_length",
+        [
+          0.0,
+          0.0,
+          -0.0
+        ]
+      ],
+      [
+        "eye_spacing",
+        [
+          0.0,
+          0.0,
+          -0.0
+        ]
+      ],
+      [
+        "face_length",
+        [
+          0.0,
+          -0.01187992561608553,
+          -0.0
+        ]
+      ],
+      [
+        "face_round",
+        [
+          -1.871329313729575e-09,
+          0.000911885523237288,
+          -0.0015674792230129242
+        ]
+      ],
+      [
+        "jaw_strong",
+        [
+          -1.8806005641636148e-09,
+          -0.00046766718151047826,
+          0.0025957904290407896
+        ]
+      ],
+      [
+        "lip_fullness",
+        [
+          0.0,
+          -9.8249411166762e-06,
+          0.00263736629858613
+        ]
+      ],
+      [
+        "mouth_width",
+        [
+          -2.9280605497601078e-15,
+          0.0,
+          -0.0
+        ]
+      ],
+      [
+        "nose_bridge",
+        [
+          0.0,
+          0.0,
+          -0.0
+        ]
+      ],
+      [
+        "nose_length",
+        [
+          0.0,
+          0.0,
+          -0.0
+        ]
+      ],
+      [
+        "nose_wide",
+        [
+          -1.8805028645374477e-09,
+          0.0,
+          -0.0016483385115861893
+        ]
+      ]
+    ]
+  },
+  "standard_root_and_neutral_pose": true,
+  "passed": true
+}

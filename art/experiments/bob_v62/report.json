@@ -1,0 +1,62 @@
+{
+  "input": "/home/impulse/Projects/JustLife/art/characters.blend",
+  "output": "/home/impulse/Projects/JustLife/art/experiments/bob_v62/characters.blend",
+  "scope": "Hair_Bob descendants only",
+  "unchanged_objects": 430,
+  "removed": [
+    "Hair_Bob_Cap",
+    "Hair_Bob_Fringe",
+    "Hair_Bob_Fringe.001",
+    "Hair_Bob_Fringe.002",
+    "Hair_Bob_Fringe.003",
+    "Hair_Bob_Fringe.004",
+    "Hair_Bob_Lock",
+    "Hair_Bob_Lock.001",
+    "Hair_Bob_Lock.002",
+    "Hair_Bob_Lock.003",
+    "Hair_Bob_Lock.004",
+    "Hair_Bob_Lock.005",
+    "Hair_Bob_Lock.006",
+    "Hair_Bob_Lock.007",
+    "Hair_Bob_Lock.008",
+    "Hair_Bob_Lock.009",
+    "Hair_Bob_Lock.010",
+    "Hair_Bob_Lock.011",
+    "Hair_Bob_Strand",
+    "Hair_Bob_Strand.001",
+    "Hair_Bob_Strand.002",
+    "Hair_Bob_Strand.003",
+    "Hair_Bob_Strand.004",
+    "Hair_Bob_Strand.005",
+    "Hair_Bob_Strand.006",
+    "Hair_Bob_Strand.007",
+    "Hair_Bob_Strand.008",
+    "Hair_Bob_Strand.009",
+    "Hair_Bob_Strand.010",
+    "Hair_Bob_Strand.011"
+  ],
+  "created": [
+    {
+      "name": "Hair_Bob_Cap",
+      "vertices": 17025,
+      "faces": 17024
+    },
+    {
+      "name": "Hair_Bob_Sweep",
+      "vertices": 615,
+      "faces": 560
+    },
+    {
+      "name": "Hair_Bob_TempleLayer",
+      "vertices": 615,
+      "faces": 560
+    },
+    {
+      "name": "Hair_Bob_TuckLayer",
+      "vertices": 615,
+      "faces": 560
+    }
+  ],
+  "source_sha256": "b4b5b722b486fa757dcc0e034d27eb80ce4658bf2c79f1b045dffb9a6753d049",
+  "candidate_sha256": "4fe116fdf78ce346d22c30a94846aec6a76d9d86aee4d3af17ab3d4e1784854a"
+}

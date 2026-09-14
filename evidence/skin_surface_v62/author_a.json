@@ -1,0 +1,82 @@
+{
+  "source": "/home/impulse/Projects/JustLife/art/experiments/integrated_v62/adult_ready.blend",
+  "source_sha256": "7869cf347f68d868e89bc8b8cfd29e8f3227a5cb0c623afa5e68bdcaa29a354a",
+  "output": "/home/impulse/Projects/JustLife/art/experiments/skin_surface_v62/adult_surface_a.blend",
+  "output_sha256": "3281f8997aa5650fbe624cf593b56c3975ee1d66e13d7ac9f3b1a03d4053a800",
+  "geometry_uv_weights_rig_morphs_exact": true,
+  "geometry_digest": "53fce7e70f6d650b4f4d8e4f2590fc25b8b1ab07d3857fb776de4aa171bfa1fe",
+  "owned_surfaces": {
+    "Skin_Head_continuous": {
+      "material": "Skin_Face_Surface",
+      "vertices": 9152,
+      "linear_rgb_min": [
+        0.9880274534225464,
+        0.9341475963592529,
+        0.9445768594741821
+      ],
+      "linear_rgb_max": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    "Eyes_Iris": {
+      "material": "Eyes_Iris_Surface",
+      "vertices": 241,
+      "linear_rgb_min": [
+        0.7599999904632568,
+        0.7599999904632568,
+        0.7599999904632568
+      ],
+      "linear_rgb_max": [
+        1.0,
+        0.9999027848243713,
+        0.9967281222343445
+      ]
+    },
+    "Eyes_Iris.001": {
+      "material": "Eyes_Iris_Surface",
+      "vertices": 241,
+      "linear_rgb_min": [
+        0.7599999904632568,
+        0.7599999904632568,
+        0.7599999904632568
+      ],
+      "linear_rgb_max": [
+        1.0,
+        0.9999027848243713,
+        0.9967280030250549
+      ]
+    },
+    "Eyes_Sclera": {
+      "material": "Eyes_Sclera_Surface",
+      "vertices": 922,
+      "linear_rgb_min": [
+        1.0,
+        0.9549999833106995,
+        0.9449999928474426
+      ],
+      "linear_rgb_max": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    "Eyes_Sclera.001": {
+      "material": "Eyes_Sclera_Surface",
+      "vertices": 922,
+      "linear_rgb_min": [
+        1.0,
+        0.9549999833106995,
+        0.9449999928474426
+      ],
+      "linear_rgb_max": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  },
+  "original_vertex_paint": true,
+  "external_images": 0
+}

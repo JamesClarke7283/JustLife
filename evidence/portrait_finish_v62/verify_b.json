@@ -1,0 +1,83 @@
+{
+  "candidate": "art/experiments/portrait_finish_v62/adult_b.blend",
+  "sha256": "f818081b2a0da0f51f938f093ac2950bcab63d397242707422b214113c1b5ee3",
+  "protected_non_head_objects": 433,
+  "protected_head_vertices": 7708,
+  "topology_uv_color_material_weight_object_data_unchanged": true,
+  "mouth_anchor_and_orbital_target_coordinates_exact": true,
+  "surface_checks": [
+    {
+      "case": "neutral",
+      "flipped_triangles": 0,
+      "collapsed_triangles": 0,
+      "minimum_area_ratio": 0.308261227384366
+    },
+    {
+      "case": "generated_0",
+      "flipped_triangles": 0,
+      "collapsed_triangles": 0,
+      "minimum_area_ratio": 0.30608010329573854
+    },
+    {
+      "case": "generated_1",
+      "flipped_triangles": 0,
+      "collapsed_triangles": 0,
+      "minimum_area_ratio": 0.3141043341654328
+    },
+    {
+      "case": "generated_2",
+      "flipped_triangles": 0,
+      "collapsed_triangles": 0,
+      "minimum_area_ratio": 0.3194023767089667
+    },
+    {
+      "case": "generated_3",
+      "flipped_triangles": 0,
+      "collapsed_triangles": 0,
+      "minimum_area_ratio": 0.2998596430892814
+    },
+    {
+      "case": "generated_4",
+      "flipped_triangles": 0,
+      "collapsed_triangles": 0,
+      "minimum_area_ratio": 0.3168131363122871
+    },
+    {
+      "case": "generated_5",
+      "flipped_triangles": 0,
+      "collapsed_triangles": 0,
+      "minimum_area_ratio": 0.29536850544508175
+    },
+    {
+      "case": "unsigned_max",
+      "flipped_triangles": 0,
+      "collapsed_triangles": 0,
+      "minimum_area_ratio": 0.30349221435083457
+    },
+    {
+      "case": "signed_positive",
+      "flipped_triangles": 0,
+      "collapsed_triangles": 0,
+      "minimum_area_ratio": 0.3305853713505795
+    },
+    {
+      "case": "signed_negative",
+      "flipped_triangles": 0,
+      "collapsed_triangles": 0,
+      "minimum_area_ratio": 0.2709274052450617
+    },
+    {
+      "case": "smile_max",
+      "flipped_triangles": 0,
+      "collapsed_triangles": 0,
+      "minimum_area_ratio": 0.30613473013767406
+    },
+    {
+      "case": "blink_max",
+      "flipped_triangles": 0,
+      "collapsed_triangles": 0,
+      "minimum_area_ratio": 0.30363307269310885
+    }
+  ],
+  "failures": []
+}

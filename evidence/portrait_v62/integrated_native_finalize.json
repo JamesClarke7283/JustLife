@@ -1,0 +1,87 @@
+{
+  "source": "art/experiments/integrated_v62/adult_surface.blend",
+  "output": "art/experiments/integrated_v62/adult_ready.blend",
+  "reset_key_values": [
+    {
+      "object": "Eyes_Catchlight",
+      "key": "Nose_Wide",
+      "old_value": 1.0
+    },
+    {
+      "object": "Eyes_Catchlight.001",
+      "key": "Nose_Wide",
+      "old_value": 1.0
+    },
+    {
+      "object": "Eyes_Pupil",
+      "key": "Nose_Wide",
+      "old_value": 1.0
+    },
+    {
+      "object": "Eyes_Pupil.001",
+      "key": "Nose_Wide",
+      "old_value": 1.0
+    }
+  ],
+  "reset_rotation_euler_bones": [],
+  "preserved_pose_bone_scales": {
+    "LifeRig/Root": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "LifeRig/Spine": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "LifeRig/Head": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "LifeRig/Arm_L": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "LifeRig/Forearm_L": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "LifeRig/Arm_R": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "LifeRig/Forearm_R": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "LifeRig/Leg_L": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "LifeRig/Shin_L": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "LifeRig/Leg_R": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "LifeRig/Shin_R": [
+      1.0,
+      1.0,
+      1.0
+    ]
+  },
+  "authored_data_digest_before_and_after": "90f334a9945275122f0f35189b3e96a6a222d3d85b959a87521c2501262b16c7",
+  "output_sha256": "7869cf347f68d868e89bc8b8cfd29e8f3227a5cb0c623afa5e68bdcaa29a354a",
+  "geometry_changed": false
+}

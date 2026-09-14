@@ -1,0 +1,9 @@
+{
+  "source": "art/experiments/portrait_v62/characters_baby_orbit_c.blend",
+  "output": "art/experiments/portrait_v62/characters_baby_orbit_d.blend",
+  "reset_key_values": [],
+  "reset_pose_bones": [],
+  "authored_data_digest_before_and_after": "5dfb8026487a15f3b28cb281369b210336b5b274ef84c29fc7b7418e48db510a",
+  "output_sha256": "9ee7d090b23dd0370b1e5f956d2d89e80be64d69fcf50122dda58e2038e9c24a",
+  "geometry_changed": false
+}

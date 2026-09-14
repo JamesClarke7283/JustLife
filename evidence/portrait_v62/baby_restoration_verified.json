@@ -1,0 +1,383 @@
+{
+  "release": "assets/models/character_baby.glb",
+  "reconstructed": "art/experiments/portrait_v62/baby_baseline/character_baby.glb",
+  "scene_material_rig_metadata_exact": true,
+  "mesh_count": 62,
+  "indexed_triangle_connectivity_equal": true,
+  "surface_error_bound_m": 1e-05,
+  "explanation": "Same released generator; Blender subdivision arithmetic and glTF ordering differ. No visible surface or rig change within explicit measured bounds.",
+  "meshes": [
+    {
+      "mesh": "Bottom_Continuous_Romper",
+      "triangles": 4928,
+      "surface_max_error_m": 5.983702243942399e-08,
+      "joint_influence_max_error": 1.4156103134155273e-06
+    },
+    {
+      "mesh": "Bottom_Continuous_Romper_Leg_L",
+      "triangles": 280,
+      "surface_max_error_m": 3.0091953317455035e-08,
+      "joint_influence_max_error": 8.940696716308594e-07
+    },
+    {
+      "mesh": "Bottom_Continuous_Romper_Leg_R",
+      "triangles": 280,
+      "surface_max_error_m": 2.98025497605034e-08,
+      "joint_influence_max_error": 6.556510925292969e-07
+    },
+    {
+      "mesh": "Bottom_Shorts_Cuff_L",
+      "triangles": 320,
+      "surface_max_error_m": 3.1828894262453654e-08,
+      "joint_influence_max_error": 2.980232238769531e-07
+    },
+    {
+      "mesh": "Bottom_Shorts_Cuff_R",
+      "triangles": 320,
+      "surface_max_error_m": 3.1828894262453654e-08,
+      "joint_influence_max_error": 2.980232238769531e-07
+    },
+    {
+      "mesh": "Sphere.001",
+      "triangles": 288,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.003",
+      "triangles": 288,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.013",
+      "triangles": 168,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.018",
+      "triangles": 168,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.010",
+      "triangles": 484,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.015",
+      "triangles": 484,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.011",
+      "triangles": 484,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.016",
+      "triangles": 484,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.012",
+      "triangles": 288,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.017",
+      "triangles": 288,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.009",
+      "triangles": 780,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.014",
+      "triangles": 780,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": ".Hair_Bob_Cap",
+      "triangles": 15904,
+      "surface_max_error_m": 2.8116842925362913e-07,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Hair_Bob_Lock",
+      "triangles": 240,
+      "surface_max_error_m": 8.973620437417853e-08,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Hair_Bob_Lock.001",
+      "triangles": 240,
+      "surface_max_error_m": 8.971687092477304e-08,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": ".Hair_Crop_Cap",
+      "triangles": 15904,
+      "surface_max_error_m": 3.7245917410350526e-07,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Hair_Crop_Crown",
+      "triangles": 200,
+      "surface_max_error_m": 6.064333271382093e-08,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": ".Hair_Curls_Cap",
+      "triangles": 15904,
+      "surface_max_error_m": 5.772504105644049e-06,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.027",
+      "triangles": 288,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.028",
+      "triangles": 288,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.029",
+      "triangles": 288,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.030",
+      "triangles": 288,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.031",
+      "triangles": 288,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.032",
+      "triangles": 288,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.033",
+      "triangles": 288,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.034",
+      "triangles": 288,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.035",
+      "triangles": 288,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.008",
+      "triangles": 440,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Lips_Smile_seam",
+      "triangles": 288,
+      "surface_max_error_m": 5.963374150388733e-08,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.007",
+      "triangles": 440,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.005",
+      "triangles": 168,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.006",
+      "triangles": 168,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere",
+      "triangles": 440,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.002",
+      "triangles": 440,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.004",
+      "triangles": 440,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Shoes_Accent_L",
+      "triangles": 160,
+      "surface_max_error_m": 5.268356063861754e-09,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.023",
+      "triangles": 324,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.021",
+      "triangles": 484,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.022",
+      "triangles": 484,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Shoes_Accent_R",
+      "triangles": 160,
+      "surface_max_error_m": 5.587935447692871e-09,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.026",
+      "triangles": 324,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.024",
+      "triangles": 484,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.025",
+      "triangles": 484,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Outfit_Casual_Collar",
+      "triangles": 2080,
+      "surface_max_error_m": 5.972094663188382e-08,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Outfit_Casual_Romper",
+      "triangles": 4928,
+      "surface_max_error_m": 6.007030606269836e-08,
+      "joint_influence_max_error": 2.205371856689453e-06
+    },
+    {
+      "mesh": "Outfit_Casual_Sleeve_L",
+      "triangles": 280,
+      "surface_max_error_m": 6.006850114687196e-08,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Outfit_Casual_Sleeve_R",
+      "triangles": 280,
+      "surface_max_error_m": 6.006861395569999e-08,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Skin_Arm_continuous_L",
+      "triangles": 2464,
+      "surface_max_error_m": 5.972094663188382e-08,
+      "joint_influence_max_error": 9.5367431640625e-07
+    },
+    {
+      "mesh": "Skin_Arm_continuous_R",
+      "triangles": 2464,
+      "surface_max_error_m": 6.006850114687196e-08,
+      "joint_influence_max_error": 9.5367431640625e-07
+    },
+    {
+      "mesh": "Skin_Body_continuous",
+      "triangles": 11200,
+      "surface_max_error_m": 5.983702243942399e-08,
+      "joint_influence_max_error": 1.1324882507324219e-06
+    },
+    {
+      "mesh": "Sphere.019",
+      "triangles": 288,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Sphere.020",
+      "triangles": 288,
+      "surface_max_error_m": 0.0,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Skin_Head_continuous",
+      "triangles": 10304,
+      "surface_max_error_m": 6.143906154658885e-08,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Skin_Leg_continuous_L",
+      "triangles": 2016,
+      "surface_max_error_m": 3.0091953317455035e-08,
+      "joint_influence_max_error": 4.76837158203125e-07
+    },
+    {
+      "mesh": "Skin_Leg_continuous_R",
+      "triangles": 2016,
+      "surface_max_error_m": 3.003786024240803e-08,
+      "joint_influence_max_error": 8.344650268554688e-07
+    },
+    {
+      "mesh": "Skin_Thumb_L",
+      "triangles": 200,
+      "surface_max_error_m": 3.077594869184923e-08,
+      "joint_influence_max_error": 0.0
+    },
+    {
+      "mesh": "Skin_Thumb_R",
+      "triangles": 200,
+      "surface_max_error_m": 2.986047331594191e-08,
+      "joint_influence_max_error": 0.0
+    }
+  ]
+}

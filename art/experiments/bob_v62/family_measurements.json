@@ -1,0 +1,3066 @@
+{
+  "adult": {
+    "path": "/home/impulse/Projects/JustLife/art/experiments/portrait_v62/characters_identity.blend",
+    "head_pivot": [
+      0.0,
+      0.004999999888241291,
+      1.4579999446868896
+    ],
+    "head_matrix": [
+      [
+        0.9100000262260437,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.9100000262260437,
+        0.0,
+        0.004999999888241291
+      ],
+      [
+        0.0,
+        0.0,
+        0.9100000262260437,
+        1.4579999446868896
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "bob_matrix": [
+      [
+        0.9100000262260437,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.9100000262260437,
+        0.0,
+        0.00044999970123171806
+      ],
+      [
+        0.0,
+        0.0,
+        0.9100000262260437,
+        0.1312199831008911
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "head_data_bounds": [
+      [
+        -0.13192826509475708,
+        0.13192829489707947
+      ],
+      [
+        -0.12950529158115387,
+        0.11579360067844391
+      ],
+      [
+        1.3831707239151,
+        1.7478077411651611
+      ]
+    ],
+    "head_evaluated_bounds": [
+      [
+        -0.12005472183227539,
+        0.12005475163459778
+      ],
+      [
+        -0.11739981174468994,
+        0.10582218319177628
+      ],
+      [
+        1.3831707239151,
+        1.7217249870300293
+      ]
+    ],
+    "eye_names": [
+      "Eyes_Sclera",
+      "Eyes_Sclera.001"
+    ],
+    "eye_bounds": [
+      [
+        -0.06825001537799835,
+        0.06825000792741776
+      ],
+      [
+        -0.09009505808353424,
+        -0.059154946357011795
+      ],
+      [
+        1.5844899415969849,
+        1.609969973564148
+      ]
+    ],
+    "bob_bounds": [
+      [
+        -0.1362582892179489,
+        0.13194581866264343
+      ],
+      [
+        -0.09981300681829453,
+        0.12070468068122864
+      ],
+      [
+        1.4786267280578613,
+        1.7441580295562744
+      ]
+    ],
+    "head_rows": [
+      {
+        "fraction": 0.12,
+        "z": 1.4896469497680664,
+        "bounds": [
+          [
+            -0.06566217541694641,
+            0.06590781360864639
+          ],
+          [
+            -0.10084902495145798,
+            0.06609787791967392
+          ],
+          [
+            1.4865213632583618,
+            1.4927220344543457
+          ]
+        ]
+      },
+      {
+        "fraction": 0.25,
+        "z": 1.5239312052726746,
+        "bounds": [
+          [
+            -0.08656443655490875,
+            0.08661206066608429
+          ],
+          [
+            -0.10478771477937698,
+            0.08366470783948898
+          ],
+          [
+            1.5207903385162354,
+            1.526780128479004
+          ]
+        ]
+      },
+      {
+        "fraction": 0.4,
+        "z": 1.5634899616241456,
+        "bounds": [
+          [
+            -0.12005472183227539,
+            0.12005475163459778
+          ],
+          [
+            -0.11523359268903732,
+            0.09890210628509521
+          ],
+          [
+            1.560391902923584,
+            1.5665583610534668
+          ]
+        ]
+      },
+      {
+        "fraction": 0.55,
+        "z": 1.6030487179756165,
+        "bounds": [
+          [
+            -0.10045814514160156,
+            0.10041974484920502
+          ],
+          [
+            -0.08976320922374725,
+            0.10165565460920334
+          ],
+          [
+            1.5998903512954712,
+            1.6061887741088867
+          ]
+        ]
+      },
+      {
+        "fraction": 0.7,
+        "z": 1.6426074743270873,
+        "bounds": [
+          [
+            -0.09379369765520096,
+            0.09382980316877365
+          ],
+          [
+            -0.08371327072381973,
+            0.1034553050994873
+          ],
+          [
+            1.6395150423049927,
+            1.6456068754196167
+          ]
+        ]
+      },
+      {
+        "fraction": 0.82,
+        "z": 1.674254479408264,
+        "bounds": [
+          [
+            -0.07707595080137253,
+            0.07833161950111389
+          ],
+          [
+            -0.06736448407173157,
+            0.09005274623632431
+          ],
+          [
+            1.6761952638626099,
+            1.6773881912231445
+          ]
+        ]
+      },
+      {
+        "fraction": 0.91,
+        "z": 1.6979897332191467,
+        "bounds": [
+          [
+            -0.06022584065794945,
+            0.06030968204140663
+          ],
+          [
+            -0.04979134351015091,
+            0.0720343068242073
+          ],
+          [
+            1.6971971988677979,
+            1.7002110481262207
+          ]
+        ]
+      },
+      {
+        "fraction": 0.97,
+        "z": 1.713813235759735,
+        "bounds": [
+          [
+            -0.03536573424935341,
+            0.035474736243486404
+          ],
+          [
+            -0.02734019234776497,
+            0.05072451010346413
+          ],
+          [
+            1.7108231782913208,
+            1.716201901435852
+          ]
+        ]
+      }
+    ],
+    "bob_descendants": [
+      {
+        "name": "Hair_Bob_Cap",
+        "type": "MESH",
+        "verts": 1920,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ],
+          [
+            "Hair shell",
+            "SOLIDIFY"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Fringe",
+        "type": "MESH",
+        "verts": 36,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Fringe.001",
+        "type": "MESH",
+        "verts": 36,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Fringe.002",
+        "type": "MESH",
+        "verts": 36,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Fringe.003",
+        "type": "MESH",
+        "verts": 36,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Fringe.004",
+        "type": "MESH",
+        "verts": 36,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.001",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.002",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.003",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.004",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.005",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.006",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.007",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.008",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.009",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.010",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.011",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand",
+        "type": "CURVE",
+        "verts": 0,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.001",
+        "type": "CURVE",
+        "verts": 0,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.002",
+        "type": "CURVE",
+        "verts": 0,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.003",
+        "type": "CURVE",
+        "verts": 0,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.004",
+        "type": "CURVE",
+        "verts": 0,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.005",
+        "type": "CURVE",
+        "verts": 0,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.006",
+        "type": "CURVE",
+        "verts": 0,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.007",
+        "type": "CURVE",
+        "verts": 0,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.008",
+        "type": "CURVE",
+        "verts": 0,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.009",
+        "type": "CURVE",
+        "verts": 0,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.010",
+        "type": "CURVE",
+        "verts": 0,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.011",
+        "type": "CURVE",
+        "verts": 0,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [],
+        "groups": []
+      }
+    ]
+  },
+  "teen": {
+    "path": "/home/impulse/Projects/JustLife/art/experiments/portrait_v62/characters_teen_identity.blend",
+    "head_pivot": [
+      0.0,
+      0.004528277553617954,
+      1.2739999294281006
+    ],
+    "head_matrix": [
+      [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0,
+        0.004528277553617954
+      ],
+      [
+        0.0,
+        0.0,
+        1.0,
+        1.2739999294281006
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "bob_matrix": [
+      [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0,
+        0.0003914996050298214
+      ],
+      [
+        0.0,
+        0.0,
+        1.0,
+        0.11530661582946777
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "head_data_bounds": [
+      [
+        -0.11073029786348343,
+        0.11072402447462082
+      ],
+      [
+        -0.10744214802980423,
+        0.09684322029352188
+      ],
+      [
+        1.2090198993682861,
+        1.514968991279602
+      ]
+    ],
+    "head_evaluated_bounds": [
+      [
+        -0.11073029786348343,
+        0.11072402447462082
+      ],
+      [
+        -0.10744214802980423,
+        0.09684322029352188
+      ],
+      [
+        1.2090198993682861,
+        1.514968991279602
+      ]
+    ],
+    "eye_names": [
+      "Eyes_Sclera",
+      "Eyes_Sclera.001"
+    ],
+    "eye_bounds": [
+      [
+        -0.06273631751537323,
+        0.06273631006479263
+      ],
+      [
+        -0.08582921326160431,
+        -0.042528510093688965
+      ],
+      [
+        1.3891023397445679,
+        1.4124494791030884
+      ]
+    ],
+    "bob_bounds": [
+      [
+        -0.12467367202043533,
+        0.120725616812706
+      ],
+      [
+        -0.09132890403270721,
+        0.11161614209413528
+      ],
+      [
+        1.29246187210083,
+        1.5366809368133545
+      ]
+    ],
+    "head_rows": [
+      {
+        "fraction": 0.12,
+        "z": 1.3029162168502808,
+        "bounds": [
+          [
+            -0.060610782355070114,
+            0.06084233894944191
+          ],
+          [
+            -0.08174564689397812,
+            0.06047963351011276
+          ],
+          [
+            1.3000692129135132,
+            1.3047410249710083
+          ]
+        ]
+      },
+      {
+        "fraction": 0.25,
+        "z": 1.334242194890976,
+        "bounds": [
+          [
+            -0.08011113107204437,
+            0.08016102015972137
+          ],
+          [
+            -0.09368649870157242,
+            0.07680610567331314
+          ],
+          [
+            1.3313987255096436,
+            1.337083101272583
+          ]
+        ]
+      },
+      {
+        "fraction": 0.4,
+        "z": 1.3703875541687012,
+        "bounds": [
+          [
+            -0.11073029786348343,
+            0.11072402447462082
+          ],
+          [
+            -0.1054501160979271,
+            0.09048591554164886
+          ],
+          [
+            1.3675062656402588,
+            1.3732410669326782
+          ]
+        ]
+      },
+      {
+        "fraction": 0.55,
+        "z": 1.4065329134464264,
+        "bounds": [
+          [
+            -0.09180544316768646,
+            0.0920499637722969
+          ],
+          [
+            -0.08204283565282822,
+            0.09658738970756531
+          ],
+          [
+            1.4036691188812256,
+            1.409420132637024
+          ]
+        ]
+      },
+      {
+        "fraction": 0.7,
+        "z": 1.4426782727241516,
+        "bounds": [
+          [
+            -0.08582126349210739,
+            0.08585266768932343
+          ],
+          [
+            -0.0765976533293724,
+            0.09466160833835602
+          ],
+          [
+            1.440271019935608,
+            1.4453222751617432
+          ]
+        ]
+      },
+      {
+        "fraction": 0.82,
+        "z": 1.4715945601463318,
+        "bounds": [
+          [
+            -0.07232666015625,
+            0.07241921871900558
+          ],
+          [
+            -0.06161486729979515,
+            0.08239821344614029
+          ],
+          [
+            1.4728785753250122,
+            1.4744833707809448
+          ]
+        ]
+      },
+      {
+        "fraction": 0.91,
+        "z": 1.4932817757129668,
+        "bounds": [
+          [
+            -0.05532520264387131,
+            0.05463796481490135
+          ],
+          [
+            -0.045558761805295944,
+            0.06591136008501053
+          ],
+          [
+            1.4932799339294434,
+            1.4952720403671265
+          ]
+        ]
+      },
+      {
+        "fraction": 0.97,
+        "z": 1.507739919424057,
+        "bounds": [
+          [
+            -0.032359737902879715,
+            0.032409630715847015
+          ],
+          [
+            -0.025625955313444138,
+            0.04641277343034744
+          ],
+          [
+            1.5048938989639282,
+            1.5099180936813354
+          ]
+        ]
+      }
+    ],
+    "bob_descendants": [
+      {
+        "name": "Hair_Bob_Cap",
+        "type": "MESH",
+        "verts": 1920,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ],
+          [
+            "Hair shell",
+            "SOLIDIFY"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Fringe",
+        "type": "MESH",
+        "verts": 36,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Fringe.001",
+        "type": "MESH",
+        "verts": 36,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Fringe.002",
+        "type": "MESH",
+        "verts": 36,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Fringe.003",
+        "type": "MESH",
+        "verts": 36,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Fringe.004",
+        "type": "MESH",
+        "verts": 36,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.001",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.002",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.003",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.004",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.005",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.006",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.007",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.008",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.009",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.010",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.011",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.001",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.002",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.003",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.004",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.005",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.006",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.007",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.008",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.009",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.010",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.011",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      }
+    ]
+  },
+  "child": {
+    "path": "/home/impulse/Projects/JustLife/art/experiments/portrait_v62/characters_child_identity.blend",
+    "head_pivot": [
+      0.0,
+      0.0040942588821053505,
+      0.9249999523162842
+    ],
+    "head_matrix": [
+      [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0,
+        0.0040942588821053505
+      ],
+      [
+        0.0,
+        0.0,
+        1.0,
+        0.9249999523162842
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "bob_matrix": [
+      [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0,
+        0.0003149998374283314
+      ],
+      [
+        0.0,
+        0.0,
+        1.0,
+        0.08459901809692383
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "head_data_bounds": [
+      [
+        -0.10511431843042374,
+        0.10509666055440903
+      ],
+      [
+        -0.0915713906288147,
+        0.0899488553404808
+      ],
+      [
+        0.8720381259918213,
+        1.1475234031677246
+      ]
+    ],
+    "head_evaluated_bounds": [
+      [
+        -0.10511431843042374,
+        0.10509666055440903
+      ],
+      [
+        -0.0915713906288147,
+        0.0899488553404808
+      ],
+      [
+        0.8720381259918213,
+        1.1475234031677246
+      ]
+    ],
+    "eye_names": [
+      "Eyes_Sclera",
+      "Eyes_Sclera.001"
+    ],
+    "eye_bounds": [
+      [
+        -0.059159860014915466,
+        0.05915985256433487
+      ],
+      [
+        -0.0798463448882103,
+        -0.03961658105254173
+      ],
+      [
+        1.0323010683059692,
+        1.051784873008728
+      ]
+    ],
+    "bob_bounds": [
+      [
+        -0.11511687189340591,
+        0.11421778798103333
+      ],
+      [
+        -0.0848410576581955,
+        0.10700423270463943
+      ],
+      [
+        0.963678240776062,
+        1.1681859493255615
+      ]
+    ],
+    "head_rows": [
+      {
+        "fraction": 0.12,
+        "z": 0.9517027664184571,
+        "bounds": [
+          [
+            -0.06413692981004715,
+            0.0645928755402565
+          ],
+          [
+            -0.06837096810340881,
+            0.05618319660425186
+          ],
+          [
+            0.9491302967071533,
+            0.9543527364730835
+          ]
+        ]
+      },
+      {
+        "fraction": 0.25,
+        "z": 0.9806308150291443,
+        "bounds": [
+          [
+            -0.09185519069433212,
+            0.09179787337779999
+          ],
+          [
+            -0.08467273414134979,
+            0.07111500203609467
+          ],
+          [
+            0.9779759645462036,
+            0.9832924008369446
+          ]
+        ]
+      },
+      {
+        "fraction": 0.4,
+        "z": 1.0140093326568604,
+        "bounds": [
+          [
+            -0.10511431843042374,
+            0.10509666055440903
+          ],
+          [
+            -0.0915713906288147,
+            0.08406679332256317
+          ],
+          [
+            1.0113468170166016,
+            1.0166738033294678
+          ]
+        ]
+      },
+      {
+        "fraction": 0.55,
+        "z": 1.0473878502845764,
+        "bounds": [
+          [
+            -0.08616913855075836,
+            0.08551809936761856
+          ],
+          [
+            -0.07548937201499939,
+            0.08972600102424622
+          ],
+          [
+            1.0447185039520264,
+            1.0500543117523193
+          ]
+        ]
+      },
+      {
+        "fraction": 0.7,
+        "z": 1.0807663679122925,
+        "bounds": [
+          [
+            -0.0801936611533165,
+            0.08022453635931015
+          ],
+          [
+            -0.07115650177001953,
+            0.08793701231479645
+          ],
+          [
+            1.078614354133606,
+            1.0833454132080078
+          ]
+        ]
+      },
+      {
+        "fraction": 0.82,
+        "z": 1.1074691820144653,
+        "bounds": [
+          [
+            -0.06760658323764801,
+            0.06767038255929947
+          ],
+          [
+            -0.05725981295108795,
+            0.07654483616352081
+          ],
+          [
+            1.1086101531982422,
+            1.1099860668182373
+          ]
+        ]
+      },
+      {
+        "fraction": 0.91,
+        "z": 1.127496292591095,
+        "bounds": [
+          [
+            -0.051493093371391296,
+            0.0515647791326046
+          ],
+          [
+            -0.04232264310121536,
+            0.0612291619181633
+          ],
+          [
+            1.126584768295288,
+            1.1291613578796387
+          ]
+        ]
+      },
+      {
+        "fraction": 0.97,
+        "z": 1.1408476996421815,
+        "bounds": [
+          [
+            -0.030237702652812004,
+            0.030330900102853775
+          ],
+          [
+            -0.02323916368186474,
+            0.04311583191156387
+          ],
+          [
+            1.1382261514663696,
+            1.142815351486206
+          ]
+        ]
+      }
+    ],
+    "bob_descendants": [
+      {
+        "name": "Hair_Bob_Cap",
+        "type": "MESH",
+        "verts": 1920,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ],
+          [
+            "Hair shell",
+            "SOLIDIFY"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Fringe",
+        "type": "MESH",
+        "verts": 36,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Fringe.001",
+        "type": "MESH",
+        "verts": 36,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Fringe.002",
+        "type": "MESH",
+        "verts": 36,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Fringe.003",
+        "type": "MESH",
+        "verts": 36,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Fringe.004",
+        "type": "MESH",
+        "verts": 36,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.001",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.002",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.003",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.004",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.005",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.006",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.007",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.008",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.009",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.010",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.011",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.001",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.002",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.003",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.004",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.005",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.006",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.007",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.008",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.009",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.010",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.011",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      }
+    ]
+  },
+  "elder": {
+    "path": "/home/impulse/Projects/JustLife/art/experiments/portrait_v62/characters_elder_identity.blend",
+    "head_pivot": [
+      0.0,
+      -0.04499822109937668,
+      1.4249999523162842
+    ],
+    "head_matrix": [
+      [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0,
+        -0.04499822109937668
+      ],
+      [
+        0.0,
+        0.0,
+        1.0,
+        1.4249999523162842
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "bob_matrix": [
+      [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0,
+        0.00045000016689300537
+      ],
+      [
+        0.0,
+        0.0,
+        1.0,
+        0.1312621831893921
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "head_data_bounds": [
+      [
+        -0.12005496025085449,
+        0.12005498260259628
+      ],
+      [
+        -0.16730551421642303,
+        0.05583958700299263
+      ],
+      [
+        1.3557144403457642,
+        1.6825597286224365
+      ]
+    ],
+    "head_evaluated_bounds": [
+      [
+        -0.12005496025085449,
+        0.12005498260259628
+      ],
+      [
+        -0.16730551421642303,
+        0.05583958700299263
+      ],
+      [
+        1.3557144403457642,
+        1.6825597286224365
+      ]
+    ],
+    "eye_names": [
+      "Eyes_Sclera",
+      "Eyes_Sclera.001"
+    ],
+    "eye_bounds": [
+      [
+        -0.06812627613544464,
+        0.06812626868486404
+      ],
+      [
+        -0.14348481595516205,
+        -0.09636550396680832
+      ],
+      [
+        1.5474419593811035,
+        1.572975993156433
+      ]
+    ],
+    "bob_bounds": [
+      [
+        -0.13622190058231354,
+        0.13197061419487
+      ],
+      [
+        -0.14981134235858917,
+        0.07133463025093079
+      ],
+      [
+        1.444636583328247,
+        1.7052841186523438
+      ]
+    ],
+    "head_rows": [
+      {
+        "fraction": 0.12,
+        "z": 1.4559071254730225,
+        "bounds": [
+          [
+            -0.06566359847784042,
+            0.06590926647186279
+          ],
+          [
+            -0.13977931439876556,
+            0.016097959131002426
+          ],
+          [
+            1.45282781124115,
+            1.4589558839797974
+          ]
+        ]
+      },
+      {
+        "fraction": 0.25,
+        "z": 1.4893898963928223,
+        "bounds": [
+          [
+            -0.08656508475542068,
+            0.08661937713623047
+          ],
+          [
+            -0.15235936641693115,
+            0.03394110128283501
+          ],
+          [
+            1.4864259958267212,
+            1.4921350479125977
+          ]
+        ]
+      },
+      {
+        "fraction": 0.4,
+        "z": 1.528023862838745,
+        "bounds": [
+          [
+            -0.12005496025085449,
+            0.12005498260259628
+          ],
+          [
+            -0.16506853699684143,
+            0.048891711980104446
+          ],
+          [
+            1.5249606370925903,
+            1.5310288667678833
+          ]
+        ]
+      },
+      {
+        "fraction": 0.55,
+        "z": 1.566657829284668,
+        "bounds": [
+          [
+            -0.10010946542024612,
+            0.10035376250743866
+          ],
+          [
+            -0.1396593302488327,
+            0.05555998906493187
+          ],
+          [
+            1.5635747909545898,
+            1.569744348526001
+          ]
+        ]
+      },
+      {
+        "fraction": 0.7,
+        "z": 1.6052917957305908,
+        "bounds": [
+          [
+            -0.09379371255636215,
+            0.09382803738117218
+          ],
+          [
+            -0.13315840065479279,
+            0.05345531180500984
+          ],
+          [
+            1.60273277759552,
+            1.6081308126449585
+          ]
+        ]
+      },
+      {
+        "fraction": 0.82,
+        "z": 1.636198968887329,
+        "bounds": [
+          [
+            -0.07904552668333054,
+            0.07914669066667557
+          ],
+          [
+            -0.1173386499285698,
+            0.04005269333720207
+          ],
+          [
+            1.6375787258148193,
+            1.6392889022827148
+          ]
+        ]
+      },
+      {
+        "fraction": 0.91,
+        "z": 1.659379348754883,
+        "bounds": [
+          [
+            -0.06046470254659653,
+            0.05971362441778183
+          ],
+          [
+            -0.09979099780321121,
+            0.02203427627682686
+          ],
+          [
+            1.6593807935714722,
+            1.6615097522735596
+          ]
+        ]
+      },
+      {
+        "fraction": 0.97,
+        "z": 1.674832935333252,
+        "bounds": [
+          [
+            -0.03536583483219147,
+            0.035420361906290054
+          ],
+          [
+            -0.07800650596618652,
+            0.000724342477042228
+          ],
+          [
+            1.6717925071716309,
+            1.6771618127822876
+          ]
+        ]
+      }
+    ],
+    "bob_descendants": [
+      {
+        "name": "Hair_Bob_Cap",
+        "type": "MESH",
+        "verts": 1920,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ],
+          [
+            "Hair shell",
+            "SOLIDIFY"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Fringe",
+        "type": "MESH",
+        "verts": 36,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Fringe.001",
+        "type": "MESH",
+        "verts": 36,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Fringe.002",
+        "type": "MESH",
+        "verts": 36,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Fringe.003",
+        "type": "MESH",
+        "verts": 36,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Fringe.004",
+        "type": "MESH",
+        "verts": 36,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.001",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.002",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.003",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.004",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.005",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.006",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.007",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.008",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.009",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.010",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.011",
+        "type": "MESH",
+        "verts": 73,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.001",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.002",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.003",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.004",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.005",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.006",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.007",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.008",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.009",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.010",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Strand.011",
+        "type": "MESH",
+        "verts": 40,
+        "parent": "Hair_Bob",
+        "modifiers": [],
+        "materials": [
+          "Hair_highlight"
+        ],
+        "groups": []
+      }
+    ]
+  },
+  "baby": {
+    "path": "/home/impulse/Projects/JustLife/art/experiments/portrait_v62/characters_baby_identity.blend",
+    "head_pivot": [
+      0.0,
+      0.004000000189989805,
+      0.39500001072883606
+    ],
+    "head_matrix": [
+      [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0,
+        0.004000000189989805
+      ],
+      [
+        0.0,
+        0.0,
+        1.0,
+        0.39500001072883606
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "bob_matrix": [
+      [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "head_data_bounds": [
+      [
+        -0.08313271403312683,
+        0.08313271403312683
+      ],
+      [
+        -0.09000459313392639,
+        0.08216937631368637
+      ],
+      [
+        0.39326241612434387,
+        0.552846372127533
+      ]
+    ],
+    "head_evaluated_bounds": [
+      [
+        -0.08313271403312683,
+        0.08313271403312683
+      ],
+      [
+        -0.09000459313392639,
+        0.08216937631368637
+      ],
+      [
+        0.39326241612434387,
+        0.552846372127533
+      ]
+    ],
+    "eye_names": [
+      "Eyes_Sclera_L",
+      "Eyes_Sclera_R"
+    ],
+    "eye_bounds": [
+      [
+        -0.049074605107307434,
+        0.04907459765672684
+      ],
+      [
+        -0.0778108537197113,
+        -0.06261084973812103
+      ],
+      [
+        0.43299999833106995,
+        0.47099998593330383
+      ]
+    ],
+    "bob_bounds": [
+      [
+        -0.1121206134557724,
+        0.1121206134557724
+      ],
+      [
+        -0.15651217103004456,
+        0.046239856630563736
+      ],
+      [
+        0.4069242775440216,
+        0.5609449148178101
+      ]
+    ],
+    "head_rows": [
+      {
+        "fraction": 0.12,
+        "z": 0.4139415740966797,
+        "bounds": [
+          [
+            -0.05779676511883736,
+            0.05779676511883736
+          ],
+          [
+            -0.05136919394135475,
+            0.0617503896355629
+          ],
+          [
+            0.41482290625572205,
+            0.4148229658603668
+          ]
+        ]
+      },
+      {
+        "fraction": 0.25,
+        "z": 0.4344616010785103,
+        "bounds": [
+          [
+            -0.07383865118026733,
+            0.07383865118026733
+          ],
+          [
+            -0.07419286668300629,
+            0.07461035996675491
+          ],
+          [
+            0.4361432194709778,
+            0.43614333868026733
+          ]
+        ]
+      },
+      {
+        "fraction": 0.4,
+        "z": 0.4581385552883148,
+        "bounds": [
+          [
+            -0.08117008209228516,
+            0.08117008209228516
+          ],
+          [
+            -0.08655062317848206,
+            0.08066512644290924
+          ],
+          [
+            0.45654168725013733,
+            0.4565417468547821
+          ]
+        ]
+      },
+      {
+        "fraction": 0.55,
+        "z": 0.48181550949811935,
+        "bounds": [
+          [
+            -0.08263690024614334,
+            0.08263690024614334
+          ],
+          [
+            -0.08927881717681885,
+            0.08194482326507568
+          ],
+          [
+            0.4830000102519989,
+            0.4830000698566437
+          ]
+        ]
+      },
+      {
+        "fraction": 0.7,
+        "z": 0.5054924637079239,
+        "bounds": [
+          [
+            -0.07673609256744385,
+            0.07673609256744385
+          ],
+          [
+            -0.08152349293231964,
+            0.07852867990732193
+          ],
+          [
+            0.5051770806312561,
+            0.5051771402359009
+          ]
+        ]
+      },
+      {
+        "fraction": 0.82,
+        "z": 0.5244340270757675,
+        "bounds": [
+          [
+            -0.06265942752361298,
+            0.06265942752361298
+          ],
+          [
+            -0.06512616574764252,
+            0.06808450073003769
+          ],
+          [
+            0.5258958339691162,
+            0.5258959531784058
+          ]
+        ]
+      },
+      {
+        "fraction": 0.91,
+        "z": 0.5386401996016502,
+        "bounds": [
+          [
+            -0.04350832849740982,
+            0.04350832849740982
+          ],
+          [
+            -0.04399607703089714,
+            0.05087107792496681
+          ],
+          [
+            0.5398125052452087,
+            0.5398126244544983
+          ]
+        ]
+      },
+      {
+        "fraction": 0.97,
+        "z": 0.548110981285572,
+        "bounds": [
+          [
+            -0.026781873777508736,
+            0.026781873777508736
+          ],
+          [
+            -0.02618476003408432,
+            0.034044135361909866
+          ],
+          [
+            0.5473708510398865,
+            0.5492123961448669
+          ]
+        ]
+      }
+    ],
+    "bob_descendants": [
+      {
+        "name": ".Hair_Bob_Cap",
+        "type": "MESH",
+        "verts": 253,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ],
+          [
+            "Soft garment thickness",
+            "SOLIDIFY"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock",
+        "type": "MESH",
+        "verts": 36,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      },
+      {
+        "name": "Hair_Bob_Lock.001",
+        "type": "MESH",
+        "verts": 36,
+        "parent": "Hair_Bob",
+        "modifiers": [
+          [
+            "Sculpted smooth surface",
+            "SUBSURF"
+          ]
+        ],
+        "materials": [
+          "Hair"
+        ],
+        "groups": []
+      }
+    ]
+  }
+}

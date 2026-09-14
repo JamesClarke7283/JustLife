@@ -1,0 +1,73 @@
+{
+  "outer": {
+    "vertices": 17025,
+    "min_signed_clearance": 0.004964894847944379,
+    "penetrating_count": 0,
+    "first_penetrations": []
+  },
+  "evaluated_shell": {
+    "vertices": 34050,
+    "min_signed_clearance": 0.002026778311119415,
+    "penetrating_count": 0,
+    "first_penetrations": []
+  },
+  "hem": {
+    "closed_ring_vertices": 224,
+    "max_adjacent_edge": 0.012187478407908757,
+    "bounds": [
+      [
+        -0.09123794734477997,
+        0.09656088054180145
+      ],
+      [
+        -0.08312723785638809,
+        0.09553733468055725
+      ],
+      [
+        0.4150063395500183,
+        0.5300660133361816
+      ]
+    ],
+    "world_thickness": 0.00306341121904552
+  },
+  "bob_bounds": [
+    [
+      -0.10634863376617432,
+      0.10762248188257217
+    ],
+    [
+      -0.08312723785638809,
+      0.10432080924510956
+    ],
+    [
+      0.4150063395500183,
+      0.5627549886703491
+    ]
+  ],
+  "head_bounds": [
+    [
+      -0.08313271403312683,
+      0.08313271403312683
+    ],
+    [
+      -0.09000459313392639,
+      0.08216937631368637
+    ],
+    [
+      0.39326241612434387,
+      0.552846372127533
+    ]
+  ],
+  "head_shape_keys": [
+    "Basis",
+    "Blink",
+    "Smile",
+    "Face_Round",
+    "Jaw_Strong",
+    "Nose_Wide",
+    "Eye_Spacing",
+    "Nose_Length",
+    "Lip_Fullness",
+    "Chin_Length"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "source": "art/experiments/portrait_v62/characters_teen_orbit_c.blend",
+  "output": "art/experiments/portrait_v62/characters_teen_orbit_d.blend",
+  "reset_key_values": [
+    {
+      "object": "Eyes_Catchlight",
+      "key": "Nose_Wide",
+      "old_value": 1.0
+    },
+    {
+      "object": "Eyes_Catchlight.001",
+      "key": "Nose_Wide",
+      "old_value": 1.0
+    },
+    {
+      "object": "Eyes_Pupil",
+      "key": "Nose_Wide",
+      "old_value": 1.0
+    },
+    {
+      "object": "Eyes_Pupil.001",
+      "key": "Nose_Wide",
+      "old_value": 1.0
+    }
+  ],
+  "output_sha256": "4c9e12054bd2e0b476cffb326aa42a1379dbe5adaedc5093e8e62a2f80789a24",
+  "geometry_changed": false
+}

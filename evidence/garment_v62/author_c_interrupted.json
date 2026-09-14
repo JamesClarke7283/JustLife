@@ -1,0 +1,11 @@
+{
+  "stage": "candidate_c_author",
+  "status": "interrupted_not_verified",
+  "session_id": 66540,
+  "exit_code": 143,
+  "reason": "Process ended with SIGTERM; cause unknown to this agent.",
+  "last_output": "Read blend: art/characters.blend",
+  "candidate_saved": false,
+  "source_sha256_after_exit": "b4b5b722b486fa757dcc0e034d27eb80ce4658bf2c79f1b045dffb9a6753d049",
+  "verification_pass_claimed": false
+}

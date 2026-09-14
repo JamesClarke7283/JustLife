@@ -1,0 +1,292 @@
+{
+  "source": "/home/impulse/Projects/JustLife/art/experiments/skin_surface_v62/adult_fair_surface_b.blend",
+  "source_sha256": "6447b13ae4080253fbd68e2c1e0b99e869123e7cb8e984123c5e82388e17c507",
+  "output": "/home/impulse/Projects/JustLife/art/experiments/eye_shape_v62/tilt_a.blend",
+  "output_sha256": "761f547aab0458423d649da30ff886bb64cbc5c3745812c2aecf26cbb6ed1016",
+  "degrees": 10.0,
+  "scale": 0.9999999605330011,
+  "eye_centers": [
+    [
+      -0.0427700025495143,
+      -0.0676250000892063,
+      1.5972299575805664
+    ],
+    [
+      0.04276999407447862,
+      -0.0676250000892063,
+      1.5972299575805664
+    ]
+  ],
+  "preserved_object_count": 434,
+  "old_state_exact": true,
+  "owned": {
+    "Eyes_Catchlight": {
+      "Eye_Tilt": {
+        "vertices": 178,
+        "max_displacement_m": 0.0010316841272559258
+      },
+      "Corrective__Eye_Tilt__Face_Round": {
+        "vertices": 178,
+        "max_displacement_m": 0.0003246070383674145
+      },
+      "Corrective__Eye_Tilt__Eye_Spacing": {
+        "vertices": 178,
+        "max_displacement_m": 0.0010161498205204361
+      }
+    },
+    "Eyes_Catchlight.001": {
+      "Eye_Tilt": {
+        "vertices": 178,
+        "max_displacement_m": 0.001031684744846027
+      },
+      "Corrective__Eye_Tilt__Face_Round": {
+        "vertices": 178,
+        "max_displacement_m": 0.0003246064105165899
+      },
+      "Corrective__Eye_Tilt__Eye_Spacing": {
+        "vertices": 178,
+        "max_displacement_m": 0.0010161490818724071
+      }
+    },
+    "Eyes_Iris": {
+      "Eye_Tilt": {
+        "vertices": 241,
+        "max_displacement_m": 0.0018198499292420964
+      },
+      "Corrective__Eye_Tilt__Face_Round": {
+        "vertices": 241,
+        "max_displacement_m": 0.00032460685370540727
+      },
+      "Corrective__Eye_Tilt__Eye_Spacing": {
+        "vertices": 241,
+        "max_displacement_m": 0.0010161498205204361
+      }
+    },
+    "Eyes_Iris.001": {
+      "Eye_Tilt": {
+        "vertices": 241,
+        "max_displacement_m": 0.0018198498074946457
+      },
+      "Corrective__Eye_Tilt__Face_Round": {
+        "vertices": 241,
+        "max_displacement_m": 0.00032460626278698414
+      },
+      "Corrective__Eye_Tilt__Eye_Spacing": {
+        "vertices": 241,
+        "max_displacement_m": 0.001016149229602013
+      }
+    },
+    "Eyes_Iris_edge": {
+      "Eye_Tilt": {
+        "vertices": 241,
+        "max_displacement_m": 0.0021429558649897506
+      },
+      "Corrective__Eye_Tilt__Face_Round": {
+        "vertices": 241,
+        "max_displacement_m": 0.00032460685370540727
+      },
+      "Corrective__Eye_Tilt__Eye_Spacing": {
+        "vertices": 241,
+        "max_displacement_m": 0.0010161498205204361
+      }
+    },
+    "Eyes_Iris_edge.001": {
+      "Eye_Tilt": {
+        "vertices": 241,
+        "max_displacement_m": 0.0021429558239807905
+      },
+      "Corrective__Eye_Tilt__Face_Round": {
+        "vertices": 241,
+        "max_displacement_m": 0.00032460626278698414
+      },
+      "Corrective__Eye_Tilt__Eye_Spacing": {
+        "vertices": 241,
+        "max_displacement_m": 0.001016149229602013
+      }
+    },
+    "Eyes_Pupil": {
+      "Eye_Tilt": {
+        "vertices": 241,
+        "max_displacement_m": 0.0007968442606163219
+      },
+      "Corrective__Eye_Tilt__Face_Round": {
+        "vertices": 241,
+        "max_displacement_m": 0.00032460685370540727
+      },
+      "Corrective__Eye_Tilt__Eye_Spacing": {
+        "vertices": 241,
+        "max_displacement_m": 0.0010161498205204361
+      }
+    },
+    "Eyes_Pupil.001": {
+      "Eye_Tilt": {
+        "vertices": 241,
+        "max_displacement_m": 0.0007968442606161968
+      },
+      "Corrective__Eye_Tilt__Face_Round": {
+        "vertices": 241,
+        "max_displacement_m": 0.00032460626278698414
+      },
+      "Corrective__Eye_Tilt__Eye_Spacing": {
+        "vertices": 241,
+        "max_displacement_m": 0.001016149229602013
+      }
+    },
+    "Eyes_Sclera": {
+      "Eye_Tilt": {
+        "vertices": 920,
+        "max_displacement_m": 0.004441458836000628
+      },
+      "Corrective__Eye_Tilt__Face_Round": {
+        "vertices": 922,
+        "max_displacement_m": 0.00032460714916461884
+      },
+      "Corrective__Eye_Tilt__Eye_Spacing": {
+        "vertices": 922,
+        "max_displacement_m": 0.0010161498205204361
+      }
+    },
+    "Eyes_Sclera.001": {
+      "Eye_Tilt": {
+        "vertices": 920,
+        "max_displacement_m": 0.004441458836000628
+      },
+      "Corrective__Eye_Tilt__Face_Round": {
+        "vertices": 922,
+        "max_displacement_m": 0.0003246065582461957
+      },
+      "Corrective__Eye_Tilt__Eye_Spacing": {
+        "vertices": 922,
+        "max_displacement_m": 0.001016149229602013
+      }
+    },
+    "Hair_Brow": {
+      "Eye_Tilt": {
+        "vertices": 729,
+        "max_displacement_m": 0.0058380528501007535
+      },
+      "Corrective__Eye_Tilt__Face_Round": {
+        "vertices": 729,
+        "max_displacement_m": 1.8175942051232156e-05
+      },
+      "Corrective__Eye_Tilt__Eye_Spacing": {
+        "vertices": 729,
+        "max_displacement_m": 0.0009574210196695816
+      },
+      "Corrective__Eye_Tilt__Brow_Arch": {
+        "vertices": 724,
+        "max_displacement_m": 0.0006758026727783201
+      }
+    },
+    "Hair_Brow.001": {
+      "Eye_Tilt": {
+        "vertices": 729,
+        "max_displacement_m": 0.005838052832603722
+      },
+      "Corrective__Eye_Tilt__Face_Round": {
+        "vertices": 729,
+        "max_displacement_m": 1.8175869127269213e-05
+      },
+      "Corrective__Eye_Tilt__Eye_Spacing": {
+        "vertices": 729,
+        "max_displacement_m": 0.0009574210642507412
+      },
+      "Corrective__Eye_Tilt__Brow_Arch": {
+        "vertices": 724,
+        "max_displacement_m": 0.0006758026727783201
+      }
+    },
+    "Lash_Upper_-1": {
+      "Eye_Tilt": {
+        "vertices": 66,
+        "max_displacement_m": 0.00393715519221903
+      },
+      "Corrective__Eye_Tilt__Blink": {
+        "vertices": 66,
+        "max_displacement_m": 0.0014467951177370918
+      },
+      "Corrective__Eye_Tilt__Face_Round": {
+        "vertices": 66,
+        "max_displacement_m": 0.0003256433032900707
+      },
+      "Corrective__Eye_Tilt__Eye_Spacing": {
+        "vertices": 66,
+        "max_displacement_m": 0.0010166272160176384
+      }
+    },
+    "Lash_Upper_1": {
+      "Eye_Tilt": {
+        "vertices": 66,
+        "max_displacement_m": 0.003937155486402126
+      },
+      "Corrective__Eye_Tilt__Blink": {
+        "vertices": 66,
+        "max_displacement_m": 0.0014467951177370918
+      },
+      "Corrective__Eye_Tilt__Face_Round": {
+        "vertices": 66,
+        "max_displacement_m": 0.0003254778461424312
+      },
+      "Corrective__Eye_Tilt__Eye_Spacing": {
+        "vertices": 66,
+        "max_displacement_m": 0.0010166071247925679
+      }
+    },
+    "Skin_Head_continuous": {
+      "Eye_Tilt": {
+        "vertices": 2284,
+        "max_displacement_m": 0.005946779259257062
+      },
+      "Corrective__Eye_Tilt__Blink": {
+        "vertices": 1425,
+        "max_displacement_m": 0.0014467968331690901
+      },
+      "Corrective__Eye_Tilt__Smile": {
+        "vertices": 218,
+        "max_displacement_m": 0.00021332636588120636
+      },
+      "Corrective__Eye_Tilt__Face_Round": {
+        "vertices": 2204,
+        "max_displacement_m": 0.0014969184025024702
+      },
+      "Corrective__Eye_Tilt__Jaw_Strong": {
+        "vertices": 95,
+        "max_displacement_m": 1.4284012752719686e-05
+      },
+      "Corrective__Eye_Tilt__Nose_Wide": {
+        "vertices": 946,
+        "max_displacement_m": 0.0007607514543888506
+      },
+      "Corrective__Eye_Tilt__Eye_Spacing": {
+        "vertices": 2138,
+        "max_displacement_m": 0.0010310539157930476
+      },
+      "Corrective__Eye_Tilt__Nose_Length": {
+        "vertices": 784,
+        "max_displacement_m": 0.00015902614376726658
+      },
+      "Corrective__Eye_Tilt__Face_Length": {
+        "vertices": 819,
+        "max_displacement_m": 0.0007215043585096005
+      },
+      "Corrective__Eye_Tilt__Mouth_Width": {
+        "vertices": 83,
+        "max_displacement_m": 1.3413605737120915e-05
+      }
+    }
+  },
+  "corrective_sources": [
+    "Blink",
+    "Brow_Arch",
+    "Eye_Spacing",
+    "Face_Length",
+    "Face_Round",
+    "Jaw_Strong",
+    "Mouth_Width",
+    "Nose_Length",
+    "Nose_Wide",
+    "Smile"
+  ],
+  "corrective_weight_contract": "eye_tilt * source_weight; including Blink and Smile",
+  "production_promoted": false
+}

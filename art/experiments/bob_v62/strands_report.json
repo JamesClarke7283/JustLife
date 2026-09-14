@@ -1,0 +1,16 @@
+{
+  "input": "/home/impulse/Projects/JustLife/art/experiments/bob_v62/combined.blend",
+  "output": "/home/impulse/Projects/JustLife/art/experiments/bob_v62/strands.blend",
+  "scope": "Four Hair_Bob descendant meshes only; one added Bob material and three original packed maps",
+  "protected_objects": 430,
+  "hem_exact": true,
+  "crown_pole_exact": true,
+  "material": "Hair_Bob_Surface",
+  "runtime_recolor_role": "Hair",
+  "texture_dimensions": [
+    2048,
+    1024
+  ],
+  "external_pixels_used": false,
+  "candidate_sha256": "8061c0cc55760fd6956bffddfde53cf221ea85284de26dc2f901acac8e11680c"
+}

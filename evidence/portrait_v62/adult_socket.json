@@ -1,0 +1,87 @@
+{
+  "source": "art/experiments/portrait_v62/characters_identity.blend",
+  "eye_aperture_adult_m": [
+    0.045,
+    0.0133
+  ],
+  "eyes": [
+    {
+      "sign": -1,
+      "scale": 1.0000004870246868,
+      "collar_vertices": 704,
+      "keys": [
+        "Basis",
+        "Blink",
+        "Smile",
+        "Face_Round",
+        "Jaw_Strong",
+        "Nose_Wide",
+        "Eye_Spacing",
+        "Nose_Length",
+        "Lip_Fullness",
+        "Chin_Length"
+      ],
+      "lash_vertices": 66
+    },
+    {
+      "sign": 1,
+      "scale": 1.0000005235758083,
+      "collar_vertices": 704,
+      "keys": [
+        "Basis",
+        "Blink",
+        "Smile",
+        "Face_Round",
+        "Jaw_Strong",
+        "Nose_Wide",
+        "Eye_Spacing",
+        "Nose_Length",
+        "Lip_Fullness",
+        "Chin_Length"
+      ],
+      "lash_vertices": 66
+    }
+  ],
+  "head": {
+    "Basis": {
+      "vertices_recessed": 95,
+      "maximum_depth_m": 0.0041743410057483304
+    },
+    "Blink": {
+      "vertices_recessed": 424,
+      "maximum_depth_m": 0.006856930000251352
+    },
+    "Smile": {
+      "vertices_recessed": 95,
+      "maximum_depth_m": 0.004174355906909524
+    },
+    "Face_Round": {
+      "vertices_recessed": 91,
+      "maximum_depth_m": 0.0037596938437877286
+    },
+    "Jaw_Strong": {
+      "vertices_recessed": 95,
+      "maximum_depth_m": 0.004174422962134897
+    },
+    "Nose_Wide": {
+      "vertices_recessed": 95,
+      "maximum_depth_m": 0.004177157325213968
+    },
+    "Eye_Spacing": {
+      "vertices_recessed": 95,
+      "maximum_depth_m": 0.004205625993674814
+    },
+    "Nose_Length": {
+      "vertices_recessed": 95,
+      "maximum_depth_m": 0.004174363357490121
+    },
+    "Lip_Fullness": {
+      "vertices_recessed": 95,
+      "maximum_depth_m": 0.004174355906909524
+    },
+    "Chin_Length": {
+      "vertices_recessed": 95,
+      "maximum_depth_m": 0.004174355906909524
+    }
+  }
+}

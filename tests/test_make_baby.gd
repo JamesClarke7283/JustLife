@@ -219,7 +219,7 @@ func _beat_case()->void:
 	# (when the countdown completes) is what produces the pending baby.
 	check(bool(household.pregnancy.get("active",false)) and not bool(household.pregnancy.get("pending",false)),"The beat's completion begins a pregnancy rather than an instant birth.")
 	check(LifeBabyPlan.days_remaining(household.pregnancy,household.day,household.minutes)==int(LifeBabyPlan.PREGNANCY_DAYS),"The pregnancy runs three game days.")
-	var expecting:LifeSim=household.members[0]
+	var expecting:LifeSim=household.members[0].sim
 	var has_moodlet:bool=false
 	for mood:Dictionary in expecting.moodlets:has_moodlet = has_moodlet or str(mood.get("label",""))=="Expecting"
 	check(has_moodlet,"The expecting mother carries a visible Expecting moodlet with the countdown.")

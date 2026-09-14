@@ -1,0 +1,11 @@
+{
+  "ready": "/home/impulse/Projects/JustLife/art/experiments/buzz_v62/integrated_fair_b/ready.blend",
+  "ready_sha256": "01ade04129a1a9056eeb1c83afe2e838abe433e45c088699b3fa026144d5dd81",
+  "glb": "/home/impulse/Projects/JustLife/art/experiments/buzz_v62/integrated_fair_b/models/character.glb",
+  "glb_sha256": "4f610bde352ad06d1dcf5c4a10bcc5829e042032d7472fa1ca7137e11c6ca5ff",
+  "stages_passed": [
+    "neutralize",
+    "fresh_native_preservation",
+    "export"
+  ]
+}
