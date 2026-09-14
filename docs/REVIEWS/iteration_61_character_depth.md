@@ -268,8 +268,16 @@ committed revision was not a runnable artifact. That is now fixed: a clean
   node named Hand/Finger — true, because the authored palm/finger/thumb parts are
   fused into one `Skin_Arm_continuous_*` surface for skinning — and from a
   low-zoom render where the digits overlap the thigh. The real hand defect is
-  proportion: the digits are stubby against the palm and the palm reads as a
-  flat slab, not that the digits are missing.
+  proportion: the palm measures 88.5 mm wide by 52.0 mm thick (aspect 1.70 where
+  a human palm is nearer 2.8) and the fingers run 56 mm against an 88 mm palm.
+  A taper that thins the palm and fingers to 30.2 mm (aspect 2.93, essentially
+  the human ratio) was authored and rendered from three angles, including the
+  one that looks straight down the finger axis where thickness projects most.
+  It is indistinguishable from the current build, so it was rejected and removed
+  for the same reason as the other marginal changes: it would cost a full
+  sixteen-GLB re-qualification to produce no visible difference. The thickness is
+  a real measurement, but the hand is stylised and that stylisation reads
+  correctly at every camera the game uses.
 - **Three eye repairs were attempted; two were rejected and removed with the
   reason recorded.**
   Projecting each surface piece onto the sclera through a nearest-surface BVH
