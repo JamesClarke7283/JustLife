@@ -201,7 +201,9 @@ jobs:
           "$BUTLER" push packages/JustLife-linux impulse20/justlife:linux-x86_64 --userversion "$VERSION" --fix-permissions
           "$BUTLER" push packages/JustLife-windows impulse20/justlife:windows-x86_64 --userversion "$VERSION"
           "$BUTLER" push packages/JustLife-macos/JustLife.zip impulse20/justlife:macos --userversion "$VERSION" --fix-permissions
-          "$BUTLER" status impulse20/justlife
+          for channel in linux-x86_64 windows-x86_64 macos; do
+            "$BUTLER" status "impulse20/justlife:$channel"
+          done
           {
             echo '### JustLife uploaded to itch.io'
             echo "Version: \`$VERSION\`"

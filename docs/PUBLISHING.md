@@ -55,7 +55,9 @@ With butler installed and `BUTLER_API_KEY` supplied through your environment, th
 butler push dist/JustLife-linux impulse20/justlife:linux-x86_64 --userversion 0.1.0 --fix-permissions
 butler push dist/JustLife-windows impulse20/justlife:windows-x86_64 --userversion 0.1.0
 butler push dist/JustLife-macos/JustLife.zip impulse20/justlife:macos --userversion 0.1.0 --fix-permissions
-butler status impulse20/justlife
+for channel in linux-x86_64 windows-x86_64 macos; do
+  butler status "impulse20/justlife:$channel"
+done
 ```
 
 See the official [butler installation](https://itch.io/docs/butler/installing.html), [authentication](https://itch.io/docs/butler/login.html) and [upload documentation](https://itch.io/docs/butler/pushing.html).
