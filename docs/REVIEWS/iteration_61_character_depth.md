@@ -259,9 +259,17 @@ committed revision was not a runnable artifact. That is now fixed: a clean
   corrected below. What genuinely remains: the iris is correctly proportioned
   but has no fibre striations or limbal shading, so it is a smooth disc at
   extreme close-up; the upper-lid boundary is a hard edge with no crease, lash
-  line or tear duct; sub-millimetre lip and nose surface detail is absent; and
-  the hands are still a fused paddle with no separated digits in the exported
-  GLB (`Hand_Grip_L/R` morphs sit on an arm-fill mesh).
+  line or tear duct; sub-millimetre lip and nose surface detail is absent.
+  **The hands were reported as a fused paddle with no separated digits, and that
+  is wrong.** `tools/render_hand_probe.py` renders the hand directly: it carries
+  four separated fingers with tapered tips plus a thumb on the left hand and a
+  curled thumb on the right (`evidence/hands61/adult_front.png`,
+  `adult_tips.png`). The earlier claim was inferred from the export having no
+  node named Hand/Finger — true, because the authored palm/finger/thumb parts are
+  fused into one `Skin_Arm_continuous_*` surface for skinning — and from a
+  low-zoom render where the digits overlap the thigh. The real hand defect is
+  proportion: the digits are stubby against the palm and the palm reads as a
+  flat slab, not that the digits are missing.
 - **Three eye repairs were attempted; two were rejected and removed with the
   reason recorded.**
   Projecting each surface piece onto the sclera through a nearest-surface BVH
