@@ -25,6 +25,7 @@ func main_menu() -> void:
 	app.button("New game",Vector2(60,614),Vector2(374,51),app.new_game)
 	app.button("Saved lives",Vector2(60,678),Vector2(374,51),func():show_picker("load"))
 	app.button("Sound: "+("on" if app.sound_enabled else "off"),Vector2(60,789),Vector2(181,41),func():app.set_sound(not app.sound_enabled);main_menu())
+	app.button("Music: "+("on" if app.music_enabled else "off"),Vector2(60,738),Vector2(181,41),func():app.set_music(not app.music_enabled);main_menu())
 	app.button("Quit",Vector2(253,789),Vector2(181,41),app.quit_game)
 	app.small_caps("JustLife · an original life simulation",Vector2(61,853),Vector2(393,22))
 	app.card(Vector2(905,65),Vector2(447,124),Color("fffdf7"),20)

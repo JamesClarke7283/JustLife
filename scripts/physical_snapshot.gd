@@ -28,7 +28,7 @@ static func capture(app:Node)->Dictionary:
 		state.resource_action_active=str(action.get("phase",""))=="active" or bool(motion.get("resume_active",false))
 		state.waiting_action_id=str(action.get("id",""));state.waiting_target_id=str(action.get("target_id",""))
 		if id==app.household.selected_id():
-			state.merge({"camera":LifeJourneyState.packed(app.world.camera_target),"angle":app.world.camera_angle,"elevation":app.world.camera_elevation,"zoom":app.world.camera.size,"floor":app.floor_color,"lot":app.selected_lot,"cutaway":app.world.cutaway,"view_level":app.world.view_level,"sound":app.sound_enabled,"venue":app.current_venue,"home_layout":home,"venue_layouts":venues,"residents":app.residents.snapshot()},true)
+			state.merge({"camera":LifeJourneyState.packed(app.world.camera_target),"angle":app.world.camera_angle,"elevation":app.world.camera_elevation,"zoom":app.world.camera.size,"floor":app.floor_color,"lot":app.selected_lot,"cutaway":app.world.cutaway,"view_level":app.world.view_level,"sound":app.sound_enabled,"music":app.music_enabled,"venue":app.current_venue,"home_layout":home,"venue_layouts":venues,"residents":app.residents.snapshot()},true)
 		states[id]=state
 		var journey:Dictionary=physical.members[id].motion
 		if not journey.is_empty() and action.is_empty():

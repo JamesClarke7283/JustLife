@@ -83,7 +83,14 @@ var build_transactions:LifeBuildTransactions
 var audio_player: AudioStreamPlayer
 var chime_player: AudioStreamPlayer
 var ambience_player: AudioStreamPlayer
+var music_player: AudioStreamPlayer
 var sound_enabled: bool = true
+var music_enabled: bool = true
+## Pets: the live bodies the household owns. `pets` is the shop view; the saved
+## record lives in the household, so a load always rebuilds the same animals.
+var pet_shop: LifePetShopFlow
+var pet_actors: Dictionary = {}
+var pet_arrivals: Dictionary = {}
 var pending_move: Dictionary = {}
 var loading_game: bool = false
 var floor_color: String = "cfa97e"
@@ -149,6 +156,7 @@ func _ready() -> void:
 	sanitation_flow=LifeSanitationFlow.new();sanitation_flow.app=self;add_child(sanitation_flow)
 	idle_space=preload("res://scripts/idle_space.gd").new();idle_space.app=self
 	adoption_flow=LifeAdoptionFlow.new(self)
+	pet_shop=LifePetShopFlow.new(self)
 	residents=LifeResidents.new(self)
 	traversal=LifeTraversal.new(self)
 	household_profiles=[profile]
@@ -221,13 +229,14 @@ func capture_milestone(which:String) -> void:
 	var folder:String="user://captures" if not OS.has_feature("editor") else "res://art/screenshots"
 	DirAccess.make_dir_recursive_absolute(folder)
 	get_viewport().get_texture().get_image().save_png(folder.path_join(which+".png"))
-	if is_instance_valid(player):print("JUSTLIFE_PACKED_AUDIO voice=",player._voice_streams.size()," ambience=",is_instance_valid(ambience_player.stream)," click=",is_instance_valid(audio_player.stream))
+	if is_instance_valid(player):print("JUSTLIFE_PACKED_AUDIO voice=",player._voice_streams.size()," ambience=",is_instance_valid(ambience_player.stream)," click=",is_instance_valid(audio_player.stream)," music=",is_instance_valid(music_player.stream))
 	print("JUSTLIFE_CAPTURE ",which)
 	# Free the scene, then quit from a timer signal so the shutdown does not
 	# depend on this freed object's coroutine: the settle lets the audio and
 	# rendering servers release their streams and textures cleanly.
 	if is_instance_valid(audio_player):audio_player.stop()
 	if is_instance_valid(ambience_player):ambience_player.stop()
+	if is_instance_valid(music_player):music_player.stop()
 	var settle:SceneTreeTimer=get_tree().create_timer(0.25)
 	var tree:=get_tree()
 	settle.timeout.connect(func():tree.quit())
@@ -921,6 +930,7 @@ func setup_live(layout:Array) -> void:
 			world.actors[id].rotation.y=float(record.yaw)
 	build_undo.clear()
 	_sync_actor_sound()
+	sync_pets()
 	draw_live()
 	for member:Dictionary in household.members:
 		var current:Dictionary=member.sim.get_current_action()
@@ -948,6 +958,262 @@ func spawn_actor(id:String,person:Dictionary,p:Vector3) -> LifeActor:
 		shape.shape=capsule;shape.position.y=.9
 		body.add_child(shape)
 	return actor
+
+## --------------------------------------------------------------- pets
+
+## Rebuild every live pet from the household's saved record. Called after the
+## world is created, so a load always resumes the same animals in their places.
+func sync_pets() -> void:
+	for id:String in pet_actors.keys():
+		var stale:LifePetActor=pet_actors[id]
+		if is_instance_valid(stale):stale.queue_free()
+	pet_actors.clear()
+	pet_arrivals.clear()
+	if not is_instance_valid(world) or not is_instance_valid(world.house):return
+	var pets:Array=household.pets.get("pets",[])
+	var taken:Array[Vector3]=[]
+	for index:int in range(pets.size()):
+		var pet:Dictionary=pets[index]
+		# A saved pet is already home: it stands at its own indoor spot rather
+		# than walking in again, so a reload never restages the arrival.
+		var at:Vector3=pet_home_spot(index,taken)
+		taken.append(at)
+		spawn_pet(str(pet.id),pet,at,at)
+	_sync_pet_sound()
+	_refresh_pet_targets()
+
+## Create one pet body. A pet bought here walks in from the street; a pet that
+## is already home simply stands at its spot.
+func spawn_pet(id:String,pet:Dictionary,spawn:Vector3,destination:Vector3) -> LifePetActor:
+	var actor:=LifePetActor.new()
+	actor.name=id.capitalize()
+	# Configure before entering the tree: the actor builds its model once, from
+	# the real pet, instead of building a throwaway default in _ready first.
+	actor.configure(id,str(pet.get("species","cat")),LifePets.appearance(pet),str(pet.get("name","")),str(pet.get("sex","female")))
+	world.house.add_child(actor)
+	actor.position=spawn
+	actor.set_meta("display_name",str(pet.get("name","")))
+	pet_actors[id]=actor
+	_pet_pick_body(actor,id)
+	if destination.distance_to(spawn)>.01:pet_arrivals[id]={"destination":destination,"path":world.path_to(spawn,destination),"index":0}
+	if not pet_arrivals.has(id):actor.position=destination
+	return actor
+
+## A pet is picked like anyone else: its own body carries the item identity, so
+## clicking it opens its card through the ordinary clicked-object path.
+func _pet_pick_body(actor:LifePetActor,id:String) -> void:
+	var body:=StaticBody3D.new()
+	body.collision_layer=2
+	body.set_meta("item_id",id)
+	actor.add_child(body)
+	var shape:=CollisionShape3D.new()
+	var capsule:=CapsuleShape3D.new()
+	capsule.height=float(LifePetActor.SPECIES_HEIGHT.get(actor.species,0.30))
+	capsule.radius=0.18
+	shape.shape=capsule
+	shape.position.y=capsule.height*.5
+	body.add_child(shape)
+
+## Where a pet settles in the home. It prefers a clear tile beside the
+## household's food and water bowl, then the nearest clear floor tile to a few
+## room seeds. Every candidate must be a real, non-solid ground tile that the
+## household's own placement rules leave standing-clear, so a pet never settles
+## inside furniture or on top of a Lifelet. Falls back to the curbside places
+## the household returns on only when the home has no free floor at all.
+func pet_home_spot(index:int=0, taken:Array[Vector3]=[]) -> Vector3:
+	var seeds:Array[Vector3]=[]
+	var bowl:Dictionary=world.closest_item("pet_bowl",Vector3.ZERO)
+	if not bowl.is_empty():
+		var near:Vector3=Vector3(bowl.node.position.x,.16,bowl.node.position.z)
+		seeds.append_array([near+Vector3(.75,0,.5),near+Vector3(-.75,0,.5),near+Vector3(.75,0,-.5),near+Vector3(-.75,0,-.5)])
+	# Clear floor in the living room, then the rest of the ground floor, so
+	# several pets spread out instead of stacking on one tile.
+	seeds.append_array([
+		Vector3(-1.5,0,1.5),Vector3(1.5,0,1.5),Vector3(-1.5,0,3.5),Vector3(1.5,0,3.5),
+		Vector3(0,0,-1.5),Vector3(-3,0,1.0),Vector3(3,0,1.0),Vector3(0,0,4.0),
+		Vector3(-4.5,0,-2.0),Vector3(4.5,0,-2.0),Vector3(-4.5,0,2.5),Vector3(4.5,0,2.5),
+		Vector3(0,0,2.0),Vector3(-2.5,0,-3.5),Vector3(2.5,0,-3.5),
+	])
+	for seed:Vector3 in seeds:
+		var cell:Vector2i=world.nearest_free(seed)
+		var at:Vector3=Vector3(cell.x*.25,.16,cell.y*.25)
+		if world.point_level(at)!=0:continue
+		if _pet_spot_blocked(at):continue
+		if taken.any(func(other:Vector3)->bool:return other.distance_to(at)<.7):continue
+		return at
+	return world.lot_return_position(index)
+
+## The walk a pet takes when it first comes home: from the street to its own
+## clear indoor spot. Returning Vector3.INF means no route exists yet, so the
+## purchase is refused before any money changes hands.
+func pet_arrival_destination(from:Vector3) -> Vector3:
+	var taken:Array[Vector3]=[]
+	for id:String in pet_actors:
+		var body:LifePetActor=pet_actors[id]
+		if is_instance_valid(body):taken.append(body.position)
+	var at:Vector3=pet_home_spot(household.pets.get("pets",[]).size(),taken)
+	if _pet_spot_blocked(at):return Vector3.INF
+	var walk:PackedVector3Array=world.path_to(from,at)
+	if walk.is_empty() or walk[-1].distance_to(at)>=.001:return Vector3.INF
+	return at
+
+func _pet_spot_blocked(at:Vector3) -> bool:
+	if not meal_flow.standing_geometry_clear(at):return true
+	for id:String in world.actors:
+		var body:LifeActor=world.actors[id]
+		if body.visible and Vector2(body.position.x-at.x,body.position.z-at.z).length()<.7:return true
+	for id:String in pet_actors:
+		var pet:LifePetActor=pet_actors[id]
+		if pet.visible and Vector2(pet.position.x-at.x,pet.position.z-at.z).length()<.7:return true
+	return false
+
+## Walk an arriving pet in, then let it idle. Returning true means the pet moved.
+func _advance_pet_arrivals(delta:float) -> bool:
+	if pet_arrivals.is_empty():return false
+	var speed:float=float(sim.speed)
+	if speed<=0.0:return false
+	var moved:bool=false
+	for id:String in pet_arrivals.keys():
+		var actor:LifePetActor=pet_actors.get(id)
+		if not is_instance_valid(actor):
+			pet_arrivals.erase(id)
+			continue
+		var record:Dictionary=pet_arrivals[id]
+		var walk:PackedVector3Array=record.path
+		var destination:Vector3=record.destination
+		if walk.is_empty() or int(record.index)>=walk.size():
+			pet_arrivals.erase(id)
+			actor.position=destination
+			continue
+		var budget:float=delta*speed*2.0
+		while int(record.index)<walk.size() and budget>0.000001:
+			var point:Vector3=walk[int(record.index)]
+			var distance:float=actor.position.distance_to(point)
+			if distance<0.001:
+				record.index=int(record.index)+1
+				continue
+			var step:float=minf(distance,budget)
+			var next:Vector3=actor.position.move_toward(point,step)
+			if _pet_step_blocked(actor,next):break
+			var direction:Vector3=next-actor.position
+			actor.rotation.y=lerp_angle(actor.rotation.y,atan2(direction.x,direction.z),minf(delta*6.0,1.0))
+			actor.position=next
+			budget-=step
+			moved=true
+			if distance<=step+0.000001:record.index=int(record.index)+1
+		if actor.position.distance_to(destination)<0.05:
+			pet_arrivals.erase(id)
+			actor.position=destination
+	return moved
+
+func _pet_step_blocked(actor:LifePetActor,next:Vector3) -> bool:
+	if not world.lot_navigation.segment_clear(0,actor.position,next):return true
+	for id:String in world.actors:
+		var body:LifeActor=world.actors[id]
+		if body.visible and body.position.distance_to(next)<LifeTraversal.BODY_GAP:return true
+	return false
+
+## Pets are presentation for the household clock: a paused day freezes them too.
+func _sync_pet_sound() -> void:
+	var running:bool=mode=="live" and is_instance_valid(sim) and sim.speed>0
+	for id:String in pet_actors:
+		var actor:LifePetActor=pet_actors[id]
+		if is_instance_valid(actor):actor.speed=1.0 if running else 0.0
+
+func _refresh_pet_targets() -> void:
+	if not is_instance_valid(world):return
+	var targets:Array=world.simulation_targets()
+	for id:String in pet_actors:
+		var record:Dictionary=_pet_record(id)
+		if record.is_empty():continue
+		var actor:LifePetActor=pet_actors[id]
+		if not is_instance_valid(actor):continue
+		targets.append({"id":id,"kind":"pet","label":str(record.name),"position":actor.position})
+
+func _pet_record(id:String) -> Dictionary:
+	for pet:Dictionary in household.pets.get("pets",[]):
+		if str(pet.id)==id:return pet
+	return {}
+
+func _tick_pets(delta:float) -> void:
+	if pet_actors.is_empty():return
+	var running:bool=mode=="live" and sim.speed>0
+	var moving:bool=_advance_pet_arrivals(delta) if running else false
+	for id:String in pet_actors.keys():
+		var actor:LifePetActor=pet_actors.get(id)
+		if not is_instance_valid(actor):
+			pet_actors.erase(id)
+			continue
+		actor.animate(delta,moving and pet_arrivals.has(id),float(sim.speed) if running else 0.0)
+	_refresh_pet_targets()
+
+## Put the whole pet population on one floor view's layer, so a pet upstairs is
+## hidden while the ground floor is shown and vice versa.
+func refresh_pet_layers() -> void:
+	for id:String in pet_actors:
+		var actor:LifePetActor=pet_actors[id]
+		if not is_instance_valid(actor):continue
+		for child:Node in actor.get_children():
+			if child is CollisionObject3D:
+				child.collision_layer=2 if world.point_level(actor.position)!=1 else 4
+
+## A pet card: what it is, what it is wearing, and the one thing to do with it.
+func show_pet_card(id:String) -> void:
+	var record:Dictionary=_pet_record(id)
+	if record.is_empty():return
+	close_overlay();overlay_open=true;dismiss_layer()
+	var p:=Vector2(clampf(get_viewport().get_visible_rect().size.x*.5-160,300,1064),140)
+	card(p,Vector2(340,300),P.WHITE,17,overlay)
+	text_label(str(record.name),p+Vector2(19,14),Vector2(300,37),24,P.INK,true,overlay)
+	text_label("%s · %s" % [LifePets.species_label(str(record.species)),str(LifePets.SEX_LABELS[record.sex])],p+Vector2(20,52),Vector2(300,26),16,P.TEAL,false,overlay)
+	paragraph("%s coat, %s markings, %s." % [str(LifePets.COAT_LENGTH_LABELS[record.coat_length]),str(LifePets.MARKING_LABELS[record.marking]).to_lower(),"mixed gradient" if float(record.gradient)>.35 else "solid"],p+Vector2(20,84),Vector2(302,40),14,P.MUTED,overlay)
+	var actor:LifePetActor=pet_actors.get(id)
+	if is_instance_valid(actor):pet_thumbnail(p+Vector2(19,132),Vector2(302,112),record,overlay)
+	button("Back to life",p+Vector2(19,254),Vector2(144,38),close_overlay,false,overlay)
+	button("Main menu",p+Vector2(177,254),Vector2(144,38),show_main_menu,false,overlay)
+
+## A small live preview of a pet, used by the shop and the pet card. It is the
+## same SubViewport approach the furnishing thumbnails use, so a preview never
+## costs a world node.
+func pet_thumbnail(p:Vector2,s:Vector2,pet:Dictionary,parent:Node=ui) -> void:
+	var sv:=SubViewport.new()
+	sv.size=Vector2i(int(s.x*2),int(s.y*2))
+	sv.own_world_3d=true
+	sv.transparent_bg=true
+	sv.render_target_update_mode=SubViewport.UPDATE_ALWAYS
+	sv.msaa_3d=Viewport.MSAA_2X
+	parent.add_child(sv)
+	var view:=TextureRect.new()
+	view.texture=sv.get_texture()
+	view.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
+	view.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	rect(view,p,s,parent)
+	var root:=Node3D.new();sv.add_child(root)
+	var path:String="res://assets/models/pet_%s.glb" % str(pet.get("species","cat"))
+	if not ResourceLoader.exists(path):return
+	var model:LifePetActor=LifePetActor.new()
+	# Configured detached, so the preview builds its model once.
+	model.configure("preview",str(pet.get("species","cat")),LifePets.appearance(pet),str(pet.get("name","")),str(pet.get("sex","female")))
+	root.add_child(model)
+	var height:float=float(LifePetActor.SPECIES_HEIGHT.get(str(pet.get("species","cat")),0.30))
+	var cam:=Camera3D.new();root.add_child(cam)
+	cam.projection=Camera3D.PROJECTION_ORTHOGONAL
+	cam.size=maxf(height*2.1,0.5)
+	cam.position=Vector3(.9,height*.6,1.4)
+	cam.look_at(Vector3(0,height*.45,0))
+	var light:=DirectionalLight3D.new();root.add_child(light);light.rotation_degrees=Vector3(-38,-32,0);light.light_energy=.7
+	var env:=WorldEnvironment.new();var e:=Environment.new();e.ambient_light_source=Environment.AMBIENT_SOURCE_COLOR;e.ambient_light_color=Color.WHITE;e.ambient_light_energy=.35;env.environment=e;root.add_child(env)
+	freeze_viewport.call_deferred(sv.get_instance_id())
+
+## Refresh the shop's own live preview while the picker is open.
+func preview_pet(draft:Dictionary) -> void:
+	if not overlay_open:return
+	var holder:Node=overlay.get_node_or_null("PetPreviewHolder")
+	if holder==null:return
+	for child:Node in holder.get_children():
+		holder.remove_child(child)
+		child.queue_free()
+	pet_thumbnail(Vector2.ZERO,Vector2(240,66),draft,holder)
 
 func draw_live() -> void:
 	clear_ui()
@@ -1486,9 +1752,9 @@ func draw_build_catalog() -> void:
 	card(Vector2(20,643),Vector2(1400,239),P.WHITE,18)
 	small_caps("Make yourself at home",Vector2(40,657))
 	text_label("Build & buy",Vector2(38,687),Vector2(210,42),29,P.INK,true)
-	for i in range(7):
-		var category:String=["All","Comfort","Kitchen","Bathroom","Activities","Decor","Structure"][i]
-		button(category,Vector2(296+i*132,663),Vector2(123,35),func():catalog_category=category;draw_live(),catalog_category==category)
+	for i in range(LifeCatalog.CATEGORIES.size()):
+		var category:String=LifeCatalog.CATEGORIES[i]
+		button(category,Vector2(296+i*118,663),Vector2(112,35),func():catalog_category=category;draw_live(),catalog_category==category)
 	button("Undo",Vector2(1250,663),Vector2(144,35),undo_build)
 	var storage_button=button("Storage",Vector2(266,745),Vector2(105,37),show_storage)
 	storage_button.tooltip_text="Your household storage unit. Store furnishing away, take it out, or sell it."
@@ -1795,6 +2061,7 @@ func on_object_clicked(item:Dictionary,screen:Vector2) -> void:
 		if household.member_sim(str(item.id)) and str(item.id)!=household.selected_id():
 			show_housemate_interactions(item,screen)
 		elif str(item.id)==household.selected_id():show_person()
+		elif str(item.get("kind",""))=="pet":show_pet_card(str(item.id))
 		else:show_interactions(item,screen)
 
 func close_overlay(restore_speed:bool=true) -> void:
@@ -2411,6 +2678,7 @@ func show_menu() -> void:
 		["Life settings",show_life_settings],
 		["How to play",func():show_help()],
 		["Sound: "+("on" if sound_enabled else "off"),func():set_sound(not sound_enabled);show_menu()],
+		["Music: "+("on" if music_enabled else "off"),func():set_music(not music_enabled);show_menu()],
 		["Main menu",show_main_menu]
 	]
 	for i in range(actions.size()):button(actions[i][0],Vector2(522,323+i*53),Vector2(396,43),actions[i][1],i==0,overlay)
@@ -2535,7 +2803,7 @@ func save_game(slot_id:String="",title:String="") -> bool:
 	_store_motion()
 	if current_venue=="home":home_layout=world.serialize_items()
 	else:venue_layouts[current_venue]=world.serialize_items()
-	sim.character["world_state"]={"player":[player.position.x,player.position.y,player.position.z],"player_rotation":player.rotation.y,"camera":[world.camera_target.x,world.camera_target.y,world.camera_target.z],"angle":world.camera_angle,"elevation":world.camera_elevation,"zoom":world.camera.size,"floor":floor_color,"lot":selected_lot,"cutaway":world.cutaway,"view_level":world.view_level,"sound":sound_enabled,"venue":current_venue,"home_layout":home_layout,"venue_layouts":venue_layouts,"residents":residents.snapshot()}
+	sim.character["world_state"]={"player":[player.position.x,player.position.y,player.position.z],"player_rotation":player.rotation.y,"camera":[world.camera_target.x,world.camera_target.y,world.camera_target.z],"angle":world.camera_angle,"elevation":world.camera_elevation,"zoom":world.camera.size,"floor":floor_color,"lot":selected_lot,"cutaway":world.cutaway,"view_level":world.view_level,"sound":sound_enabled,"music":music_enabled,"venue":current_venue,"home_layout":home_layout,"venue_layouts":venue_layouts,"residents":residents.snapshot()}
 	# Store the user's live speed, not a temporary menu/build pause.
 	var current_speed:int=sim.speed
 	sim.speed=speed_before_build if mode=="build" else (pause_before_menu if overlay_pauses_sim else current_speed)
@@ -2589,6 +2857,7 @@ func _restore_world_state(value:Variant) -> void:
 	if state.get("cutaway") is bool:world.set_cutaway(state.cutaway)
 	if not household.journeys.is_empty():world.set_view_level(int(state.get("view_level",maxi(0,world.point_level(player.position)))))
 	if state.get("sound") is bool:set_sound(state.sound)
+	if state.get("music") is bool:set_music(state.music)
 	world.update_camera()
 
 func _saved_number(value:Variant,fallback:float,minimum:float,maximum:float) -> float:
@@ -2798,7 +3067,7 @@ func _adopt_loaded_world(prepared:Dictionary,slot_id:String,title:String="") -> 
 	prepared.viewport.free();candidate.free()
 	stage=null;preview=null
 	old_world.visible=false;old_world.queue_free();old_household.queue_free();old_meal_flow.queue_free();old_sanitation_flow.queue_free();old_household_flow.queue_free()
-	loading_game=false;_sync_actor_sound();draw_live()
+	loading_game=false;_sync_actor_sound();sync_pets();draw_live()
 	show_notice("Welcome back, %s." % sim.character.name)
 
 func _restore_journeys() -> Dictionary:
@@ -2919,17 +3188,55 @@ func setup_audio() -> void:
 		ambience_player.stream=stream
 		ambience_player.volume_db=0
 		ambience_player.play()
+	setup_music()
+
+## "Summit Dawn" is the game's own theme: a full-length forward loop with the
+## file's quiet head and tail as the seam, so the join has nothing to click on.
+## It is loaded from disk rather than through the importer for the same reason
+## the voices are, so the music never waits on asset import to be heard.
+func setup_music() -> void:
+	music_player=AudioStreamPlayer.new()
+	music_player.name="SummitDawn"
+	add_child(music_player)
+	var path:String="res://assets/audio/Summit Dawn.wav"
+	if not FileAccess.file_exists(path) and not ResourceLoader.exists(path):return
+	var stream:AudioStreamWAV=AudioStreamWAV.load_from_file(path) if FileAccess.file_exists(path) else load(path) as AudioStreamWAV
+	if stream==null:return
+	stream=stream.duplicate()
+	stream.loop_mode=AudioStreamWAV.LOOP_FORWARD
+	stream.loop_begin=0
+	stream.loop_end=int(stream.get_length()*stream.mix_rate)
+	music_player.stream=stream
+	music_player.volume_db=-8.0
+	if sound_enabled and music_enabled:music_player.play()
+	else:music_player.stream_paused=true
 
 func set_sound(enabled:bool) -> void:
 	sound_enabled=enabled
 	if is_instance_valid(ambience_player):ambience_player.stream_paused=not enabled
 	if not enabled and is_instance_valid(audio_player):audio_player.stop()
 	if not enabled and is_instance_valid(chime_player):chime_player.stop()
+	if is_instance_valid(music_player):
+		music_player.stream_paused=not (enabled and music_enabled)
+		if not enabled and music_player.playing:music_player.stop()
 	_sync_actor_sound()
+
+## The music switch is independent of the sound switch: the menu offers music on
+## its own, so a household can keep life sounds while turning the theme off.
+## Changing the setting takes effect immediately and rides the save.
+func set_music(enabled:bool) -> void:
+	music_enabled=enabled
+	if not is_instance_valid(music_player):return
+	if enabled and sound_enabled:
+		music_player.stream_paused=false
+		if not music_player.playing:music_player.play()
+	else:
+		music_player.stream_paused=true
 
 func _sync_actor_sound() -> void:
 	if not is_instance_valid(world):return
 	var enabled:bool=sound_enabled and mode=="live" and is_instance_valid(sim) and sim.speed>0
+	_sync_pet_sound()
 	for actor:LifeActor in world.actors.values():
 		if is_instance_valid(actor):actor.voice_enabled=enabled
 	if is_instance_valid(preview):preview.voice_enabled=false
@@ -2946,7 +3253,7 @@ func quit_game() -> void:
 
 func _exit_tree() -> void:
 	_set_studio_render_quality(false)
-	for audio:AudioStreamPlayer in [audio_player,ambience_player]:
+	for audio:AudioStreamPlayer in [audio_player,ambience_player,music_player]:
 		if is_instance_valid(audio):
 			audio.stream_paused=false
 			audio.stop()
@@ -3009,6 +3316,7 @@ func _process(delta:float) -> void:
 		residents.tick(delta)
 		_tick_resident_contacts()
 		traversal.courtesy.consider(traversal)
+		_tick_pets(delta)
 		hud_refresh+=delta
 		if hud_refresh>.25:hud_refresh=0;refresh_hud()
 	if mode=="build":
