@@ -17,7 +17,7 @@ The macOS app is ad-hoc signed using Godot's built-in signer. It is not Apple De
 3. Optionally enter a display version, such as `0.1.0`. With no version, tags use their tag name and branch runs use `dev-<commit>`.
 4. Leave **Publish all three builds to itch.io** checked to upload, or uncheck it to validate and download build artifacts without changing itch.io.
 
-Pushing a tag beginning with `v`, such as `v0.1.0`, also builds and publishes that exact commit. Ordinary pushes to `main` do not publish automatically. Use distinct version labels so players can identify a release. Runs are serialized so simultaneous releases cannot overwrite each other's platform channels.
+Every push to `main` automatically builds and publishes the pushed commit as `dev-<commit>`. Pushing a tag beginning with `v`, such as `v0.1.0`, also builds and publishes that exact commit using the tag as its version. Runs are serialized so simultaneous releases cannot overwrite each other's platform channels.
 
 All three export jobs and native startup checks must pass before publishing starts. Downloads are verified with pinned SHA-256 hashes; GitHub actions are pinned to commit SHAs. The executables are smoke tested in isolated data directories; macOS also verifies the universal binary and app signature. Platform packages travel between jobs in tar archives to retain permissions, with checksums checked again before upload. Build artifacts remain available for 14 days; failure logs remain for 7 days. The macOS ZIP is passed directly to butler, which preserves the application bundle when creating the downloadable build.
 
