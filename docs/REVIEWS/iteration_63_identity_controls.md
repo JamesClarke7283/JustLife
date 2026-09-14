@@ -98,10 +98,80 @@ masked: 266 → 84 (adult detailed model) → 56 (all four adult variants) → 1
 (all age families) → 0 (baby). Rendered portraits for every age and every
 identity extreme are in `evidence/character63/` (41 images).
 
-`art/source/character_production_hashes.json` was refreshed for the 16 changed
-GLBs, and the four editable sources were promoted to the standard
-`art/characters*.blend` paths. `tools/verify_character_exports.py`'s `PINS` were
-re-qualified for the four adult variants.
+`art/source/character_production_hashes.json` was refreshed for all twenty
+entries (sixteen GLBs and four editable sources) and the four editable sources
+were promoted to the standard `art/characters*.blend` paths.
+`tools/verify_character_exports.py`'s `PINS` were re-qualified for the four
+adult variants. Both records are refreshed together and checked by
+`python3 tools/requalify_character_hashes.py`; `--check` exits non-zero on any
+staleness.
+
+## Independent critic verdict (added after review)
+
+An independent reviewer that did not author this work inspected all 41 images in
+`evidence/character63/` and the changed files. Its verdict:
+
+- **Character art is unchanged at 6.5/10.** It confirmed the headline claim
+  ("all twenty production GLBs now carry 11/11 identity morphs where they
+  carried 4/11 before, verified from git blobs and per-target displacements")
+  and that `combined_maximum` versus `combined_minimum` show the seven former
+  dead sliders genuinely reshaping the lower face, mouth and chin. It also
+  confirmed the `smooth()` fix and the UV tool are correctly scoped. It found
+  no visual improvement to the artwork itself, which matches this review's own
+  position: **this pass repairs a functional defect, it does not raise art
+  quality.**
+- **It raised three defects, all of which are accepted.** Two were real bugs and
+  are fixed; the third is documented below.
+
+### 1. Stale `.blend` hashes in the production manifest — real bug, fixed
+
+I refreshed the sixteen GLB entries in
+`art/source/character_production_hashes.json` but left the four editable
+`.blend` entries at their pre-promotion values, so a manifest whose whole
+purpose is to detect exactly that drift was itself wrong
+(`art/characters.blend` recorded `b4b5b722…` while the file was `01ade041…`).
+
+**Root cause and prevention.** The repo already has an `--apply` pattern that
+refreshes the manifest and the verifier pins together; I hand-edited instead.
+`tools/requalify_character_hashes.py` now performs both refreshes in one pass,
+verifies what it wrote, and exposes `--check` so a test or CI step can fail on
+staleness. It has no bypass: after writing it re-reads both records and returns
+non-zero if anything still disagrees.
+
+That tool immediately caught a **second bug of the same class**: I had written
+raw SHA-256 values into `tools/verify_character_exports.py`'s `PINS`, but the
+verifier compares *semantic digests* (a canonicalised decode), not file hashes.
+The tool's `--check` reported all four pins stale, the refresh rewrote them in
+the correct form, and `verify_all('assets/models')` now passes for all four
+adult variants. Both records are clean under `--check`.
+
+### 2. The adult Bob shell was silently swapped — disclosed
+
+The promoted adult source replaces the previous Bob. Node counts in
+`character.glb`: **Bob 31 → 5**, every other group identical (Brow, Buzz,
+Cardigan, Casual, Crop, Curls, Ear, Eye, Hoodie, Jacket, Jewelry, Leg, Lip,
+Long, Nose, Pony, Shoe, Shorts, Tee, Trousers all unchanged); total nodes
+403 → 377. I failed to disclose this in the change summary.
+
+On inspection the new Bob is a **better** integrated mass — `bob_three_quarter.png`
+and `bob_front.png` show a single continuous bob, where the iteration-62 critic
+described the old construction as "a row of separate hanging rods" with "abrupt
+cut root ends against the crown cap". It is recorded here rather than reverted,
+but it is a material asset change that should have been named, and it carries no
+new independent accept/reject review of its own.
+
+### 3. The infant controls move very little — working as designed, limits stated
+
+The reviewer measured the baby's seven new controls at roughly 0.7–2.1 mm of
+displacement and noted this is below one rendered pixel at portrait size. That is
+correct and is the intended behaviour: the amplitude chain applies an infant
+scale of 0.35 precisely so an infant is not deformed by adult-proportioned
+fields, and an infant head is physically small, so a proportionate displacement
+is small in absolute terms. `age_baby_face.png` shows a live slider at a
+non-zero value, so the controls are wired. It is nonetheless a fair criticism of
+*visible* effect: **on the baby these sliders will read subtly at the creator's
+normal zoom.** If an infant needs more visible shaping, that requires a larger
+infant amplitude and its own art review, which this pass did not do.
 
 ## Limits and what remains unverified
 
@@ -109,18 +179,22 @@ re-qualified for the four adult variants.
   functionally** (present on every mesh that should carry them, applied to real
   blend shapes, correct signed range, neutral at zero, and rendered at both
   extremes). They are **not** independently art-reviewed for visual quality at
-  every combination on every age.
-- No critic has yet re-scored character art against the iteration-62 verdicts
-  (5.5–7.0). This pass removes dead controls and promotes already-reviewed adult
-  candidates; it is not a claim that the outstanding art criticism — eye-region
-  integration, hair clump hierarchy, independent facial identities, material
-  separation — has been resolved.
+  every combination on every age. On the infant, the proportionate displacement
+  is small enough to read subtly at the creator's normal zoom.
+- No critic has found character art improved by this pass. The independent
+  review places it at **6.5/10, unchanged from iteration 62**, and that is
+  accepted: this pass removes dead controls, it does not raise art quality. The
+  outstanding criticism — eye-region integration, hair clump hierarchy,
+  independent facial identities, material separation, shoulder/sleeve joins —
+  is untouched.
 - The full-request rubric dimensions of usability in motion, simulation depth,
   creative breadth and reliability were **not** re-exercised by this pass. The
-  latest full-request score remains **7.3/10** (`iteration_55_wardrobe.md`); the
-  latest character-art scores remain the iteration-62 set.
+  latest full-request score remains **7.3/10** (`iteration_55_wardrobe.md`).
 - The infant model is a first functional pass at this control set. Its
   proportions were not part of any age-lineup review.
+- The promoted adult Bob's own accept/reject status was not re-reviewed; it is
+  disclosed above with its measured node-count change.
 
-**Decision: the dead-control defect is repaired and verified; continue toward
-the full target.**
+**Decision: the dead-control defect is repaired and verified, and the two
+integrity bugs the independent review found are fixed with a guard against
+recurrence. Character art is unchanged. Continue toward the full target.**
