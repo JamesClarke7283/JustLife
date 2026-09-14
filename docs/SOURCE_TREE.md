@@ -5,7 +5,7 @@ The repository contains the game and its authoring inputs. Rendered evidence, do
 | Path | Purpose |
 | --- | --- |
 | `project.godot`, `scenes/`, `scripts/` | Godot project, scenes and game behavior. |
-| `assets/` | Production models, fonts, audio, icon and JustLife splash. Import settings are retained. |
+| `assets/` | Production models, fonts, audio, icon and JustLife splash. Import settings are retained. `assets/audio/Summit Dawn.wav` is the game's own background theme; `assets/models/pet_*.glb`, `cat_tree.glb` and `kennel.glb` are the original pet models and `assets/shaders/pet_coat.gdshader` draws their mixed coats. |
 | `art/characters*.blend` | The four accepted age-family authoring sources. |
 | `art/furniture.blend`, `art/furniture_v2.blend`, `art/furniture/`, `art/celebration/` | Original furniture collections (`tools/create_furniture.py`, `tools/create_furniture_v2.py`), current hollow oven, child desk booster and birthday cake authoring files. |
 | `art/meals/`, `art/recipes/` | Original editable supper props, generator provenance and export hashes; studio renders remain local. |
@@ -14,7 +14,7 @@ The repository contains the game and its authoring inputs. Rendered evidence, do
 | `art/vegetation/` | Original field maple Blender source, portable generator instructions and import/export provenance. |
 | `art/source/` | Immutable authoring inputs required to reproduce the accepted characters, plus compact provenance. |
 | `art/experiments/` | Clearly marked editable studies and their generators; these are not promoted game assets. |
-| `tools/` | Asset generation and Linux export scripts. `tools/create_furniture_v2.py` builds the second furnishing collection; `tools/create_wardrobe.py` adds the second wardrobe and hair set to all four character sources and exports the sixteen character models; `tools/shell_shoulder_weights.py` re-solves the jacket and hoodie shoulder weights of every family as a harmonic field before that export. |
+| `tools/` | Asset generation and Linux export scripts. `tools/create_furniture_v2.py` builds the second furnishing collection; `tools/create_pets.py` builds the original cats, dogs and pet accessories; `tools/create_wardrobe.py` adds the second wardrobe and hair set to all four character sources and exports the sixteen character models; `tools/shell_shoulder_weights.py` re-solves the jacket and hoodie shoulder weights of every family as a harmonic field before that export. |
 | `tools/adult_face_volume/` | Adult chin/mouth and Smile authoring, native verification and four model exports; reuses the adult-eye source helpers. |
 | `tools/adult_lip_volume/` | Current adult lip-height authoring from the accepted chin/support source; reuses the native/export and Smile helpers with exact geometry and export guards. |
 | `tools/adult_casual_drape/` | Current adult casual drape and shoulder weights, with a compact reproducible chain and four pinned exports. |

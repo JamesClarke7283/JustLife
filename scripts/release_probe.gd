@@ -67,6 +67,7 @@ func run(owner_app:Node) -> void:
 	app.set_process(false);app.set_sound(false)
 	check(app.mode=="menu","Packaged main menu starts.")
 	check(is_instance_valid(app.ambience_player.stream) and is_instance_valid(app.audio_player.stream),"Imported ambience and click audio load from the PCK.")
+	check(is_instance_valid(app.music_player) and is_instance_valid(app.music_player.stream) and not app.music_player.stream_paused,"The packaged theme loads from the PCK and loops at startup.")
 	await capture("01_main_menu")
 	press("New game");await app.get_tree().process_frame
 	check(app.mode=="creator" and is_instance_valid(app.preview.visual),"Packaged creator and model load.")
@@ -81,6 +82,10 @@ func run(owner_app:Node) -> void:
 		check(ResourceLoader.load("res://assets/models/"+prop+".glb") is PackedScene,"The original "+prop+" loads from the PCK.")
 	for prop:String in ["juniper_car","juniper_mop","juniper_stair","juniper_guard_post","juniper_guard_span","roof_gable_modules"]:
 		check(ResourceLoader.load("res://assets/models/"+prop+".glb") is PackedScene,"The original "+prop+" loads from the PCK.")
+	for prop:String in ["pet_cat","pet_dog","pet_bowl","cat_tree","kennel"]:
+		check(ResourceLoader.load("res://assets/models/"+prop+".glb") is PackedScene,"The original "+prop+" loads from the PCK.")
+	check(ResourceLoader.load("res://assets/shaders/pet_coat.gdshader") is Shader,"The pet coat shader loads from the PCK.")
+	check(bool(app.household.pets.get("pets") is Array),"The packaged household exposes its pet record.")
 	press("Face");await app.get_tree().process_frame
 	app.preview.set_face_feature("face_round",.5);app.profile.face_round=.5
 	await capture("02_face_editor")
@@ -135,8 +140,19 @@ func run(owner_app:Node) -> void:
 	await capture("03c_adoption_review")
 	press("Cancel adoption")
 	check(app.household.get_state(app.world.serialize_items())==before_adoption,"Packaged adoption cancellation preserves household and funds.")
-	press("Back to phone");press("Back to life");app.select_household_member(0)
-	app.show_menu();press("Save this life");await app.get_tree().process_frame
+	var before_pet:Dictionary=app.household.get_state(app.world.serialize_items())
+	press("Back to phone");press("Juniper Pet Shop");await app.get_tree().process_frame
+	check(is_instance_valid(app.find_child("PetShopAdopt",true,false)),"The packaged phone opens the pet shop.")
+	press("Adopt a cat or dog");await app.get_tree().process_frame
+	check(is_instance_valid(app.find_child("PetSpecies_cat",true,false)) and is_instance_valid(app.find_child("PetSpecies_dog",true,false)),"The packaged pet picker offers both species.")
+	check(is_instance_valid(app.find_child("PetSex_female",true,false)) and is_instance_valid(app.find_child("PetSex_male",true,false)),"The packaged pet picker offers both sexes.")
+	check(is_instance_valid(app.find_child("PetGradient",true,false)),"The packaged pet picker offers the mixed-gradient control.")
+	var pet_confirm:Button=app.find_child("PetShopConfirm",true,false)
+	check(is_instance_valid(pet_confirm) and not pet_confirm.disabled,"The packaged pet review prepares an eligible, priced purchase.")
+	await capture("03d_pet_picker")
+	app.pet_shop.show_shop()
+	check(app.household.get_state(app.world.serialize_items())==before_pet,"Packaged pet browsing preserves household and funds.")
+	press("Back to life");app.show_menu();press("Save this life");await app.get_tree().process_frame
 	app.menus.name_input.text="Packaged release verification"
 	press("Save as new");await app.get_tree().process_frame
 	var id:String=app.active_save_id

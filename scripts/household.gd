@@ -28,6 +28,7 @@ var extras_provider:Callable=Callable()
 var extras_restore_provider:Callable=Callable()
 var family_graph: Dictionary = LifeFamilyGraph.fresh()
 var adoptions: Dictionary = LifeAdoption.fresh()
+var pets: Dictionary = LifePets.fresh()
 var pregnancy: Dictionary = LifeBabyPlan.fresh()
 var _family_roles: Dictionary = {}
 var meals: LifeMeals = LifeMeals.new()
@@ -41,6 +42,7 @@ const COOPERATION_WAIT_LIMIT: float = 60.0
 func new_household(profiles: Array) -> void:
 	journeys.clear()
 	adoptions=LifeAdoption.fresh()
+	pets=LifePets.fresh()
 	pregnancy=LifeBabyPlan.fresh()
 	meals.clear()
 	sanitation.clear()
@@ -251,7 +253,7 @@ func get_state(world_data: Array = []) -> Dictionary:
 	adopt_selected_changes()
 	var states:Array=[]
 	for member in members:states.append({"id":member.id,"state":member.sim.get_state()})
-	var result:Dictionary={"household_version":2 if not journeys.is_empty() else 1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"pregnancy":pregnancy.duplicate(true),"birth_serial":birth_serial,"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state(),"sanitation":sanitation.get_state(),"extras":extras_provider.call() if extras_provider.is_valid() else {}}
+	var result:Dictionary={"household_version":2 if not journeys.is_empty() else 1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"pets":pets.duplicate(true),"pregnancy":pregnancy.duplicate(true),"birth_serial":birth_serial,"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state(),"sanitation":sanitation.get_state(),"extras":extras_provider.call() if extras_provider.is_valid() else {}}
 	if not journeys.is_empty():result.journeys=journeys.duplicate(true)
 	if physical_snapshot_provider.is_valid():
 		var physical:Dictionary=physical_snapshot_provider.call()
@@ -427,6 +429,10 @@ func restore_state(data: Dictionary) -> Dictionary:
 	if not adoption_error.is_empty():
 		for candidate:Dictionary in candidates:candidate.sim.free()
 		return {"ok":false,"error":adoption_error}
+	var pet_error_text:String=LifePets.validate(data.get("pets",null),data)
+	if not pet_error_text.is_empty():
+		for candidate:Dictionary in candidates:candidate.sim.free()
+		return {"ok":false,"error":pet_error_text}
 	var pregnancy_data:Variant=data.get("pregnancy",null)
 	var pregnancy_error:String=LifeBabyPlan.validate(pregnancy_data,data)
 	if pregnancy_error.is_empty():pregnancy_error=LifeBabyPlan.validate_pending(pregnancy_data,data,pregnancy_data if pregnancy_data is Dictionary else {})
@@ -476,6 +482,7 @@ func restore_state(data: Dictionary) -> Dictionary:
 			for action_index:int in candidates[index].sim.action_queue.size():
 				candidates[index].sim.action_queue[action_index].phase=data.members[index].state.action_queue[action_index].phase
 	adoptions=data.get("adoptions",LifeAdoption.fresh()).duplicate(true)
+	pets=LifePets.fresh() if not data.get("pets") is Dictionary else (data.get("pets") as Dictionary).duplicate(true)
 	pregnancy=LifeBabyPlan.fresh() if pregnancy_data==null else (pregnancy_data as Dictionary).duplicate(true)
 	birth_serial=int(data.get("birth_serial",1))
 	meals.restore(meal_data)
@@ -1217,6 +1224,65 @@ func _target(id: String) -> Dictionary:
 	for target:Dictionary in targets:
 		if str(target.id)==id:return target
 	return {}
+
+## ---------------------------------------------------------------- pet shop
+
+## A pet review is offered only when the household has room and can pay.
+func pet_availability(species: String) -> String:
+	if not LifePets.SPECIES.has(species):return "Choose a cat or a dog."
+	if pets.get("pets",[]).size()>=LifePets.MAX_PETS:return "Your household already has %d pets." % LifePets.MAX_PETS
+	if selected().funds<LifePets.price_for(species):return "A %s costs §%d. Your household needs more funds." % [LifePets.species_label(species).to_lower(),LifePets.price_for(species)]
+	return ""
+
+## The shop entry point is offered while either species can be adopted. The
+## reason shown is the cat's, since that is the first choice on offer.
+func pet_shop_availability() -> String:
+	var cat:String=pet_availability("cat")
+	if cat.is_empty():return ""
+	if pet_availability("dog").is_empty():return ""
+	return cat
+
+func prepare_pet(review:Dictionary) -> Dictionary:
+	var reason:String=pet_availability(str(review.get("species","")))
+	if not reason.is_empty():return {"ok":false,"error":reason}
+	reason=LifePets.profile_error(review)
+	if not reason.is_empty():return {"ok":false,"error":reason}
+	var request:Dictionary=review.duplicate(true)
+	request["member_count"]=members.size()
+	request["fee"]=LifePets.price_for(str(review.species))
+	return {"ok":true,"request":request}
+
+## Take a reviewed pet home. The household owns the fee; the view spawns the
+## body on the returned spawn point. A repeated confirmation returns the
+## original receipt, so a double click can never charge twice.
+func commit_pet(request:Dictionary,spawn:Vector3) -> Dictionary:
+	var reason:String=LifePets.request_error(request)
+	if not reason.is_empty():return {"ok":false,"error":reason}
+	for existing:Dictionary in pets.get("pets",[]):
+		if int(existing.serial)==int(request.serial):
+			if str(existing.species)==str(request.species) and str(existing.name)==str(request.name).strip_edges() and str(existing.coat_color)==LifePets.normalised_colour(request.coat_color,"89563a"):
+				return {"ok":true,"duplicate":true,"pet":existing.duplicate(true),"spawn":spawn}
+			return {"ok":false,"error":"That pet review has already been used. Open the shop again."}
+	if int(request.serial)!=int(pets.next_serial):return {"ok":false,"error":"Your pets changed. Please review the shop again."}
+	if int(request.member_count)!=members.size() or int(request.fee)!=LifePets.price_for(str(request.species)):
+		return {"ok":false,"error":"Your household changed. Please review the shop again."}
+	reason=pet_availability(str(request.species))
+	if not reason.is_empty():return {"ok":false,"error":reason}
+	if not LifePets.point(spawn):return {"ok":false,"error":"A safe arrival route is required."}
+	var record:Dictionary=LifePets.record_from(request,"pet_%d" % int(pets.next_serial),day)
+	pets.pets.append(record)
+	pets.next_serial=int(pets.next_serial)+1
+	set_funds(funds-LifePets.price_for(str(record.species)))
+	return {"ok":true,"duplicate":false,"pet":record.duplicate(true),"spawn":spawn}
+
+## Buying a pet accessory is an ordinary furnishing purchase: the caller places
+## it through the same build path, so support, doorway and reach checks apply.
+func accessory_availability(kind:String) -> String:
+	var reason:String=LifePets.accessory_kind_error(kind,pets.get("pets",[]))
+	if not reason.is_empty():return reason
+	if not LifeCatalog.ITEMS.has(kind):return "That accessory is not for sale."
+	if selected().funds<int(LifeCatalog.ITEMS[kind].price):return "That costs §%d. Your household needs more funds." % int(LifeCatalog.ITEMS[kind].price)
+	return ""
 
 func adoption_availability(guardians:Array) -> String:
 	if members.size()>=MAX_MEMBERS:return "Your household already has eight Lifelets."

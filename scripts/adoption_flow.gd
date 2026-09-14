@@ -31,14 +31,21 @@ func show_phone() -> void:
 	_panel("A little room to grow.","Household services for the people who make this place home.")
 	var reason:String=context_error()
 	if reason.is_empty():reason=app.household.adoption_availability([primary])
-	var agenda:Button=app.button("Household calendar",Vector2(302,354),Vector2(820,55),calendar.open,true,app.overlay)
+	var agenda:Button=app.button("Household calendar",Vector2(302,354),Vector2(820,52),calendar.open,true,app.overlay)
 	agenda.name="PhoneCalendar";agenda.disabled=app.mode!="live"
-	app.paragraph("See everyone's school, work and upcoming birthdays.",Vector2(307,420),Vector2(806,34),16,P.MUTED,app.overlay)
-	var adopt:Button=app.button("Adopt a child",Vector2(302,477),Vector2(820,55),show_candidates,false,app.overlay)
+	app.paragraph("See everyone's school, work and upcoming birthdays.",Vector2(307,412),Vector2(806,28),16,P.MUTED,app.overlay)
+	var adopt:Button=app.button("Adopt a child",Vector2(302,446),Vector2(820,52),show_candidates,false,app.overlay)
 	adopt.name="PhoneAdoptChild";adopt.disabled=not reason.is_empty();adopt.tooltip_text=reason
-	app.paragraph("Welcome a school-age Lifelet into your family. Choose one or two adult guardians. Adoption costs §1,000.",Vector2(307,544),Vector2(806,57),16,P.INK,app.overlay)
-	app.paragraph(reason,Vector2(307,607),Vector2(806,55),14,P.TEAL,app.overlay)
-	app.button("Back to life",Vector2(302,675),Vector2(820,47),app.close_overlay,false,app.overlay)
+	app.paragraph("Welcome a school-age Lifelet into your family. Choose one or two adult guardians. Adoption costs §1,000.",Vector2(307,504),Vector2(806,40),16,P.INK,app.overlay)
+	var pet_reason:String=app.household.pet_shop_availability()
+	var pets:Button=app.button("Juniper Pet Shop",Vector2(302,552),Vector2(820,52),show_pets,false,app.overlay)
+	pets.name="PhonePetShop";pets.disabled=not pet_reason.is_empty();pets.tooltip_text=pet_reason
+	app.paragraph("Adopt a cat or a dog and shape its sex, coat and markings yourself. Bowls, cat trees and kennels are sold alongside.",Vector2(307,610),Vector2(806,52),16,P.INK,app.overlay)
+	app.paragraph(reason if not reason.is_empty() else pet_reason,Vector2(307,668),Vector2(806,32),14,P.TEAL,app.overlay)
+	app.button("Back to life",Vector2(302,706),Vector2(820,44),app.close_overlay,false,app.overlay)
+
+func show_pets() -> void:
+	app.pet_shop.show_shop()
 
 func show_candidates() -> void:
 	request.clear()
