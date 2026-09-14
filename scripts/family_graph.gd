@@ -6,8 +6,17 @@ class_name LifeFamilyGraph
 const ROLES: Array[String] = ["none","siblings","parent","child","grandparent","grandchild","ancestor","descendant","parent_sibling","sibling_child","cousin","relative"]
 const LABELS: Dictionary = {"none":"Housemate","siblings":"Sibling","parent":"Parent","child":"Child","grandparent":"Grandparent","grandchild":"Grandchild","ancestor":"Ancestor","descendant":"Descendant","parent_sibling":"Parent’s sibling","sibling_child":"Sibling’s child","cousin":"Cousin","relative":"Relative"}
 
+## `departed` remembers ids of Lifelets who passed away. Their parent and
+## sibling edges stay in the graph, so a surviving family can still read its own
+## genealogy, but they are not household members and are never selectable.
 static func fresh() -> Dictionary:
-	return {"version":1,"parents":[],"siblings":[]}
+	return {"version":1,"parents":[],"siblings":[],"departed":[]}
+
+static func departed_ids(graph: Dictionary) -> Array[String]:
+	var result: Array[String] = []
+	for entry: Variant in graph.get("departed",[]):
+		if entry is String and not result.has(str(entry)): result.append(str(entry))
+	return result
 
 static func inverse(role: String) -> String:
 	return str({"parent":"child","child":"parent","grandparent":"grandchild","grandchild":"grandparent","ancestor":"descendant","descendant":"ancestor","parent_sibling":"sibling_child","sibling_child":"parent_sibling"}.get(role,role))
@@ -66,14 +75,26 @@ static func create(profiles: Dictionary, links: Array) -> Dictionary:
 	return {"ok":true,"graph":graph,"partners":partners}
 
 static func validate(value: Variant, member_ids: Array) -> String:
-	if not value is Dictionary or value.size()!=3 or not (value.get("version") is int or value.get("version") is float) or float(value.version)!=1.0 or not value.get("parents") is Array or not value.get("siblings") is Array:
+	if not value is Dictionary or value.size() not in [3,4] or not (value.get("version") is int or value.get("version") is float) or float(value.version)!=1.0 or not value.get("parents") is Array or not value.get("siblings") is Array:
 		return "The saved family graph has an invalid format."
 	if value.parents.size()>16 or value.siblings.size()>28: return "The saved family graph has too many connections."
+	# Departed Lifelets keep their edges so the survivors' genealogy survives,
+	# so an edge may name them even though they are no longer household members.
+	var known: Dictionary = {}
+	for id: String in member_ids: known[str(id)] = true
+	var departed: Array = value.get("departed",[])
+	if not departed is Array or departed.size()>8: return "The saved family graph has invalid departed memory."
+	var buried: Dictionary = {}
+	for entry: Variant in departed:
+		if not entry is String or entry.is_empty() or known.has(str(entry)) or buried.has(str(entry)):
+			return "The saved family graph contains invalid departed memory."
+		buried[str(entry)] = true
+		known[str(entry)] = true
 	var parent_counts: Dictionary = {}
 	for category: String in ["parents","siblings"]:
 		var seen: Dictionary = {}
 		for link: Variant in value[category]:
-			if not link is Dictionary or link.size()!=2 or not link.get("a") is String or not link.get("b") is String or not member_ids.has(link.a) or not member_ids.has(link.b) or link.a==link.b:
+			if not link is Dictionary or link.size()!=2 or not link.get("a") is String or not link.get("b") is String or not known.has(link.a) or not known.has(link.b) or link.a==link.b:
 				return "The saved family graph contains an invalid Lifelet connection."
 			var key: String = str(link.a)+"|"+str(link.b) if category=="parents" else _pair(str(link.a),str(link.b))
 			if seen.has(key): return "The saved family graph contains a duplicate connection."
@@ -81,7 +102,10 @@ static func validate(value: Variant, member_ids: Array) -> String:
 			if category=="parents":
 				parent_counts[link.b] = int(parent_counts.get(link.b,0))+1
 				if int(parent_counts[link.b])>2: return "A Lifelet can have at most two declared parents."
-	for id: String in member_ids:
+	var cycle_ids: Array = []
+	for id: String in member_ids: cycle_ids.append(str(id))
+	cycle_ids.append_array(departed_ids(value))
+	for id: String in cycle_ids:
 		var ancestors: Dictionary = _ancestors(value,id)
 		if ancestors.has(id): return "Parent connections cannot contain a cycle."
 		for ancestor: String in ancestors:
@@ -156,6 +180,13 @@ static func canonical(graph: Dictionary, member_ids: Array) -> Dictionary:
 	var result: Dictionary = fresh()
 	result.parents = graph.parents.duplicate(true)
 	result.parents.sort_custom(func(a: Dictionary,b: Dictionary) -> bool: return str(a.a)+"|"+str(a.b)<str(b.a)+"|"+str(b.b))
+	# Departed memory is household history, not genealogy: carry it through
+	# canonicalization so a save/load never forgets who has passed away.
+	var buried: Array = []
+	for entry: Variant in graph.get("departed",[]):
+		if entry is String and not buried.has(str(entry)): buried.append(str(entry))
+	buried.sort()
+	result.departed = buried
 	var seen: Array[String] = []
 	for id: String in member_ids:
 		if seen.has(id): continue
