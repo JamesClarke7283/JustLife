@@ -257,7 +257,7 @@ func _creator_flow() -> void:
 	await press("Creative")
 	await press("Bookworm")
 	if app.preview.has_method("set_face_feature"):
-		await _creator_face([0.85, 0.65, 0.80, 0.90], true, "Rowan")
+		await _creator_face([0.85, 0.65, 0.80, 0.90, -.4, .7, -.3, .5, -.5, .4, -.3], true, "Rowan")
 	await press("Wardrobe")
 	if is_instance_valid(button_matching("Jacket")):await press("Jacket")
 	await press("Coastal")
@@ -290,7 +290,7 @@ func _creator_flow() -> void:
 		await press("Female")
 		await press("Bob")
 		if app.preview.has_method("set_face_feature"):
-			await _creator_face([0.15, 0.10, 0.25, 0.20], false, "Ellis")
+			await _creator_face([0.15, 0.10, 0.25, 0.20, .5, -.4, .6, -.3, .6, -.3, .4], false, "Ellis")
 		await press("Wardrobe")
 		if is_instance_valid(button_matching("Cardigan")):await press("Cardigan")
 		await press("Earthy")
@@ -336,22 +336,30 @@ func _check_live_outfits(context: String) -> void:
 	var file := FileAccess.open(screenshot_dir.path_join(context.replace(" ", "_") + "_outfit_diagnostics.json"), FileAccess.WRITE)
 	file.store_string(JSON.stringify(diagnostics, "  "));file.close()
 
+func _select_face_group(key: String) -> void:
+	for group_name: String in app.CREATOR_FACE_GROUPS:
+		if key in app.CREATOR_FACE_GROUPS[group_name]:
+			if app.creator_face_group != group_name: await press(group_name)
+			return
+
 func _creator_face(values: Array, exercise_reset: bool, person: String) -> void:
 	await press("Face")
-	var labels: Array[String] = ["Cheek fullness", "Jaw definition", "Nose width", "Eye spacing"]
-	var keys: Array[String] = ["face_round", "jaw_strong", "nose_wide", "eye_spacing"]
+	var keys: Array[String] = LifeActor.IDENTITY_KEYS
+	var labels: Array = keys.map(func(key: String): return app.CREATOR_FACE_LABELS[key])
 	if exercise_reset:
-		for label_text: String in labels:
+		for key: String in keys:
+			await _select_face_group(key)
 			for node: Node in app.find_children("*", "HSlider", true, false):
-				if node.tooltip_text == label_text:node.value = 1.0
+				if node.tooltip_text == app.CREATOR_FACE_LABELS[key]:node.value = 1.0
 		await frames(3)
 		await screenshot("00_face_all_maximum")
 		await press("Reset face")
 		var reset: bool = true
 		for key: String in keys:reset = reset and is_zero_approx(float(app.profile.get(key, -1)))
-		check(reset, "Reset face restores all four identity features to neutral.")
+		check(reset, "Reset face restores every identity feature across all four groups to neutral.")
 		await screenshot("00_face_reset")
 	for i: int in range(keys.size()):
+		await _select_face_group(keys[i])
 		var found: HSlider
 		for node: Node in app.find_children("*", "HSlider", true, false):
 			if node.tooltip_text == labels[i]:found = node
@@ -715,7 +723,7 @@ func _compare_saved(expected: Dictionary, label_text: String) -> void:
 			check(is_instance_valid(restored), label_text + ": member identity restored: " + str(member.id))
 			if not is_instance_valid(restored):continue
 			var profile_matches: bool = true
-			for key: String in ["name", "frame", "hair", "top_color", "bottom_color", "traits", "aspiration", "outfit", "eye_color", "body_scale", "height_scale", "face_round", "jaw_strong", "nose_wide", "eye_spacing"]:
+			for key: String in ["name", "frame", "hair", "top_color", "bottom_color", "traits", "aspiration", "outfit", "eye_color", "body_scale", "height_scale", "face_round", "jaw_strong", "nose_wide", "eye_spacing", "nose_length", "lip_fullness", "brow_arch", "chin_length", "face_length", "mouth_width", "nose_bridge"]:
 				if member.state.character.has(key):
 					profile_matches = profile_matches and restored.character.has(key) and equivalent(restored.character.get(key), member.state.character[key])
 			check(profile_matches and equivalent(restored.needs, member.state.needs), label_text + ": member appearance and independent needs restored: " + str(member.id))

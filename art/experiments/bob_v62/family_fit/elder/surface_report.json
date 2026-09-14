@@ -1,0 +1,16 @@
+{
+  "input": "/home/impulse/Projects/JustLife/art/experiments/bob_v62/family_fit/elder/bob_fit.blend",
+  "output": "/home/impulse/Projects/JustLife/art/experiments/bob_v62/family_fit/elder/bob_surface.blend",
+  "scope": "Four Hair_Bob descendant meshes only; one added Bob material and three original packed maps",
+  "protected_objects": 438,
+  "hem_exact": true,
+  "crown_pole_exact": true,
+  "material": "Hair_Bob_Surface",
+  "runtime_recolor_role": "Hair",
+  "texture_dimensions": [
+    2048,
+    1024
+  ],
+  "external_pixels_used": false,
+  "candidate_sha256": "9b839d90268b1fc42b5dd4bc04eca131c9d139e0449c808724de730dbe364bca"
+}

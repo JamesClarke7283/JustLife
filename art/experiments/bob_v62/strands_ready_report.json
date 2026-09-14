@@ -1,0 +1,15 @@
+{
+  "input": "/home/impulse/Projects/JustLife/art/experiments/bob_v62/strands_final.blend",
+  "output": "/home/impulse/Projects/JustLife/art/experiments/bob_v62/strands_ready.blend",
+  "scope": "Hair_Bob_Surface material graph only; geometry unchanged",
+  "base_color_factor": [
+    0.03189603239297867,
+    0.01599629409611225,
+    0.013702083379030228,
+    1.0
+  ],
+  "image_nodes": 3,
+  "texture_wrap": "CLAMP_TO_EDGE",
+  "source_material_graph": "supported Mix Color Multiply",
+  "candidate_sha256": "798050fa0581a1a4d9379c91d63f1d12f061b67706e245b2e2511d433521a431"
+}

@@ -24,7 +24,8 @@ const HAIR_COLORS: Array[String] = ["2a2420","54382a","89563a","c2a16b","dfccb0"
 const EYE_COLORS: Array[String] = ["547365","55738f","704b36","b18d54","77797c"]
 const TOP_COLORS: Array[String] = ["c97c66","417a71","efeadb","7195b3","bd9b68","3d4145"]
 const BOTTOM_COLORS: Array[String] = ["eadfc9","3e5955","51697c","493e37","b88a72","292f32"]
-const FACE_KEYS: Array[String] = ["face_round","jaw_strong","nose_wide","eye_spacing"]
+const FACE_KEYS: Array[String] = ["face_round","jaw_strong","nose_wide","eye_spacing","nose_length","lip_fullness","brow_arch","chin_length","face_length","mouth_width","nose_bridge"]
+const SIGNED_FACE_KEYS: Array[String] = ["nose_length","lip_fullness","brow_arch","chin_length","face_length","mouth_width","nose_bridge"]
 const TRAIT_NAMES: Array[String] = ["Creative","Outgoing","Active","Bookworm","Foodie","Neat"]
 const ASPIRATIONS: Array[String] = ["Maker","Connected","Successful","Balanced"]
 ## Styles the baby family authors (Crop, Bob, Curls). Longer styles are adult
@@ -156,15 +157,18 @@ static func roll(mother: Dictionary, father: Dictionary, serial: int) -> Diction
 		"body_scale":1.0, "height_scale":1.0, "traits":[], "aspiration":aspiration
 	}
 	for key:String in FACE_KEYS:
-		profile[key] = snappedf(rng.randf_range(0.0,0.75),0.01)
+		profile[key] = snappedf(rng.randf_range(-.65,.65) if key in SIGNED_FACE_KEYS else rng.randf_range(0.0,0.75),0.01)
 	return profile
 
 static func _inherit(parents: Array, rng: RandomNumberGenerator, palette: Array[String], key: String) -> String:
 	for parent:Dictionary in parents:
 		if rng.randf() < 0.45:
-			var value:String = str(parent.get(key,""))
-			if value in palette:
-				return value
+			var value:Variant = parent.get(key)
+			# Creator palettes may expand without changing family resemblance.
+			# Validate the actual value before converting it: numeric or object
+			# lookalikes must not become acceptable colour strings through a cast.
+			if _color(value):
+				return str(value)
 	return palette[rng.randi()%palette.size()]
 
 ## Conception state for the household. The baby profile is stored immediately
@@ -217,7 +221,9 @@ static func profile_error(profile: Variant) -> String:
 		if not _color(baby.get(key)):
 			return "Save contains an invalid baby colour."
 	for key:String in FACE_KEYS:
-		if not _number(baby.get(key,0.0),0.0,1.0):
+		# Missing optional features remain neutral in saves predating the sculpted
+		# nose/lip/brow/chin controls; their negative half is an authored shape.
+		if not _number(baby.get(key,0.0),-1.0 if key in SIGNED_FACE_KEYS else 0.0,1.0):
 			return "Save contains an invalid baby face."
 	if not _number(baby.get("body_scale",1.0),0.85,1.15) or not _number(baby.get("height_scale",1.0),0.93,1.08):
 		return "Save contains an invalid baby build."
@@ -313,4 +319,3 @@ static func validate_pending(value: Variant, data: Dictionary, pregnancy: Dictio
 	if float(pregnancy.get("due_at",0.0)) < float(pregnancy.get("conceived_at",0.0)):
 		return "Save contains a birth before its conception."
 	return ""
-

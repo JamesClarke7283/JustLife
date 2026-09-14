@@ -1,0 +1,152 @@
+{
+  "adult": {
+    "neutral": {
+      "runtime_bob_x_expansion": 1.0,
+      "closed_two_manifold": true,
+      "minimum_signed_clearance": 0.0017929587920662016,
+      "penetrating_vertices": 0,
+      "first_positions": []
+    },
+    "round": {
+      "runtime_bob_x_expansion": 1.04,
+      "closed_two_manifold": true,
+      "minimum_signed_clearance": 0.0016948756734223025,
+      "penetrating_vertices": 0,
+      "first_positions": []
+    },
+    "strong_jaw": {
+      "runtime_bob_x_expansion": 1.03,
+      "closed_two_manifold": true,
+      "minimum_signed_clearance": 0.002308314509491538,
+      "penetrating_vertices": 0,
+      "first_positions": []
+    },
+    "round_and_jaw": {
+      "runtime_bob_x_expansion": 1.07,
+      "closed_two_manifold": true,
+      "minimum_signed_clearance": 0.0022765680641896324,
+      "penetrating_vertices": 0,
+      "first_positions": []
+    }
+  },
+  "teen": {
+    "neutral": {
+      "runtime_bob_x_expansion": 1.0,
+      "closed_two_manifold": true,
+      "minimum_signed_clearance": 0.0016421245236415416,
+      "penetrating_vertices": 0,
+      "first_positions": []
+    },
+    "round": {
+      "runtime_bob_x_expansion": 1.04,
+      "closed_two_manifold": true,
+      "minimum_signed_clearance": 0.0015726994946021478,
+      "penetrating_vertices": 0,
+      "first_positions": []
+    },
+    "strong_jaw": {
+      "runtime_bob_x_expansion": 1.03,
+      "closed_two_manifold": true,
+      "minimum_signed_clearance": 0.002112104458547037,
+      "penetrating_vertices": 0,
+      "first_positions": []
+    },
+    "round_and_jaw": {
+      "runtime_bob_x_expansion": 1.07,
+      "closed_two_manifold": true,
+      "minimum_signed_clearance": 0.0021159518560125434,
+      "penetrating_vertices": 0,
+      "first_positions": []
+    }
+  },
+  "child": {
+    "neutral": {
+      "runtime_bob_x_expansion": 1.0,
+      "closed_two_manifold": true,
+      "minimum_signed_clearance": 0.0015326385546359234,
+      "penetrating_vertices": 0,
+      "first_positions": []
+    },
+    "round": {
+      "runtime_bob_x_expansion": 1.04,
+      "closed_two_manifold": true,
+      "minimum_signed_clearance": 0.0014544583663820276,
+      "penetrating_vertices": 0,
+      "first_positions": []
+    },
+    "strong_jaw": {
+      "runtime_bob_x_expansion": 1.03,
+      "closed_two_manifold": true,
+      "minimum_signed_clearance": 0.0019639101294615102,
+      "penetrating_vertices": 0,
+      "first_positions": []
+    },
+    "round_and_jaw": {
+      "runtime_bob_x_expansion": 1.07,
+      "closed_two_manifold": true,
+      "minimum_signed_clearance": 0.0019674976390433585,
+      "penetrating_vertices": 0,
+      "first_positions": []
+    }
+  },
+  "elder": {
+    "neutral": {
+      "runtime_bob_x_expansion": 1.0,
+      "closed_two_manifold": true,
+      "minimum_signed_clearance": 0.0017656779382377863,
+      "penetrating_vertices": 0,
+      "first_positions": []
+    },
+    "round": {
+      "runtime_bob_x_expansion": 1.04,
+      "closed_two_manifold": true,
+      "minimum_signed_clearance": 0.0016865786085418222,
+      "penetrating_vertices": 0,
+      "first_positions": []
+    },
+    "strong_jaw": {
+      "runtime_bob_x_expansion": 1.03,
+      "closed_two_manifold": true,
+      "minimum_signed_clearance": 0.0019090741498075658,
+      "penetrating_vertices": 0,
+      "first_positions": []
+    },
+    "round_and_jaw": {
+      "runtime_bob_x_expansion": 1.07,
+      "closed_two_manifold": true,
+      "minimum_signed_clearance": 0.001943427083460847,
+      "penetrating_vertices": 0,
+      "first_positions": []
+    }
+  },
+  "baby": {
+    "neutral": {
+      "runtime_bob_x_expansion": 1.0,
+      "closed_two_manifold": true,
+      "minimum_signed_clearance": 0.002026778311119415,
+      "penetrating_vertices": 0,
+      "first_positions": []
+    },
+    "round": {
+      "runtime_bob_x_expansion": 1.04,
+      "closed_two_manifold": true,
+      "minimum_signed_clearance": 0.0014007895661052316,
+      "penetrating_vertices": 0,
+      "first_positions": []
+    },
+    "strong_jaw": {
+      "runtime_bob_x_expansion": 1.03,
+      "closed_two_manifold": true,
+      "minimum_signed_clearance": 0.002285397014929913,
+      "penetrating_vertices": 0,
+      "first_positions": []
+    },
+    "round_and_jaw": {
+      "runtime_bob_x_expansion": 1.07,
+      "closed_two_manifold": true,
+      "minimum_signed_clearance": 0.0017402010944351787,
+      "penetrating_vertices": 0,
+      "first_positions": []
+    }
+  }
+}

@@ -1,0 +1,150 @@
+{
+  "input": "/home/impulse/Projects/JustLife/art/experiments/portrait_v62/characters_teen_identity.blend",
+  "output": "/home/impulse/Projects/JustLife/art/experiments/bob_v62/family_fit/teen/bob_fit.blend",
+  "scope": "Hair_Bob descendants only",
+  "unchanged_objects": 430,
+  "removed": [
+    "Hair_Bob_Cap",
+    "Hair_Bob_Fringe",
+    "Hair_Bob_Fringe.001",
+    "Hair_Bob_Fringe.002",
+    "Hair_Bob_Fringe.003",
+    "Hair_Bob_Fringe.004",
+    "Hair_Bob_Lock",
+    "Hair_Bob_Lock.001",
+    "Hair_Bob_Lock.002",
+    "Hair_Bob_Lock.003",
+    "Hair_Bob_Lock.004",
+    "Hair_Bob_Lock.005",
+    "Hair_Bob_Lock.006",
+    "Hair_Bob_Lock.007",
+    "Hair_Bob_Lock.008",
+    "Hair_Bob_Lock.009",
+    "Hair_Bob_Lock.010",
+    "Hair_Bob_Lock.011",
+    "Hair_Bob_Strand",
+    "Hair_Bob_Strand.001",
+    "Hair_Bob_Strand.002",
+    "Hair_Bob_Strand.003",
+    "Hair_Bob_Strand.004",
+    "Hair_Bob_Strand.005",
+    "Hair_Bob_Strand.006",
+    "Hair_Bob_Strand.007",
+    "Hair_Bob_Strand.008",
+    "Hair_Bob_Strand.009",
+    "Hair_Bob_Strand.010",
+    "Hair_Bob_Strand.011"
+  ],
+  "created": [
+    {
+      "name": "Hair_Bob_Cap",
+      "vertices": 17025,
+      "faces": 17024
+    },
+    {
+      "name": "Hair_Bob_Sweep",
+      "vertices": 615,
+      "faces": 560
+    },
+    {
+      "name": "Hair_Bob_TempleLayer",
+      "vertices": 615,
+      "faces": 560
+    },
+    {
+      "name": "Hair_Bob_TuckLayer",
+      "vertices": 615,
+      "faces": 560
+    }
+  ],
+  "source_sha256": "6ea1a31903ef45f2a53cf70fa32e7f54437d4f7748f729c37d7205050c4aba8d",
+  "candidate_sha256": "f78dba35482c06d19f9b48cb8a4babf3625b83cb045fbdb3e51360d33a90fc43",
+  "family": "teen",
+  "fit": {
+    "method": "evaluated skull cross-sections and radial scalp clearance",
+    "head_pivot": [
+      0.0,
+      0.004528277553617954,
+      1.2739999294281006
+    ],
+    "head_evaluated_bounds": [
+      [
+        -0.11073029786348343,
+        0.11072402447462082
+      ],
+      [
+        -0.10744214802980423,
+        0.09684322029352188
+      ],
+      [
+        1.2090198993682861,
+        1.514968991279602
+      ]
+    ],
+    "cross_sections": [
+      {
+        "fraction": 0.55,
+        "bounds": [
+          [
+            -0.09180544316768646,
+            0.0920499637722969
+          ],
+          [
+            -0.08204283565282822,
+            0.09658738970756531
+          ],
+          [
+            1.4036691188812256,
+            1.409420132637024
+          ]
+        ],
+        "sample_count": 279
+      },
+      {
+        "fraction": 0.7,
+        "bounds": [
+          [
+            -0.08582126349210739,
+            0.08585266768932343
+          ],
+          [
+            -0.0765976533293724,
+            0.09466160833835602
+          ],
+          [
+            1.440271019935608,
+            1.4453222751617432
+          ]
+        ],
+        "sample_count": 144
+      },
+      {
+        "fraction": 0.82,
+        "bounds": [
+          [
+            -0.07232666015625,
+            0.07241921871900558
+          ],
+          [
+            -0.06161486729979515,
+            0.08239821344614029
+          ],
+          [
+            1.4728785753250122,
+            1.4744833707809448
+          ]
+        ],
+        "sample_count": 54
+      }
+    ],
+    "linear_scale": [
+      0.8328862027705378,
+      0.832650083021693,
+      0.8314788793805562
+    ],
+    "detail_scale": 0.8323381608466889,
+    "center_offset_y": 5.851497570328462e-05,
+    "radial_correction_count": 398,
+    "max_radial_correction": 0.0031162500381469727
+  }
+}

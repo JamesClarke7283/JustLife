@@ -1,0 +1,177 @@
+{
+  "input": "/home/impulse/Projects/JustLife/art/experiments/portrait_v62/characters_identity.blend",
+  "output": "/home/impulse/Projects/JustLife/art/experiments/bob_v62/family_fit_runtime/adult/bob_fit.blend",
+  "scope": "Hair_Bob descendants only",
+  "unchanged_objects": 430,
+  "removed": [
+    "Hair_Bob_Cap",
+    "Hair_Bob_Fringe",
+    "Hair_Bob_Fringe.001",
+    "Hair_Bob_Fringe.002",
+    "Hair_Bob_Fringe.003",
+    "Hair_Bob_Fringe.004",
+    "Hair_Bob_Lock",
+    "Hair_Bob_Lock.001",
+    "Hair_Bob_Lock.002",
+    "Hair_Bob_Lock.003",
+    "Hair_Bob_Lock.004",
+    "Hair_Bob_Lock.005",
+    "Hair_Bob_Lock.006",
+    "Hair_Bob_Lock.007",
+    "Hair_Bob_Lock.008",
+    "Hair_Bob_Lock.009",
+    "Hair_Bob_Lock.010",
+    "Hair_Bob_Lock.011",
+    "Hair_Bob_Strand",
+    "Hair_Bob_Strand.001",
+    "Hair_Bob_Strand.002",
+    "Hair_Bob_Strand.003",
+    "Hair_Bob_Strand.004",
+    "Hair_Bob_Strand.005",
+    "Hair_Bob_Strand.006",
+    "Hair_Bob_Strand.007",
+    "Hair_Bob_Strand.008",
+    "Hair_Bob_Strand.009",
+    "Hair_Bob_Strand.010",
+    "Hair_Bob_Strand.011"
+  ],
+  "created": [
+    {
+      "name": "Hair_Bob_Cap",
+      "vertices": 17025,
+      "faces": 17024
+    },
+    {
+      "name": "Hair_Bob_Sweep",
+      "vertices": 615,
+      "faces": 560
+    },
+    {
+      "name": "Hair_Bob_TempleLayer",
+      "vertices": 615,
+      "faces": 560
+    },
+    {
+      "name": "Hair_Bob_TuckLayer",
+      "vertices": 615,
+      "faces": 560
+    }
+  ],
+  "source_sha256": "b5895903f64331e840304f8f106398024cefeebe55b64bb9f2314cd6250213e7",
+  "candidate_sha256": "3995733f23e1424ab19f1af0d2b42068390f70f831a0aebd94b43311bd85a6f4",
+  "family": "adult",
+  "fit": {
+    "method": "evaluated skull cross-sections and runtime-compensated silhouette envelope clearance",
+    "canonical_landmark_source_sha256": "b5895903f64331e840304f8f106398024cefeebe55b64bb9f2314cd6250213e7",
+    "head_pivot": [
+      0.0,
+      0.004999999888241291,
+      1.4579999446868896
+    ],
+    "head_evaluated_bounds": [
+      [
+        -0.12005472183227539,
+        0.12005475163459778
+      ],
+      [
+        -0.11739981174468994,
+        0.10582218319177628
+      ],
+      [
+        1.3831707239151,
+        1.7217249870300293
+      ]
+    ],
+    "cross_sections": [
+      {
+        "fraction": 0.55,
+        "bounds": [
+          [
+            -0.10045814514160156,
+            0.10041974484920502
+          ],
+          [
+            -0.08976320922374725,
+            0.10165565460920334
+          ],
+          [
+            1.5998903512954712,
+            1.6061887741088867
+          ]
+        ],
+        "sample_count": 213
+      },
+      {
+        "fraction": 0.7,
+        "bounds": [
+          [
+            -0.09379369765520096,
+            0.09382980316877365
+          ],
+          [
+            -0.08371327072381973,
+            0.1034553050994873
+          ],
+          [
+            1.6395150423049927,
+            1.6456068754196167
+          ]
+        ],
+        "sample_count": 142
+      },
+      {
+        "fraction": 0.82,
+        "bounds": [
+          [
+            -0.07707595080137253,
+            0.07833161950111389
+          ],
+          [
+            -0.06736448407173157,
+            0.09005274623632431
+          ],
+          [
+            1.6761952638626099,
+            1.6773881912231445
+          ]
+        ],
+        "sample_count": 30
+      }
+    ],
+    "linear_scale": [
+      0.910000014683364,
+      0.9100000121493913,
+      0.9099998190107788
+    ],
+    "detail_scale": 0.9099999486145067,
+    "center_offset_y": 0.0,
+    "clearance_envelope": [
+      {
+        "morphs": {},
+        "runtime_bob_x_expansion": 1.0
+      },
+      {
+        "morphs": {
+          "Face_Round": 1.0
+        },
+        "runtime_bob_x_expansion": 1.04
+      },
+      {
+        "morphs": {
+          "Jaw_Strong": 1.0
+        },
+        "runtime_bob_x_expansion": 1.03
+      },
+      {
+        "morphs": {
+          "Face_Round": 1.0,
+          "Jaw_Strong": 1.0
+        },
+        "runtime_bob_x_expansion": 1.07
+      }
+    ],
+    "contact_normal_clearance": 0.006369999640301547,
+    "radial_correction_count": 729,
+    "max_radial_correction": 0.005730178207159042
+  }
+}

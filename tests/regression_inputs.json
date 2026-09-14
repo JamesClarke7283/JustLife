@@ -290,6 +290,8 @@
     "scripts/world.gd",
     "scripts/world.gd.uid",
     "scripts/baby_plan.gd",
+    "scripts/character_identity.gd",
+    "scripts/character_identity.gd.uid",
     "scripts/stage_policy.gd",
     "assets/models/character_baby.glb",
     "assets/models/character_baby.glb.import",

@@ -1,0 +1,11 @@
+{
+  "input": "/home/impulse/Projects/JustLife/art/experiments/buzz_v62/candidate_a.blend",
+  "output": "/home/impulse/Projects/JustLife/art/experiments/buzz_v62/refined/candidate_b.blend",
+  "source_sha256": "121b6cd0066205c297614f6724b5c359bc85d59d4ae3f38c82ceff3373159cd0",
+  "candidate_sha256": "ea1c0e53c4ef2ed6f4da3932401fae3b07953b48e9a392cebb758761f9334ec7",
+  "scope": "Only Hair_Buzz_Surface shader and original packed images",
+  "exact_scene_objects_including_buzz_geometry_and_keys": 434,
+  "density_boundary_changes": "Softer front-corner transition; shorter temple point, still within scalp patch",
+  "artwork": "110000 deterministic randomly scattered short follicles; rank-based coverage fade",
+  "external_pixels_used": false
+}

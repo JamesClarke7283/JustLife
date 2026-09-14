@@ -1,0 +1,85 @@
+{
+  "input": "/home/impulse/Projects/JustLife/art/experiments/integrated_v62/adult_ready.blend",
+  "output": "/home/impulse/Projects/JustLife/art/experiments/buzz_v62/candidate_a.blend",
+  "source_sha256": "7869cf347f68d868e89bc8b8cfd29e8f3227a5cb0c623afa5e68bdcaa29a354a",
+  "candidate_sha256": "121b6cd0066205c297614f6724b5c359bc85d59d4ae3f38c82ceff3373159cd0",
+  "scope": "Hair_Buzz descendants only; new material/maps and scalp-coupled morphs",
+  "protected_objects": 433,
+  "removed": [
+    "Hair_Buzz_Cap"
+  ],
+  "created": {
+    "name": "Hair_Buzz_Cap",
+    "vertices": 2612,
+    "faces": 5042,
+    "copied_identity_keys": [
+      {
+        "name": "Face_Round",
+        "max_world_displacement": 0.0099067911993162
+      },
+      {
+        "name": "Jaw_Strong",
+        "max_world_displacement": 0.004465490556433452
+      },
+      {
+        "name": "Eye_Spacing",
+        "max_world_displacement": 0.0048227086706928
+      },
+      {
+        "name": "Face_Length",
+        "max_world_displacement": 0.0006142854574881963
+      }
+    ]
+  },
+  "old_buzz_evaluated_bounds": [
+    [
+      -0.1153435930609703,
+      0.11382105946540833
+    ],
+    [
+      -0.09159209579229355,
+      0.11878599971532822
+    ],
+    [
+      1.5303261280059814,
+      1.7428092956542969
+    ]
+  ],
+  "new_buzz_bounds": [
+    [
+      -0.1052260473370552,
+      0.10517256706953049
+    ],
+    [
+      -0.08703196048736572,
+      0.10797188431024551
+    ],
+    [
+      1.5221269130706787,
+      1.7249729633331299
+    ]
+  ],
+  "head_bounds": [
+    [
+      -0.12005472183227539,
+      0.12005475163459778
+    ],
+    [
+      -0.11739981174468994,
+      0.10582218319177628
+    ],
+    [
+      1.3831707239151,
+      1.7217249870300293
+    ]
+  ],
+  "scalp_offset_range": [
+    0.00035000000000018534,
+    0.0032500000000017216
+  ],
+  "material": "Hair_Buzz_Surface",
+  "runtime_recolor_role": "Hair",
+  "requires_recolor_mapping": true,
+  "alpha_mode_contract": "Math Round -> glTF MASK, cutoff0.5",
+  "external_pixels_used": false
+}

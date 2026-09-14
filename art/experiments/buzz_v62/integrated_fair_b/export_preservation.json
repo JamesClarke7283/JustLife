@@ -1,0 +1,57 @@
+{
+  "baseline": "/home/impulse/Projects/JustLife/art/experiments/skin_surface_v62/models_fair_b/character.glb",
+  "baseline_sha256": "3629de835cef45343f520c9be070896ad2520164e74b98235fd2512674756738",
+  "candidate": "/home/impulse/Projects/JustLife/art/experiments/buzz_v62/integrated_fair_b/models/character.glb",
+  "candidate_sha256": "4f610bde352ad06d1dcf5c4a10bcc5829e042032d7472fa1ca7137e11c6ca5ff",
+  "non_buzz_meshes_exact": 403,
+  "non_buzz_accessors_exact": 2018,
+  "color_meshes_exact": [
+    "Eyes_Iris",
+    "Eyes_Iris.001",
+    "Eyes_Sclera",
+    "Eyes_Sclera.001",
+    "Skin_Head_continuous"
+  ],
+  "non_buzz_materials_transforms_extras_skins_exact": true,
+  "buzz_material": {
+    "alphaMode": "MASK",
+    "doubleSided": true,
+    "extensions": {
+      "KHR_materials_specular": {
+        "specularFactor": 0.46000000834465027
+      }
+    },
+    "extras": {
+      "recolor_role": "Hair",
+      "artwork": "Original JustLife scattered follicles and barber fade, revision62B"
+    },
+    "name": "Hair_Buzz_Surface",
+    "normalTexture": {
+      "index": 3,
+      "scale": 0.3199999928474426
+    },
+    "pbrMetallicRoughness": {
+      "baseColorFactor": [
+        0.03189603239297867,
+        0.01599629409611225,
+        0.013702083379030228,
+        1
+      ],
+      "baseColorTexture": {
+        "index": 4
+      },
+      "metallicFactor": 0,
+      "metallicRoughnessTexture": {
+        "index": 5
+      }
+    }
+  },
+  "buzz_morph_names": [
+    "Face_Round",
+    "Jaw_Strong",
+    "Eye_Spacing",
+    "Face_Length"
+  ],
+  "standard_root_and_eleven_identity_mouth_metadata": true,
+  "passed": true
+}
