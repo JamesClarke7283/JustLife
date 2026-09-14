@@ -140,17 +140,26 @@ The jacket shell, and the hoodie shell derived from it, were bound with the anal
 
 ## Facial and corrective morphs
 
-Morphs can occur on several meshes. Cache and set every mesh exposing the requested target; changing only the head will detach features. Values are in **0..1**, with neutral **0**.
+Morphs can occur on several meshes. Cache and set every mesh exposing the requested target; changing only the head will detach features. Values are in **0..1**, with neutral **0**. The seven signed lower-face controls use **-1..1**.
 
-| Target | Behavior |
-| --- | --- |
-| `Blink` | Actual upper lid closure, small lower socket motion and globe/iris retreat |
-| `Smile` | Lip and mouth-corner lift, coordinated with nearby facial skin and the mouth seam |
-| `Sit` | Pose-space cloth correction, intended for seated poses only |
-| `Face_Round` | Fuller cheeks and a gently rounder lower face |
-| `Jaw_Strong` | Broader lower jaw and more forward chin plane |
-| `Nose_Wide` | Wider nose tip and alar wings, with aligned nostrils |
-| `Eye_Spacing` | Modestly wider eye spacing, including lids, globes and brows |
+| Target | Behavior | Present in every production model |
+| --- | --- | --- |
+| `Blink` | Actual upper lid closure, small lower socket motion and globe/iris retreat | yes |
+| `Smile` | Lip and mouth-corner lift, coordinated with nearby facial skin and the mouth seam | yes |
+| `Sit` | Pose-space cloth correction, intended for seated poses only | yes |
+| `Face_Round` | Fuller cheeks and a gently rounder lower face | yes |
+| `Jaw_Strong` | Broader lower jaw and more forward chin plane | yes |
+| `Nose_Wide` | Wider nose tip and alar wings, with aligned nostrils | yes |
+| `Eye_Spacing` | Modestly wider eye spacing, including lids, globes and brows | yes |
+| `Nose_Length` | Longer or shorter nose from the measured nostril centre, signed | yes |
+| `Lip_Fullness` | Fuller or thinner lips across the seam and both lip surfaces, signed | yes |
+| `Brow_Arch` | Raised or lowered brow arch following the true forehead, signed | yes |
+| `Chin_Length` | Longer or shorter chin below the mouth, signed | yes |
+| `Face_Length` | Longer or shorter lower face below the eye plane, signed | yes |
+| `Mouth_Width` | Wider or narrower mouth with smooth cheek support, signed | yes |
+| `Nose_Bridge` | Deeper or flatter bridge profile, signed | yes |
+
+**Iteration 63.** Before this pass only `Face_Round`, `Jaw_Strong`, `Eye_Spacing` and `Nose_Wide` existed on the shipped assets, so seven of the eleven creator sliders the interface offered (and `LifeActor.IDENTITY_KEYS` already listed) were inert in the running game: dragging them changed nothing, on every age and every body frame. All twenty production GLBs now carry all eleven controls. The adult four are the reviewed iteration-62 composition (eleven controls, welded orbital socket, recolourable vertex-colour surface, repaired Buzz cropped cut); the child, teen and elder families are authored from their own released sources with the family's measured amplitude scale (elder 1.0, teen 0.92, child 0.87), and the baby uses the infant scale of 0.35 with its own measured seam ring and eye/nostril anchors. `tests/probe_character62.gd` verifies all eleven on every age and frame and passes 5,178 checks with zero failures.
 
 Identity morphs share continuous displacement fields across the head and its facial details. Neutral, each individual maximum, all four maxima together, maximum plus blink, and maximum plus smile are rendered for clipping inspection. Avoid applying `Sit` during walking or bed sleep. The actor gently widens the Bob hair container with `scale.x *= 1 + 0.04 * Face_Round + 0.03 * Jaw_Strong` to retain cheek/ear clearance at combined maxima.
 

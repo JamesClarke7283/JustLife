@@ -1,0 +1,50 @@
+{
+  "source": "art/characters_child.blend",
+  "new_keys": [
+    "Nose_Length",
+    "Lip_Fullness",
+    "Brow_Arch",
+    "Chin_Length"
+  ],
+  "scale": 0.8656226772695661,
+  "amplitude_scale": 0.8656226772695661,
+  "baby": false,
+  "new_brows": [],
+  "objects": {
+    "Lips_Lower_soft": {
+      "Nose_Length": 4.0587343188796266e-07,
+      "Lip_Fullness": 0.0022723521306231395
+    },
+    "Lips_Smile_seam": {
+      "Nose_Length": 2.1927377205627912e-07,
+      "Lip_Fullness": 0.002083034500755451
+    },
+    "Lips_Upper_soft": {
+      "Nose_Length": 1.4672480538928473e-06,
+      "Lip_Fullness": 0.002245898396088372
+    },
+    "Nose_Nostril": {
+      "Nose_Length": 0.0043881902668586395
+    },
+    "Nose_Nostril.001": {
+      "Nose_Length": 0.0043881902668586395
+    },
+    "Skin_Head_continuous": {
+      "Nose_Length": 0.004661418092996144,
+      "Lip_Fullness": 0.0022559727095545416,
+      "Chin_Length": 0.006078669483786872
+    },
+    "Skin_Upper_lid_-1": {
+      "Nose_Length": 1.8476373522806032e-05
+    },
+    "Skin_Upper_lid_1": {
+      "Nose_Length": 1.84780054248603e-05
+    },
+    "Hair_Brow": {
+      "Brow_Arch": 0.0034624907090782643
+    },
+    "Hair_Brow.001": {
+      "Brow_Arch": 0.0034624907090782643
+    }
+  }
+}

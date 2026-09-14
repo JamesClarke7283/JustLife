@@ -11,6 +11,15 @@ CONTACT_PREFIXES = ('Skin_Head', 'Skin_Nose', 'Skin_Upper_lid', 'Skin_Ear',
 
 
 def smooth(a, b, value):
+    """Smoothstep that also accepts an empty or inverted band.
+
+    A degenerate band (b <= a) cannot fade across a region that does not exist.
+    Returning a constant 1 keeps such a caller's own masking in charge instead
+    of silently collapsing its field to zero through a negative denominator.
+    The infant neck band below the mouth is exactly this case.
+    """
+    if b <= a:
+        return 1. if value >= b else 0.
     t = max(0., min(1., (value - a) / (b - a)))
     return t * t * (3. - 2. * t)
 
@@ -119,7 +128,8 @@ class Geometry:
         if key == 'Face_Length':
             orbital = 1. - smooth(self.eye.z - self.eye_height * .95,
                                   self.eye.z - self.eye_height * .50, z)
-            neck = smooth(self.head_low, self.mouth.z - self.face_height * .45, z)
+            neck = smooth(self.head_low, max(self.mouth.z - self.face_height * .45,
+                                             self.head_low), z)
             return Vector((0., 0., -.12 * self.amplitude * max(0., self.eye.z - z)
                            * orbital * neck * front))
         if key == 'Mouth_Width':
