@@ -23,10 +23,15 @@ const BOOK_SKILLS: Dictionary = {
 }
 const MAX_BOOKS: int = 6
 const BIN_CAPACITY: int = 4
+## Furniture put away into the household's storage unit. A stored furnishing is
+## a detached layout record (kind, x, z, rotation, level) held outside the live
+## world, so it costs nothing to keep and can be withdrawn or sold later.
+const MAX_STORAGE: int = 30
 
 var app: Node
 var books: Array = []                       # [{"id":"book_1","skill":"cooking","shelf":"item_6"}]
 var fill: Dictionary = {}                   # bin item id -> whole units of rubbish
+var storage: Array = []                     # [{"id":"placed_1","kind":"bed","x":..,"z":..,"rotation":..,"level":..}]
 var serial: int = 0
 var _full_notice_day: int = -1
 
@@ -38,12 +43,13 @@ func _init(owner_app: Node = null) -> void:
 # ---------------------------------------------------------------- persistence
 
 func get_state() -> Dictionary:
-	return {"version":1, "serial":serial, "books":books.duplicate(true), "fill":fill.duplicate(true)}
+	return {"version":1, "serial":serial, "books":books.duplicate(true), "fill":fill.duplicate(true), "storage":storage.duplicate(true)}
 
 
 func restore(data: Variant) -> void:
 	books = []
 	fill = {}
+	storage = []
 	serial = 0
 	if not data is Dictionary:
 		return
@@ -56,6 +62,10 @@ func restore(data: Variant) -> void:
 		if not entry is Dictionary or not BOOK_SKILLS.has(str(entry.get("skill", ""))):
 			continue
 		books.append({"id":str(entry.get("id", "")), "skill":str(entry.skill), "shelf":str(entry.get("shelf", ""))})
+	for entry: Variant in data.get("storage", []):
+		if not entry is Dictionary or not _stored_record_valid(entry):
+			continue
+		storage.append(_stored_record(entry))
 
 
 static func validate(data: Variant, layout: Array) -> String:
@@ -92,7 +102,43 @@ static func validate(data: Variant, layout: Array) -> String:
 		seen[id] = true
 		if str(kinds.get(str(entry.get("shelf", "")), "")) != "bookshelf":
 			return "A saved skill book refers to a missing shelf."
+	var saved_storage: Variant = data.get("storage", [])
+	if not saved_storage is Array or saved_storage.size() > MAX_STORAGE:
+		return "The saved storage unit is invalid."
+	var stored_ids: Dictionary = {}
+	for entry: Variant in saved_storage:
+		if not _stored_record_valid(entry):
+			return "A saved stored furnishing is invalid."
+		var stored_id: String = str(entry.get("id", ""))
+		if stored_ids.has(stored_id):
+			return "Two saved stored furnishings share an identity."
+		stored_ids[stored_id] = true
 	return ""
+
+## A stored record is a detached layout entry: the same identity, kind and
+## transform a placed furnishing carries, with no live node. It must name a real
+## catalogue item at a supported level and stay inside the lot.
+static func _stored_record_valid(entry: Variant) -> bool:
+	if not entry is Dictionary:
+		return false
+	if not entry.get("id") is String or str(entry.get("id", "")).is_empty():
+		return false
+	if not LifeCatalog.ITEMS.has(str(entry.get("kind", ""))):
+		return false
+	if not LifeBuildingState.number(entry.get("level", 0), 0, 1, true):
+		return false
+	for axis: String in ["x", "z", "rotation"]:
+		if not LifeBuildingState.number(entry.get(axis, 0), -100000, 100000):
+			return false
+	if entry.has("lit") and not entry.get("lit") is bool:
+		return false
+	return true
+
+static func _stored_record(entry: Dictionary) -> Dictionary:
+	var record: Dictionary = {"id":str(entry.get("id", "")), "kind":str(entry.get("kind", "")), "x":float(entry.get("x", 0.0)), "z":float(entry.get("z", 0.0)), "rotation":float(entry.get("rotation", 0.0)), "level":int(entry.get("level", 0))}
+	if entry.has("lit"):
+		record["lit"] = bool(entry.lit)
+	return record
 
 
 # ------------------------------------------------------------------- books
@@ -164,6 +210,45 @@ func empty_bin(bin_id: String) -> bool:
 	fill[bin_id] = 0
 	refresh_props()
 	return true
+
+
+# ---------------------------------------------------------------- storage
+
+## File a placed furnishing away into the household's storage unit. The record
+## leaves the live world (no node, no navigation cost) and waits in `storage`.
+func store_furnishing(entry: Dictionary) -> Dictionary:
+	if not _stored_record_valid(entry):
+		return {"ok":false, "error":"That furnishing cannot be stored."}
+	if storage.size() >= MAX_STORAGE:
+		return {"ok":false, "error":"The storage unit is full (%d items). Take something out first." % MAX_STORAGE}
+	storage.append(_stored_record(entry))
+	return {"ok":true}
+
+## Take a stored furnishing back out as a fresh layout record ready to place.
+## The layout is not committed here — the caller validates the destination first.
+func withdraw_furnishing(id: String) -> Dictionary:
+	for index: int in range(storage.size()):
+		if str(storage[index].id) != id:
+			continue
+		var record: Dictionary = storage[index].duplicate(true)
+		storage.remove_at(index)
+		return {"ok":true, "record":record}
+	return {"ok":false, "error":"That furnishing is no longer in storage."}
+
+## Sell a stored furnishing outright, paying its usual sale value back.
+func sell_stored(id: String) -> Dictionary:
+	for index: int in range(storage.size()):
+		if str(storage[index].id) != id:
+			continue
+		var record: Dictionary = storage[index]
+		var credit: int = int(LifeCatalog.ITEMS[str(record.kind)].price * .7)
+		storage.remove_at(index)
+		return {"ok":true, "credit":credit, "kind":str(record.kind)}
+	return {"ok":false, "error":"That furnishing is no longer in storage."}
+
+
+func storage_count() -> int:
+	return storage.size()
 
 
 func refresh_props() -> void:

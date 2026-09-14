@@ -220,6 +220,14 @@ func _active_interruption() -> void:
 	check(sim.career.worked_day==0 and sim.funds==before_funds,"Interrupted home work awards no shift salary.")
 	if sim.action_queue.is_empty():sim._choose_autonomous_action()
 	check(current_id(sim)=="toilet","Interrupted home work gives way to useful recovery.")
+	# The interrupted shift waits behind the recovery with its progress intact,
+	# so the progress bar continues where it stopped instead of restarting.
+	var paused_job:Dictionary={}
+	for action:Dictionary in sim.action_queue:
+		if str(action.id)=="job":paused_job=action
+	check(not paused_job.is_empty(),"An interrupted home shift stays queued rather than being discarded.")
+	check(str(paused_job.get("phase",""))=="queued" and float(paused_job.get("elapsed",0.0))>0.0,"The interrupted shift keeps its elapsed progress while it waits.")
+	check(sim.action_queue.find(paused_job)==1,"The recovery keeps the front of the queue; the shift resumes next.")
 	var leisure: LifeSim = setup("teen",479.0)
 	leisure.queue_action("read","shelf")
 	leisure.get_current_action()["autonomous"] = true
