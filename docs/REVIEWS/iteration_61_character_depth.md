@@ -236,11 +236,19 @@ committed revision was not a runnable artifact. That is now fixed: a clean
   iteration-60 table's "exit 0, 0 runtime errors" describes the RTX 5090 machine
   this project was verified on, not this one; on hardware that can actually run
   these suites idle, the pointer fix should be re-measured.
-- **The frame budget is unqualified below the verified desktop.** `probe_frames`
-  on this Intel HD 520 reads p50 70.8 ms / p95 104.2 ms uncapped, against the
-  iteration-60 reading of p50 6.2 / p95 8.3 ms on an RTX 5090. This is
-  hardware-conditioned; the README already says other graphics hardware has not
-  been qualified, and this number belongs beside that statement.
+- **The frame budget is unqualified below the verified desktop, and the low-end
+  number is now recorded rather than implied.** The independent critic asked for
+  exactly this: publish a second measured configuration, or state plainly that
+  the 33 ms budget has only been demonstrated on the RTX 5090. `probe_frames` on
+  this Intel HD 520 reads **p50 47.5 ms / p90 70.8 / p95 77.8 / p99 105.9 /
+  max 148.6** uncapped, and p50 75.0 / p95 107.5 at the 60 fps cap — against the
+  iteration-60 reading of p50 6.2 / p95 8.3 ms on an RTX 5090. The budget is
+  therefore met on the verified desktop and **not** met on integrated graphics,
+  which is a real unqualified risk for anyone below that hardware rather than a
+  code defect. `project.godot` already carries the mitigations available
+  (`scaling_3d/scale=0.9`, MSAA 1x, a 2048 shadow map), and the iteration-60
+  review measured that turning MSAA off or halving the shadow map moved p95 by
+  less than the run-to-run spread, so no settings change is claimed here.
 - **The character close-up is substantially improved, and the measured picture
   is better than earlier prose claimed.** Hair was the largest defect and the
   iris proportion the second; both are fixed, and the creator's Face tab reads as
