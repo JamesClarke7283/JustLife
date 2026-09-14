@@ -60,6 +60,8 @@ Saves and previews live in `~/.justlife/saves/` (Windows: `%USERPROFILE%\.justli
 
 `python tools/export_linux.py` imports and builds an isolated release snapshot, removing development MCP services from the export. It requires matching Godot export templates and includes the build manifest and font/engine licenses.
 
+The [itch.io release workflow](.github/workflows/publish-itch.yml) builds Linux x86_64, Windows x86_64 and a universal macOS ZIP with Godot 4.7.2, then publishes them to [JustLife on itch.io](https://impulse20.itch.io/justlife). Run **Publish to itch.io** from GitHub Actions, or push a `v*` release tag. Uncheck **Publish all three builds to itch.io** for a build-only run. See [publishing instructions](docs/PUBLISHING.md) for local exports, download formats and API-key rotation.
+
 Use [the test guide](tests/README.md) to choose a focused regression or rendered playthrough. Runners keep saves and Godot user data in private directories. [Release verification](docs/RELEASE_VERIFICATION.md) records packaged checks, hardware, retained failures and the limits of that evidence. Detailed independent findings remain in [the reviews](docs/REVIEWS/).
 
 See [the source-tree guide](docs/SOURCE_TREE.md) for maintained artwork, development tools and local artifacts, and [CREDITS.md](CREDITS.md) for asset provenance. Godot import settings (`.import`) and resource IDs (`.uid`) remain versioned so fresh checkouts retain the same references.
