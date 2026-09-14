@@ -145,6 +145,8 @@ green (`test_depth_v61` 98 checks, 0 failures).
 | `test_oven_reconstruction` | 371 checks, 0 failures |
 | `test_household_flow` | 16 assertions, 2 failures — **pre-existing**, reproduced with only the working tree's own price edits applied and none of this iteration's test changes |
 | fresh `git archive HEAD` export | 0 script parse errors |
+| `tools/export_game.py --platform linux` | builds a 277 MB `JustLife.x86_64`; the binary runs headless to exit 0 |
+| packaged release contents | artifact sha256 equals `build_manifest.json`; `meal_mushroom_soup_serving`, `meal_berry_crumble_serving`, `character.glb` and `household_flow.gd` all present; `MCPRuntimeServer` / `mcp_runtime_server` / `godot_mcp_toolkit` all stripped |
 
 ### A natural iris proportion (`tools/eye_iris_v61/`)
 
