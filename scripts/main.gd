@@ -1627,16 +1627,29 @@ func _update_selection_marker(delta: float) -> void:
 	shine.emission=tone
 
 
+## The queued actions for the controlled Lifelet. They used to be drawn in a
+## bare strip at y=650, floating over the middle of the 3D scene with no
+## background, which read as detached chrome. They now sit in their own card
+## directly under the goal card, alongside the other HUD cards, and the card is
+## only present while something is actually queued.
+var queue_card: Panel
+var queue_scroll: ScrollContainer
+
 func draw_queue() -> void:
-	var scroll=ScrollContainer.new()
-	scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
-	rect(scroll,Vector2(326,650),Vector2(830,61))
+	queue_card=card(Vector2(300,134),Vector2(800,58),Color("f8faf2",.92),14)
+	queue_card.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	# Children of a card position inside it, so the caption and the strip use the
+	# card's own local coordinates rather than the canvas ones they had before.
+	var caption:=small_caps("Next up",Vector2(12,4),Vector2(70,18),queue_card)
+	caption.add_theme_color_override("font_color",P.INK)
+	queue_scroll=ScrollContainer.new()
+	queue_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
+	queue_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
+	rect(queue_scroll,Vector2(76,6),Vector2(716,46),queue_card)
 	queue_box=HBoxContainer.new()
 	queue_box.add_theme_constant_override("separation",8)
-	scroll.add_child(queue_box)
-	queue_box.custom_minimum_size=Vector2(0,43)
-	queue_box.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	queue_scroll.add_child(queue_box)
+	queue_box.custom_minimum_size=Vector2(0,42)
 
 func refresh_hud() -> void:
 	if portrait_stale and mode=="live" and not overlay_open:
@@ -1758,7 +1771,9 @@ func refresh_hud() -> void:
 				var a:Dictionary=sim.action_queue[i]
 				var b=Button.new();b.custom_minimum_size=Vector2(155,43)
 				queue_box.add_child(b)
+				b.size=Vector2(155,43)
 				compact_button(b)
+				b.custom_minimum_size=Vector2(155,43)
 				var shared:bool=not str(a.get("cooperation_id","")).is_empty()
 				var queue_title:String=("Learn together" if str(a.id)=="homework" else "Help with homework") if shared else str(a.label)
 				if str(a.id) in ["school_day","career_day"] and not away.is_empty():queue_title=("At work" if str(a.id)=="career_day" else "At school") if str(away.phase)=="away" else "Coming home"
@@ -1771,6 +1786,9 @@ func refresh_hud() -> void:
 				b.tooltip_text=queue_title+(" · With "+str(partner.character.name) if shared and partner else "")+(" · Click to cancel for both Lifelets" if shared else " · Click to cancel this activity")
 				if returning:b.tooltip_text="Coming home · Available after reaching the front garden"
 				b.pressed.connect(func():cancel_current_action(i))
+		# The queue card is only meaningful while something is queued.
+		if is_instance_valid(queue_card):
+			queue_card.visible=not sim.action_queue.is_empty()
 
 func commas(value:int) -> String:
 	var s=str(value)
