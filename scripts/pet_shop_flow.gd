@@ -185,12 +185,14 @@ func _swatch_row(key: String, at: Vector2) -> void:
 		var row: int = index / 9
 		var swatch: Button = app.button("", at + Vector2(column * 40, row * 40), Vector2(34, 34), func(): draft[key] = colour; draw_picker(), false, app.overlay)
 		swatch.name = "PetSwatch_%s_%d" % [key, index]
-		app.compact_button(swatch)
-		swatch.custom_minimum_size = Vector2(34, 34)
+		swatch.custom_minimum_size = Vector2.ZERO
+		# The shared panel style sets 18 px content margins, which would force a
+		# 34 px chip to 36 px and overlap its neighbour; a swatch carries no text.
+		swatch.add_theme_stylebox_override("normal", app.swatch_panel(Color(colour), 17, P.TEAL if colour == chosen else Color("ffffff"), 3))
+		swatch.add_theme_stylebox_override("hover", app.swatch_panel(Color(colour).lightened(.1), 17, P.TEAL, 3))
+		swatch.add_theme_stylebox_override("pressed", app.swatch_panel(Color(colour).darkened(.1), 17, P.TEAL, 3))
+		swatch.add_theme_stylebox_override("focus", app.swatch_panel(Color.TRANSPARENT, 17, P.GOLD, 2))
 		swatch.size = Vector2(34, 34)
-		swatch.add_theme_stylebox_override("normal", P.panel(Color(colour), 17, P.TEAL if colour == chosen else Color("ffffff"), 3))
-		swatch.add_theme_stylebox_override("hover", P.panel(Color(colour).lightened(.1), 17, P.TEAL, 3))
-		swatch.add_theme_stylebox_override("pressed", P.panel(Color(colour).darkened(.1), 17, P.TEAL, 3))
 		if colour == chosen:
 			swatch.text = "•"
 			swatch.add_theme_color_override("font_color", Color.WHITE if Color(colour).get_luminance() < 0.55 else P.INK)

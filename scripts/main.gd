@@ -178,16 +178,26 @@ func _ready() -> void:
 	canvas.add_child(activity_bubbles)
 	ui=Control.new()
 	ui.name="UI"
-	ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# The layers are positioned and scaled by _fit_interface, so they anchor at
+	# the canvas origin; a full-rect preset would let the viewport override the
+	# size after _ready and fight the fit.
+	ui.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	ui.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	ui.theme=P.theme()
 	canvas.add_child(ui)
 	overlay=Control.new()
 	overlay.name="Overlay"
-	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	overlay.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	overlay.theme=ui.theme
 	canvas.add_child(overlay)
+	# Every screen positions its controls in a 1440x900 design space. The
+	# project stretches with `canvas_items`/`expand`, so a wider or taller window
+	# grows the canvas and would otherwise leave the whole interface pinned to the
+	# top-left. Fit and centre the design instead, so the HUD reads as intended at
+	# any window shape.
+	get_viewport().size_changed.connect(_fit_interface)
+	_fit_interface()
 	setup_audio()
 	menus=LifeMenus.new(self)
 	show_main_menu()
@@ -197,6 +207,47 @@ func _ready() -> void:
 		release_probe.run.call_deferred(self)
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--capture="):capture_milestone.call_deferred(argument.get_slice("=",1))
+
+## The interface is authored in a 1440x900 design space, but the project
+## stretches with `canvas_items`/`expand`, so a widescreen window produces a
+## canvas that is 900 units tall and wider than 1440. Anchoring the whole design
+## to the left would leave a dead strip beside the HUD, so the design keeps its
+## authored height and the screens that span the canvas read `interface_width()`.
+func _fit_interface() -> void:
+	if not is_instance_valid(ui) or not is_instance_valid(overlay):return
+	var window: Vector2 = get_viewport().get_visible_rect().size
+	# Height is the tight axis on every supported window shape; scale the design
+	# so it always fills the canvas vertically, then centre it horizontally.
+	var scale_factor: float = window.y / 900.0
+	var fitted: Vector2 = Vector2(1440.0, 900.0) * scale_factor
+	var margin: Vector2 = Vector2((window.x - fitted.x) * .5, 0.0)
+	for layer: Control in [ui, overlay]:
+		layer.position = margin
+		layer.size = Vector2(1440.0, 900.0)
+		layer.scale = Vector2(scale_factor, scale_factor)
+		layer.pivot_offset = Vector2.ZERO
+	if is_instance_valid(activity_bubbles):
+		activity_bubbles.scale = Vector2(scale_factor, scale_factor)
+
+## Width available to the interface, in the design space the screens author in.
+## A 16:10 canvas reports 1440; a widescreen canvas reports the real width so a
+## spanning screen can reach both edges instead of hugging the left.
+func interface_width() -> float:
+	if not is_instance_valid(ui):return 1440.0
+	var window: Vector2 = get_viewport().get_visible_rect().size
+	return maxf(1440.0, window.x / maxf(ui.scale.x, 0.0001))
+
+## The full visible interface rect, for scrims and click-outside backdrops.
+func interface_size() -> Vector2:
+	return Vector2(interface_width(),900.0)
+
+## A layer child's canvas position is `position + local * scale`, so the local
+## coordinate for a desired canvas x is `(x - position) / scale`. Screens that
+## must reach the real canvas edges use this instead of assuming the design's
+## origin sits at canvas zero.
+func interface_local_x(canvas_x: float) -> float:
+	if not is_instance_valid(ui):return canvas_x
+	return (canvas_x - ui.position.x) / maxf(ui.scale.x, 0.0001)
 
 func _connect_live_nodes() -> void:
 	household.physical_snapshot_provider=_physical_snapshot_context
@@ -751,11 +802,21 @@ func toggle_trait(tr:String) -> void:
 	else:show_notice("Choose up to three traits. Deselect one to try another.")
 	draw_creator()
 
+## A swatch's own panel style. `LifePalette.panel()` sets 18 px content margins,
+## which would force a small swatch button to a 36 px minimum and make adjacent
+## swatches overlap. A swatch carries no text, so its margins are zero.
+func swatch_panel(color: Color, radius: int, border: Color, width: int) -> StyleBoxFlat:
+	var s: StyleBoxFlat = P.panel(color, radius, border, width)
+	s.content_margin_left = 0.0
+	s.content_margin_right = 0.0
+	s.content_margin_top = 0.0
+	s.content_margin_bottom = 0.0
+	return s
+
 ## Draw a colour row that wraps inside the creator card. `width` is the usable
 ## inner width, so a longer authored palette stays on screen instead of running
-## past the card edge. Each swatch is compacted, because the shared button theme
-## reserves 18 px of horizontal content margin that would otherwise stretch a
-## small swatch into an oval.
+## past the card edge. The stride always exceeds the swatch, so neighbours never
+## overlap and every swatch stays clickable.
 func swatches(colors:Array,key:String,p:Vector2,diameter:float,gap:float,width:float=276.0) -> void:
 	var stride:float=diameter+gap
 	var per_row:int=maxi(1,int((width+gap)/stride))
@@ -764,14 +825,16 @@ func swatches(colors:Array,key:String,p:Vector2,diameter:float,gap:float,width:f
 		var at:Vector2=p+Vector2((i%per_row)*stride,floori(float(i)/per_row)*stride)
 		var b=button("",at,Vector2(diameter,diameter),func():profile[key]=c;refresh_preview())
 		b.tooltip_text=c
-		compact_button(b)
-		b.custom_minimum_size=Vector2(diameter,diameter)
+		b.custom_minimum_size=Vector2.ZERO
+		var selected:bool=profile.get(key,"")==c
+		b.add_theme_stylebox_override("normal",swatch_panel(Color(c),int(diameter/2),P.TEAL if selected else Color("ffffff"),3))
+		b.add_theme_stylebox_override("hover",swatch_panel(Color(c).lightened(.1),int(diameter/2),P.TEAL,3))
+		b.add_theme_stylebox_override("pressed",swatch_panel(Color(c).darkened(.1),int(diameter/2),P.TEAL,3))
+		b.add_theme_stylebox_override("focus",swatch_panel(Color.TRANSPARENT,int(diameter/2),P.GOLD,2))
+		# The size must be set after the styles, because the previous style's
+		# minimum would otherwise win and stretch the swatch.
 		b.size=Vector2(diameter,diameter)
-		var s=P.panel(Color(c),int(diameter/2),P.TEAL if profile.get(key,"")==c else Color("ffffff"),3)
-		b.add_theme_stylebox_override("normal",s)
-		b.add_theme_stylebox_override("hover",P.panel(Color(c).lightened(.1),int(diameter/2),P.TEAL,3))
-		b.add_theme_stylebox_override("pressed",P.panel(Color(c).darkened(.1),int(diameter/2),P.TEAL,3))
-		if profile.get(key,"")==c:b.text="•";b.add_theme_color_override("font_color",Color.WHITE)
+		if selected:b.text="•";b.add_theme_color_override("font_color",Color.WHITE)
 
 func refresh_preview() -> void:
 	if not is_instance_valid(preview):return
@@ -1382,7 +1445,8 @@ func draw_household_bar() -> void:
 			chip.size=Vector2(31,44)
 			chip.tooltip_text=str(member.sim.character.name)+" · Click to control"
 			household_chips[str(member.id)]=chip
-	card(Vector2(20,718),Vector2(1400,162),P.WHITE,18)
+	var bar_width:float=interface_width()-40.0
+	card(Vector2(interface_local_x(20.0),718),Vector2(bar_width,162),P.WHITE,18)
 	line(Vector2(304,738),Vector2(1,121))
 	line(Vector2(964,738),Vector2(1,121))
 	card(Vector2(36,739),Vector2(73,90),P.PALE,12)
@@ -1794,7 +1858,8 @@ func draw_build_catalog() -> void:
 	build_quote.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	build_quote.custom_maximum_size=Vector2(408,-1)
 	build_quote.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
-	card(Vector2(20,643),Vector2(1400,239),P.WHITE,18)
+	var catalog_width:float=interface_width()-40.0
+	card(Vector2(interface_local_x(20.0),643),Vector2(catalog_width,239),P.WHITE,18)
 	small_caps("Make yourself at home",Vector2(40,657))
 	text_label("Build & buy",Vector2(38,687),Vector2(210,42),29,P.INK,true)
 	for i in range(LifeCatalog.CATEGORIES.size()):
@@ -2144,7 +2209,7 @@ func dismiss_layer() -> void:
 	bg.add_theme_stylebox_override("normal",StyleBoxEmpty.new())
 	bg.add_theme_stylebox_override("hover",StyleBoxEmpty.new())
 	bg.add_theme_stylebox_override("pressed",StyleBoxEmpty.new())
-	rect(bg,Vector2.ZERO,Vector2(1440,900),overlay)
+	rect(bg,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
 	bg.pressed.connect(close_overlay)
 
 func switch_lamp(item:Dictionary) -> void:
@@ -2167,6 +2232,12 @@ func switch_lamp(item:Dictionary) -> void:
 
 func show_interactions(item:Dictionary,screen:Vector2) -> void:
 	close_overlay();overlay_open=true;dismiss_layer()
+	# Callers hand over several shapes: a placed furnishing record, a bare
+	# member id, a transient light. Normalise the keys this panel reads so a
+	# missing one draws an empty panel instead of aborting mid-draw.
+	item=item.duplicate()
+	for key:String in ["kind","id","label"]:
+		if not item.has(key):item[key]=""
 	var actions:Array=sim.get_actions_for(str(item.kind),str(item.id))
 	if str(item.kind)=="meal":actions.append({"id":"call_to_meal","label":"Call everyone to eat","cost":0,"duration":0,"available":true,"description":"Invite available hungry household members and your welcomed guest. Busy Lifelets keep their plans."})
 	# A beat already in progress offers its own stop, so the invitation in its
@@ -2233,7 +2304,7 @@ func show_homework_helpers(item:Dictionary) -> void:
 	var list_height:float=clampf(helpers.size()*87.0-10.0,77.0,320.0)
 	var panel_height:float=340.0+list_height
 	var top:float=(900.0-panel_height)*.5
-	var shade=ColorRect.new();shade.color=Color(.08,.17,.15,.28);rect(shade,Vector2.ZERO,Vector2(1440,900),overlay)
+	var shade=ColorRect.new();shade.color=Color(.08,.17,.15,.28);rect(shade,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
 	card(Vector2(338,top),Vector2(764,panel_height),P.WHITE,24,overlay)
 	small_caps("A little help goes a long way",Vector2(373,top+22),Vector2(670,23),overlay)
 	text_label("Learn something together.",Vector2(370,top+60),Vector2(686,57),36,P.INK,true,overlay)
@@ -2593,7 +2664,13 @@ func _member_action_finished(id:String,action:Dictionary) -> void:
 	_bind_member(prior)
 
 func show_housemate_interactions(item:Dictionary,screen:Vector2) -> void:
-	show_interactions(item,screen)
+	# The world's click payload carries a display label; a caller that identifies
+	# a member by id alone still gets the member's real name in the title.
+	var enriched:Dictionary=item.duplicate()
+	if str(enriched.get("label","")).is_empty():
+		var member:Node=household.member_sim(str(enriched.get("id","")))
+		if is_instance_valid(member):enriched["label"]=str(member.character.name)
+	show_interactions(enriched,screen)
 
 func on_ground_clicked(p:Vector3) -> void:
 	if mode!="live":return
@@ -2718,7 +2795,7 @@ func show_notice(message:String) -> void:
 
 func show_menu() -> void:
 	_begin_pause_overlay()
-	var bg=ColorRect.new();bg.color=Color(.08,.17,.15,.28);rect(bg,Vector2.ZERO,Vector2(1440,900),overlay)
+	var bg=ColorRect.new();bg.color=Color(.08,.17,.15,.28);rect(bg,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
 	card(Vector2(490,166),Vector2(460,576),P.WHITE,24,overlay)
 	small_caps("Take a little pause",Vector2(526,212),Vector2(385,25),overlay)
 	text_label("Life at your pace.",Vector2(523,246),Vector2(390,57),37,P.INK,true,overlay)
@@ -2738,7 +2815,7 @@ func show_help() -> void:
 	_begin_pause_overlay()
 	var background:ColorRect=ColorRect.new()
 	background.color=Color(.08,.17,.15,.28)
-	rect(background,Vector2.ZERO,Vector2(1440,900),overlay)
+	rect(background,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
 	card(Vector2(420,148),Vector2(600,587),P.WHITE,24,overlay)
 	text_label("Make yourself at home.",Vector2(454,175),Vector2(526,63),36,P.INK,true,overlay)
 	paragraph("Click a furnishing or a neighbor to choose an activity. Your Lifelet walks there, then gets started. Queue activities and cancel them by clicking their ×. Needs change throughout the day; different activities restore them.",Vector2(458,257),Vector2(514,108),17,P.INK,overlay)
@@ -2777,7 +2854,7 @@ func show_careers() -> void:
 	_begin_pause_overlay()
 	var background:ColorRect=ColorRect.new()
 	background.color=Color(.08,.17,.15,.28)
-	rect(background,Vector2.ZERO,Vector2(1440,900),overlay)
+	rect(background,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
 	card(Vector2(446,132),Vector2(548,722),P.WHITE,24,overlay)
 	small_caps("Find your direction",Vector2(478,155),Vector2(480,25),overlay)
 	text_label("A new chapter at work.",Vector2(476,194),Vector2(484,57),33,P.INK,true,overlay)
@@ -4110,7 +4187,7 @@ func _safe_layout(value:Variant) -> Array:
 func show_neighborhood(chosen:String="") -> void:
 	if chosen.is_empty():chosen=current_venue
 	_begin_pause_overlay()
-	var shade=ColorRect.new();shade.color=Color(.08,.17,.15,.28);rect(shade,Vector2.ZERO,Vector2(1440,900),overlay)
+	var shade=ColorRect.new();shade.color=Color(.08,.17,.15,.28);rect(shade,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
 	card(Vector2(211,122),Vector2(1018,650),P.WHITE,24,overlay)
 	small_caps("A place to belong",Vector2(247,143),Vector2(600,24),overlay)
 	text_label("Around Juniper Bay",Vector2(245,181),Vector2(750,59),40,P.INK,true,overlay)
@@ -4124,13 +4201,26 @@ func show_neighborhood(chosen:String="") -> void:
 			map.draw_circle(p,19,Color("a2bb84"));map.draw_circle(p-Vector2(5,5),12,Color("b5cb99"))
 		for p:Vector2 in [Vector2(70,122),Vector2(332,76),Vector2(356,92),Vector2(172,226),Vector2(417,144)]:
 			map.draw_style_box(P.panel(Color("c3bfa5"),4),Rect2(p,Vector2(32,28))))
-	var points:Dictionary={"home":Vector2(35,226),"park":Vector2(35,35),"library":Vector2(360,226),"studio":Vector2(360,35),"maya_home":Vector2(44,130),"leo_home":Vector2(353,130),"priya_home":Vector2(196,64),"tom_home":Vector2(243,178)}
+	# Each pin is 170x53. The old hand-placed points put six of the eight pins on
+	# top of each other, so a click in the overlap reached the later pin and the
+	# covered one could not be selected. They now sit on a 3-column grid whose
+	# cells are wider and taller than a pin, and the decorative roads run behind.
+	var points:Dictionary={
+		"park":Vector2(6,30),"priya_home":Vector2(200,30),
+		"maya_home":Vector2(6,130),"library":Vector2(200,130),"studio":Vector2(394,130),
+		"home":Vector2(6,230),"leo_home":Vector2(394,230),"tom_home":Vector2(200,330)}
 	for id:String in points:
 		var data:Dictionary=LifeNeighborhood.PLACES[id]
 		var p:Vector2=points[id]
+		if id==current_venue:
+			text_label("YOU ARE HERE",p+Vector2(4,-20),Vector2(166,20),10,P.TEAL,false,map)
 		var pin=button(str(data.name),p,Vector2(170,53),func():show_neighborhood(id),id==chosen,map)
 		pin.add_theme_font_size_override("font_size",13)
-		if id==current_venue:text_label("YOU ARE HERE",p+Vector2(12,55),Vector2(166,22),10,P.TEAL,false,map)
+		# The pin's own text sets a minimum width larger than the cell, which
+		# would push it into its neighbour; the cell size is authoritative.
+		compact_button(pin)
+		pin.custom_minimum_size=Vector2.ZERO
+		pin.size=Vector2(170,53)
 	var data:Dictionary=LifeNeighborhood.PLACES[chosen]
 	small_caps(str(data.tag),Vector2(848,282),Vector2(341,45),overlay)
 	text_label(str(data.name),Vector2(846,334),Vector2(342,46),28,P.INK,true,overlay)
@@ -4152,7 +4242,7 @@ func travel_to(destination:String) -> void:
 
 func show_stories() -> void:
 	_begin_pause_overlay()
-	var shade=ColorRect.new();shade.color=Color(.08,.17,.15,.28);rect(shade,Vector2.ZERO,Vector2(1440,900),overlay)
+	var shade=ColorRect.new();shade.color=Color(.08,.17,.15,.28);rect(shade,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
 	card(Vector2(358,103),Vector2(724,701),P.WHITE,24,overlay)
 	small_caps("Day %d · %s" % [sim.day,sim.character.name],Vector2(392,125),Vector2(650,24),overlay)
 	text_label("The stories you make.",Vector2(390,166),Vector2(650,55),37,P.INK,true,overlay)

@@ -79,6 +79,26 @@ func is_backdrop(control: Control) -> bool:
 	return control.size.x >= canvas.x * 0.5 and control.size.y >= canvas.y * 0.5 \
 		and button.get_theme_stylebox("normal") is StyleBoxEmpty
 
+## Sample nine points across a control (centre, four corners and four edge
+## midpoints, all inset) and return how many are routed to something else. A
+## single centre sample misses a control whose middle is clear but whose corners
+## are covered by a neighbouring button.
+func occluded_points(control: Control) -> Array[Vector2]:
+	var rect: Rect2 = control.get_global_rect()
+	var inner: Rect2 = rect.grow(-3.0)
+	if inner.size.x <= 0.0 or inner.size.y <= 0.0:
+		inner = rect
+	var points: Array[Vector2] = [inner.get_center()]
+	for x: float in [inner.position.x, inner.get_center().x, inner.end.x]:
+		for y: float in [inner.position.y, inner.get_center().y, inner.end.y]:
+			points.append(Vector2(x, y))
+	var blocked: Array[Vector2] = []
+	for point: Vector2 in points:
+		var winner: Control = pick(pick_root(), point)
+		if winner == null or (winner != control and not winner.is_ancestor_of(control) and not control.is_ancestor_of(winner)):
+			blocked.append(point)
+	return blocked
+
 func conflicts(screen: String) -> int:
 	var found: Array[Control] = roots()
 	var reported: int = 0
@@ -89,12 +109,12 @@ func conflicts(screen: String) -> int:
 			continue
 		if not control.is_visible_in_tree():
 			continue
-		var point: Vector2 = control.get_global_rect().get_center()
-		var winner: Control = pick(pick_root(), point)
-		if winner != null and (winner == control or winner.is_ancestor_of(control) or control.is_ancestor_of(winner)):
+		var blocked: Array[Vector2] = occluded_points(control)
+		if blocked.is_empty():
 			continue
 		reported += 1
-		print("UI_BLOCKED %s | %s | picked %s at %s" % [screen, _name_of(control), _name_of(winner) if winner != null else "nothing", str(point)])
+		print("UI_BLOCKED %s | %s | %d/9 own points unreachable | rect=%s | first=%s" % [
+			screen, _name_of(control), blocked.size(), str(control.get_global_rect()), str(blocked.front())])
 	return reported
 
 func _name_of(control: Control) -> String:

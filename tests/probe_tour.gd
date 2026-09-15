@@ -12,8 +12,28 @@ var checks: int = 0
 var failures: Array[String] = []
 var shots: Array[String] = []
 
+## A run that pushes an engine error must not report a clean pass. Godot's own
+## logger interface is the only reliable signal, so the harness installs one and
+## counts every error it is handed for the whole run.
+class ErrorCounter:
+	extends Logger
+	var errors: int = 0
+	func _log_error(function: String, file: String, line: int, code: String, message: String, _rationale: bool, _editor: int, backtrace: Array[ScriptBacktrace]) -> void:
+		errors += 1
+		print("TOUR_ENGINE_ERROR ", file, ":", line, " ", message, " ", str(backtrace))
+
+var error_counter: ErrorCounter
+
 func _initialize() -> void:
+	error_counter = ErrorCounter.new()
+	OS.add_logger(error_counter)
 	_run.call_deferred()
+
+func _finish() -> void:
+	if error_counter.errors > 0:
+		check(false, "The run logged %d engine error(s)" % error_counter.errors)
+	print("TOUR_RESULT ", JSON.stringify({"checks": checks, "failures": failures, "shots": shots, "engine_errors": error_counter.errors}))
+	quit(0 if failures.is_empty() else 1)
 
 func check(ok: bool, why: String) -> void:
 	checks += 1
@@ -116,7 +136,9 @@ func _run() -> void:
 	app.world.camera_angle = .62
 	app.world.update_camera()
 
-	# Object and housemate interaction menus.
+	# Object and housemate interaction menus. The housemate panel is opened by a
+	# genuine pointer press on the actor, because a synthetic dictionary would
+	# not exercise the world's own ray-cast or the label it supplies.
 	var sofa: Dictionary = furnishing_of("sofa")
 	if sofa.is_empty(): sofa = app.world.items[0] if not app.world.items.is_empty() else {}
 	if not sofa.is_empty():
@@ -124,10 +146,36 @@ func _run() -> void:
 		await shot("12_object_interactions")
 		app.close_overlay()
 	if app.household.members.size() > 1:
-		var mate: Dictionary = {"id": str(app.household.members[1].id), "kind": "member"}
-		app.on_object_clicked(mate, Vector2(700, 450))
-		await shot("13_housemate_interactions")
-		app.close_overlay()
+		var other: String = ""
+		for member: Dictionary in app.household.members:
+			if str(member.id) != str(app.household.selected_id()):
+				other = str(member.id)
+				break
+		check(not other.is_empty(), "A non-selected housemate exists to click")
+		if not other.is_empty():
+			var actor: Node3D = app.world.actors[other]
+			var point: Vector2 = app.world.camera.unproject_position(actor.position + Vector3(0, 1.0, 0))
+			var vp: Viewport = app.get_viewport()
+			var motion := InputEventMouseMotion.new()
+			motion.position = point; motion.global_position = point; motion.relative = Vector2(1, 1)
+			vp.push_input(motion, true)
+			await frames(2)
+			for pressed: bool in [true, false]:
+				var click := InputEventMouseButton.new()
+				click.button_index = MOUSE_BUTTON_LEFT
+				click.pressed = pressed
+				click.position = point; click.global_position = point
+				vp.push_input(click, true)
+				await frames(2)
+			await frames(4)
+			check(app.overlay_open, "Clicking a housemate opens their interaction panel")
+			var drawn: int = 0
+			for node: Node in app.overlay.find_children("*", "Button", true, false):
+				if node is Button and (node as Button).is_visible_in_tree() and not (node as Button).flat:
+					drawn += 1
+			check(drawn >= 1, "The housemate panel offers at least one action (got %d)" % drawn)
+			await shot("13_housemate_interactions")
+			app.close_overlay()
 
 	# --- The HUD's own panels ------------------------------------------------
 	for panel: Dictionary in [
@@ -194,10 +242,10 @@ func _run() -> void:
 	app.close_overlay()
 	await press("Live")
 
-	print("TOUR_RESULT ", JSON.stringify({"checks": checks, "failures": failures, "shots": shots}))
+	print("TOUR_SHOTS ", JSON.stringify(shots))
+	_finish()
 	app.queue_free()
 	await frames(3)
-	quit(0 if failures.is_empty() else 1)
 
 func _first_candidate_name() -> String:
 	var adoption: Script = load("res://scripts/adoption.gd")
