@@ -128,16 +128,18 @@ func draw_picker() -> void:
 	edit.placeholder_text = "Your pet's name"
 	app.rect(edit, Vector2(506, 434), Vector2(184, 40), app.overlay)
 	edit.text_changed.connect(func(value: String): draft.name = value)
-	app.small_caps("Base coat", Vector2(302, 487), Vector2(388, 23), app.overlay)
-	_swatch_row("coat_color", Vector2(302, 512))
-	app.small_caps("Second colour", Vector2(302, 587), Vector2(388, 23), app.overlay)
-	_swatch_row("mark_color", Vector2(302, 612))
-	app.small_caps("Live preview", Vector2(302, 687), Vector2(388, 23), app.overlay)
-	app.card(Vector2(302, 712), Vector2(388, 68), P.PALE, 14, app.overlay)
+	app.small_caps("Base coat", Vector2(302, 484), Vector2(388, 23), app.overlay)
+	_swatch_row("coat_color", Vector2(302, 504))
+	app.small_caps("Second colour", Vector2(302, 582), Vector2(388, 23), app.overlay)
+	_swatch_row("mark_color", Vector2(302, 602))
+	# The panel ends at y=759. The preview card and its thumbnail are sized to
+	# finish inside it, so the live coat is never half-clipped by the panel edge.
+	app.small_caps("Live preview", Vector2(302, 680), Vector2(388, 23), app.overlay)
+	app.card(Vector2(302, 702), Vector2(388, 48), P.PALE, 14, app.overlay)
 	var holder := Control.new()
 	holder.name = "PetPreviewHolder"
-	app.rect(holder, Vector2(392, 716), Vector2(208, 60), app.overlay)
-	app.pet_thumbnail(Vector2.ZERO, Vector2(208, 60), draft, holder)
+	app.rect(holder, Vector2(392, 704), Vector2(208, 44), app.overlay)
+	app.pet_thumbnail(Vector2.ZERO, Vector2(208, 44), draft, holder)
 	app.small_caps("Coat length", Vector2(726, 322), Vector2(412, 23), app.overlay)
 	for index: int in range(LifePets.COAT_LENGTHS.size()):
 		var option: String = LifePets.COAT_LENGTHS[index]
@@ -172,17 +174,23 @@ func draw_picker() -> void:
 
 
 ## A row of authored coat swatches. Choosing one redraws the picker so the
-## selection mark and the live preview both follow immediately.
+## selection mark and the live preview both follow immediately. Each swatch is
+## compacted to its own square, because the shared button theme's 18 px content
+## margin would otherwise stretch it into an oval.
 func _swatch_row(key: String, at: Vector2) -> void:
 	var chosen: String = str(draft.get(key, ""))
 	for index: int in range(LifePets.COAT_COLORS.size()):
 		var colour: String = LifePets.COAT_COLORS[index]
 		var column: int = index % 9
 		var row: int = index / 9
-		var swatch: Button = app.button("", at + Vector2(column * 43, row * 36), Vector2(38, 32), func(): draft[key] = colour; draw_picker(), false, app.overlay)
+		var swatch: Button = app.button("", at + Vector2(column * 40, row * 40), Vector2(34, 34), func(): draft[key] = colour; draw_picker(), false, app.overlay)
 		swatch.name = "PetSwatch_%s_%d" % [key, index]
-		swatch.add_theme_stylebox_override("normal", P.panel(Color(colour), 15, P.TEAL if colour == chosen else Color("ffffff"), 3))
-		swatch.add_theme_stylebox_override("hover", P.panel(Color(colour).lightened(.1), 15, P.TEAL, 3))
+		app.compact_button(swatch)
+		swatch.custom_minimum_size = Vector2(34, 34)
+		swatch.size = Vector2(34, 34)
+		swatch.add_theme_stylebox_override("normal", P.panel(Color(colour), 17, P.TEAL if colour == chosen else Color("ffffff"), 3))
+		swatch.add_theme_stylebox_override("hover", P.panel(Color(colour).lightened(.1), 17, P.TEAL, 3))
+		swatch.add_theme_stylebox_override("pressed", P.panel(Color(colour).darkened(.1), 17, P.TEAL, 3))
 		if colour == chosen:
 			swatch.text = "•"
 			swatch.add_theme_color_override("font_color", Color.WHITE if Color(colour).get_luminance() < 0.55 else P.INK)
