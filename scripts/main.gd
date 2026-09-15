@@ -1777,6 +1777,11 @@ func refresh_hud() -> void:
 				var shared:bool=not str(a.get("cooperation_id","")).is_empty()
 				var queue_title:String=("Learn together" if str(a.id)=="homework" else "Help with homework") if shared else str(a.label)
 				if str(a.id) in ["school_day","career_day"] and not away.is_empty():queue_title=("At work" if str(a.id)=="career_day" else "At school") if str(away.phase)=="away" else "Coming home"
+				# Two activities can share a label but differ in target — two
+				# cooks, or a read at either bookshelf. Naming the target tells the
+				# player which chip cancels which activity.
+				var target_kind:String=_queue_target_kind(a)
+				if not target_kind.is_empty():queue_title+=" · "+target_kind
 				var title=text_label(queue_title,Vector2(10,6),Vector2(112,31),12,P.INK,false,b)
 				title.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 				title.size=Vector2(112,31)
@@ -2448,6 +2453,20 @@ func _find_item(id:String) -> Dictionary:
 	for item:Dictionary in world.items:
 		if str(item.id)==id:return item
 	return {}
+
+## Which furnishing a queued action will really use, for the queue chip. Two
+## queued cooks must be distinguishable, and `cook` is offered by both the fridge
+## and the stove while always routing to the stove, so the id the action stores
+## is the truth to report. A position-only action (a walk, a departure) has no
+## furnishing and returns "".
+func _queue_target_kind(action:Dictionary) -> String:
+	var target_id:String=str(action.get("target_id",""))
+	if target_id.is_empty():return ""
+	var item:Dictionary=_find_item(target_id)
+	if item.is_empty():return ""
+	var kind:String=str(item.get("kind",""))
+	if kind.is_empty() or not LifeCatalog.ITEMS.has(kind):return ""
+	return str(LifeCatalog.ITEMS[kind].label).to_lower()
 
 func _refresh_sim_targets(replan:bool=true,reconcile_food:bool=true) -> void:
 	if not is_instance_valid(household) or household.members.is_empty():return

@@ -62,6 +62,22 @@ func _run() -> void:
 			if node is Button and (node as Button).is_visible_in_tree(): chips += 1
 	print("queue chips drawn=", chips, " box=", app.queue_box.get_global_rect() if is_instance_valid(app.queue_box) else "-")
 	check(chips >= 2, "The HUD really draws a chip per queued action (%d)" % chips)
+	# Two activities can share a label. Each chip must name its own target so the
+	# player can tell which one a click will cancel.
+	# Each chip draws its title and a separate cancel mark, so only the titles
+	# are long enough to name a target.
+	var titles: Array[String] = []
+	for node: Node in app.queue_box.get_children():
+		if not (node is Button): continue
+		for child: Node in (node as Button).get_children():
+			if child is Label and str((child as Label).text).length() > 2:
+				titles.append(str((child as Label).text))
+	print("queue titles=", titles)
+	var named: int = 0
+	for title: String in titles:
+		if title.contains("·"): named += 1
+	check(not titles.is_empty() and named == titles.size(), "Every chip names its target (%d/%d)" % [named, titles.size()])
+	check(titles.size() == app.sim.action_queue.size(), "One title per queued action (%d/%d)" % [titles.size(), app.sim.action_queue.size()])
 
 	# The chips must sit in a HUD card with its own background, not float as
 	# bare text over the middle of the 3D scene.
