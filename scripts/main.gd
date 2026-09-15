@@ -464,21 +464,26 @@ func draw_creator() -> void:
 		var tab_button=button(tab_name,Vector2(1100+i*97,144),Vector2(89,40),func():set_creator_tab(tab_name),creator_tab==tab_name)
 		compact_button(tab_button);tab_button.size=Vector2(89,40)
 	if creator_tab=="Look":
-		small_caps("Gender",Vector2(1102,200))
+		small_caps("Gender",Vector2(1102,196),Vector2(180,20))
 		var gender_group := ButtonGroup.new()
 		# Keep the existing saved model choice: 0 = female, 1 = male.
 		for i in range(2):
 			var gender_name:String=["Female","Male"][i]
 			var selected:bool=int(profile.get("frame",0))==i
-			var choice=button(gender_name,Vector2(1100+i*146,228),Vector2(137,36),func():set_creator_gender(i),selected)
+			var choice=button(gender_name,Vector2(1100+i*146,216),Vector2(137,36),func():set_creator_gender(i),selected)
 			choice.name="Creator"+gender_name
 			choice.toggle_mode=true
 			choice.button_group=gender_group
 			choice.set_pressed_no_signal(selected)
 			choice.tooltip_text="Create a %s Lifelet" % gender_name.to_lower()
-		small_caps("Skin tone",Vector2(1102,266),Vector2(180,20))
-		swatches(["f2d1b1","e7b98f","d9a17d","b77e58","925c40","613e30"],"skin_color",Vector2(1100,286),30,8)
-		small_caps("Hairstyle",Vector2(1102,328),Vector2(180,20))
+		small_caps("Skin tone",Vector2(1102,268),Vector2(180,20))
+		# Offer exactly the authored generator palettes. The creator previously
+		# showed 6 of the 12 skin tones, 6 of the 10 hair colours and 5 of the 8
+		# eye colours the model and Surprise me already use, so a hand-built
+		# Lifelet could not reach half the looks the game ships. `swatches` wraps
+		# two rows inside the card instead of running off its edge.
+		swatches(preload("res://scripts/character_identity.gd").SKIN_TONES,"skin_color",Vector2(1100,288),26,6)
+		small_caps("Hairstyle",Vector2(1102,358),Vector2(180,20))
 		var hair_names:Array=["Crop","Bob","Curls","Pony","Long","Buzz","Waves","Bun"]
 		var hair_tips:Array=["A relaxed swept crop","A softly sculpted bob","Natural rounded curls","A swept-back ponytail","Long layered lengths","A close buzz cut","Loose shoulder-length waves","A sleek twisted updo"]
 		# Only styles this stage's model authors are offered, so a choice is
@@ -488,38 +493,38 @@ func draw_creator() -> void:
 			offered_hair=preview.authored_hair_styles()
 		for slot:int in range(offered_hair.size()):
 			var i:int=int(offered_hair[slot])
-			var b=button(hair_names[i],Vector2(1100+(slot%4)*80,348+(slot/4)*36),Vector2(73,32),func():profile.hair=i;refresh_preview(),int(profile.get("hair",0))==i)
+			var b=button(hair_names[i],Vector2(1100+(slot%4)*80,376+(slot/4)*32),Vector2(73,29),func():profile.hair=i;refresh_preview(),int(profile.get("hair",0))==i)
 			b.tooltip_text=hair_tips[i]
-		small_caps("Hair color",Vector2(1102,424),Vector2(180,20))
-		swatches(["2a2420","54382a","89563a","c2a16b","dfccb0","784e49"],"hair_color",Vector2(1100,442),30,8)
-		small_caps("Eyes",Vector2(1102,476),Vector2(180,20))
-		swatches(["547365","55738f","704b36","b18d54","77797c"],"eye_color",Vector2(1100,494),24,10)
+		small_caps("Hair color",Vector2(1102,446),Vector2(180,20))
+		var hair_colors:Array=preload("res://scripts/character_identity.gd").HAIR_COLORS.duplicate()
+		# An elder's own released palette is the one the game greys them toward;
+		# offering it keeps every colour the model can actually show.
+		if str(profile.get("age_stage",""))=="elder":
+			hair_colors.append_array(preload("res://scripts/character_identity.gd").ELDER_HAIR_COLORS)
+		swatches(hair_colors,"hair_color",Vector2(1100,466),26,6)
+		small_caps("Eyes",Vector2(1102,536),Vector2(180,20))
+		swatches(preload("res://scripts/character_identity.gd").EYE_COLORS,"eye_color",Vector2(1100,554),24,8)
 		# `height_scale` and `shoe_color` already ride every save, the resident
 		# catalogue, and LifeActor's model scale and shoe recolour, but the creator
-		# offered no way to set them. These controls write exactly the fields the
-		# generator and the saved profiles already use, so nothing downstream
-		# changes and old saves with no such keys keep their defaults.
-		small_caps("Build",Vector2(1102,524),Vector2(180,20))
+		# offered no way to set height at all. These controls write exactly the
+		# fields the generator and the saved profiles already use, so nothing
+		# downstream changes and old saves with no such keys keep their defaults.
+		small_caps("Build",Vector2(1102,596),Vector2(180,20))
 		var slider=HSlider.new()
 		slider.min_value=.85;slider.max_value=1.15;slider.step=.01;slider.value=profile.body_scale
-		rect(slider,Vector2(1105,542),Vector2(270,22))
+		slider.tooltip_text="Body width, from Slender to Fuller."
+		rect(slider,Vector2(1105,614),Vector2(270,20))
 		slider.value_changed.connect(set_body_scale)
-		text_label("Slender",Vector2(1102,566),Vector2(120,16),12,P.MUTED)
-		var fuller=text_label("Fuller",Vector2(1290,566),Vector2(85,16),12,P.MUTED)
-		fuller.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT
-		small_caps("Height",Vector2(1102,588),Vector2(180,20))
+		small_caps("Height",Vector2(1102,640),Vector2(180,20))
 		var height_slider=HSlider.new()
 		height_slider.name="CreatorHeight"
 		height_slider.min_value=.93;height_slider.max_value=1.08;height_slider.step=.01
 		height_slider.value=clampf(float(profile.get("height_scale",1.0)),.93,1.08)
-		height_slider.tooltip_text="How tall this Lifelet stands. Everyone keeps their own height."
-		rect(height_slider,Vector2(1105,606),Vector2(270,22))
+		height_slider.tooltip_text="How tall this Lifelet stands, from Shorter to Taller. Everyone keeps their own height."
+		rect(height_slider,Vector2(1105,658),Vector2(270,20))
 		height_slider.value_changed.connect(set_height_scale)
-		text_label("Shorter",Vector2(1102,630),Vector2(120,16),12,P.MUTED)
-		var taller=text_label("Taller",Vector2(1290,630),Vector2(85,16),12,P.MUTED)
-		taller.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT
-		small_caps("Shoes",Vector2(1102,652),Vector2(180,20))
-		swatches(["e9e4d9","3b302c","573c37","39444f","a26d56","292f32"],"shoe_color",Vector2(1100,670),30,8)
+		small_caps("Shoes",Vector2(1102,684),Vector2(180,20))
+		swatches(["e9e4d9","3b302c","573c37","39444f","a26d56","292f32"],"shoe_color",Vector2(1100,702),26,6)
 	elif creator_tab=="Face":
 		text_label("A face of your own",Vector2(1100,207),Vector2(287,37),25,P.INK,true)
 		paragraph("Shape their features. Turn your Lifelet to see every angle.",Vector2(1102,264),Vector2(274,52),15)
@@ -746,14 +751,26 @@ func toggle_trait(tr:String) -> void:
 	else:show_notice("Choose up to three traits. Deselect one to try another.")
 	draw_creator()
 
-func swatches(colors:Array,key:String,p:Vector2,diameter:float,gap:float) -> void:
+## Draw a colour row that wraps inside the creator card. `width` is the usable
+## inner width, so a longer authored palette stays on screen instead of running
+## past the card edge. Each swatch is compacted, because the shared button theme
+## reserves 18 px of horizontal content margin that would otherwise stretch a
+## small swatch into an oval.
+func swatches(colors:Array,key:String,p:Vector2,diameter:float,gap:float,width:float=276.0) -> void:
+	var stride:float=diameter+gap
+	var per_row:int=maxi(1,int((width+gap)/stride))
 	for i in range(colors.size()):
 		var c:String=colors[i]
-		var b=button("",p+Vector2(i*(diameter+gap),0),Vector2(diameter,diameter),func():profile[key]=c;refresh_preview())
+		var at:Vector2=p+Vector2((i%per_row)*stride,floori(float(i)/per_row)*stride)
+		var b=button("",at,Vector2(diameter,diameter),func():profile[key]=c;refresh_preview())
 		b.tooltip_text=c
+		compact_button(b)
+		b.custom_minimum_size=Vector2(diameter,diameter)
+		b.size=Vector2(diameter,diameter)
 		var s=P.panel(Color(c),int(diameter/2),P.TEAL if profile.get(key,"")==c else Color("ffffff"),3)
 		b.add_theme_stylebox_override("normal",s)
 		b.add_theme_stylebox_override("hover",P.panel(Color(c).lightened(.1),int(diameter/2),P.TEAL,3))
+		b.add_theme_stylebox_override("pressed",P.panel(Color(c).darkened(.1),int(diameter/2),P.TEAL,3))
 		if profile.get(key,"")==c:b.text="•";b.add_theme_color_override("font_color",Color.WHITE)
 
 func refresh_preview() -> void:
