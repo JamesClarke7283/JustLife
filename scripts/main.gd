@@ -1387,8 +1387,13 @@ func draw_household_bar() -> void:
 	var center_button:=button("Center",Vector2(42,841),Vector2(111,27),center_lifelet)
 	center_button.name="CenterLifelet"
 	center_button.tooltip_text="Show this Lifelet and their floor; keep the current floor during stair transit"
-	button("Wishes",Vector2(165,841),Vector2(111,27),show_wishes)
-	button("Rewards",Vector2(279,841),Vector2(111,27),show_rewards)
+	# The action column owns x>=326 (its progress bar starts at 328). Wishes and
+	# Rewards share the space between Center and that column without crossing it,
+	# so neither button is swallowed by Cancel action.
+	var wishes_button:=button("Wishes",Vector2(165,841),Vector2(76,27),show_wishes)
+	compact_button(wishes_button)
+	var rewards_button:=button("Rewards",Vector2(245,841),Vector2(76,27),show_rewards)
+	compact_button(rewards_button)
 	action_context=text_label("TODAY IS YOURS",Vector2(327,738),Vector2(286,23),11,P.MUTED)
 	action_context.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	action_context.mouse_filter=Control.MOUSE_FILTER_PASS
@@ -1756,10 +1761,16 @@ func draw_build_catalog() -> void:
 		var category:String=LifeCatalog.CATEGORIES[i]
 		button(category,Vector2(296+i*118,663),Vector2(112,35),func():catalog_category=category;draw_live(),catalog_category==category)
 	button("Undo",Vector2(1250,663),Vector2(144,35),undo_build)
-	var storage_button=button("Storage",Vector2(266,745),Vector2(105,37),show_storage)
+	var storage_button=button("Storage",Vector2(214,745),Vector2(78,37),show_storage)
+	compact_button(storage_button)
 	storage_button.tooltip_text="Your household storage unit. Store furnishing away, take it out, or sell it."
-	button("Ground",Vector2(40,745),Vector2(105,37),func():set_build_level(0),world.view_level==0)
-	button("Upper",Vector2(153,745),Vector2(105,37),func():set_build_level(1),world.view_level==1)
+	# The catalogue strip begins at x=292; the level and storage controls share
+	# that left column in full, so none of them may extend into the strip or the
+	# strip would swallow their clicks.
+	var ground_button=button("Ground",Vector2(40,745),Vector2(78,37),func():set_build_level(0),world.view_level==0)
+	compact_button(ground_button)
+	var upper_button=button("Upper",Vector2(127,745),Vector2(78,37),func():set_build_level(1),world.view_level==1)
+	compact_button(upper_button)
 	var search:=LineEdit.new();search.placeholder_text="Search furnishings";search.text=catalog_search
 	rect(search,Vector2(40,792),Vector2(232,34))
 	search.text_changed.connect(func(value:String):
