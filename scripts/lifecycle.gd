@@ -15,6 +15,14 @@ const SPANS: Dictionary = {"short":0.5, "normal":1.0, "long":4.0}
 ## elder stage from that day, exactly like one who reaches it by ageing.
 const MAX_ELDER_PROGRESS: float = 1.0
 
+## An elder whose stage has completed is due to pass away: the completion that
+## would have been a birthday has nowhere left to send them. This is a threshold
+## on state the save already carries, so a test, a restored save and a live game
+## all reach the same decision, and the household only has to wait for a moment
+## when the Lifelet is home and idle.
+static func due_to_pass(stage: String, state: Dictionary) -> bool:
+	return stage == "elder" and next_stage(stage).is_empty() and float(state.get("progress", 0.0)) >= MAX_ELDER_PROGRESS
+
 static func stage_for(profile: Dictionary) -> String:
 	if profile.has("age_stage"):
 		return str(profile.age_stage) if str(profile.age_stage) in STAGES else "unknown"

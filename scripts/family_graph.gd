@@ -6,6 +6,11 @@ class_name LifeFamilyGraph
 const ROLES: Array[String] = ["none","siblings","parent","child","grandparent","grandchild","ancestor","descendant","parent_sibling","sibling_child","cousin","relative"]
 const LABELS: Dictionary = {"none":"Housemate","siblings":"Sibling","parent":"Parent","child":"Child","grandparent":"Grandparent","grandchild":"Grandchild","ancestor":"Ancestor","descendant":"Descendant","parent_sibling":"Parent’s sibling","sibling_child":"Sibling’s child","cousin":"Cousin","relative":"Relative"}
 
+## A household can bury more Lifelets than it can hold at once, so the departed
+## memory is deliberately larger than MAX_MEMBERS: a long-lived save must never
+## lose the oldest farewell to a cap.
+const MAX_DEPARTED: int = 32
+
 ## `departed` remembers ids of Lifelets who passed away. Their parent and
 ## sibling edges stay in the graph, so a surviving family can still read its own
 ## genealogy, but they are not household members and are never selectable.
@@ -16,6 +21,28 @@ static func departed_ids(graph: Dictionary) -> Array[String]:
 	var result: Array[String] = []
 	for entry: Variant in graph.get("departed",[]):
 		if entry is String and not result.has(str(entry)): result.append(str(entry))
+	return result
+
+## Remember a Lifelet who passed away. Their edges stay, so the family can still
+## read how it was related to them.
+static func bury(graph: Dictionary, id: String) -> Dictionary:
+	var result: Dictionary = graph.duplicate(true)
+	var buried: Array = []
+	for entry: Variant in result.get("departed",[]):
+		if entry is String and not buried.has(str(entry)): buried.append(str(entry))
+	if not buried.has(id): buried.append(id)
+	while buried.size() > MAX_DEPARTED: buried.pop_front()
+	buried.sort()
+	result.departed = buried
+	return result
+
+## Forget a Lifelet who left the household instead of dying: nothing of them
+## stays, because they took their own history with them.
+static func prune(graph: Dictionary, id: String) -> Dictionary:
+	var result: Dictionary = graph.duplicate(true)
+	result.parents = result.parents.filter(func(link: Dictionary) -> bool: return str(link.a) != id and str(link.b) != id)
+	result.siblings = result.siblings.filter(func(link: Dictionary) -> bool: return str(link.a) != id and str(link.b) != id)
+	result.departed = departed_ids(result).filter(func(entry: String) -> bool: return entry != id)
 	return result
 
 static func inverse(role: String) -> String:
@@ -83,7 +110,7 @@ static func validate(value: Variant, member_ids: Array) -> String:
 	var known: Dictionary = {}
 	for id: String in member_ids: known[str(id)] = true
 	var departed: Array = value.get("departed",[])
-	if not departed is Array or departed.size()>8: return "The saved family graph has invalid departed memory."
+	if not departed is Array or departed.size()>MAX_DEPARTED: return "The saved family graph has invalid departed memory."
 	var buried: Dictionary = {}
 	for entry: Variant in departed:
 		if not entry is String or entry.is_empty() or known.has(str(entry)) or buried.has(str(entry)):
