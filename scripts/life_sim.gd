@@ -91,7 +91,7 @@ var story_events: Array = []
 var story_history: Array = []
 var _story_generated_day: int = 1
 const STORY_KINDS: Array[String] = ["neighbor_invitation", "career_opportunity", "hobby_exhibition", "garden_exchange", "learning_circle", "community_picnic", "block_party", "flea_market"]
-const SOCIAL_ACTIONS: Array[String] = ["friendly", "joke", "deep_talk", "hug", "share_interests", "sympathize", "gossip", "flirt", "argue", "ask_partner", "commit", "break_up", "playful_prank", "bold_introduction"]
+const SOCIAL_ACTIONS: Array[String] = ["friendly", "joke", "deep_talk", "hug", "share_interests", "sympathize", "gossip", "flirt", "argue", "ask_partner", "commit", "break_up", "playful_prank", "bold_introduction", "comfort_loss", "share_memories"]
 # Spending satisfaction: a perk is bought once and changes a multiplier at the
 # same call sites the traits already use, while a potion acts on the spot.
 const REWARDS: Dictionary = {
@@ -262,6 +262,9 @@ func _build_actions() -> void:
 	_define("wear_tee", "Wear the tee", 4.0, {}, 0, "", 0.0, "Change into the plain crew tee.")
 	_define("wear_hoodie", "Wear the hoodie", 4.0, {}, 0, "", 0.0, "Change into the soft hoodie.")
 	_define("warm_up", "Warm up by the fire", 25.0, {"fun": 16.0, "energy": 8.0}, 0, "", 0.0, "A quiet moment by the hearth.")
+	_define("mourn", "Mourn", 30.0, {"fun": -4.0}, 0, "", 0.0, "Spend a quiet moment in respectful silence. Shedding tears eases grief.")
+	_define("leave_flowers", "Leave fresh flowers", 15.0, {"fun": 10.0}, 15, "", 0.0, "Place fresh blooms (§15) at the memorial to honour their memory.")
+	_define("remember_passed", "Reminisce", 25.0, {"fun": 14.0, "social": 4.0}, 0, "", 0.0, "Reflect on fond memories and wisdom shared with the departed.")
 	_define("play_games", "Play video games", 45.0, {"fun": 40.0, "energy": -4.0}, 0, "logic", 10.0, "An hour of games at the computer. Great fun, a little Logic.")
 	_define("friendly", "Have a friendly chat", 25.0, {"social": 28.0, "fun": 6.0}, 0, "charisma", 18.0, "Say hello, catch up and grow your friendship.")
 	_define("joke", "Tell a joke", 20.0, {"social": 22.0, "fun": 16.0}, 0, "charisma", 16.0, "Share a laugh and strengthen your friendship.")
@@ -275,6 +278,8 @@ func _build_actions() -> void:
 	_define("ask_partner", "Ask to become partners", 35.0, {"social": 15.0, "fun": 8.0}, 0, "charisma", 12.0, "Choose a relationship together. Both adults need 45 friendship and 35 romance, and must be available.")
 	_define("commit", "Make a commitment", 45.0, {"social": 20.0, "fun": 10.0}, 0, "charisma", 16.0, "Affirm your shared future with your current partner, with 65 friendship and 65 romance.")
 	_define("break_up", "End the relationship", 25.0, {"social": 5.0, "fun": -8.0}, 0, "", 0.0, "End your partnership honestly. Friendship falls by 12 and romance by 35; both become available again.")
+	_define("comfort_loss", "Comfort over loss", 25.0, {"social": 32.0, "fun": 8.0}, 0, "charisma", 20.0, "Console a grieving friend or family member. Warm words make the sorrow easier to bear.")
+	_define("share_memories", "Share memories", 30.0, {"social": 28.0, "fun": 12.0}, 0, "charisma", 16.0, "Talk about happy times spent together, keeping their spirit alive in the home.")
 	# Emotion-gated opportunities: offered only while that feeling is the strongest.
 	_define("paint_masterpiece", "Paint a masterpiece", 120.0, {"fun": 45.0, "hygiene": -7.0}, 30, "creativity", 60.0, "Ride the inspiration into something remarkable. Sells for far more than an ordinary canvas.")
 	_define("study_hard", "Study hard", 120.0, {"fun": 6.0, "energy": -12.0}, 0, "logic", 70.0, "Deep work while your mind is sharp. Builds Logic quickly.")
@@ -332,6 +337,7 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 				if int(WEAR_ACTIONS[wear_id]) != int(character.get("outfit", 0)): ids.append(wear_id)
 		"garden_bed": ids = ["water"]
 		"fireplace": ids = ["warm_up"]
+		"urn", "tombstone": ids = ["mourn", "leave_flowers", "remember_passed"]
 		"neighbor", "maya", "leo", "priya", "tom": ids = SOCIAL_ACTIONS
 	if str(character.age_stage) in LifeEducation.SCHOOL_STAGES:
 		if kind in ["desk","computer"]: ids = ["school","homework","study","study_hard"] + (["play_games"] if kind == "computer" else [])
@@ -1478,6 +1484,24 @@ func _activity_memory(id:String) -> void:
 		"deep_read":add_moodlet("Lost in a book","Focused","The afternoon disappeared into the pages.",200,2)
 		"experiment_recipe":add_moodlet("Something new on the stove","Playful","An invented dish that actually worked.",150,2)
 		"deep_clean":add_moodlet("A tidy home","Happy","Every surface gleams, and it feels lighter in here.",180,2)
+		"mourn":
+			_ease_mourning(720.0)
+			add_moodlet("Peaceful Remembrance","Happy","Taking time to grieve brings a quiet peace to the soul.",240,1)
+		"leave_flowers":
+			add_moodlet("Honoured Memory","Happy","Fresh blossoms by the memorial honour a life well lived.",360,2)
+			remember("Placed fresh flowers","Honoured the memory of the departed with fresh blossoms.")
+		"remember_passed":
+			add_moodlet("Fond Memories","Inspired","Remembering their laughter and wisdom inspires you today.",300,2)
+		"comfort_loss":
+			_ease_mourning(960.0)
+			add_moodlet("Shared Solace","Happy","Sharing grief with a friend lightens the heaviest burden.",360,2)
+		"share_memories":
+			add_moodlet("Cherished Stories","Happy","Talking through cherished memories keeps loved ones close.",240,1)
+
+func _ease_mourning(amount: float) -> void:
+	for moodlet: Dictionary in moodlets:
+		if str(moodlet.get("label", "")) == "Mourning":
+			moodlet.remaining = maxf(0.0, float(moodlet.get("remaining", 0.0)) - amount)
 
 
 func _new_day() -> void:
