@@ -121,3 +121,37 @@ Three inspected screenshots from [EA's Life & Death guide](https://help.ea.com/e
 Five paused browser captures from [EA Help's official autosave demonstration](https://www.youtube.com/watch?v=WCElx0cC5zg), linked by [the current EA guide](https://help.ea.com/en/articles/the-sims/the-sims-4/autosave-and-save-reminders/), are archived in `topics/autosave_official_video_2026`. Root inspected the autosaving overlay, main-menu Load Game entry, separate Autosave picker row, actionable save reminder and open Save Settings panel. The visible panel separates loading-screen/Build-exit triggers, real-time/game-time choices and reminder frequency, with Apply/Revert controls.
 
 These 1265×712 captures include browser chrome, subtitles and editorial arrows; they are sampled video frames, not original game framebuffers or uninterrupted gameplay evidence. A separately browser-exported 1280×720 promotional cover is labelled illustration, not a sixth gameplay screenshot. None duplicates the prior archive. The manifest records exact image hashes, observed video times and these distinctions. The video describes July's update; the page displayed “1 month ago,” without an independently established publication date. Completed loading, settings application, dropdown contents, recovery and a base-only installation remain unverified. No reference artwork enters JustLife's assets.
+
+## Reference re-acquisition and comparison, 15 September 2026
+
+A second acquisition pass harvested 149 inspected images across 13 topics through
+the browser tool into the local `research/sims4/refs_20260915/` archive (which is
+gitignored, like the earlier archive; its `manifest.json` pins every source URL,
+byte count and SHA-256). Nothing from the archive enters JustLife's assets.
+
+| Topic | Images | What it supplied |
+| --- | ---: | --- |
+| `carls_cas` | 14 | Creator sequence: new game, gender, body sliders, face detail, clothing filters, swatches, accessory removal, multiple outfits, aspiration and trait pickers, save-household. |
+| `carls_build`, `carls_decor` | 16 | Build Mode catalogues, room and wall tools, interior decorating, placement. |
+| `carls_relationships` | 8 | Chat, making friends, romance, family panel, shared television. |
+| `carls_emotions`, `carls_traits` | 9 | Mood panels, emotion boosting and auras; the trait list. |
+| `carls_careers`, `carls_skills`, `carls_skills2` | 31 | Career selection and progression; gardening and skill pages with buy seeds, grafting and plant care. |
+| `simscommunity_infants` | 20 | Infant care: feeding, carrying, milestones and family interactions. |
+| `iig_ts4`, `iig_ts4_p2` | 50 | Full-screen UI layouts: main menu, creator body and face, live HUD, buy catalogue, painting, world and lot selection, walk style, hats, shoes, eyebrows, face paint. |
+| `ea_how_to_play` | 1 | EA's own overview of the three modes and ways to play. |
+
+**Used for comparison, not for content.** These drove the creator and HUD work in
+this branch: the creator's control grouping and swatch presentation, the live
+HUD's need/mood layout, and the Build & buy catalogue shape. The relevant
+JustLife differences are deliberate and stay original — its own palette, its own
+furnishing catalogue, and its own wordless character voices.
+
+**Version discipline.** The `iig_ts4` set is labelled 500×281 thumbnails of the
+base-game interface; `carls_*` is a third-party guide and mixes packs; the infant
+set names a ReShade preset in its filenames, so it is pose reference only, never a
+renderer baseline. No image here establishes current base-game rules on its own.
+
+**Still not covered by this pass.** Motion and routing footage, multi-day play,
+weather and seasons, the full build/buy placement workflow with its rejection
+messages, and any packaged-build capture. JustLife's own playability for those is
+covered instead by the probes listed in the README's "Measured behaviour" section.
