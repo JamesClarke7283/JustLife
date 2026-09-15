@@ -1,6 +1,7 @@
 extends Node
 
 const P = preload("res://scripts/palette.gd")
+const LifeWantsManager = preload("res://scripts/wants_manager.gd")
 const CREATOR_FACE_GROUPS: Dictionary = {
 	"Shape":["face_round","jaw_strong","chin_length","face_length"],
 	"Eyes":["eye_spacing","brow_arch"],
@@ -2748,18 +2749,74 @@ func _select_career(track_id:String) -> void:
 
 func show_wishes() -> void:
 	close_overlay();overlay_open=true;dismiss_layer()
-	card(Vector2(467,115),Vector2(506,651),P.WHITE,24,overlay)
-	small_caps("Little steps. A fuller life.",Vector2(500,139),Vector2(441,24),overlay)
-	text_label("Your wishes",Vector2(497,177),Vector2(440,60),40,P.INK,true,overlay)
-	text_label("%d satisfaction earned" % sim.satisfaction,Vector2(500,247),Vector2(440,34),17,P.TEAL,false,overlay)
-	button("Rewards store →",Vector2(795,247),Vector2(146,30),show_rewards,false,overlay)
-	for i in range(sim.wants.size()):
-		var w:Dictionary=sim.wants[i]
-		var y=304+i*105
-		text_label(("✓  " if w.complete else "○  ")+w.label,Vector2(500,y),Vector2(440,33),22,P.INK,true,overlay)
-		paragraph(w.description,Vector2(527,y+36),Vector2(407,40),14,P.MUTED,overlay)
-		line(Vector2(500,y+91),Vector2(440,1),overlay)
-	button("Back to life",Vector2(500,695),Vector2(440,45),close_overlay,true,overlay)
+	card(Vector2(440,50),Vector2(560,780),P.WHITE,24,overlay)
+	small_caps("Momentary Desires · Lifelong Goals",Vector2(470,72),Vector2(480,24),overlay)
+	text_label("Wants & Fears",Vector2(468,102),Vector2(320,44),36,P.INK,true,overlay)
+	text_label("%d satisfaction available" % sim.satisfaction,Vector2(470,154),Vector2(280,28),16,P.TEAL,false,overlay)
+	button("Rewards store →",Vector2(820,150),Vector2(146,32),show_rewards,false,overlay)
+	
+	var scroll=ScrollContainer.new();rect(scroll,Vector2(465,195),Vector2(510,505),overlay)
+	var column=VBoxContainer.new();column.add_theme_constant_override("separation",14);scroll.add_child(column)
+	
+	# 1. Psychological Fears (if any)
+	var active_fears: Array = sim.get_fears()
+	if not active_fears.is_empty():
+		var fears_header=text_label("ACTIVE FEARS",Vector2(0,0),Vector2(490,20),12,Color("cf8669"),true,column)
+		for fid: String in active_fears:
+			var fdef: Dictionary = LifeWantsManager.FEARS.get(fid, {})
+			if fdef.is_empty(): continue
+			var fcard=Panel.new();fcard.custom_minimum_size=Vector2(490,80)
+			var fbox=P.panel(Color("fdf0ed"),10);fbox.set_border_width_all(1);fbox.border_color=Color("cf8669")
+			fcard.add_theme_stylebox_override("panel",fbox);column.add_child(fcard)
+			text_label("⚠  " + str(fdef.get("label", fid)),Vector2(14,10),Vector2(320,24),16,Color("cf8669"),true,fcard)
+			text_label("+%d pts" % int(fdef.get("reward", 150)),Vector2(410,10),Vector2(65,24),13,P.TEAL,false,fcard)
+			paragraph(str(fdef.get("description", "")),Vector2(16,36),Vector2(458,38),11,P.INK,fcard)
+	
+	# 2. Moment-to-Moment Whims
+	var whims_header=text_label("ACTIVE WHIMS & DESIRES",Vector2(0,0),Vector2(490,20),12,P.MUTED,true,column)
+	var active_whims: Array = sim.get_whims()
+	for i in range(active_whims.size()):
+		var w: Dictionary = active_whims[i]
+		if w.is_empty(): continue
+		var wcard=Panel.new();wcard.custom_minimum_size=Vector2(490,92)
+		var wbox=P.panel(Color("f7faf7") if bool(w.get("completed", false)) else P.WHITE,10)
+		wbox.set_border_width_all(1);wbox.border_color=P.TEAL if bool(w.get("pinned", false)) else Color("e2e8e0")
+		wcard.add_theme_stylebox_override("panel",wbox);column.add_child(wcard)
+		
+		var category_name: String = "Need"
+		var wtype: String = str(w.get("type", ""))
+		if wtype == "trait":
+			category_name = "Trait · " + str(w.get("trait", ""))
+		elif wtype == "emotion":
+			category_name = "Emotion · " + str(w.get("emotion", ""))
+		small_caps(category_name,Vector2(14,8),Vector2(200,16),wcard)
+		
+		var title_txt: String = ("✓ " if bool(w.get("completed", false)) else "○ ") + str(w.get("label", ""))
+		text_label(title_txt,Vector2(12,24),Vector2(310,26),16,P.INK,true,wcard)
+		text_label("+%d satisfaction" % int(w.get("reward", 25)),Vector2(14,52),Vector2(180,20),12,P.TEAL,false,wcard)
+		paragraph(str(w.get("description", "")),Vector2(14,70),Vector2(330,18),10,P.MUTED,wcard)
+		
+		# Pin / Unpin button
+		var is_pinned: bool = bool(w.get("pinned", false))
+		var pin_btn:=button("Pinned" if is_pinned else "Pin",Vector2(350,14),Vector2(65,30),func():sim.pin_whim(i, not is_pinned);show_wishes(),is_pinned,wcard)
+		pin_btn.tooltip_text="Keep this whim from refreshing" if not is_pinned else "Unpin whim"
+		
+		# Dismiss button
+		var dismiss_btn:=button("✕",Vector2(422,14),Vector2(36,30),func():sim.dismiss_whim(i);show_wishes(),false,wcard)
+		dismiss_btn.disabled=is_pinned or bool(w.get("completed", false))
+		dismiss_btn.tooltip_text="Dismiss desire for a new one" if not is_pinned else "Unpin first to dismiss"
+	
+	# 3. Lifelong Aspirations
+	var asp_header=text_label("ASPIRATION GOALS",Vector2(0,0),Vector2(490,20),12,P.MUTED,true,column)
+	for want: Dictionary in sim.wants:
+		var acard=Panel.new();acard.custom_minimum_size=Vector2(490,65)
+		acard.add_theme_stylebox_override("panel",P.panel(Color("fafbfa"),8));column.add_child(acard)
+		var atitle: String = ("✓  " if bool(want.get("complete", false)) else "○  ") + str(want.get("label", ""))
+		text_label(atitle,Vector2(14,8),Vector2(360,24),15,P.INK,true,acard)
+		text_label("+%d pts" % int(want.get("reward", 50)),Vector2(410,8),Vector2(65,24),12,P.TEAL,false,acard)
+		paragraph(str(want.get("description", "")),Vector2(16,32),Vector2(458,26),11,P.MUTED,acard)
+		
+	button("Back to life",Vector2(470,715),Vector2(500,45),close_overlay,true,overlay)
 
 func show_rewards() -> void:
 	close_overlay();overlay_open=true;dismiss_layer()

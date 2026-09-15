@@ -31,6 +31,7 @@ const NEED_NAMES: Array[String] = ["hunger", "energy", "hygiene", "bladder", "fu
 ## intact. A break from these keeps the action's `elapsed`, so the progress bar
 ## continues where it stopped instead of restarting the whole shift.
 const RESUMABLE_BREAK_ACTIONS: Array[String] = ["job"]
+const LifeWantsManager = preload("res://scripts/wants_manager.gd")
 const TRAIT_NAMES: Array[String] = ["Creative", "Outgoing", "Active", "Bookworm", "Foodie", "Neat"]
 const ASPIRATION_NAMES: Array[String] = ["Maker", "Connected", "Successful", "Balanced"]
 const NEED_DECAY: Dictionary = {"hunger": 3.5, "energy": 3.0, "hygiene": 2.1, "bladder": 4.0, "fun": 2.5, "social": 2.0}
@@ -57,6 +58,7 @@ var skills: Dictionary = {}
 var relationships: Dictionary = {}
 var career: Dictionary = {}
 var wants: Array = []
+var whims: Dictionary = {}
 var funds: int = 2500
 var day: int = 1
 var minutes: float = 480.0
@@ -203,6 +205,8 @@ func new_household(profile: Dictionary) -> void:
 	_leisure_history.clear()
 	_warned_needs.clear()
 	_create_wants()
+	var wants_and_fears_enabled: bool = bool(profile.get("wants_and_fears", false))
+	whims = LifeWantsManager.fresh_state(character, str(get_mood().label), needs, wants_and_fears_enabled)
 	_emit_changed()
 
 
@@ -977,6 +981,21 @@ func _finish_front() -> void:
 	action["phase"] = "finished"
 	if is_instance_valid(meal_service):meal_service.finished(self,action)
 	if is_instance_valid(sanitation_service):sanitation_service.finished(self,action)
+	if not whims.is_empty():
+		var w_res: Dictionary = LifeWantsManager.evaluate_action(whims, id)
+		if bool(w_res.get("fulfilled", false)):
+			var rew: int = int(w_res.reward)
+			satisfaction += rew
+			var m: Dictionary = w_res.moodlet
+			add_moodlet(str(m.label), str(m.emotion), str(m.description), float(m.duration), int(m.strength))
+			_emit_notice("Desire fulfilled: %s! +%d satisfaction." % [str(w_res.whim.label), rew])
+			LifeWantsManager.refresh_whims(whims, character, needs, str(get_mood().label))
+		if bool(w_res.get("cured_fear", false)):
+			var frew: int = int(w_res.fear_reward)
+			satisfaction += frew
+			var fm: Dictionary = w_res.fear_moodlet
+			add_moodlet(str(fm.label), str(fm.emotion), str(fm.description), float(fm.duration), int(fm.strength))
+			_emit_notice("Conquered fear: %s! +%d satisfaction!" % [str(w_res.fear.label), frew])
 	_emit_action_finished(action)
 	_idle_minutes = 0.0
 	_update_wants()
@@ -2452,7 +2471,7 @@ func get_mood() -> Dictionary:
 
 
 func get_state() -> Dictionary:
-	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "bladder_grace":bladder_grace, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "wants": wants.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "bills_paid": bills_paid, "last_bill_day": last_bill_day, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "routine_memory_days":routine_memory_days.duplicate(true)}
+	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "bladder_grace":bladder_grace, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "wants": wants.duplicate(true), "whims": whims.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "bills_paid": bills_paid, "last_bill_day": last_bill_day, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "routine_memory_days":routine_memory_days.duplicate(true)}
 
 
 func save_game(world_data: Array = []) -> bool:
@@ -2582,6 +2601,10 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 		away_state.exit_position = _as_vector3(away_state.exit_position)
 		for key:String in ["version","departure_day","return_day"]: away_state[key] = int(away_state[key])
 	satisfaction = int(state.get("satisfaction", 0))
+	if state.has("whims") and LifeWantsManager.validate_save(state.whims):
+		whims = state.whims.duplicate(true)
+	else:
+		whims = LifeWantsManager.fresh_state(character, str(get_mood().label), needs)
 	bills_paid = int(state.get("bills_paid", 0))
 	last_bill_day = int(state.get("last_bill_day", 0))
 	# Permanent perks survive the save; one-use potions were never recorded.
@@ -3405,3 +3428,25 @@ func complete_adoption_arrival(action:Dictionary) -> bool:
 	_emit_action_finished(action)
 	_start_front();_emit_changed()
 	return true
+
+func get_whims() -> Array:
+	return whims.get("whims", [])
+
+func get_fears() -> Array:
+	return whims.get("fears", [])
+
+func pin_whim(index: int, pinned: bool) -> bool:
+	var ok: bool = LifeWantsManager.pin_whim(whims, index, pinned)
+	if ok: _emit_changed()
+	return ok
+
+func dismiss_whim(index: int) -> bool:
+	var ok: bool = LifeWantsManager.dismiss_whim(whims, index, character, needs, str(get_mood().label))
+	if ok: _emit_changed()
+	return ok
+
+func trigger_fear(fear_id: String) -> bool:
+	var ok: bool = LifeWantsManager.add_fear(whims, fear_id)
+	if ok: _emit_changed()
+	return ok
+

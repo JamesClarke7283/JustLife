@@ -65,7 +65,9 @@ func add_member(profile: Dictionary) -> String:
 	var sim=LifeSim.new()
 	sim.name="Life_"+id
 	add_child(sim)
-	sim.new_household(profile)
+	var member_profile: Dictionary = profile.duplicate(true)
+	member_profile["wants_and_fears"] = true
+	sim.new_household(member_profile)
 	sim.day=day;sim.minutes=minutes;sim.funds=funds;sim.speed=speed
 	sim.household_bills_enabled=members.is_empty()
 	sim.register_targets(targets.filter(func(target:Dictionary):return str(target.id)!=id))
