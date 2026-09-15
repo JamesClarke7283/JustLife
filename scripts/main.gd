@@ -35,7 +35,7 @@ var panel_tab: String = "Needs"
 var catalog_category: String = "All"
 var catalog_search: String = ""
 var portrait_stale: bool = false
-var profile: Dictionary = {"name":"Mara Vale","frame":0,"hair":1,"skin_color":"d9a17d","hair_color":"54382a","top_color":"c97c66","bottom_color":"eadfc9","body_scale":1.0,"height_scale":1.0,"outfit":0,"eye_color":"547365","traits":["Creative","Outgoing","Foodie"],"aspiration":"Maker"}
+var profile: Dictionary = {"name":"Mara Vale","frame":0,"hair":1,"skin_color":"d9a17d","hair_color":"54382a","top_color":"c97c66","bottom_color":"eadfc9","shoe_color":"e9e4d9","body_scale":1.0,"height_scale":1.0,"outfit":0,"eye_color":"547365","traits":["Creative","Outgoing","Foodie"],"aspiration":"Maker"}
 var selected_lot: int = 0
 var path: PackedVector3Array = []
 var path_index: int = 0
@@ -476,9 +476,9 @@ func draw_creator() -> void:
 			choice.button_group=gender_group
 			choice.set_pressed_no_signal(selected)
 			choice.tooltip_text="Create a %s Lifelet" % gender_name.to_lower()
-		small_caps("Skin tone",Vector2(1102,278))
-		swatches(["f2d1b1","e7b98f","d9a17d","b77e58","925c40","613e30"],"skin_color",Vector2(1100,308),36,7)
-		small_caps("Hairstyle",Vector2(1102,358))
+		small_caps("Skin tone",Vector2(1102,266),Vector2(180,20))
+		swatches(["f2d1b1","e7b98f","d9a17d","b77e58","925c40","613e30"],"skin_color",Vector2(1100,286),30,8)
+		small_caps("Hairstyle",Vector2(1102,328),Vector2(180,20))
 		var hair_names:Array=["Crop","Bob","Curls","Pony","Long","Buzz","Waves","Bun"]
 		var hair_tips:Array=["A relaxed swept crop","A softly sculpted bob","Natural rounded curls","A swept-back ponytail","Long layered lengths","A close buzz cut","Loose shoulder-length waves","A sleek twisted updo"]
 		# Only styles this stage's model authors are offered, so a choice is
@@ -488,19 +488,38 @@ func draw_creator() -> void:
 			offered_hair=preview.authored_hair_styles()
 		for slot:int in range(offered_hair.size()):
 			var i:int=int(offered_hair[slot])
-			var b=button(hair_names[i],Vector2(1100+(slot%4)*80,388+(slot/4)*42),Vector2(73,36),func():profile.hair=i;refresh_preview(),int(profile.get("hair",0))==i)
+			var b=button(hair_names[i],Vector2(1100+(slot%4)*80,348+(slot/4)*36),Vector2(73,32),func():profile.hair=i;refresh_preview(),int(profile.get("hair",0))==i)
 			b.tooltip_text=hair_tips[i]
-		small_caps("Hair color",Vector2(1102,486))
-		swatches(["2a2420","54382a","89563a","c2a16b","dfccb0","784e49"],"hair_color",Vector2(1100,514),36,7)
-		small_caps("Eyes",Vector2(1102,562))
-		swatches(["547365","55738f","704b36","b18d54","77797c"],"eye_color",Vector2(1100,590),28,12)
-		small_caps("Build",Vector2(1102,630))
+		small_caps("Hair color",Vector2(1102,424),Vector2(180,20))
+		swatches(["2a2420","54382a","89563a","c2a16b","dfccb0","784e49"],"hair_color",Vector2(1100,442),30,8)
+		small_caps("Eyes",Vector2(1102,476),Vector2(180,20))
+		swatches(["547365","55738f","704b36","b18d54","77797c"],"eye_color",Vector2(1100,494),24,10)
+		# `height_scale` and `shoe_color` already ride every save, the resident
+		# catalogue, and LifeActor's model scale and shoe recolour, but the creator
+		# offered no way to set them. These controls write exactly the fields the
+		# generator and the saved profiles already use, so nothing downstream
+		# changes and old saves with no such keys keep their defaults.
+		small_caps("Build",Vector2(1102,524),Vector2(180,20))
 		var slider=HSlider.new()
 		slider.min_value=.85;slider.max_value=1.15;slider.step=.01;slider.value=profile.body_scale
-		rect(slider,Vector2(1105,658),Vector2(270,30))
+		rect(slider,Vector2(1105,542),Vector2(270,22))
 		slider.value_changed.connect(set_body_scale)
-		text_label("Slender",Vector2(1102,688),Vector2(120,25),12,P.MUTED)
-		var l=text_label("Fuller",Vector2(1290,688),Vector2(85,25),12,P.MUTED);l.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT
+		text_label("Slender",Vector2(1102,566),Vector2(120,16),12,P.MUTED)
+		var fuller=text_label("Fuller",Vector2(1290,566),Vector2(85,16),12,P.MUTED)
+		fuller.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT
+		small_caps("Height",Vector2(1102,588),Vector2(180,20))
+		var height_slider=HSlider.new()
+		height_slider.name="CreatorHeight"
+		height_slider.min_value=.93;height_slider.max_value=1.08;height_slider.step=.01
+		height_slider.value=clampf(float(profile.get("height_scale",1.0)),.93,1.08)
+		height_slider.tooltip_text="How tall this Lifelet stands. Everyone keeps their own height."
+		rect(height_slider,Vector2(1105,606),Vector2(270,22))
+		height_slider.value_changed.connect(set_height_scale)
+		text_label("Shorter",Vector2(1102,630),Vector2(120,16),12,P.MUTED)
+		var taller=text_label("Taller",Vector2(1290,630),Vector2(85,16),12,P.MUTED)
+		taller.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT
+		small_caps("Shoes",Vector2(1102,652),Vector2(180,20))
+		swatches(["e9e4d9","3b302c","573c37","39444f","a26d56","292f32"],"shoe_color",Vector2(1100,670),30,8)
 	elif creator_tab=="Face":
 		text_label("A face of your own",Vector2(1100,207),Vector2(287,37),25,P.INK,true)
 		paragraph("Shape their features. Turn your Lifelet to see every angle.",Vector2(1102,264),Vector2(274,52),15)
@@ -748,7 +767,11 @@ func set_body_scale(value:float) -> void:
 	profile.body_scale=clampf(value,.85,1.15)
 	if is_instance_valid(preview):
 		preview.scale=Vector3.ONE
-		preview.visual.scale=Vector3(profile.body_scale,clampf(float(profile.height_scale),.93,1.08),profile.body_scale)
+		preview.visual.scale=Vector3(profile.body_scale,clampf(float(profile.get("height_scale",1.0)),.93,1.08),profile.body_scale)
+
+func set_height_scale(value:float) -> void:
+	profile.height_scale=clampf(value,.93,1.08)
+	set_body_scale(float(profile.get("body_scale",1.0)))
 
 func randomize_person() -> void:
 	var styling:Dictionary={}
@@ -4193,7 +4216,7 @@ func new_game() -> void:
 
 func _begin_new_game() -> void:
 	has_active_game=false;active_save_id="";active_save_name=""
-	profile={"name":"Mara Vale","frame":0,"hair":1,"skin_color":"d9a17d","hair_color":"54382a","top_color":"c97c66","bottom_color":"eadfc9","body_scale":1.0,"height_scale":1.0,"outfit":0,"eye_color":"547365","traits":["Creative","Outgoing","Foodie"],"aspiration":"Maker"}
+	profile={"name":"Mara Vale","frame":0,"hair":1,"skin_color":"d9a17d","hair_color":"54382a","top_color":"c97c66","bottom_color":"eadfc9","shoe_color":"e9e4d9","body_scale":1.0,"height_scale":1.0,"outfit":0,"eye_color":"547365","traits":["Creative","Outgoing","Foodie"],"aspiration":"Maker"}
 	household_profiles=[profile];creator_index=0;creator_family_links=[]
 	show_creator()
 
