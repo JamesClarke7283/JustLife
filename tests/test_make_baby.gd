@@ -306,6 +306,10 @@ func _creator_case()->void:
 	var baby=household.member_sim(baby_id)
 	check(str(baby.character.name)=="Wren Solis" and int(baby.character.frame)==0 and str(baby.character.skin_color)=="925c40" and int(baby.character.hair)==2 and str(baby.character.hair_color)=="dfccb0" and str(baby.character.eye_color)=="55738f" and absf(float(baby.character.face_round)-.42)<.001,"The baby keeps every edit the player made.")
 	check(not bool(baby.household_bills_enabled),"The baby carries no household bills.")
+	# A born Lifelet is built directly rather than through add_member, so it needs
+	# the household's Wants and Fears flag too; without it the newborn had no
+	# whims at all and their Wishes panel stayed empty for life.
+	check(baby.get_whims().size()==3 and bool(baby.whims.get("enabled",false)),"The newborn has the household's three active whims.")
 	var parents:Array=[]
 	for edge:Dictionary in household.family_graph.parents:
 		if str(edge.b)==baby_id:parents.append(str(edge.a))
