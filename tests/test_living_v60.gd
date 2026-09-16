@@ -45,7 +45,7 @@ func _run()->void:
 	for expectation:Array in [["book_nook","Activities",240],["coffee_table","Decor",150],["floor_lamp","Decor",110]]:
 		var data:Dictionary=LifeCatalog.get_item(str(expectation[0]))
 		check(not data.is_empty() and str(data.get("category"))==str(expectation[1]) and int(data.get("price"))==int(expectation[2]),"%s sits in the catalogue at %s for §%d." % [str(expectation[0]),str(expectation[1]),int(expectation[2])])
-	check(LifeCatalog.ITEMS.size()==45,"The catalogue now counts 45 furnishings.")
+	check(LifeCatalog.ITEMS.size()==49,"The catalogue now counts 49 furnishings.")
 
 	app.household.set_funds(app.sim.funds+9000)
 	app.set_build_mode(true)

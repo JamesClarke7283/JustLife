@@ -21,6 +21,7 @@ var bladder_grace: float = 0.0
 signal notice(text: String)
 signal age_changed(previous: String, current: String)
 signal away_changed(state: Dictionary)
+signal life_changed(status: String)
 
 const SAVE_PATH: String = "user://justlife_save.json"
 const SAVE_VERSION: int = 1
@@ -114,6 +115,32 @@ const PRE_DUTY_LEISURE: Array[String] = ["relax", "read", "watch", "stretch", "w
 const DEPARTURE_WALK: float = 15.0  # game minutes allowed for the walk from a pastime to the lot exit in a busy home
 const LEISURE_APPROACH: float = 10.0  # game minutes allowed for the walk to a pastime before it starts
 const WEAR_ACTIONS: Dictionary = {"wear_casual":0, "wear_jacket":1, "wear_cardigan":2, "wear_tee":3, "wear_hoodie":4}
+const WEAR_CATEGORY_ACTIONS: Dictionary = {"wear_everyday":"everyday", "wear_formal":"formal", "wear_athletic":"athletic", "wear_sleep":"sleep", "wear_party":"party"}
+const ACTIVITY_OUTFITS: Dictionary = {
+	"sleep":"sleep", "nap":"sleep",
+	"jog":"athletic", "morning_run":"athletic", "stretch":"athletic",
+	"dance":"party",
+	"career_day":"formal", "ask_partner":"formal", "commit":"formal",
+	"school_day":"everyday",
+	"return_home":"everyday",
+}
+const HOME_AFTER: Array[String] = ["sleep", "nap", "career_day", "school_day", "jog", "morning_run", "stretch"]
+const SPIRIT_BLOCKED: Array[String] = [
+	"career_day", "school_day", "job", "work", "birthday",
+	"cook", "snack", "eat_meal", "store_meal",
+	"flirt", "ask_partner", "commit", "break_up",
+]
+const PASSING_CAUSES: Dictionary = {
+	"old_age": "a long life, well lived",
+	"hunger": "going too long without a meal",
+	"exhaustion": "pushing past the last of their strength",
+}
+const STARVATION_MINUTES: float = 180.0
+const EXHAUSTION_MINUTES: float = 45.0
+const DEFERRED_PASSING_MINUTES: float = 240.0
+var starvation_minutes: float = 0.0
+var exhaustion_minutes: float = 0.0
+var deferred_passing_minutes: float = 0.0
 const RELATIONSHIP_ACTIONS: Array[String] = ["ask_partner", "commit", "break_up"]
 const SOCIAL_STAGES: Array[String] = ["met", "friends", "close_friends", "spark", "partners", "committed", "separated"]
 var social_history: Array = []
@@ -160,7 +187,15 @@ func new_household(profile: Dictionary) -> void:
 	character["traits"] = selected_traits
 	var aspiration: String = str(profile.get("aspiration", "Balanced"))
 	character["aspiration"] = aspiration if aspiration in ASPIRATION_NAMES else "Balanced"
+	character["life_status"] = "passed" if str(profile.get("life_status", "living")) == "passed" else "living"
+	if str(character["life_status"]) != "passed":
+		character["life_status"] = "living"
+	character["passing_cause"] = str(profile.get("passing_cause", "")) if str(character["life_status"]) == "passed" else ""
+	LifeCharacterIdentity.ensure_wardrobe(character)
 	bladder_grace = 0.0
+	starvation_minutes = 0.0
+	exhaustion_minutes = 0.0
+	deferred_passing_minutes = 0.0
 	needs = {"hunger": 76.0, "energy": 85.0, "hygiene": 86.0, "bladder": 78.0, "fun": 62.0, "social": 58.0}
 	skills.clear()
 	for skill_name: String in SKILL_NAMES:
@@ -255,7 +290,12 @@ func _build_actions() -> void:
 	_define("stretch", "Stretch and breathe", 30.0, {"fun": 12.0, "energy": 10.0}, 0, "fitness", 24.0, "Gentle stretching restores a little energy and builds Fitness.")
 	_define("dance", "Dance to a record", 35.0, {"fun": 40.0, "energy": -8.0, "hygiene": -6.0}, 0, "fitness", 12.0, "Put a record on and move. Great fun, a little tiring.")
 	_define("play_toys", "Play with toys", 45.0, {"fun": 42.0, "social": 4.0}, 0, "creativity", 14.0, "Imaginative play for children. Builds a little Creativity.")
-	_define("change_outfit", "Change outfit", 4.0, {}, 0, "", 0.0, "Switch to the next outfit in your wardrobe.")
+	_define("change_outfit", "Change outfit", 4.0, {}, 0, "", 0.0, "Switch to the next saved outfit type in your wardrobe.")
+	_define("wear_everyday", "Wear everyday clothes", 4.0, {}, 0, "", 0.0, "Change into the Everyday look you designed.")
+	_define("wear_formal", "Wear formal clothes", 4.0, {}, 0, "", 0.0, "Change into the Formal look you designed.")
+	_define("wear_athletic", "Wear athletic clothes", 4.0, {}, 0, "", 0.0, "Change into the Athletic look you designed.")
+	_define("wear_sleep", "Wear sleep clothes", 4.0, {}, 0, "", 0.0, "Change into the Sleep look you designed.")
+	_define("wear_party", "Wear party clothes", 4.0, {}, 0, "", 0.0, "Change into the Party look you designed.")
 	_define("wear_casual", "Wear the casual shirt", 4.0, {}, 0, "", 0.0, "Change into the short-sleeve shirt.")
 	_define("wear_jacket", "Wear the jacket", 4.0, {}, 0, "", 0.0, "Change into the cropped bomber jacket.")
 	_define("wear_cardigan", "Wear the cardigan", 4.0, {}, 0, "", 0.0, "Change into the open knit cardigan.")
@@ -288,6 +328,7 @@ func _build_actions() -> void:
 	_define("deep_read", "Deep read", 120.0, {"fun": 20.0, "energy": -6.0}, 0, "logic", 65.0, "Settle in with a demanding book for a long stretch. High Logic progress.")
 	_define("experiment_recipe", "Experiment with a recipe", 45.0, {"fun": 30.0, "hygiene": -5.0}, 0, "creativity", 30.0, "Try a dish nobody has written down. Fun and creativity, and something new to eat.")
 	_define("deep_clean", "Deep clean", 45.0, {"hygiene": 6.0, "fun": 10.0}, 0, "", 0.0, "Scrub the surfaces until the room sparkles. Slow, but oddly satisfying.")
+	_define("remember_life", "Remember a life", 20.0, {"social": 12.0, "fun": 6.0}, 0, "", 0.0, "Stand with the stone and remember who they were.")
 
 
 func _define(id: String, label: String, duration: float, changes: Dictionary, cost: int, skill: String, xp: float, description: String) -> void:
@@ -328,10 +369,15 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"stereo": ids = ["dance"]
 		"toybox": ids = ["play_toys"]  # adults see the disabled entry with its reason
 		"wardrobe":
+			var worn_category: String = LifeCharacterIdentity.normalize_category(character.get("outfit_category", "everyday"))
+			ids.append("change_outfit")
+			for wear_id: String in WEAR_CATEGORY_ACTIONS:
+				if str(WEAR_CATEGORY_ACTIONS[wear_id]) != worn_category: ids.append(wear_id)
 			for wear_id: String in WEAR_ACTIONS:
 				if int(WEAR_ACTIONS[wear_id]) != int(character.get("outfit", 0)): ids.append(wear_id)
 		"garden_bed": ids = ["water"]
 		"fireplace": ids = ["warm_up"]
+		"memorial": ids = ["remember_life"]
 		"neighbor", "maya", "leo", "priya", "tom": ids = SOCIAL_ACTIONS
 	if str(character.age_stage) in LifeEducation.SCHOOL_STAGES:
 		if kind in ["desk","computer"]: ids = ["school","homework","study","study_hard"] + (["play_games"] if kind == "computer" else [])
@@ -399,6 +445,7 @@ func _begin_school_departure(action: Dictionary) -> void:
 		cancel_action()
 		_emit_notice(problem)
 		return
+	_wear_for_activity("school_day")
 	# The controller calls this only after the Lifelet reaches the registered exit.
 	action.merge({"phase":"active","paid":true,"started_day":day,"started_minutes":minutes,
 		"elapsed":0.0,"progress":0.0,"duration":900.0-minutes},true)
@@ -448,6 +495,7 @@ func _tick_away(_game_minutes: float) -> void:
 		_emit_notice(str(result.get("error","Today's school attendance could not be recorded.")))
 	_publish("away_changed",[get_away_state()])
 	_emit_changed()
+	_wear_home_clothes()
 	_emit_notice("%s is returning from school." % str(character.name))
 	dispatch_notifications(release_notifications())
 
@@ -628,8 +676,22 @@ func begin_current_action() -> void:
 	if not action.has("started_minutes"):
 		action["started_day"] = day
 		action["started_minutes"] = minutes
+	_wear_for_activity(str(action.id))
 	action["phase"] = "active"
 	_emit_changed()
+
+func _wear_for_activity(action_id: String) -> void:
+	var category: String = str(ACTIVITY_OUTFITS.get(action_id, ""))
+	if category.is_empty():
+		return
+	if LifeCharacterIdentity.normalize_category(character.get("outfit_category", "everyday")) == category:
+		return
+	LifeCharacterIdentity.apply_category(character, category)
+
+func _wear_home_clothes() -> void:
+	if is_spirit():
+		return
+	_wear_for_activity("return_home")
 
 
 func cancel_action(index: int = 0) -> void:
@@ -699,6 +761,9 @@ func _step(game_minutes: float) -> void:
 		day += 1
 		_new_day()
 	_advance_age(game_minutes)
+	_update_passing_pressure(game_minutes)
+	if ready_to_starve() or ready_to_overexert() or ready_to_pass_on():
+		pass_on()
 	_prune_school_actions()
 	for need_name: String in NEED_NAMES:
 		var decay: float = float(NEED_DECAY[need_name])
@@ -943,9 +1008,15 @@ func _finish_front() -> void:
 		action["social_events"] = _recent_social_events.duplicate(true)
 	elif id == "water":
 		_emit_notice("The plants look happier. Gardening skill improved.")
-	elif id == "change_outfit" or WEAR_ACTIONS.has(id):
-		character["outfit"] = int(WEAR_ACTIONS[id]) if WEAR_ACTIONS.has(id) else (int(character.get("outfit", 0)) + 1) % 5
-		_emit_notice("%s changed into the %s outfit." % [character["name"], ["casual", "jacket", "cardigan", "tee", "hoodie"][int(character["outfit"])]])
+	elif id == "change_outfit" or WEAR_CATEGORY_ACTIONS.has(id) or WEAR_ACTIONS.has(id):
+		if WEAR_ACTIONS.has(id):
+			character["outfit"] = int(WEAR_ACTIONS[id])
+			LifeCharacterIdentity.store_current(character)
+			_emit_notice("%s changed into the %s outfit." % [character["name"], ["casual", "jacket", "cardigan", "tee", "hoodie"][int(character["outfit"])]])
+		else:
+			var category: String = str(WEAR_CATEGORY_ACTIONS[id]) if WEAR_CATEGORY_ACTIONS.has(id) else LifeCharacterIdentity.next_category(character.get("outfit_category", "everyday"))
+			LifeCharacterIdentity.apply_category(character, category)
+			_emit_notice("%s changed into their %s look." % [character["name"], LifeCharacterIdentity.category_label(category).to_lower()])
 		add_moodlet("Freshly changed", "Confident", "A new outfit, a new outlook.", 120, 1)
 	elif id == "cook" and _has_trait("Foodie"):
 		_emit_notice("A delicious homemade meal! Your Foodie trait made it extra satisfying.")
@@ -971,6 +1042,8 @@ func _finish_front() -> void:
 	action["phase"] = "finished"
 	if is_instance_valid(meal_service):meal_service.finished(self,action)
 	if is_instance_valid(sanitation_service):sanitation_service.finished(self,action)
+	if id in HOME_AFTER:
+		_wear_home_clothes()
 	_emit_action_finished(action)
 	_idle_minutes = 0.0
 	_update_wants()
@@ -1081,6 +1154,8 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 	var stage_reason: String = LifeStagePolicy.action_error(str(character.age_stage), str(character.life_stage), id)
 	if not stage_reason.is_empty():
 		return {"available":false, "reason":stage_reason}
+	if is_spirit() and (id in SPIRIT_BLOCKED or id == LifeBabyPlan.ACTION_ID):
+		return {"available":false, "reason":"A spirit has finished that chapter of life."}
 	if id=="career_day":
 		reason=_career_departure_error(target_id)
 	elif id == LifeBabyPlan.ACTION_ID:
@@ -1445,6 +1520,7 @@ func _activity_memory(id:String) -> void:
 		"share_interests":add_moodlet("Kindred spirits","Confident","Talking about what you love with someone who gets it.",200,2)
 		"joke":add_moodlet("A shared laugh","Playful","That joke is still making you smile.",120,3)
 		"argue":add_moodlet("Words linger","Tense","A difficult conversation takes time to shake off.",180,3)
+		"remember_life":add_moodlet("Held close","Sad","A life remembered is still part of the house.",240,1)
 		"work","job":
 			add_moodlet("A job well done","Confident","You've earned a little time for yourself.",180,2)
 			remember("A productive day","Finished work and earned a living.")
@@ -2428,7 +2504,7 @@ func get_mood() -> Dictionary:
 
 
 func get_state() -> Dictionary:
-	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "bladder_grace":bladder_grace, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "wants": wants.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "bills_paid": bills_paid, "last_bill_day": last_bill_day, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "routine_memory_days":routine_memory_days.duplicate(true)}
+	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "bladder_grace":bladder_grace, "starvation_minutes":starvation_minutes, "exhaustion_minutes":exhaustion_minutes, "deferred_passing_minutes":deferred_passing_minutes, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "wants": wants.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "bills_paid": bills_paid, "last_bill_day": last_bill_day, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "routine_memory_days":routine_memory_days.duplicate(true)}
 
 
 func save_game(world_data: Array = []) -> bool:
@@ -2487,11 +2563,19 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 	_social_family.clear()
 	character = state["character"].duplicate(true)
 	character["age_stage"] = LifeLifecycle.stage_for(character)
+	LifeCharacterIdentity.ensure_wardrobe(character)
 	lifecycle = state.get("lifecycle", LifeLifecycle.fresh()).duplicate(true)
 	lifecycle.progress = float(lifecycle.progress)
 	for birthday: Dictionary in lifecycle.history: birthday.day = int(birthday.day)
+	if is_spirit():
+		lifecycle["passed"] = true
 	needs = state["needs"].duplicate(true)
 	bladder_grace=float(state.get("bladder_grace",0.0))
+	starvation_minutes=float(state.get("starvation_minutes",0.0))
+	exhaustion_minutes=float(state.get("exhaustion_minutes",0.0))
+	deferred_passing_minutes=float(state.get("deferred_passing_minutes",0.0))
+	if is_spirit() and str(character.get("passing_cause", "")).is_empty():
+		character["passing_cause"] = "old_age"
 	skills = state["skills"].duplicate(true)
 	relationships = state["relationships"].duplicate(true)
 	character["life_stage"] = str(character.get("life_stage", "adult"))
@@ -2721,6 +2805,16 @@ func _validate_state(state: Dictionary) -> String:
 	var profile: Dictionary = state["character"]
 	var age_error: String = LifeLifecycle.validate(profile, state.get("lifecycle", LifeLifecycle.fresh()))
 	if not age_error.is_empty(): return age_error
+	var life_status: String = str(profile.get("life_status", "living"))
+	if life_status not in ["living", "passed"]:
+		return "Save contains an invalid life status."
+	var passing_cause: String = str(profile.get("passing_cause", "old_age"))
+	if passing_cause.is_empty():
+		passing_cause = "old_age"
+	if profile.has("passing_cause") and str(profile.get("passing_cause", "")) != "" and passing_cause not in PASSING_CAUSES:
+		return "Save contains an invalid passing cause."
+	if life_status == "passed" and passing_cause not in PASSING_CAUSES:
+		return "Save contains a Lifelet who passed without a known cause."
 	for birthday: Dictionary in state.get("lifecycle", LifeLifecycle.fresh()).history:
 		if int(birthday.day) > int(state.get("day", 0)): return "Save contains a future birthday."
 	if not profile.get("name") is String or not profile.get("traits") is Array or str(profile.get("aspiration", "")) not in ASPIRATION_NAMES:
@@ -3192,6 +3286,88 @@ func _advance_age(game_minutes: float) -> void:
 	if float(lifecycle.progress) >= 1.0 - .0000001 and not LifeLifecycle.next_stage(str(character.age_stage)).is_empty():
 		celebrate_birthday()
 
+func is_spirit() -> bool:
+	return str(character.get("life_status", "living")) == "passed"
+
+func _update_passing_pressure(game_minutes: float) -> void:
+	if is_spirit():
+		starvation_minutes = 0.0
+		exhaustion_minutes = 0.0
+		deferred_passing_minutes = 0.0
+		return
+	if float(needs.hunger) <= 0.001:
+		starvation_minutes += game_minutes
+	else:
+		starvation_minutes = 0.0
+	var athletic: bool = false
+	if not action_queue.is_empty() and str(action_queue[0].get("phase", "")) == "active":
+		athletic = str(action_queue[0].id) in ["jog", "morning_run"]
+	if float(needs.energy) <= 0.001 and athletic:
+		exhaustion_minutes += game_minutes
+	else:
+		exhaustion_minutes = 0.0
+	if LifeLifecycle.due_to_pass_on(str(character.age_stage), lifecycle) and (is_away() or (not action_queue.is_empty() and str(action_queue[0].get("phase", "")) == "active")):
+		deferred_passing_minutes += game_minutes
+
+func ready_to_starve() -> bool:
+	return not is_spirit() and starvation_minutes >= STARVATION_MINUTES
+
+func ready_to_overexert() -> bool:
+	return not is_spirit() and exhaustion_minutes >= EXHAUSTION_MINUTES
+
+func ready_to_pass_on() -> bool:
+	if is_spirit():
+		return false
+	if not LifeLifecycle.due_to_pass_on(str(character.age_stage), lifecycle):
+		return false
+	if deferred_passing_minutes >= DEFERRED_PASSING_MINUTES:
+		return true
+	if is_away():
+		return false
+	if action_queue.is_empty():
+		return true
+	return str(action_queue[0].get("phase", "")) != "active"
+
+func passing_cause() -> String:
+	var cause: String = str(character.get("passing_cause", ""))
+	return cause if cause in PASSING_CAUSES else "old_age"
+
+func pass_on(cause: String = "") -> bool:
+	if is_spirit():
+		return false
+	if cause.is_empty():
+		if ready_to_starve():
+			cause = "hunger"
+		elif ready_to_overexert():
+			cause = "exhaustion"
+		elif ready_to_pass_on():
+			cause = "old_age"
+		else:
+			return false
+	if cause not in PASSING_CAUSES:
+		return false
+	if cause == "old_age" and not LifeLifecycle.due_to_pass_on(str(character.age_stage), lifecycle):
+		return false
+	if cause == "hunger" and not ready_to_starve():
+		return false
+	if cause == "exhaustion" and not ready_to_overexert():
+		return false
+	character["life_status"] = "passed"
+	character["passing_cause"] = cause
+	lifecycle["passed"] = true
+	action_queue.clear()
+	away_state = {}
+	starvation_minutes = 0.0
+	exhaustion_minutes = 0.0
+	deferred_passing_minutes = 0.0
+	var why: String = str(PASSING_CAUSES[cause])
+	add_moodlet("At peace", "Sad", why.capitalize() + ".", 720, 1)
+	remember("Passed on", "Reached the end through %s." % why)
+	_emit_notice("%s has passed on, and remains as a gentle spirit." % str(character.name))
+	_publish("life_changed", ["passed"])
+	_emit_changed()
+	return true
+
 func celebrate_birthday(start_next_action: bool = true) -> bool:
 	# Close a due school day before changing the age and archiving its record.
 	# This also keeps the legitimate exact-bell transition serializable.
@@ -3264,6 +3440,7 @@ func _publish(event: String, args: Array = []) -> void:
 		"action_finished": action_finished.emit(args[0])
 		"age_changed": age_changed.emit(str(args[0]),str(args[1]))
 		"away_changed": away_changed.emit(args[0])
+		"life_changed": life_changed.emit(str(args[0]))
 
 func _emit_changed() -> void: _publish("changed")
 func _emit_notice(message: String) -> void: _publish("notice",[message])
@@ -3294,6 +3471,7 @@ func _begin_career_departure(action:Dictionary) -> void:
 		for later:Dictionary in action_queue.slice(1):
 			if not bool(later.get("autonomous",false)):problem="Following your plans before leaving for work."
 	if not problem.is_empty():cancel_action();_emit_notice(problem);return
+	_wear_for_activity("career_day")
 	action.merge({"phase":"active","paid":true,"started_day":day,"started_minutes":minutes,"elapsed":0.0,"progress":0.0,"duration":LifeCareerSchedule.END-minutes},true)
 	for need:String in action.changes:action.changes[need]=float(action.changes[need])*float(action.duration)/LifeCareerSchedule.LENGTH
 	away_state={"version":1,"activity":"career","phase":"away","departure_day":day,"departure_minutes":minutes,"return_day":day,"return_minutes":LifeCareerSchedule.END,"exit_id":str(action.target_id),"exit_position":action.target_position,"age_stage":str(character.age_stage),"career_track":str(career.get("track","studio")),"salary":int(career.salary),"completed":false,"ended_at":0.0}
@@ -3327,6 +3505,7 @@ func _tick_career_away() -> void:
 			if str(want.id)=="earn":want.progress=float(want.progress)+1.0
 		_update_wants()
 	_publish("away_changed",[get_away_state()]);_emit_changed()
+	_wear_home_clothes()
 	_emit_notice("%s is returning from work."%str(character.name))
 	dispatch_notifications(release_notifications())
 

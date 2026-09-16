@@ -6,6 +6,9 @@ const JOINT_NAMES: Array[String] = ["Head", "Arm_L", "Arm_R", "Forearm_L", "Fore
 const HAIR_NAMES: Array[String] = ["Hair_Crop", "Hair_Bob", "Hair_Curls", "Hair_Pony", "Hair_Long", "Hair_Buzz", "Hair_Waves", "Hair_Bun"]
 const OUTFIT_NAMES: Array[String] = ["Outfit_Casual", "Outfit_Jacket", "Outfit_Cardigan", "Outfit_Tee", "Outfit_Hoodie"]
 const BOTTOM_NAMES: Array[String] = ["Trousers", "Shorts"]
+const LOOK_OUTFITS: Dictionary = {
+	"formal": "Outfit_Formal", "athletic": "Outfit_Athletic", "sleep": "Outfit_Sleep", "party": "Outfit_Party"
+}
 const VERIFIED_AGE_ASSETS: Array[String] = ["baby","child","teen","elder"]
 const STAGED_AGE_ASSETS: Array[String] = ["baby","child","teen","elder"]
 ## The baby's hands-and-knees crawl. One numeric contract with
@@ -61,6 +64,7 @@ var _toothbrush: Node3D
 var _instrument: Node3D
 var _books: Array[Node3D] = []
 var _mop: Node3D
+var _look_root: Node3D
 var _birthday_cake: Node3D
 var _cake_center: Node3D
 var _cake_flames: Array[Node3D] = []
@@ -219,6 +223,7 @@ func configure(new_profile: Dictionary) -> void:
 		visual.remove_child(_model)
 		_model.queue_free()
 		_model = null
+	_free_look_layers()
 	_joints.clear()
 	_rest_rotations.clear()
 	_rig_bones.clear()
@@ -328,6 +333,8 @@ func configure(new_profile: Dictionary) -> void:
 	set_outfit(clampi(int(profile.get("outfit",0)),0,OUTFIT_NAMES.size()-1))
 	set_bottom(clampi(int(profile.get("bottom",0)),0,BOTTOM_NAMES.size()-1))
 	_recolor(_model, {})
+	_apply_spirit(_model)
+	_apply_look_layers()
 	_create_props()
 	_marker.position.y = (_authored_height+.21) * _height
 	_speech.position.y = (_authored_height+.54) * _height
@@ -435,6 +442,18 @@ func authored_wardrobe() -> Dictionary:
 		if _model.find_child("Bottom_Shorts", true, false) != null: bottoms.append(1)
 		if _model.find_child("Bottom_Continuous_trousers", true, false) != null or _model.find_child("Bottom_Continuous_Romper", true, false) != null: bottoms.append(0)
 	return {"outfits": outfits if not outfits.is_empty() else [0], "bottoms": bottoms if not bottoms.is_empty() else [0]}
+
+func apply_wardrobe(look: Dictionary = {}) -> void:
+	if not look.is_empty():
+		for key: String in ["outfit", "bottom", "top_color", "bottom_color", "shoe_color", "outfit_category"]:
+			if look.has(key):
+				profile[key] = look[key]
+	set_outfit(int(profile.get("outfit", 0)))
+	set_bottom(int(profile.get("bottom", 0)))
+	if _model != null:
+		_recolor(_model, {})
+		_apply_spirit(_model)
+		_apply_look_layers()
 
 func set_outfit(index: int) -> void:
 	profile["outfit"] = clampi(index,0,OUTFIT_NAMES.size()-1)
@@ -608,6 +627,63 @@ func _recolor(node: Node, material_cache: Dictionary) -> void:
 				mesh_node.set_surface_override_material(surface_index, material)
 	for child: Node in node.get_children():
 		_recolor(child, material_cache)
+
+
+func _apply_spirit(node: Node) -> void:
+	if str(profile.get("life_status", "living")) != "passed":
+		return
+	if node is MeshInstance3D and node.mesh != null:
+		var mesh_node: MeshInstance3D = node
+		for surface_index: int in range(mesh_node.mesh.get_surface_count()):
+			var material: Material = mesh_node.get_surface_override_material(surface_index)
+			if material is StandardMaterial3D:
+				var ghost: StandardMaterial3D = material
+				ghost.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+				ghost.albedo_color.a = 0.48
+				ghost.emission_enabled = true
+				ghost.emission = Color("8ec4c0")
+				ghost.emission_energy_multiplier = 0.18
+	for child: Node in node.get_children():
+		_apply_spirit(child)
+
+
+func _look_family() -> String:
+	return _model_age if _model_age in ["child", "teen", "elder"] else "adult"
+
+func _free_look_layers() -> void:
+	if is_instance_valid(_look_root):
+		_look_root.queue_free()
+	_look_root = null
+
+func _apply_look_layers() -> void:
+	# Everyday uses the five authored tops. Formal, Athletic, Sleep and Party
+	# wear original look meshes exported from Blender, not placeholder boxes.
+	_free_look_layers()
+	if _model == null:
+		return
+	var category: String = str(profile.get("outfit_category", "everyday"))
+	var group: String = str(LOOK_OUTFITS.get(category, ""))
+	if group.is_empty():
+		return
+	var existing: Node3D = _model.find_child(group, true, false) as Node3D
+	if existing != null:
+		_apply_outfit_visibility(_model, group)
+		return
+	var path: String = "res://assets/models/looks/%s_%s.glb" % [_look_family(), category]
+	if not ResourceLoader.exists(path):
+		path = "res://assets/models/looks/adult_%s.glb" % category
+	if not ResourceLoader.exists(path):
+		return
+	var scene: PackedScene = load(path) as PackedScene
+	if scene == null:
+		return
+	_look_root = scene.instantiate()
+	_look_root.name = group
+	visual.add_child(_look_root)
+	_look_root.scale = Vector3.ONE * _proportion
+	_apply_outfit_visibility(_model, group)
+	_recolor(_look_root, {})
+	_apply_spirit(_look_root)
 
 
 func _create_props() -> void:
@@ -1432,7 +1508,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 				pose["Forearm_R"] = Vector3(pose.Forearm_R) + Vector3(-0.35*cling,0,0)
 				pose["Head"] = Vector3(-0.05*cling,0.09*cling*sin(_action_time*1.1),0.10*cling)
 				lean.x = 0.05*cling
-			"change_outfit":
+			"change_outfit", "wear_casual", "wear_jacket", "wear_cardigan", "wear_tee", "wear_hoodie", "wear_everyday", "wear_formal", "wear_athletic", "wear_sleep", "wear_party":
 				pose["Arm_L"] = Vector3(-1.1, 0, 0.12)
 				pose["Forearm_L"] = Vector3(-1.3, 0, 0)
 				pose["Arm_R"] = Vector3(-1.1, 0, -0.12)

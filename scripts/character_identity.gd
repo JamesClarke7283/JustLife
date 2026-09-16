@@ -45,6 +45,26 @@ const PALETTES: Array = [
 	["73866e", "e7d9c2", "594a3f"], ["3e5879", "aa8b6d", "41342b"],
 	["d3a077", "454a59", "e7e1d7"], ["5c526c", "8c9289", "363537"],
 ]
+# Saved looks, one per outfit type. Everyday is the generated daily wear; the
+# others start from distinct silhouettes and palettes so a wardrobe change is
+# visible. Original clothing, not a copy of another game's items.
+const OUTFIT_CATEGORIES: Array[String] = ["everyday", "formal", "athletic", "sleep", "party"]
+const OUTFIT_CATEGORY_LABELS: Dictionary = {
+	"everyday": "Everyday", "formal": "Formal", "athletic": "Athletic", "sleep": "Sleep", "party": "Party"
+}
+const OUTFIT_CATEGORY_BLURBS: Dictionary = {
+	"everyday": "Easy clothes for the day at home.",
+	"formal": "Tailored pieces for evenings and ceremonies.",
+	"athletic": "Light layers ready to move.",
+	"sleep": "Soft clothes for rest.",
+	"party": "A little more occasion than the everyday set.",
+}
+const OUTFIT_CATEGORY_PRESETS: Dictionary = {
+	"formal": {"outfit": 1, "bottom": 0, "top_color": "394d57", "bottom_color": "2c2a2e", "shoe_color": "1f1c1a"},
+	"athletic": {"outfit": 3, "bottom": 1, "top_color": "397a75", "bottom_color": "3e4940", "shoe_color": "e6e4dc"},
+	"sleep": {"outfit": 4, "bottom": 1, "top_color": "d6ccbb", "bottom_color": "72534b", "shoe_color": "e9e2d6"},
+	"party": {"outfit": 2, "bottom": 0, "top_color": "96454d", "bottom_color": "303d42", "shoe_color": "32292a"},
+}
 const FIRST_NAMES: Array[String] = ["Mara", "Ellis", "Jules", "Noa", "Robin", "Avery", "Morgan", "Jamie", "Remy", "Sage", "Wren", "Alex", "Drew", "Riley", "Marin", "Sasha", "Indigo", "Quinn", "Rowan", "Kit", "Charlie", "River", "Micah", "Skyler", "Emery", "Finley", "Cameron", "Reese", "Blair", "Lane", "Devon", "Arden"]
 const LAST_NAMES: Array[String] = ["Vale", "Rowan", "Park", "Rivera", "Ash", "Woods", "Bell", "Reed", "Finch", "Ellis", "Moss", "Linden", "Brooks", "Solis", "Hayes", "North", "Sutton", "Lane", "Flores", "Reyes", "Song", "Kim", "Patel", "Shah", "Okafor", "Mensah", "Clarke", "Bennett", "Castillo", "Hale", "Laurent", "Silva"]
 
@@ -73,6 +93,9 @@ static func generate(seed_value: int, template: Dictionary = {}, household_profi
 		if nearest >= .48: break
 	result.merge(best, true)
 	result["name"] = _unique_name(rng, household_profiles)
+	result.erase("outfit_collection")
+	result["outfit_category"] = "everyday"
+	ensure_wardrobe(result)
 	return result
 
 static func _appearance(rng: RandomNumberGenerator, template: Dictionary, stage: String, styling: Dictionary) -> Dictionary:
@@ -101,6 +124,97 @@ static func _appearance(rng: RandomNumberGenerator, template: Dictionary, stage:
 	look["bottom_color"] = palette[1]
 	look["shoe_color"] = palette[2]
 	return look
+
+static func wardrobe_fields(look: Dictionary) -> Dictionary:
+	return {
+		"outfit": int(look.get("outfit", 0)),
+		"bottom": int(look.get("bottom", 0)),
+		"top_color": str(look.get("top_color", "c97c66")),
+		"bottom_color": str(look.get("bottom_color", "eadfc9")),
+		"shoe_color": str(look.get("shoe_color", "e9e4d9")),
+		"outfit_category": normalize_category(look.get("outfit_category", "everyday")),
+	}
+
+static func normalize_category(value: Variant) -> String:
+	var category: String = str(value)
+	return category if category in OUTFIT_CATEGORIES else "everyday"
+
+static func next_category(value: Variant) -> String:
+	var index: int = OUTFIT_CATEGORIES.find(normalize_category(value))
+	return OUTFIT_CATEGORIES[(index + 1) % OUTFIT_CATEGORIES.size()]
+
+static func category_label(value: Variant) -> String:
+	return str(OUTFIT_CATEGORY_LABELS.get(normalize_category(value), "Everyday"))
+
+static func ensure_wardrobe(look: Dictionary) -> Dictionary:
+	var stage: String = LifeLifecycle.stage_for(look)
+	var current: Dictionary = _slot_from(look, stage)
+	if not look.get("outfit_collection") is Dictionary:
+		look["outfit_collection"] = {}
+	var collection: Dictionary = look["outfit_collection"]
+	for category: String in OUTFIT_CATEGORIES:
+		if _valid_slot(collection.get(category, {}), stage):
+			continue
+		collection[category] = current.duplicate(true) if category == "everyday" else _preset_slot(category, current, stage)
+	look["outfit_collection"] = collection
+	look["outfit_category"] = normalize_category(look.get("outfit_category", "everyday"))
+	if not look.has("outfit"):
+		_apply_slot(look, collection[look["outfit_category"]], stage)
+	return look
+
+static func apply_category(look: Dictionary, category: Variant) -> Dictionary:
+	ensure_wardrobe(look)
+	var chosen: String = normalize_category(category)
+	look["outfit_category"] = chosen
+	_apply_slot(look, look["outfit_collection"][chosen], LifeLifecycle.stage_for(look))
+	return look
+
+static func _apply_slot(look: Dictionary, source: Variant, stage: String) -> void:
+	var slot: Dictionary = _slot_from(source, stage)
+	look["outfit"] = slot.outfit
+	look["bottom"] = slot.bottom
+	look["top_color"] = slot.top_color
+	look["bottom_color"] = slot.bottom_color
+	look["shoe_color"] = slot.shoe_color
+
+static func store_current(look: Dictionary) -> Dictionary:
+	ensure_wardrobe(look)
+	var stage: String = LifeLifecycle.stage_for(look)
+	var category: String = normalize_category(look.get("outfit_category", "everyday"))
+	look["outfit_collection"][category] = _slot_from(look, stage)
+	return look
+
+static func _slot_from(source: Variant, stage: String) -> Dictionary:
+	var look: Dictionary = source if source is Dictionary else {}
+	var baby: bool = stage == "baby"
+	return {
+		"outfit": 0 if baby else clampi(int(look.get("outfit", 0)), 0, 4),
+		"bottom": 0 if baby else clampi(int(look.get("bottom", 0)), 0, 1),
+		"top_color": str(look.get("top_color", "c97c66")),
+		"bottom_color": str(look.get("bottom_color", "eadfc9")),
+		"shoe_color": str(look.get("shoe_color", "e9e4d9")),
+	}
+
+static func _preset_slot(category: String, everyday: Dictionary, stage: String) -> Dictionary:
+	var slot: Dictionary = everyday.duplicate(true)
+	var preset: Dictionary = OUTFIT_CATEGORY_PRESETS.get(category, {})
+	if preset is Dictionary:
+		slot.merge(preset, true)
+	return _slot_from(slot, stage)
+
+static func _valid_slot(value: Variant, stage: String) -> bool:
+	if not value is Dictionary:
+		return false
+	var slot: Dictionary = value
+	for key: String in ["outfit", "bottom", "top_color", "bottom_color", "shoe_color"]:
+		if not slot.has(key):
+			return false
+	var baby: bool = stage == "baby"
+	if baby and (int(slot.outfit) != 0 or int(slot.bottom) != 0):
+		return false
+	if not baby and (int(slot.outfit) < 0 or int(slot.outfit) > 4 or int(slot.bottom) < 0 or int(slot.bottom) > 1):
+		return false
+	return true
 
 static func _choose_style(rng: RandomNumberGenerator, requested: Variant, allowed: Array) -> int:
 	var choices: Array[int] = []

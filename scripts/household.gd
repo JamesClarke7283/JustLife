@@ -5,6 +5,7 @@ class_name LifeHousehold
 signal member_age_changed(member_id: String, previous: String, current: String)
 signal member_action_started(member_id: String, action: Dictionary)
 signal member_action_finished(member_id: String, action: Dictionary)
+signal member_passed(member_id: String)
 signal baby_born(mother_id: String)
 ## Raised the moment a couple conceives, so the view can tell the player the
 ## news with a sound and a notice before the birth arrives days later.
@@ -36,6 +37,9 @@ var sanitation: LifeSanitation = LifeSanitation.new()
 var cooperations: Array = []
 var cooperation_serial: int = 0
 var birth_serial: int = 1
+var memorials: Array = []
+var heirlooms: Array = []
+const ESTATE_GIFT: int = 80
 var _cooperation_depth: int = 0
 const COOPERATION_WAIT_LIMIT: float = 60.0
 
@@ -49,6 +53,8 @@ func new_household(profiles: Array) -> void:
 	cooperations.clear()
 	cooperation_serial = 0
 	birth_serial = 1
+	memorials.clear()
+	heirlooms.clear()
 	for member in members:member.sim.queue_free()
 	members.clear()
 	family_graph = LifeFamilyGraph.fresh()
@@ -84,6 +90,8 @@ func connect_member(id: String, sim: LifeSim) -> void:
 	sim.age_changed.connect(func(previous: String, current: String):
 		_sync_social_context()
 		if not restoring: member_age_changed.emit(id, previous, current))
+	sim.life_changed.connect(func(status: String):
+		if not restoring and status == "passed": _record_passing(id))
 	sim.action_started.connect(func(action:Dictionary):
 		if not restoring:member_action_started.emit(id,action))
 	sim.action_finished.connect(func(action:Dictionary):
@@ -253,7 +261,7 @@ func get_state(world_data: Array = []) -> Dictionary:
 	adopt_selected_changes()
 	var states:Array=[]
 	for member in members:states.append({"id":member.id,"state":member.sim.get_state()})
-	var result:Dictionary={"household_version":2 if not journeys.is_empty() else 1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"pets":pets.duplicate(true),"pregnancy":pregnancy.duplicate(true),"birth_serial":birth_serial,"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state(),"sanitation":sanitation.get_state(),"extras":extras_provider.call() if extras_provider.is_valid() else {}}
+	var result:Dictionary={"household_version":2 if not journeys.is_empty() else 1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"pets":pets.duplicate(true),"pregnancy":pregnancy.duplicate(true),"birth_serial":birth_serial,"memorials":memorials.duplicate(true),"heirlooms":heirlooms.duplicate(true),"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state(),"sanitation":sanitation.get_state(),"extras":extras_provider.call() if extras_provider.is_valid() else {}}
 	if not journeys.is_empty():result.journeys=journeys.duplicate(true)
 	if physical_snapshot_provider.is_valid():
 		var physical:Dictionary=physical_snapshot_provider.call()
@@ -475,6 +483,14 @@ func restore_state(data: Dictionary) -> Dictionary:
 	if not extras_error.is_empty():
 		for c in candidates:c.sim.free()
 		return {"ok":false,"error":extras_error}
+	var memorial_error:String=_validate_memorials(data.get("memorials",[]),ids)
+	if not memorial_error.is_empty():
+		for c in candidates:c.sim.free()
+		return {"ok":false,"error":memorial_error}
+	var heirloom_error:String=_validate_heirlooms(data.get("heirlooms",[]))
+	if not heirloom_error.is_empty():
+		for c in candidates:c.sim.free()
+		return {"ok":false,"error":heirloom_error}
 	restoring=true
 	journeys=data.get("journeys",{}).duplicate(true)
 	if not journeys.is_empty():
@@ -498,6 +514,8 @@ func restore_state(data: Dictionary) -> Dictionary:
 		session.phase="assembling"
 		session.ready=[]
 	family_graph=family_result.graph.duplicate(true)
+	memorials=_clean_memorials(data.get("memorials",[]))
+	heirlooms=_clean_heirlooms(data.get("heirlooms",[]))
 	_rebuild_family_roles()
 	selected_index=int(selected_value)
 	funds=members[selected_index].sim.funds
@@ -589,6 +607,90 @@ func _validate_member_identity(data:Dictionary) -> String:
 			if neighbor_partners.has(partner_id):return "A neighbor cannot have two household partners."
 			neighbor_partners[partner_id]=expected_ids[index]
 	return ""
+
+func keepsake_lines() -> PackedStringArray:
+	var lines: PackedStringArray = []
+	for entry: Dictionary in heirlooms:
+		var note: String = str(entry.get("note", ""))
+		lines.append(str(entry.label) if note.is_empty() else "%s — %s" % [str(entry.label), note])
+	return lines
+
+func inspect_keepsake(index: int = 0) -> Dictionary:
+	if index < 0 or index >= heirlooms.size():
+		return {}
+	return (heirlooms[index] as Dictionary).duplicate(true)
+
+func _record_passing(member_id: String) -> void:
+	var who: LifeSim = member_sim(member_id)
+	if who == null:
+		return
+	for existing: Dictionary in memorials:
+		if str(existing.member_id) == member_id:
+			return
+	set_funds(funds + ESTATE_GIFT)
+	var cause: String = who.passing_cause() if who.has_method("passing_cause") else "old_age"
+	var why: String = str(LifeSim.PASSING_CAUSES.get(cause, "a life remembered"))
+	heirlooms.append({
+		"from":str(who.character.name),
+		"label":"%s's keepsake" % str(who.character.name),
+		"day":day,
+		"cause":cause,
+		"note":"A small object they carried. Held after they passed from %s." % why,
+	})
+	memorials.append({"member_id":member_id,"name":str(who.character.name),"day":day,"kind":"memorial","funds":funds,"cause":cause})
+	for member: Dictionary in members:
+		if str(member.id) == member_id or member.sim.is_spirit():
+			continue
+		member.sim.add_moodlet("In mourning","Sad","Someone beloved has passed.",960,2)
+		member.sim.remember("A farewell","%s left a keepsake and §%d for the household." % [str(who.character.name), ESTATE_GIFT])
+	member_passed.emit(member_id)
+	notice.emit("%s left a keepsake and §%d. Their story stays in the family." % [str(who.character.name), ESTATE_GIFT])
+
+func _validate_memorials(raw: Variant, ids: Array) -> String:
+	if raw == null:
+		return ""
+	if not raw is Array or raw.size() > 8:
+		return "The saved household has invalid memorials."
+	var seen: Dictionary = {}
+	for entry: Variant in raw:
+		if not entry is Dictionary or not entry.get("member_id") is String or not entry.get("name") is String:
+			return "The saved household has an invalid memorial."
+		if not ids.has(str(entry.member_id)) or seen.has(str(entry.member_id)):
+			return "The saved household has an invalid memorial."
+		if not LifeJourneyState.number(entry.get("day", 1), 1, 1000000, true):
+			return "The saved household has an invalid memorial date."
+		seen[str(entry.member_id)] = true
+	return ""
+
+func _clean_memorials(raw: Variant) -> Array:
+	var result: Array = []
+	if not raw is Array:
+		return result
+	for entry: Variant in raw:
+		if entry is Dictionary:
+			result.append({"member_id":str(entry.member_id),"name":str(entry.name),"day":int(entry.get("day",1)),"kind":"memorial","funds":int(entry.get("funds",0)),"cause":str(entry.get("cause","old_age"))})
+	return result
+
+func _validate_heirlooms(raw: Variant) -> String:
+	if raw == null:
+		return ""
+	if not raw is Array or raw.size() > 8:
+		return "The saved household has invalid heirlooms."
+	for entry: Variant in raw:
+		if not entry is Dictionary or not entry.get("from") is String or not entry.get("label") is String:
+			return "The saved household has an invalid heirloom."
+		if not LifeJourneyState.number(entry.get("day", 1), 1, 1000000, true):
+			return "The saved household has an invalid heirloom date."
+	return ""
+
+func _clean_heirlooms(raw: Variant) -> Array:
+	var result: Array = []
+	if not raw is Array:
+		return result
+	for entry: Variant in raw:
+		if entry is Dictionary:
+			result.append({"from":str(entry.from),"label":str(entry.label),"day":int(entry.get("day",1)),"cause":str(entry.get("cause","old_age")),"note":str(entry.get("note",""))})
+	return result
 
 func json_safe(value: Variant) -> Variant:
 	if value is Vector3:return [value.x,value.y,value.z]
