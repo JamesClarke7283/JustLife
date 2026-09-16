@@ -79,6 +79,10 @@ var pause_before_menu: int = 1
 var speed_before_build: int = 1
 var overlay_pauses_sim: bool = false
 var overlay_open: bool = false
+## Raised while a button inside the Wishes panel redraws that panel. The panel
+## keeps the simulation running, so a press rebuilds it from the current whims
+## rather than leaving the player reading cards whose slot has already refreshed.
+var wishes_redrawing: bool = false
 var selected_item: Dictionary = {}
 var build_undo: Array = []
 var build_transactions:LifeBuildTransactions
@@ -2998,6 +3002,19 @@ func _select_career(track_id:String) -> void:
 		close_overlay()
 		draw_live()
 
+## Rebuild the Wishes panel from the Lifelet's current whims. The panel runs while
+## the simulation keeps ticking, so a card's slot can refresh between the moment
+## it is drawn and the moment the player presses its Pin or dismiss button. The
+## handlers are bound to a slot index, so without this redraw a press applied to
+## whichever whim had since taken that slot rather than the one on the card. The
+## re-entrancy guard stops the rebuilt panel's own handlers from rebuilding again.
+func _redraw_wishes() -> void:
+	if wishes_redrawing:
+		return
+	wishes_redrawing=true
+	show_wishes()
+	wishes_redrawing=false
+
 func show_wishes() -> void:
 	close_overlay();overlay_open=true;dismiss_layer()
 	card(Vector2(440,50),Vector2(560,780),P.WHITE,24,overlay)
@@ -3049,11 +3066,11 @@ func show_wishes() -> void:
 		
 		# Pin / Unpin button
 		var is_pinned: bool = bool(w.get("pinned", false))
-		var pin_btn:=button("Pinned" if is_pinned else "Pin",Vector2(350,14),Vector2(65,30),func():sim.pin_whim(i, not is_pinned);show_wishes(),is_pinned,wcard)
+		var pin_btn:=button("Pinned" if is_pinned else "Pin",Vector2(350,14),Vector2(65,30),func():sim.pin_whim_id(str(w.get("id","")), not is_pinned);_redraw_wishes(),is_pinned,wcard)
 		pin_btn.tooltip_text="Keep this whim from refreshing" if not is_pinned else "Unpin whim"
 		
 		# Dismiss button
-		var dismiss_btn:=button("✕",Vector2(422,14),Vector2(36,30),func():sim.dismiss_whim(i);show_wishes(),false,wcard)
+		var dismiss_btn:=button("✕",Vector2(422,14),Vector2(36,30),func():sim.dismiss_whim_id(str(w.get("id","")));_redraw_wishes(),false,wcard)
 		dismiss_btn.disabled=is_pinned or bool(w.get("completed", false))
 		dismiss_btn.tooltip_text="Dismiss desire for a new one" if not is_pinned else "Unpin first to dismiss"
 	

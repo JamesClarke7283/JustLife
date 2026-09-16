@@ -3759,6 +3759,26 @@ func pin_whim(index: int, pinned: bool) -> bool:
 	if ok: _emit_changed()
 	return ok
 
+## Pin the whim a player is actually looking at. The Wishes panel runs while the
+## simulation keeps ticking, so the whim in a slot can be replaced between the
+## moment the card is drawn and the moment its button is pressed. Pinning by
+## index would then suppress a whim the player never saw; pinning by identity
+## applies to the card's own whim, and does nothing once that whim has refreshed.
+func pin_whim_id(whim_id: String, pinned: bool) -> bool:
+	return pin_whim(_whim_index(whim_id), pinned) if not whim_id.is_empty() else false
+
+func dismiss_whim_id(whim_id: String) -> bool:
+	if whim_id.is_empty():
+		return false
+	return dismiss_whim(_whim_index(whim_id))
+
+func _whim_index(whim_id: String) -> int:
+	var active: Array = get_whims()
+	for index: int in range(active.size()):
+		if str((active[index] as Dictionary).get("id", "")) == whim_id:
+			return index
+	return -1
+
 func dismiss_whim(index: int) -> bool:
 	var ok: bool = LifeWantsManager.dismiss_whim(whims, index, character, needs, str(get_mood().label))
 	if ok: _emit_changed()

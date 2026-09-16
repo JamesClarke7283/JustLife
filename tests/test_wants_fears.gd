@@ -164,6 +164,35 @@ func run() -> void:
 	check(restored_sim.restore_state(legacy).get("ok", false), "Older saves without wants data still load.")
 	check(WantsManager.validate_save(restored_sim.whims), "Older saves receive a complete valid wants state.")
 	
+	# The Wishes panel runs while the simulation keeps ticking, and its Pin and
+	# dismiss handlers act on a whim. Bound to a slot index they acted on whichever
+	# whim had since taken that slot, so a press could suppress a desire the player
+	# never saw. They are bound to the whim's own identity now.
+	sim.needs.fun = 5.0
+	sim.needs.hunger = 90.0
+	sim.needs.energy = 90.0
+	sim.needs.hygiene = 90.0
+	sim.needs.social = 90.0
+	sim.whims = WantsManager.fresh_state(sim.character, str(sim.get_mood().label), sim.needs, true)
+	var shown_id: String = str(sim.get_whims()[0].get("id", ""))
+	check(shown_id == "have_fun", "A bored Lifelet's first whim is the fun one (" + shown_id + ").")
+	# The player solves Fun and goes hungry: the slot refreshes behind the panel.
+	var tags: Array = sim.get_whims()[0].get("action_tags", [])
+	WantsManager.evaluate_action(sim.whims, str(tags[0]) if not tags.is_empty() else "")
+	sim.needs.fun = 95.0
+	sim.needs.hunger = 5.0
+	WantsManager.refresh_whims(sim.whims, sim.character, sim.needs, str(sim.get_mood().label))
+	var replaced_id: String = str(sim.get_whims()[0].get("id", ""))
+	check(replaced_id != shown_id, "The slot really refreshed to a different whim (" + replaced_id + ").")
+	sim.pin_whim_id(shown_id, true)
+	var pinned_now: Array[String] = []
+	for whim: Dictionary in sim.get_whims():
+		if bool(whim.get("pinned", false)):
+			pinned_now.append(str(whim.get("id", "")))
+	check(not pinned_now.has(replaced_id), "Acting on a card never pins the whim that replaced it (" + str(pinned_now) + ").")
+	sim.pin_whim_id(replaced_id, true)
+	check(bool(sim.get_whims()[0].get("pinned", false)) and str(sim.get_whims()[0].get("id", "")) == replaced_id, "Acting on a card still pins the whim that card names.")
+	sim.pin_whim_id(replaced_id, false)
 	sim.free()
 	restored_sim.free()
 	print("Wants and Fears: %d checks, %d failures." % [checks, failures])

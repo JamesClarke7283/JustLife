@@ -1,4 +1,5 @@
 extends SceneTree
+const LifeWantsManager = preload("res://scripts/wants_manager.gd")
 ## Iteration 61 depth package, through the public paths only: the spendable
 ## rewards store (permanent perks and one-use potions), the emotion-gated
 ## interactions, and the trait-gated interactions. Every gate is read from the
@@ -300,6 +301,39 @@ func _run() -> void:
 	var legacy: Dictionary = sim.get_state()
 	legacy.erase("purchased_perks")
 	check(bool(restored.restore_state(legacy).ok) and restored.purchased_perks.is_empty(), "An old save without the store loads with an empty perk list.")
+
+	# The Wishes panel keeps the simulation running, so a whim slot can refresh
+	# between the moment a card is drawn and the moment its Pin is pressed. The
+	# button is wired to the whim's own identity, so a press never suppresses the
+	# desire that quietly replaced the one on screen.
+	app.household.set_speed(0)
+	sim.needs.fun = 5.0
+	sim.needs.hunger = 90.0
+	sim.needs.energy = 90.0
+	sim.needs.hygiene = 90.0
+	sim.needs.social = 90.0
+	sim.whims = LifeWantsManager.fresh_state(sim.character, str(sim.get_mood().label), sim.needs, true)
+	app.show_wishes()
+	await process_frame;await process_frame;await process_frame
+	var card_id: String = str(sim.get_whims()[0].get("id", ""))
+	var pin: Button = null
+	for node: Node in app.overlay.find_children("*", "Button", true, false):
+		if (node as Button).text == "Pin" and (node as Button).is_visible_in_tree():
+			pin = node
+			break
+	check(pin != null, "The Wishes panel offers a Pin on its needs card.")
+	var slots: Array = sim.get_whims()[0].get("action_tags", [])
+	sim.whims["whims"][0]["completed"] = true
+	sim.needs.fun = 95.0
+	sim.needs.hunger = 5.0
+	LifeWantsManager.refresh_whims(sim.whims, sim.character, sim.needs, str(sim.get_mood().label))
+	var replacement_id: String = str(sim.get_whims()[0].get("id", ""))
+	check(replacement_id != card_id, "The needs slot refreshed behind the open panel (%s -> %s)." % [card_id, replacement_id])
+	pin.pressed.emit()
+	await process_frame;await process_frame;await process_frame
+	check(not bool(sim.get_whims()[0].get("pinned", false)), "A press on the old card does not pin the whim that replaced it.")
+	app.close_overlay()
+	await process_frame;await process_frame
 
 	restored.free()
 	app.queue_free()
