@@ -1669,6 +1669,12 @@ func _advance_bill_cycle() -> void:
 		if last_bill_day == 0 or day - last_bill_day >= BILL_PERIOD_DAYS:
 			var amount: int = bill_amount_for(home_value())
 			pending_bill = {"amount": amount, "issued_day": day, "due_day": day + BILL_DUE_DAYS, "late_fee": 0}
+			# The week is anchored to the issue, not to the payment. Stamping the
+			# payment instead made the period "seven days after the last payment",
+			# so a household that settled a fortnight-old bill skipped every week
+			# in between and was charged nothing, while a prompt payer kept the
+			# promised weekly cadence.
+			last_bill_day = day
 			_emit_notice("The household bills arrived: §%d, due by day %d. Pay them from the phone." % [amount, int(pending_bill.due_day)])
 		return
 	# A bill past its due date is overdue: one late fee, once.
@@ -1708,7 +1714,6 @@ func pay_bill() -> Dictionary:
 		return {"ok": false, "reason": "The household needs §%d and has §%d." % [owed, funds]}
 	funds -= owed
 	bills_paid_total += owed
-	last_bill_day = day
 	pending_bill.clear()
 	var restored: bool = utilities_cut
 	utilities_cut = false
