@@ -46,6 +46,17 @@ func _run() -> void:
 	app.queue_free(); await frames(3)
 	quit(0 if failures.is_empty() else 1)
 
+func first_valid_spot(kind: String) -> Vector3:
+	for xi: int in range(-40, 41):
+		for zi: int in range(-40, 41):
+			var at := Vector3(float(xi) * 0.25, Building.GROUND_Y, float(zi) * 0.25)
+			if app.world.can_place(kind, at, 0.0):
+				var proposed: Array = app.world.serialize_items()
+				proposed.append({"id": "probe_candidate", "kind": kind, "x": at.x, "z": at.z, "rotation": 0.0})
+				if app.build_transactions.furnishing_error(proposed).is_empty():
+					return at
+	return Vector3(NAN, 0, 0)
+
 func _write() -> void:
 	app.new_game()
 	await frames(4)
@@ -66,9 +77,11 @@ func _write() -> void:
 	# Buying and placing go through Build & buy, exactly as a player does.
 	app.set_build_mode(true)
 	await frames(3)
+	var spot: Vector3 = first_valid_spot("chair")
+	check(spot.is_finite(), "The lot offers a spot the game accepts for a chair")
 	app.begin_purchase("chair")
 	await frames(3)
-	app.on_placement("chair", Vector3(1.5, Building.GROUND_Y, 1.5), 0.0)
+	app.on_placement("chair", spot, 0.0)
 	await frames(6)
 	app.set_build_mode(false)
 	await frames(3)

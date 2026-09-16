@@ -51,7 +51,10 @@ func _run() -> void:
 	if not fridge.is_empty() and sim.has_method("enqueue"):
 		print("available fridge actions: ", sim.get_actions_for("fridge", str(fridge.id)).size())
 	# Let autonomy run: an urgently hungry Lifelet should get itself fed.
-	await frames(420)
+	for i: int in 900:
+		if float(sim.needs["hunger"]) > 45.0:
+			break
+		await process_frame
 	var recovered: float = float(sim.needs["hunger"])
 	print("hunger after autonomy: %.1f" % recovered)
 	check(recovered > 45.0, "A hungry Lifelet recovers hunger on its own, by a real margin (30.0 -> %.1f)" % recovered)

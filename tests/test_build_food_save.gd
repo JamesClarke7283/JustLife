@@ -58,6 +58,7 @@ func _protected_build_after_cooking()->void:
 	var file:=FileAccess.open("user://regression/stair_save/food_"+case_name+"_expected.json",FileAccess.WRITE);file.store_string(JSON.stringify(LifeSaveLibrary._json_safe(food_expected),"  ",true,true));file.close()
 
 func _run()->void:
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("user://regression/stair_save"))
 	app=load("res://scenes/main.tscn").instantiate();root.add_child(app);app.set_process(false);app.set_sound(false)
 	if stage_name=="produce":
 		_food_produce()
