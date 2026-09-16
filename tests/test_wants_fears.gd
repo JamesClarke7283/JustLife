@@ -1,5 +1,7 @@
 extends SceneTree
 
+const WantsManager = preload("res://scripts/wants_manager.gd")
+
 var checks: int = 0
 var failures: int = 0
 
@@ -101,11 +103,80 @@ func run() -> void:
 	check(restored_sim.get_fears().has("fear_of_exhaustion"), "Active fears survive JSON round trip.")
 	check(restored_sim.get_whims().size() == 3, "Restored sim retains 3 whim slots.")
 	check(restored_sim.get_whims()[0].pinned == true, "Pinned whim status survives JSON round trip.")
+	check(WantsManager.validate_save(restored_dict.whims), "JSON numeric fields remain valid wants and fears data.")
+	check(WantsManager.validate_save(WantsManager.fresh_state({}, "Fine", {}, false)), "A disabled system with empty slots remains valid.")
+
+	# Invalid optional data must be refused before any live state is replaced.
+	# In particular a valid-looking array can hide a non-dictionary whim, and
+	# missing stats used to crash the next completed action after loading.
+	var valid_whims: Dictionary = restored_dict.whims
+	_check_invalid_whims(restored_sim, restored_dict, [], "non-dictionary wants state")
+	var invalid: Dictionary = valid_whims.duplicate(true)
+	invalid.whims[0] = "broken"
+	_check_invalid_whims(restored_sim, restored_dict, invalid, "non-dictionary whim")
+	invalid = valid_whims.duplicate(true)
+	invalid.whims.append(valid_whims.whims[0].duplicate(true))
+	_check_invalid_whims(restored_sim, restored_dict, invalid, "extra whim slot")
+	invalid = valid_whims.duplicate(true)
+	invalid.whims[0] = valid_whims.whims[1].duplicate(true)
+	_check_invalid_whims(restored_sim, restored_dict, invalid, "wrong slot category")
+	invalid = valid_whims.duplicate(true)
+	invalid.whims[0].id = "unknown_desire"
+	_check_invalid_whims(restored_sim, restored_dict, invalid, "unknown whim identity")
+	invalid = valid_whims.duplicate(true)
+	invalid.whims[0].action_tags = "sleep"
+	_check_invalid_whims(restored_sim, restored_dict, invalid, "invalid action tags")
+	invalid = valid_whims.duplicate(true)
+	invalid.whims[0].action_tags[0] = 12
+	_check_invalid_whims(restored_sim, restored_dict, invalid, "non-string action tag")
+	invalid = valid_whims.duplicate(true)
+	invalid.whims[0].description = []
+	_check_invalid_whims(restored_sim, restored_dict, invalid, "non-string description")
+	invalid = valid_whims.duplicate(true)
+	invalid.whims[0].reward = 999999
+	_check_invalid_whims(restored_sim, restored_dict, invalid, "invented whim reward")
+	invalid = valid_whims.duplicate(true)
+	invalid.whims[0].pinned = "yes"
+	_check_invalid_whims(restored_sim, restored_dict, invalid, "non-boolean pin")
+	invalid = valid_whims.duplicate(true)
+	invalid.enabled = "yes"
+	_check_invalid_whims(restored_sim, restored_dict, invalid, "non-boolean enable flag")
+	invalid = valid_whims.duplicate(true)
+	invalid.fears = ["unknown_fear"]
+	_check_invalid_whims(restored_sim, restored_dict, invalid, "unknown fear")
+	invalid = valid_whims.duplicate(true)
+	invalid.fears = ["fear_of_loss", "fear_of_loss"]
+	_check_invalid_whims(restored_sim, restored_dict, invalid, "duplicate fear")
+	invalid = valid_whims.duplicate(true)
+	invalid.erase("stats")
+	_check_invalid_whims(restored_sim, restored_dict, invalid, "missing counters")
+	invalid = valid_whims.duplicate(true)
+	invalid.stats.fulfilled = -1
+	_check_invalid_whims(restored_sim, restored_dict, invalid, "negative counter")
+	invalid = valid_whims.duplicate(true)
+	invalid.stats.conquered_fears = 1.5
+	_check_invalid_whims(restored_sim, restored_dict, invalid, "fractional counter")
+	invalid = valid_whims.duplicate(true)
+	invalid.stats.total_satisfaction = INF
+	_check_invalid_whims(restored_sim, restored_dict, invalid, "non-finite counter")
+	var legacy: Dictionary = restored_dict.duplicate(true)
+	legacy.erase("whims")
+	check(restored_sim.restore_state(legacy).get("ok", false), "Older saves without wants data still load.")
+	check(WantsManager.validate_save(restored_sim.whims), "Older saves receive a complete valid wants state.")
 	
 	sim.free()
 	restored_sim.free()
 	print("Wants and Fears: %d checks, %d failures." % [checks, failures])
 	quit(0 if failures == 0 else 1)
+
+func _check_invalid_whims(sim: LifeSim, saved: Dictionary, value: Variant, detail: String) -> void:
+	check(not WantsManager.validate_save(value), "Reject " + detail + " in wants validation.")
+	var candidate: Dictionary = saved.duplicate(true)
+	candidate.whims = value
+	var previous: String = JSON.stringify(sim.get_state())
+	var result: Dictionary = sim.restore_state(candidate)
+	check(not bool(result.get("ok", false)), "Refuse a save with " + detail + ".")
+	check(JSON.stringify(sim.get_state()) == previous, "Refusing " + detail + " preserves the live state.")
 
 func _initialize() -> void:
 	call_deferred("run")

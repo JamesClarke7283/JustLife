@@ -12,6 +12,7 @@ func _initialize() -> void:
 	_test_income_and_wants()
 	_test_autonomy()
 	_test_persistence_and_validation()
+	_test_combined_persistence()
 	print("Simulation: %d assertions, %d failures." % [_assertions, _failures])
 	quit(0 if _failures == 0 else 1)
 
@@ -99,8 +100,10 @@ func _test_pause_and_clock() -> void:
 	_check(sim.day == 2 and is_equal_approx(sim.minutes, 1.0) and sim.funds == 2500, "Midnight must roll the day and issue a bill without charging it silently.")
 	_check(sim.pending_bill.size() == 4 and int(sim.pending_bill.amount) == LifeSim.bill_amount_for(sim.home_value()) and int(sim.pending_bill.issued_day) == 2, "A bill is issued for the value of the home and carries a due date.")
 	_check(int(sim.pending_bill.due_day) == 2 + LifeSim.BILL_DUE_DAYS and sim.last_bill_day == 0, "An issued bill falls due on its own date and is charged only when paid.")
-	sim.day = int(sim.pending_bill.due_day) + 1
-	_advance(sim, 1440.0)
+	# Cross the due-date boundary without starving an unattended fixture.
+	sim.day = int(sim.pending_bill.due_day)
+	sim.minutes = 1439.0
+	_advance(sim, 2.0)
 	_check(sim.utilities_cut and int(sim.pending_bill.late_fee) == LifeSim.BILL_LATE_FEE, "A bill left past its due date adds one late fee and cuts the utilities.")
 	_check(not bool(sim.get_action_availability("cook").available), "A cut utility refuses the gated action through the ordinary availability check.")
 	var before_funds: int = sim.funds
@@ -215,3 +218,50 @@ func _test_persistence_and_validation() -> void:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(Simulation.SAVE_PATH))
 	sim.free()
 	loaded.free()
+
+
+func _test_combined_persistence() -> void:
+	var sim: Node = _new_sim({"wants_and_fears":true})
+	sim.day = 7
+	sim.career.schedule = LifeCareerSchedule.fresh(sim.day) # Match the deliberately selected fixture day.
+	sim.pending_bill = {"amount":248, "issued_day":2, "due_day":6, "late_fee":LifeSim.BILL_LATE_FEE}
+	sim.utilities_cut = true
+	sim.bills_paid_total = 900
+	sim.bills_late = 1
+	sim.last_bill_day = 1
+	sim.starvation_minutes = 12.5
+	sim.exhaustion_minutes = 8.0
+	sim.deferred_passing_minutes = 17.0
+	sim.pin_whim(0, true)
+	sim.trigger_fear("fear_of_exhaustion")
+	var snapshot: Dictionary = JSON.parse_string(JSON.stringify(sim.get_state()))
+	var restored: Node = _new_sim()
+	var result: Dictionary = restored.restore_state(snapshot)
+	_check(bool(result.ok), "Bills, passing pressure and wants/fears restore together: " + str(result.get("error", "")))
+	# JSON numbers are floats; compare nested records with the parsed snapshot.
+	_check(restored.pending_bill == snapshot.pending_bill and restored.utilities_cut and restored.bills_paid_total == 900 and restored.bills_late == 1 and restored.last_bill_day == 1, "Combined saves retain the complete household bill ledger.")
+	_check(restored.starvation_minutes == 12.5 and restored.exhaustion_minutes == 8.0 and restored.deferred_passing_minutes == 17.0, "Combined saves retain every passing-pressure timer.")
+	_check(restored.whims == snapshot.whims, "Combined saves retain pinned wishes and active fears.")
+	var before: Dictionary = restored.get_state()
+	for key: String in ["starvation_minutes", "exhaustion_minutes", "deferred_passing_minutes"]:
+		var invalid: Dictionary = snapshot.duplicate(true)
+		invalid[key] = "broken"
+		_check(not bool(restored.restore_state(invalid).ok) and restored.get_state() == before, "Invalid " + key + " is rejected without changing live state.")
+	var invalid_bill: Dictionary = snapshot.duplicate(true)
+	invalid_bill.pending_bill.late_fee = "60"
+	_check(not bool(restored.restore_state(invalid_bill).ok) and restored.get_state() == before, "A malformed late fee is rejected before mutating live state.")
+	invalid_bill = snapshot.duplicate(true)
+	invalid_bill.pending_bill.clear()
+	_check(not bool(restored.restore_state(invalid_bill).ok) and restored.get_state() == before, "An unexplained utility shutoff is rejected before mutating live state.")
+	var legacy: Dictionary = snapshot.duplicate(true)
+	legacy.erase("bills_paid_total")
+	legacy["bills_paid"] = 420
+	_check(bool(restored.restore_state(legacy).ok) and restored.bills_paid_total == 420, "Older saves retain their historical bill payments.")
+	var mirror: Node = _new_sim()
+	mirror.set_bill_mirror({}, false, 420, 1, 7)
+	mirror.day = 8
+	mirror._advance_bill_cycle()
+	_check(mirror.last_bill_day == 7 and mirror.pending_bill.is_empty(), "Mirroring the payment date preserves the billing interval for a new ledger owner.")
+	sim.free()
+	restored.free()
+	mirror.free()

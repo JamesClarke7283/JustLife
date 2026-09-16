@@ -365,8 +365,43 @@ static func add_fear(state: Dictionary, fear_id: String) -> bool:
 	state["fears"] = fears
 	return true
 
-static func validate_save(data: Dictionary) -> bool:
+static func validate_save(data: Variant) -> bool:
 	if not data is Dictionary: return false
-	if int(data.get("version", 0)) != VERSION: return false
+	if not _valid_counter(data.get("version")) or data.version != VERSION: return false
+	if not data.get("enabled") is bool: return false
 	if not data.get("whims") is Array or not data.get("fears") is Array: return false
+	if data.whims.size() != (MAX_WHIMS if data.enabled else 0): return false
+	var slot_types: Array[String] = ["need", "trait", "emotion"]
+	for index: int in range(data.whims.size()):
+		var whim: Variant = data.whims[index]
+		if not whim is Dictionary or not whim.get("id") is String: return false
+		if not WHIMS.has(whim.id): return false
+		var definition: Dictionary = WHIMS[whim.id]
+		if str(definition.type) != slot_types[index]: return false
+		if not whim.get("pinned") is bool or not whim.get("completed") is bool: return false
+		# Action matching, labels and rewards come from the catalogue; accepting
+		# arbitrary saved definitions could crash completion or invent rewards.
+		for key: String in definition:
+			if not whim.has(key): return false
+			var saved: Variant = whim[key]
+			var expected: Variant = definition[key]
+			if expected is Array:
+				if not saved is Array or saved.size() != expected.size(): return false
+				for tag_index: int in range(expected.size()):
+					if not saved[tag_index] is String or saved[tag_index] != str(expected[tag_index]): return false
+			elif expected is int:
+				if not _valid_counter(saved) or saved != expected: return false
+			elif not saved is String or saved != str(expected): return false
+	var seen_fears: Array[String] = []
+	for fear: Variant in data.fears:
+		if not fear is String or not FEARS.has(fear) or seen_fears.has(fear): return false
+		seen_fears.append(fear)
+	if not data.get("stats") is Dictionary: return false
+	for key: String in ["fulfilled", "conquered_fears", "total_satisfaction"]:
+		if not _valid_counter(data.stats.get(key)): return false
 	return true
+
+static func _valid_counter(value: Variant) -> bool:
+	if not (value is int or value is float): return false
+	var number: float = float(value)
+	return is_finite(number) and number >= 0.0 and number <= 9007199254740991.0 and number == floorf(number)

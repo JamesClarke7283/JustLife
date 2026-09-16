@@ -54,6 +54,16 @@ func run() -> void:
 	check(str(Identity.generate(9012, {}, colliding).name).to_lower() != original_name.to_lower(), "Names avoid existing household names regardless of case or outer spaces")
 	var limited: Dictionary = Identity.generate(123, {}, [], {"hair":[6], "outfits":[2], "bottoms":[0]})
 	check(limited.hair == 6 and limited.outfit == 2 and limited.bottom == 0, "Supplied authored wardrobe choices constrain the result")
+	check(limited.outfit_category == "everyday" and limited.outfit_collection is Dictionary, "Generated identities start on Everyday with a saved collection")
+	for category: String in Identity.OUTFIT_CATEGORIES:
+		check(Identity._valid_slot(limited.outfit_collection.get(category, {}), "adult"), "Generated adult collection includes " + category)
+	check(int(limited.outfit_collection.everyday.outfit) == 2 and int(limited.outfit_collection.everyday.bottom) == 0, "Everyday stores the generated daily wear")
+	check(int(limited.outfit_collection.formal.outfit) == 1 and int(limited.outfit_collection.athletic.bottom) == 1, "Formal and Athletic start from distinct silhouettes")
+	var formal: Dictionary = limited.duplicate(true)
+	Identity.apply_category(formal, "formal")
+	check(formal.outfit_category == "formal" and int(formal.outfit) == 1 and int(formal.bottom) == 0, "Applying Formal writes that look onto the current clothes")
+	Identity.apply_category(formal, "everyday")
+	check(int(formal.outfit) == 2 and int(formal.bottom) == 0, "Returning to Everyday restores the generated daily wear")
 	for stage: String in LifeLifecycle.STAGES:
 		var stage_template: Dictionary = {"age_stage":stage, "life_stage":LifeLifecycle.eligibility(stage)}
 		for serial: int in 24:

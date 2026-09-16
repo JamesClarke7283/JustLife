@@ -13,7 +13,7 @@ class_name LifeStagePolicy
 const BABY_ACTIONS: Array[String] = [
 	"sleep", "nap", "snack", "eat_meal", "shower", "bath", "toilet", "relax",
 	"play_toys", "birthday", "change_outfit",
-	"wear_casual",
+	"wear_casual", "wear_everyday", "wear_formal", "wear_athletic", "wear_sleep", "wear_party",
 ]
 
 const BABY_SOCIAL_REASON: String = "A baby cannot hold a conversation yet."

@@ -28,6 +28,7 @@ var player: LifeActor
 var mode: String = "creator"
 var creator_tab: String = "Look"
 var creator_face_group: String = "Shape"
+var creator_outfit_category: String = "everyday"
 var _studio_render_restore: Dictionary = {}
 var creator_purpose: String = ""
 var cover_beat: Node3D
@@ -261,6 +262,7 @@ func _connect_live_nodes() -> void:
 	household.member_action_started.connect(_member_action_started)
 	household.member_action_finished.connect(_member_action_finished)
 	household.baby_born.connect(_on_baby_born)
+	household.member_passed.connect(_on_member_passed)
 	household.pregnancy_began.connect(_on_pregnancy_began)
 	household.member_age_changed.connect(func(id: String, _previous: String, _current: String): _refresh_aged_member.call_deferred(id,load_epoch,sender))
 	world.object_clicked.connect(on_object_clicked)
@@ -600,26 +602,33 @@ func draw_creator() -> void:
 			for key:String in LifeActor.IDENTITY_KEYS:profile[key]=0.0
 			refresh_preview())
 	else:
-		small_caps("Everyday collection",Vector2(1102,200))
-		text_label("Easy, everyday style",Vector2(1100,230),Vector2(290,36),24,P.INK,true)
-		paragraph("Soft tailoring, natural textures, and colors that feel like you.",Vector2(1102,272),Vector2(269,50),15)
-		small_caps("Top",Vector2(1102,326))
+		LifeCharacterIdentity.ensure_wardrobe(profile)
+		creator_outfit_category=LifeCharacterIdentity.normalize_category(profile.get("outfit_category",creator_outfit_category))
+		small_caps("Outfit type",Vector2(1102,200))
+		var categories:Array=LifeCharacterIdentity.OUTFIT_CATEGORIES
+		for i in range(categories.size()):
+			var category:String=str(categories[i])
+			var category_button=button(LifeCharacterIdentity.category_label(category),Vector2(1100+(i%3)*97,226+floori(float(i)/3)*36),Vector2(89,32),func():set_creator_outfit_category(category),creator_outfit_category==category)
+			compact_button(category_button);category_button.size=Vector2(89,32)
+			category_button.tooltip_text=str(LifeCharacterIdentity.OUTFIT_CATEGORY_BLURBS.get(category,""))
+		text_label(LifeCharacterIdentity.category_label(creator_outfit_category)+" look",Vector2(1100,300),Vector2(290,30),22,P.INK,true)
+		paragraph(str(LifeCharacterIdentity.OUTFIT_CATEGORY_BLURBS.get(creator_outfit_category,"")),Vector2(1102,330),Vector2(269,36),14)
+		small_caps("Top",Vector2(1102,368))
 		var outfit_names:Array=["Casual","Jacket","Cardigan","Tee","Hoodie"]
 		var outfit_tips:Array=["Short-sleeve shirt with a light collar and placket","Cropped bomber with a stand collar and zip","Open knit cardigan over a cream tee","Plain crew-neck tee","Soft hoodie with a kangaroo pocket"]
 		for i in range(outfit_names.size()):
-			var b=button(outfit_names[i],Vector2(1100+(i%3)*97,354+(i/3)*42),Vector2(89,36),func():profile.outfit=i;refresh_preview(),int(profile.get("outfit",0))==i)
+			var b=button(outfit_names[i],Vector2(1100+(i%3)*97,392+floori(float(i)/3)*36),Vector2(89,32),func():set_creator_clothing("outfit",i),int(profile.get("outfit",0))==i)
+			compact_button(b);b.size=Vector2(89,32)
 			b.tooltip_text=outfit_tips[i]
-		small_caps("Bottoms",Vector2(1102,448))
+		small_caps("Bottoms",Vector2(1102,470))
 		for i in range(2):
-			button(["Trousers","Shorts"][i],Vector2(1100+i*146,476),Vector2(137,36),func():profile.bottom=i;refresh_preview(),int(profile.get("bottom",0))==i)
-		small_caps("Top color",Vector2(1102,524))
-		swatches(["c97c66","417a71","efeadb","7195b3","bd9b68","3d4145"],"top_color",Vector2(1100,552),36,7)
-		small_caps("Bottom color",Vector2(1102,600))
-		swatches(["eadfc9","3e5955","51697c","493e37","b88a72","292f32"],"bottom_color",Vector2(1100,628),36,7)
-		small_caps("Complete palette",Vector2(1102,676))
-		button("Coastal",Vector2(1100,702),Vector2(88,34),func():profile.top_color="efeadb";profile.bottom_color="51697c";refresh_preview())
-		button("Earthy",Vector2(1197,702),Vector2(88,34),func():profile.top_color="c97c66";profile.bottom_color="eadfc9";refresh_preview())
-		button("Sage",Vector2(1294,702),Vector2(88,34),func():profile.top_color="417a71";profile.bottom_color="493e37";refresh_preview())
+			button(["Trousers","Shorts"][i],Vector2(1100+i*146,494),Vector2(137,32),func():set_creator_clothing("bottom",i),int(profile.get("bottom",0))==i)
+		small_caps("Top color",Vector2(1102,532))
+		swatches(["c97c66","417a71","efeadb","7195b3","bd9b68","3d4145"],"top_color",Vector2(1100,556),32,8)
+		small_caps("Bottom color",Vector2(1102,596))
+		swatches(["eadfc9","3e5955","51697c","493e37","b88a72","292f32"],"bottom_color",Vector2(1100,620),32,8)
+		small_caps("Shoes",Vector2(1102,660))
+		swatches(["e9e4d9","49382e","32292a","eee5d6","433d39","1f1c1a"],"shoe_color",Vector2(1100,684),28,8)
 	icon_button("rotate_left","Turn Lifelet left",Vector2(626,726),Vector2(48,42),func():creator_spin-=.5;preview.rotation.y=creator_spin).name="CreatorTurnLeft"
 	icon_button("rotate_right","Turn Lifelet right",Vector2(769,726),Vector2(48,42),func():creator_spin+=.5;preview.rotation.y=creator_spin).name="CreatorTurnRight"
 	text_label("DRAG TO ROTATE",Vector2(380,782),Vector2(160,24),11,P.MUTED)
@@ -783,6 +792,20 @@ func set_creator_face_group(value:String) -> void:
 	creator_face_group=value
 	draw_creator()
 
+func set_creator_outfit_category(category:String) -> void:
+	LifeCharacterIdentity.ensure_wardrobe(profile)
+	profile.outfit_category=creator_outfit_category
+	LifeCharacterIdentity.store_current(profile)
+	creator_outfit_category=LifeCharacterIdentity.normalize_category(category)
+	LifeCharacterIdentity.apply_category(profile,creator_outfit_category)
+	refresh_preview()
+
+func set_creator_clothing(key:String,value:Variant) -> void:
+	profile[key]=value
+	profile.outfit_category=creator_outfit_category
+	LifeCharacterIdentity.store_current(profile)
+	refresh_preview()
+
 func _set_studio_render_quality(enabled:bool) -> void:
 	var viewport:Viewport=get_viewport()
 	if enabled:
@@ -825,7 +848,11 @@ func swatches(colors:Array,key:String,p:Vector2,diameter:float,gap:float,width:f
 	for i in range(colors.size()):
 		var c:String=colors[i]
 		var at:Vector2=p+Vector2((i%per_row)*stride,floori(float(i)/per_row)*stride)
-		var b=button("",at,Vector2(diameter,diameter),func():profile[key]=c;refresh_preview())
+		var b=button("",at,Vector2(diameter,diameter),func():
+			profile[key]=c
+			if key in ["top_color","bottom_color","shoe_color"]:
+				LifeCharacterIdentity.store_current(profile)
+			refresh_preview())
 		b.tooltip_text=c
 		b.custom_minimum_size=Vector2.ZERO
 		var selected:bool=profile.get(key,"")==c
@@ -907,6 +934,8 @@ func select_creator_member(index:int) -> void:
 	if index<0 or index>=household_profiles.size():return
 	creator_index=index
 	profile=household_profiles[index]
+	LifeCharacterIdentity.ensure_wardrobe(profile)
+	creator_outfit_category=LifeCharacterIdentity.normalize_category(profile.get("outfit_category","everyday"))
 	refresh_preview()
 
 func add_creator_member() -> void:
@@ -1036,6 +1065,7 @@ func setup_live(layout:Array) -> void:
 	build_undo.clear()
 	_sync_actor_sound()
 	sync_pets()
+	_place_missing_memorials()
 	draw_live()
 	for member:Dictionary in household.members:
 		var current:Dictionary=member.sim.get_current_action()
@@ -1664,7 +1694,10 @@ func refresh_hud() -> void:
 	if mode not in ["live","build"]:return
 	for value in speed_buttons:speed_buttons[value].set_pressed_no_signal(int(value)==sim.speed)
 	_refresh_progress_labels()
-	if funds_label:funds_label.text="§ %s" % commas(sim.funds)
+	if funds_label:
+		funds_label.text="§ %s" % commas(sim.funds)
+		var keeps:PackedStringArray=household.keepsake_lines() if household else PackedStringArray()
+		funds_label.tooltip_text="Household purse." if keeps.is_empty() else "Purse plus family keepsakes:\n• "+ "\n• ".join(keeps)
 	if time_label:time_label.text=sim.get_clock_text()+ ("  ·  Paused" if sim.speed==0 else "")
 	if mood_label:
 		var mood=sim.get_mood()
@@ -2489,8 +2522,10 @@ func _refresh_sim_targets(replan:bool=true,reconcile_food:bool=true) -> void:
 ## the moment it is issued, so the amount follows the house the player has built.
 func home_value() -> int:
 	var value:int=0
-	if not is_instance_valid(world):return 0
-	for item:Dictionary in world.items:
+	var furnishings:Array=home_layout
+	if current_venue=="home" and is_instance_valid(world):
+		furnishings=world.items
+	for item:Dictionary in furnishings:
 		var kind:String=str(item.get("kind",""))
 		if kind.is_empty() or not LifeCatalog.ITEMS.has(kind):continue
 		if bool(item.get("transient_food",false)) or bool(item.get("transient_puddle",false)) or bool(item.get("derived",false)):continue
@@ -2688,6 +2723,26 @@ func _member_action_started(id:String,action:Dictionary) -> void:
 	_store_motion()
 	_bind_member(prior)
 
+func _on_member_passed(id: String) -> void:
+	_refresh_aged_member(id)
+	_place_memorial(id)
+	if sound_enabled and is_instance_valid(chime_player) and chime_player.stream:
+		chime_player.play()
+
+func _place_missing_memorials() -> void:
+	if current_venue != "home":
+		return
+	for memorial: Dictionary in household.memorials:
+		_place_memorial(str(memorial.member_id))
+
+func _place_memorial(id: String) -> void:
+	if mode != "live" or current_venue != "home" or not is_instance_valid(world):
+		return
+	if not world.ensure_memorial(id):
+		return
+	home_layout = world.serialize_items()
+	_refresh_sim_targets()
+
 func _on_baby_born(mother_id: String) -> void:
 	# The birth itself opens the naming/customising creator, exactly as the
 	# Sims-4 flow ends with the newborn arriving. Deferred so the household's
@@ -2883,6 +2938,11 @@ func show_person() -> void:
 	personal_name.tooltip_text=str(sim.character.name);personal_name.mouse_filter=Control.MOUSE_FILTER_PASS
 	text_label(LifeLifecycle.description(str(sim.character.age_stage),sim.lifecycle),Vector2(525,297),Vector2(385,22),12,P.MUTED,false,overlay)
 	text_label("Aspiration  ·  "+sim.character.aspiration,Vector2(525,320),Vector2(385,32),19,P.TEAL,false,overlay)
+	if household and not household.heirlooms.is_empty():
+		var keepsake:Dictionary=household.inspect_keepsake(household.heirlooms.size()-1)
+		var keepsake_line:Label=text_label(str(keepsake.get("label","A keepsake")),Vector2(525,348),Vector2(385,22),12,P.MUTED,false,overlay)
+		keepsake_line.tooltip_text=str(keepsake.get("note","A family keepsake you can hold and remember."))
+		keepsake_line.mouse_filter=Control.MOUSE_FILTER_PASS
 	var traits_text=""
 	for tr in sim.character.traits:traits_text+="•  "+tr+"\n"
 	paragraph(traits_text,Vector2(525,379),Vector2(384,135),21,P.INK,overlay)
@@ -3537,8 +3597,8 @@ func _process(delta:float) -> void:
 				if bool(shared.get("ready",false)) and str(shared.get("role",""))=="learner":action_id="homework_wait"
 			meal_flow.present_actor(bound_member_id)
 			_update_activity_facing(delta,action,action_id)
-			if int(player.profile.get("outfit",0))!=int(sim.character.get("outfit",0)):
-				player.set_outfit(int(sim.character.get("outfit",0)))
+			if LifeCharacterIdentity.wardrobe_fields(player.profile)!=LifeCharacterIdentity.wardrobe_fields(sim.character):
+				player.apply_wardrobe(sim.character)
 				if member.id==selected_id and not overlay_open:portrait_stale=true
 			# A mother's bump grows with the household pregnancy clock.
 			if is_instance_valid(player):

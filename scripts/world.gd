@@ -101,6 +101,31 @@ func material(hex: String, roughness: float = .8) -> StandardMaterial3D:
 	material_cache[hex] = m
 	return m
 
+func ensure_memorial(member_id: String) -> bool:
+	if member_id.is_empty():
+		return false
+	for item: Dictionary in items:
+		if str(item.get("kind", "")) == "memorial" and str(item.get("for", "")) == member_id:
+			return true
+	var spots: Array = [
+		Vector3(1.8, 0.16, 4.4), Vector3(-1.8, 0.16, 4.4), Vector3(0.0, 0.16, 4.6),
+		Vector3(3.6, 0.16, 3.2), Vector3(-3.6, 0.16, 3.2), Vector3(2.4, 0.16, -3.6),
+		Vector3(-4.6, 0.16, 1.2), Vector3(4.2, 0.16, 1.8), Vector3(0.8, 0.16, 3.0),
+	]
+	for at: Vector3 in spots:
+		if can_place("memorial", at, 0):
+			add_item({"id":"memorial_%s" % member_id,"kind":"memorial","x":at.x,"z":at.z,"rotation":0.0,"for":member_id})
+			return true
+	add_item({"id":"memorial_%s" % member_id,"kind":"memorial","x":0.8,"z":3.0,"rotation":0.0,"for":member_id})
+	return true
+
+func _build_memorial(parent: Node3D) -> void:
+	# Original garden stone: a low tablet and a small offering dish. Built here
+	# so a household can remember someone without a shipped mesh.
+	box(parent, Vector3(0, 0.08, 0), Vector3(0.62, 0.16, 0.42), "8c8a84")
+	box(parent, Vector3(0, 0.28, -0.04), Vector3(0.46, 0.28, 0.10), "6f6c66")
+	box(parent, Vector3(0, 0.18, 0.14), Vector3(0.16, 0.04, 0.16), "c8a562")
+
 func box(parent: Node3D, at: Vector3, dimensions: Vector3, color: String) -> MeshInstance3D:
 	var n = MeshInstance3D.new()
 	var mesh = BoxMesh.new()
@@ -490,15 +515,20 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	if level==1 and (not is_instance_valid(construction) or construction.building_state.is_empty()):return
 	var data:Dictionary=LifeCatalog.get_item(kind)
 	var path="res://assets/models/%s.glb" % kind
-	if not ResourceLoader.exists(path):return
+	var has_model:bool=ResourceLoader.exists(path)
+	if not has_model and kind!="memorial":return
 	var node=Node3D.new()
 	node.name=str(entry.get("id","item_%d" % Time.get_ticks_usec()))
 	furniture.add_child(node)
-	var model:Node3D=load(path).instantiate()
-	node.add_child(model)
+	var model:Node3D=null
+	if has_model:
+		model=load(path).instantiate()
+		node.add_child(model)
+	else:
+		_build_memorial(node)
 	node.position=Vector3(float(entry.get("x",0)),Building.level_y(level),float(entry.get("z",0)))
 	node.rotation_degrees.y=float(entry.get("rotation",0))
-	if kind=="mirror":_dress_mirror(node,model)
+	if kind=="mirror" and is_instance_valid(model):_dress_mirror(node,model)
 	if kind=="floor_lamp":
 		# The arc lamp's warm pool of light is runtime state: the menu switch
 		# toggles it and the layout record carries it across save and load.
@@ -557,6 +587,7 @@ func serialize_items() -> Array:
 		var entry:Dictionary={"id":item.id,"kind":item.kind,"x":item.node.position.x,"z":item.node.position.z,"rotation":item.node.rotation_degrees.y}
 		if item_level(item)!=0:entry["level"]=item_level(item)
 		if str(item.kind)=="floor_lamp" and not bool(item.get("lit",true)):entry["lit"]=false
+		if str(item.kind)=="memorial" and str(item.get("for",""))!="":entry["for"]=str(item.get("for"))
 		out.append(entry)
 	if construction:out.append(construction.snapshot())
 	return out

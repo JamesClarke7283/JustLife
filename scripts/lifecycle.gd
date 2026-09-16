@@ -21,7 +21,7 @@ const MAX_ELDER_PROGRESS: float = 1.0
 ## all reach the same decision, and the household only has to wait for a moment
 ## when the Lifelet is home and idle.
 static func due_to_pass(stage: String, state: Dictionary) -> bool:
-	return stage == "elder" and next_stage(stage).is_empty() and float(state.get("progress", 0.0)) >= MAX_ELDER_PROGRESS
+	return not bool(state.get("passed", false)) and due_to_pass_on(stage, state)
 
 static func stage_for(profile: Dictionary) -> String:
 	if profile.has("age_stage"):
@@ -42,6 +42,9 @@ static func fresh() -> Dictionary:
 static func duration(stage: String, lifespan: String) -> float:
 	return float(NORMAL_DAYS.get(stage, 28)) * float(SPANS.get(lifespan, 1.0))
 
+static func due_to_pass_on(stage: String, state: Dictionary) -> bool:
+	return stage == "elder" and float(state.get("progress", 0.0)) >= MAX_ELDER_PROGRESS - 0.0000001
+
 static func next_stage(stage: String) -> String:
 	var index: int = STAGES.find(stage)
 	return STAGES[index + 1] if index >= 0 and index < STAGES.size() - 1 else ""
@@ -52,7 +55,10 @@ static func with_article(stage: String) -> String:
 
 static func description(stage: String, state: Dictionary) -> String:
 	if stage == "unknown": return "Age unspecified"
-	if stage == "elder": return "Elder · enjoying the golden years"
+	if bool(state.get("passed", false)):
+		return "%s · a gentle spirit" % LABELS.get(stage, "Lifelet")
+	if stage == "elder":
+		return "Elder · enjoying the golden years"
 	if not bool(state.auto_age): return "%s · aging paused" % LABELS[stage]
 	var days_left: int = ceili(maxf(0.0, 1.0 - float(state.progress)) * duration(stage, str(state.lifespan)))
 	return "%s · birthday in %d %s" % [LABELS[stage], days_left, "day" if days_left == 1 else "days"]

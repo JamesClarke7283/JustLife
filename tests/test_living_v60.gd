@@ -1,4 +1,6 @@
 extends SceneTree
+
+const FurnishingTest = preload("res://tests/test_furnishing.gd")
 ## Iteration 60 living-room set, through the public paths only: the reading
 ## nook is bought like any furnishing and hosts the seated Read pastime (with
 ## the Bookworm chooser preferring it), the coffee table offers a real plate
@@ -45,7 +47,7 @@ func _run()->void:
 	for expectation:Array in [["book_nook","Activities",240],["coffee_table","Decor",150],["floor_lamp","Decor",110]]:
 		var data:Dictionary=LifeCatalog.get_item(str(expectation[0]))
 		check(not data.is_empty() and str(data.get("category"))==str(expectation[1]) and int(data.get("price"))==int(expectation[2]),"%s sits in the catalogue at %s for §%d." % [str(expectation[0]),str(expectation[1]),int(expectation[2])])
-	check(LifeCatalog.ITEMS.size()==45,"The catalogue now counts 45 furnishings.")
+	check(LifeCatalog.ITEMS.size()==51,"The catalogue now counts 51 furnishings.")
 
 	app.household.set_funds(app.sim.funds+9000)
 	app.set_build_mode(true)
@@ -63,7 +65,7 @@ func _run()->void:
 	var by_id:Dictionary={}
 	for definition:Dictionary in actions:by_id[str(definition.id)]=definition
 	check(by_id.has("read") and by_id.has("study") and bool(by_id.read.available) and bool(by_id.study.available),"The nook offers short and long reading through the same menu actions as the bookshelf.")
-	check(TestFurnishing.queue_member_action(app,nook,"read"),"Read queues on the nook through the UI-faithful interaction path.")
+	check(FurnishingTest.queue_member_action(app,nook,"read"),"Read queues on the nook through the UI-faithful interaction path.")
 	var reader:LifeSim=app.household.member_sim("player")
 	check(str(reader.get_current_action().get("id",""))=="read" and str(reader.get_current_action().get("target_id",""))==str(nook.id),"The queued read targets the nook itself.")
 	app.cancel_current_action()
@@ -71,9 +73,13 @@ func _run()->void:
 	check(str(anchor.get("kind"))=="seat","The nook seats its reader on the bench like a chair, not standing beside it.")
 
 
-	var plain:Dictionary=_fun_life([]).autonomy_need_choice("fun")
+	var plain_life:LifeSim=_fun_life([])
+	var plain:Dictionary=plain_life.autonomy_need_choice("fun")
+	plain_life.free()
 	check(str(plain.get("id",""))=="paint","Without the trait the rotation starts at the canvas even with the nook free.")
-	var bookish:Dictionary=_fun_life(["Bookworm"]).autonomy_need_choice("fun")
+	var bookish_life:LifeSim=_fun_life(["Bookworm"])
+	var bookish:Dictionary=bookish_life.autonomy_need_choice("fun")
+	bookish_life.free()
 	check(str(bookish.get("id",""))=="read" and str(bookish.get("target_id",""))=="nook","A Bookworm heads straight for the reading nook, so the pastime is autonomous-eligible and trait-preferred.")
 
 	var table:Dictionary=_find(app,"coffee_table")
