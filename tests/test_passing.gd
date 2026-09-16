@@ -111,6 +111,22 @@ func run() -> void:
 		if str(item.get("kind", "")) == "memorial" and str(item.get("for", "")) == "player":
 			stones += 1
 	check(stones == 1, "The garden stone is recorded on the lot")
+	# The garden stone is walkable, so can_place accepts it anywhere and cannot
+	# report the stones already standing there. Without comparing against them,
+	# every later remembrance was planted inside the first one.
+	var spots: Dictionary = {}
+	for index: int in range(10):
+		lot.ensure_memorial("filler_%d" % index)
+	for item: Dictionary in lot.items:
+		if str(item.get("kind", "")) != "memorial":
+			continue
+		var at: Vector2 = Vector2(item.node.position.x, item.node.position.z)
+		spots[at] = int(spots.get(at, 0)) + 1
+	var crowded: Array[String] = []
+	for at: Vector2 in spots:
+		if int(spots[at]) > 1:
+			crowded.append("%s x%d" % [str(at), int(spots[at])])
+	check(spots.size() == 11 and crowded.is_empty(), "Eleven remembrance stones each stand in their own place (distinct %d, crowded %s)." % [spots.size(), str(crowded)])
 	# A passing ends every plan, and a queued meal action owns a dish in the meal
 	# ledger. The dish must be released, not left owned with no action to claim
 	# it, or the household's own save is refused afterwards with "A carried or
