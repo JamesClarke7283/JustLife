@@ -267,6 +267,25 @@ func _creator_case()->void:
 	check(app.creator_age_stages()==["baby"],"The baby creator offers the baby stage alone.")
 	check(str(app.profile.get("age_stage",""))=="baby","The creator is seeded as the baby stage.")
 	check(app.household_profiles.size()==1,"The baby creator customises the single new Lifelet.")
+	# Every clothing button the baby creator actually shows must be one the
+	# newborn model has. The ordinary creator drew all five tops and both bottoms
+	# for every stage, and the birth validator refuses clothing a baby's model
+	# does not author, so pressing the offered Jacket or Shorts made "Welcome the
+	# baby" refuse for good. The hairstyle row already filtered for this reason.
+	app.set_creator_tab("Wardrobe")
+	await process_frame
+	var offered_clothing:Array[String]=[]
+	for node:Node in app.find_children("*","Button",true,false):
+		var clothing_button:Button=node
+		if clothing_button.is_visible_in_tree() and clothing_button.text in ["Casual","Jacket","Cardigan","Tee","Hoodie","Trousers","Shorts"]:
+			offered_clothing.append(str(clothing_button.text))
+	check(offered_clothing==["Casual","Trousers"],"The baby creator offers only the garments the newborn model authors (got %s)." % str(offered_clothing))
+	for label:String in offered_clothing:
+		for node:Node in app.find_children("*","Button",true,false):
+			var clothing_button:Button=node
+			if clothing_button.is_visible_in_tree() and str(clothing_button.text)==label:
+				clothing_button.pressed.emit();await process_frame;break
+	check(LifeBabyPlan.profile_error(app.profile).is_empty(),"Pressing every offered clothing button leaves a newborn the game accepts: %s" % LifeBabyPlan.profile_error(app.profile))
 	# The player edits name, gender, skin, hair, eyes and a face slider.
 	app.profile.name="Wren Solis"
 	app.profile.frame=0

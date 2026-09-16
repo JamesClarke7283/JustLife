@@ -60,6 +60,13 @@ func _run() -> void:
 				check(not _path_crosses_wall(world, route), "Lot %d neighbor %s route must not clip the front entrance walls." % [lot, neighbor.id])
 				check(_first_furniture_crossing(world, route).is_empty(), "Neighbor route must not pass through a furnishing.")
 		print("Lot ", lot, ": checked ", interactables, " interactables and 2 neighbors.")
+	# Every authored starter furnishing must also be one a player can actually
+	# click. A furnishing the lot itself places inside a neighbour's footprint
+	# still passes can_place (that rule is for new placements) and still routes,
+	# but its own pick body is buried: iteration 64 authored the kitchen rubbish
+	# bin at (-1.35, -4.55), inside both the sink and the counter, and no ray
+	# aimed at it could ever return it.
+	await _check_starter_furnishings_are_pickable(world, sim)
 	_test_placement(world)
 	# Doorway blocking is a usability diagnostic, not a claim that build mode currently
 	# promises to preserve every route after arbitrary remodeling.
@@ -116,6 +123,46 @@ func _wall_between(world: Node3D, from: Vector3, to: Vector3) -> bool:
 			if absf(point.x) <= dimensions.x * 0.5 and absf(point.z) <= dimensions.z * 0.5:
 				return true
 	return false
+
+## Loads every starter lot again and drops rays straight down onto each
+## furnishing the player can act on. The first pick body a downward ray meets is
+## the one the player would click, so a furnishing that no sample of its own
+## footprint returns is buried under a neighbour and its menu is unreachable.
+## The ray is deliberately vertical and uses the world's own pick layer, so this
+## measures authored geometry rather than one camera angle. Iteration 64 placed
+## the kitchen rubbish bin at (-1.35, -4.55), inside both the sink and the
+## counter: the counter's taller body took every ray and "Empty the bin" could
+## never be opened.
+func _check_starter_furnishings_are_pickable(world: Node3D, simulation: Node) -> void:
+	world.live_enabled = true
+	for lot: int in [0, 1, 2, 3]:
+		world.create_home(Catalog.starter_layout(lot))
+		# The previous lot frees itself on the next frame; rays taken before that
+		# would meet two houses at once.
+		await process_frame
+		for item: Dictionary in world.items:
+			var kind: String = str(item.kind)
+			if Catalog.passable(kind) or simulation.get_actions_for(kind).is_empty():
+				continue
+			var size: Vector2 = Catalog.ITEMS[kind].size
+			var basis: Basis = Basis(Vector3.UP, deg_to_rad(float(item.rotation)))
+			var half: Vector2 = Vector2(absf((basis * Vector3(size.x * 0.5, 0, 0)).x) + absf((basis * Vector3(0, 0, size.y * 0.5)).x),
+				absf((basis * Vector3(size.x * 0.5, 0, 0)).z) + absf((basis * Vector3(0, 0, size.y * 0.5)).z))
+			var layer: int = World.PICK_GROUND if world.item_level(item) == 0 else World.PICK_UPPER
+			var reached: int = 0
+			var sampled: int = 0
+			for ix: int in range(5):
+				for iz: int in range(5):
+					var x: float = float(item.node.position.x) + (float(ix) / 4.0 - 0.5) * 2.0 * half.x
+					var z: float = float(item.node.position.z) + (float(iz) / 4.0 - 0.5) * 2.0 * half.y
+					var ray: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(Vector3(x, 8.0, z), Vector3(x, -1.0, z), layer)
+					var hit: Dictionary = world.get_world_3d().direct_space_state.intersect_ray(ray)
+					sampled += 1
+					if not hit.is_empty() and str(hit.collider.get_meta("item_id", "")) == str(item.id):
+						reached += 1
+			check(reached > 0, "Lot %d: no downward ray of %d on %s (%s) reaches it, so its menu is buried and unreachable." % [lot, sampled, item.id, kind])
+			print("PICK lot=", lot, " ", item.id, " ", kind, " ", reached, "/", sampled)
+	world.live_enabled = false
 
 func _test_placement(world: Node3D) -> void:
 	world.create_home([])

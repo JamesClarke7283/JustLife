@@ -3528,6 +3528,14 @@ func pass_on(cause: String = "") -> bool:
 	character["life_status"] = "passed"
 	character["passing_cause"] = cause
 	lifecycle["passed"] = true
+	# A passing ends every plan, and a queued meal action owns a dish in the
+	# meal ledger. Release that custody exactly as cancelling the action does:
+	# otherwise the plate stays owned with no action to claim it, and the
+	# household's own save is refused afterwards with "A carried or active food
+	# has no matching action."
+	for action: Dictionary in action_queue.duplicate():
+		if is_instance_valid(meal_service):
+			meal_service.canceled(self,action)
 	action_queue.clear()
 	away_state = {}
 	starvation_minutes = 0.0
