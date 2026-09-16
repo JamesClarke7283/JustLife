@@ -96,8 +96,17 @@ func _test_pause_and_clock() -> void:
 	sim.set_speed(1)
 	sim.minutes = 1439.0
 	_advance(sim, 2.0)
-	_check(sim.day == 2 and is_equal_approx(sim.minutes, 1.0) and sim.funds == 2465, "Midnight must roll the day and charge one household bill.")
-	_check(sim.bills_paid == 35 and sim.last_bill_day == 2, "Bill accounting must match the household charge.")
+	_check(sim.day == 2 and is_equal_approx(sim.minutes, 1.0) and sim.funds == 2500, "Midnight must roll the day and issue a bill without charging it silently.")
+	_check(sim.pending_bill.size() == 4 and int(sim.pending_bill.amount) == LifeSim.bill_amount_for(sim.home_value()) and int(sim.pending_bill.issued_day) == 2, "A bill is issued for the value of the home and carries a due date.")
+	_check(int(sim.pending_bill.due_day) == 2 + LifeSim.BILL_DUE_DAYS and sim.last_bill_day == 0, "An issued bill falls due on its own date and is charged only when paid.")
+	sim.day = int(sim.pending_bill.due_day) + 1
+	_advance(sim, 1440.0)
+	_check(sim.utilities_cut and int(sim.pending_bill.late_fee) == LifeSim.BILL_LATE_FEE, "A bill left past its due date adds one late fee and cuts the utilities.")
+	_check(not bool(sim.get_action_availability("cook").available), "A cut utility refuses the gated action through the ordinary availability check.")
+	var before_funds: int = sim.funds
+	var settlement: Dictionary = sim.pay_bill()
+	_check(bool(settlement.ok) and sim.funds == before_funds - settlement.paid and not sim.utilities_cut and sim.pending_bill.is_empty() and bool(sim.get_action_availability("cook").available), "Paying debits exactly the bill, restores the utilities and frees the gated action.")
+	_check(sim.bills_paid_total == settlement.paid and sim.bills_late == 1, "The paid and late ledgers record exactly what happened.")
 	for need_name: String in Simulation.NEED_NAMES:
 		sim.needs[need_name] = 0.01
 	_advance(sim, 120)

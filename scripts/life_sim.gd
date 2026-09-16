@@ -24,6 +24,22 @@ signal away_changed(state: Dictionary)
 
 const SAVE_PATH: String = "user://justlife_save.json"
 const SAVE_VERSION: int = 1
+## Bills arrive every week, as in the reference game, and the amount follows the
+## value of the furnished home: a modest cottage bills far less than a mansion.
+const BILL_PERIOD_DAYS: int = 7
+const BILL_BASE: int = 120
+const BILL_RATE_PER_1000_VALUE: float = 42.0
+const BILL_DUE_DAYS: int = 4
+const BILL_LATE_FEE: int = 60
+## Shutoff makes an unpaid bill matter: no cooking, no hot water and nothing
+## electrical until the household settles the arrears. Going to work is never
+## gated, so a cut-off household can always earn its way back on.
+const UTILITY_ACTIONS: Array[String] = ["cook", "experiment_recipe", "shower", "bath", "watch", "watch_together", "play_games", "study_hard", "practice_instrument", "play_piano"]
+
+## What this home's weekly bill comes to, from the value of everything placed in
+## it. A home with nothing in it still pays the base connection charge.
+static func bill_amount_for(home_value: int) -> int:
+	return BILL_BASE + int(round(float(maxi(0, home_value)) / 1000.0 * BILL_RATE_PER_1000_VALUE))
 const GAME_MINUTES_PER_SECOND: float = 1.0
 const MAX_QUEUE: int = 8
 const NEED_NAMES: Array[String] = ["hunger", "energy", "hygiene", "bladder", "fun", "social"]
@@ -64,8 +80,28 @@ var speed: int = 1
 var autonomy: bool = true
 var action_queue: Array = []
 var satisfaction: int = 0
-var bills_paid: int = 0
 var last_bill_day: int = 0
+## Household bills, modelled on the way a life simulation makes them a decision
+## rather than a silent tax: a bill is issued every BILL_PERIOD_DAYS, its size
+## follows what the home is worth, and it carries a due date. Paying it from the
+## phone marks it paid; letting it lapse charges a late fee and cuts the
+## utilities, which the household can only clear by settling up.
+var pending_bill: Dictionary = {}
+var bills_paid_total: int = 0
+var bills_late: int = 0
+var utilities_cut: bool = false
+## The value of the furnished home, which sets the size of the next bill. The
+## owning scene supplies a provider, so the amount is read from the furnishings
+## actually placed at the moment a bill is issued.
+var home_value_provider: Callable = Callable()
+
+## What the furnished home is worth right now; zero when nothing reports it.
+func home_value() -> int:
+	return maxi(0, int(home_value_provider.call())) if home_value_provider.is_valid() else 0
+
+## The provider travels with the household when members are created or restored.
+func set_home_value_provider(provider: Callable) -> void:
+	home_value_provider = provider
 var purchased_perks: Array[String] = []  # reward ids bought from the store; permanent ones persist
 var _targets: Array = []
 var _idle_minutes: float = 0.0
@@ -195,8 +231,11 @@ func new_household(profile: Dictionary) -> void:
 	action_queue.clear()
 	away_state = {}
 	satisfaction = 0
-	bills_paid = 0
 	last_bill_day = 0
+	pending_bill = {}
+	bills_paid_total = 0
+	bills_late = 0
+	utilities_cut = false
 	purchased_perks.clear()
 	_idle_minutes = 0.0
 	autonomy_state = {"version":1,"contacts":{},"deferred":{}}
@@ -1076,6 +1115,10 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 		return {"available":false, "reason":"Only available while %s." % str(EMOTION_ACTIONS[id])}
 	if TRAIT_ACTIONS.has(id) and not _has_trait(str(TRAIT_ACTIONS[id])):
 		return {"available":false, "reason":"Only a %s Lifelet thinks to do this." % str(TRAIT_ACTIONS[id])}
+	# An unpaid bill has a real cost: the utilities are cut, so the home cannot
+	# cook, run hot water or run anything electrical until the household settles.
+	if utilities_cut and id in UTILITY_ACTIONS:
+		return {"available":false, "reason":"The utilities are cut. Pay the outstanding §%d bill from the phone." % bill_total_due()}
 	# A baby is driven by a caregiver: it keeps its recovery and play set and is
 	# refused everything else here, before any target or queue rule applies.
 	var stage_reason: String = LifeStagePolicy.action_error(str(character.age_stage), str(character.life_stage), id)
@@ -1489,24 +1532,69 @@ func _new_day() -> void:
 	_advance_education()
 	_cancel_school_actions("A new school day has begun. Choose a fresh class or assignment.")
 	_warned_needs.clear()
-	# Modest household costs every morning; no invisible automatic wages.
-	var bill: int = 35
-	if not household_bills_enabled:bill=0
-	var charged: int = mini(funds, bill)
-	funds -= charged
-	bills_paid += charged
-	last_bill_day = day
-	if not household_bills_enabled:
-		pass
-	elif charged < bill:
-		_emit_notice("Day %d: household bills used your remaining §%d. Earn money with work or painting." % [day, charged])
-	else:
-		_emit_notice("A new day. §%d paid for household bills." % charged)
+	_advance_bill_cycle()
 	for person: Dictionary in relationships.values():
 		if float(person["friendship"]) > 0.0:
 			person["friendship"] = maxf(0.0, float(person["friendship"]) - 1.5)
 		_update_relationship_status(person)
 	_offer_daily_story()
+
+
+## The weekly bills cycle. A bill is issued every BILL_PERIOD_DAYS for what the
+## home is worth; it falls due BILL_DUE_DAYS later. Settling it from the phone is
+## the player's decision, so an unpaid bill is a real choice rather than a silent
+## deduction, and a lapsed one adds a late fee and cuts the utilities.
+func _advance_bill_cycle() -> void:
+	if not household_bills_enabled:
+		return
+	if pending_bill.is_empty():
+		if last_bill_day == 0 or day - last_bill_day >= BILL_PERIOD_DAYS:
+			var amount: int = bill_amount_for(home_value())
+			pending_bill = {"amount": amount, "issued_day": day, "due_day": day + BILL_DUE_DAYS, "late_fee": 0}
+			_emit_notice("The household bills arrived: §%d, due by day %d. Pay them from the phone." % [amount, int(pending_bill.due_day)])
+		return
+	# A bill past its due date is overdue: one late fee, once.
+	if day > int(pending_bill.due_day) and int(pending_bill.get("late_fee", 0)) == 0:
+		pending_bill["late_fee"] = BILL_LATE_FEE
+		bills_late += 1
+		utilities_cut = true
+		_emit_notice("The household bills are overdue. A §%d late fee was added and the utilities were cut until they are paid." % BILL_LATE_FEE)
+
+
+## The ledger is owned by the household's first member; every other member keeps
+## a read-only mirror so action availability and the phone agree with it.
+func set_bill_mirror(record: Dictionary, cut: bool, paid_total: int, late: int) -> void:
+	pending_bill = record.duplicate(true)
+	utilities_cut = cut
+	bills_paid_total = paid_total
+	bills_late = late
+
+
+## The full amount owed right now, including any late fee. Every member carries
+## the same record, so this is consistent whoever the phone is looking at.
+func bill_total_due() -> int:
+	if pending_bill.is_empty():
+		return 0
+	return int(pending_bill.amount) + int(pending_bill.get("late_fee", 0))
+
+
+## Settle the outstanding bill. Returns a result dictionary so the phone panel can
+## report exactly what happened instead of guessing.
+func pay_bill() -> Dictionary:
+	if pending_bill.is_empty():
+		return {"ok": false, "reason": "There is no bill to pay right now."}
+	var owed: int = bill_total_due()
+	if funds < owed:
+		return {"ok": false, "reason": "The household needs §%d and has §%d." % [owed, funds]}
+	funds -= owed
+	bills_paid_total += owed
+	last_bill_day = day
+	pending_bill.clear()
+	var restored: bool = utilities_cut
+	utilities_cut = false
+	_emit_notice("Bills paid: §%d.%s" % [owed, " The utilities are back on." if restored else ""])
+	_emit_changed()
+	return {"ok": true, "paid": owed, "restored_utilities": restored}
 
 
 func _check_need_notices() -> void:
@@ -2428,7 +2516,7 @@ func get_mood() -> Dictionary:
 
 
 func get_state() -> Dictionary:
-	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "bladder_grace":bladder_grace, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "wants": wants.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "bills_paid": bills_paid, "last_bill_day": last_bill_day, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "routine_memory_days":routine_memory_days.duplicate(true)}
+	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "bladder_grace":bladder_grace, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "wants": wants.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "last_bill_day": last_bill_day, "pending_bill":pending_bill.duplicate(true), "bills_paid_total":bills_paid_total, "bills_late":bills_late, "utilities_cut":utilities_cut, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "routine_memory_days":routine_memory_days.duplicate(true)}
 
 
 func save_game(world_data: Array = []) -> bool:
@@ -2558,8 +2646,11 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 		away_state.exit_position = _as_vector3(away_state.exit_position)
 		for key:String in ["version","departure_day","return_day"]: away_state[key] = int(away_state[key])
 	satisfaction = int(state.get("satisfaction", 0))
-	bills_paid = int(state.get("bills_paid", 0))
 	last_bill_day = int(state.get("last_bill_day", 0))
+	pending_bill = state.get("pending_bill", {}).duplicate(true) if state.get("pending_bill", {}) is Dictionary else {}
+	bills_paid_total = int(state.get("bills_paid_total", 0))
+	bills_late = int(state.get("bills_late", 0))
+	utilities_cut = bool(state.get("utilities_cut", false))
 	# Permanent perks survive the save; one-use potions were never recorded.
 	purchased_perks.clear()
 	for perk: Variant in state.get("purchased_perks", []):
@@ -2763,9 +2854,26 @@ func _validate_state(state: Dictionary) -> String:
 	if not school_error.is_empty(): return school_error
 	if not _number_in_range(state.get("speed", 1), 0.0, 8.0) or int(state.get("speed", 1)) not in [0, 1, 3, 8] or not state.get("autonomy", true) is bool:
 		return "Save contains invalid simulation settings."
-	for key: String in ["satisfaction", "bills_paid", "last_bill_day"]:
+	for key: String in ["satisfaction", "last_bill_day", "bills_paid_total", "bills_late"]:
 		if not _number_in_range(state.get(key, 0), 0.0, 1000000000.0):
 			return "Save contains invalid progress."
+	if not state.get("utilities_cut", false) is bool:
+		return "Save contains invalid utility state."
+	# A pending bill is either absent or a complete, self-consistent record.
+	var bill: Variant = state.get("pending_bill", {})
+	if not bill is Dictionary:
+		return "Save contains an invalid pending bill."
+	if not bill.is_empty():
+		if bill.size() != 4:
+			return "Save contains a malformed pending bill."
+		if not _number_in_range(bill.get("amount"), 0.0, 1000000000.0) or not _number_in_range(bill.get("issued_day"), 1.0, 1000000000.0) or not _number_in_range(bill.get("due_day"), 1.0, 1000000000.0):
+			return "Save contains an invalid pending bill amount or date."
+		if int(bill.get("due_day", 0)) != int(bill.get("issued_day", 0)) + BILL_DUE_DAYS:
+			return "Save contains a pending bill with an inconsistent due date."
+		if int(bill.get("late_fee", 0)) not in [0, BILL_LATE_FEE]:
+			return "Save contains an invalid late fee."
+		if int(bill.get("issued_day", 0)) > int(state.get("day", 1)):
+			return "Save contains a bill issued in the future."
 	if not state.get("purchased_perks", []) is Array or state.get("purchased_perks", []).size() > REWARDS.size():
 		return "Save contains invalid reward history."
 	var bought: Array[String] = []

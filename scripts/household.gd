@@ -25,6 +25,9 @@ var restoring: bool = false
 var journeys: Dictionary = {}
 var physical_snapshot_provider:Callable=Callable()
 var extras_provider:Callable=Callable()
+## Reports what everything placed in the home is worth. Pulled when a bill is
+## issued, so the amount always reflects the house the player has built.
+var home_value_provider:Callable=Callable()
 var extras_restore_provider:Callable=Callable()
 var family_graph: Dictionary = LifeFamilyGraph.fresh()
 var adoptions: Dictionary = LifeAdoption.fresh()
@@ -67,9 +70,11 @@ func add_member(profile: Dictionary) -> String:
 	sim.new_household(profile)
 	sim.day=day;sim.minutes=minutes;sim.funds=funds;sim.speed=speed
 	sim.household_bills_enabled=members.is_empty()
+	sim.set_home_value_provider(home_value_provider)
 	sim.register_targets(targets.filter(func(target:Dictionary):return str(target.id)!=id))
 	members.append({"id":id,"sim":sim})
 	connect_member(id,sim)
+	_sync_bill_mirror()
 	for other:Dictionary in members:
 		if other.id==id:continue
 		sim.relationships[other.id]={"name":other.sim.character.name,"friendship":18.0,"romance":0.0,"status":"Housemate","life_stage":other.sim.character.life_stage,"bond":"none","milestones":[],"family_role":"none"}
@@ -188,6 +193,8 @@ func tick(delta: float) -> void:
 		funds=sim.funds
 	day=members[0].sim.day
 	minutes=members[0].sim.minutes
+	if day!=start_day:
+		_sync_bill_mirror()
 	# Conception to birth runs on the shared game clock, so fast speed, pause
 	# and a save/load all agree about when the baby is due.
 	pregnancy_tick()
@@ -507,9 +514,11 @@ func restore_state(data: Dictionary) -> Dictionary:
 		add_child(member.sim)
 		member.sim.name="Life_"+member.id
 		member.sim.household_bills_enabled=i==0
+		member.sim.set_home_value_provider(home_value_provider)
 		connect_member(member.id,member.sim)
 		if not targets.is_empty(): member.sim.register_targets(targets.filter(func(target:Dictionary):return str(target.id)!=str(member.id)))
 	_sync_wallet()
+	_sync_bill_mirror()
 	restoring=false
 	return {"ok":true,"world":data.get("world",[]).duplicate(true)}
 
@@ -608,6 +617,56 @@ func set_aging(lifespan: String, enabled: bool) -> bool:
 	for member: Dictionary in members:
 		member.sim.set_aging(lifespan, enabled)
 	return true
+
+## Bills are a household matter: every member reads the same home value from the
+## owning scene, and the first member owns the ledger.
+func set_home_value_provider(provider: Callable) -> void:
+	home_value_provider = provider
+	for member: Dictionary in members:
+		member.sim.set_home_value_provider(provider)
+
+## The bill ledger lives with the first member, matching household_bills_enabled.
+func bill_owner() -> LifeSim:
+	return null if members.is_empty() else members[0].sim
+
+## Everyone shares one bill, so every member's action availability and phone show
+## the same record as the owner's ledger. Refreshed only when the bill can have
+## changed: a new day, or a payment.
+func _sync_bill_mirror() -> void:
+	var owner: LifeSim = bill_owner()
+	if owner == null:
+		return
+	for member: Dictionary in members:
+		if member.sim != owner:
+			member.sim.set_bill_mirror(owner.pending_bill, owner.utilities_cut, owner.bills_paid_total, owner.bills_late)
+
+## The outstanding bill as the household sees it, empty when nothing is due.
+func bill() -> Dictionary:
+	var owner: LifeSim = bill_owner()
+	return {} if owner == null else owner.pending_bill
+
+func bill_total_due() -> int:
+	var owner: LifeSim = bill_owner()
+	return 0 if owner == null else owner.bill_total_due()
+
+## True while the utilities are cut for non-payment.
+func utilities_cut() -> bool:
+	var owner: LifeSim = bill_owner()
+	return false if owner == null else owner.utilities_cut
+
+## Settle the household bill from the shared purse, then mirror the outcome to
+## every member and return the result to the phone.
+func pay_bill() -> Dictionary:
+	var owner: LifeSim = bill_owner()
+	if owner == null:
+		return {"ok": false, "reason": "There is no household to bill."}
+	owner.funds = funds
+	var result: Dictionary = owner.pay_bill()
+	if bool(result.get("ok", false)):
+		funds = owner.funds
+		_sync_bill_mirror()
+		_sync_wallet()
+	return result
 
 # Cooperative homework has one authoritative clock: the learner's ordinary
 # homework action. Its helper action cannot advance or finish independently.
@@ -1216,8 +1275,10 @@ func commit_baby(profile: Dictionary, spawn: Vector3, destination: Vector3, worl
 	if snapshot.has("journeys"):journeys=snapshot.journeys.duplicate(true)
 	members.append({"id":id,"sim":added});add_child(added)
 	added.name="Life_"+id;added.household_bills_enabled=false
+	added.set_home_value_provider(home_value_provider)
 	connect_member(id,added)
 	_rebuild_family_roles()
+	_sync_bill_mirror()
 	return {"ok":true,"child":id,"spawn":spawn}
 
 func _target(id: String) -> Dictionary:
@@ -1367,6 +1428,8 @@ func commit_adoption(request:Dictionary,spawn:Vector3,destination:Vector3,world_
 	if snapshot.has("journeys"):journeys=snapshot.journeys.duplicate(true)
 	members.append({"id":id,"sim":added});add_child(added)
 	added.name="Life_"+id;added.household_bills_enabled=false
+	added.set_home_value_provider(home_value_provider)
 	connect_member(id,added)
 	_rebuild_family_roles();set_funds(int(snapshot.funds))
+	_sync_bill_mirror()
 	return {"ok":true,"duplicate":false,"child":id,"spawn":spawn}

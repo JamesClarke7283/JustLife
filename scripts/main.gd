@@ -164,6 +164,7 @@ func _ready() -> void:
 	household.name="Household"
 	add_child(household)
 	household.extras_provider=household_flow.get_state
+	household.set_home_value_provider(home_value)
 	household.extras_restore_provider=household_flow.restore
 	household.new_household(household_profiles)
 	sim=household.selected()
@@ -2483,6 +2484,18 @@ func _refresh_sim_targets(replan:bool=true,reconcile_food:bool=true) -> void:
 	meal_flow.sync_oven_presentations()
 	_reconstruct_paused_cooking()
 
+## What everything placed in the home is worth. A household bill reads this at
+## the moment it is issued, so the amount follows the house the player has built.
+func home_value() -> int:
+	var value:int=0
+	if not is_instance_valid(world):return 0
+	for item:Dictionary in world.items:
+		var kind:String=str(item.get("kind",""))
+		if kind.is_empty() or not LifeCatalog.ITEMS.has(kind):continue
+		if bool(item.get("transient_food",false)) or bool(item.get("transient_puddle",false)) or bool(item.get("derived",false)):continue
+		value+=int(LifeCatalog.ITEMS[kind].price)
+	return value
+
 func _refresh_member_targets(replan:bool=true) -> void:
 	if not is_instance_valid(sim) or not is_instance_valid(world.house):return
 	sim.meal_service=meal_flow
@@ -3218,6 +3231,9 @@ func _adopt_loaded_world(prepared:Dictionary,slot_id:String,title:String="") -> 
 	motion_states=candidate.motion_states
 	current_venue=candidate.current_venue;home_layout=candidate.home_layout;venue_layouts=candidate.venue_layouts
 	_connect_live_nodes()
+	# The loaded household bills against the world it just adopted, so the
+	# provider must point at this controller, not the candidate that built it.
+	household.set_home_value_provider(home_value)
 	sim=household.selected();bound_member_id=household.selected_id();_bind_member(bound_member_id)
 	has_active_game=true;active_save_id=slot_id;active_save_name=title
 	household_profiles=[]

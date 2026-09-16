@@ -28,6 +28,7 @@ func context_error() -> String:
 
 func show_phone() -> void:
 	request.clear();primary=app.household.selected_id()
+	var owner:LifeSim=app.household.bill_owner()
 	_panel("A little room to grow.","Household services for the people who make this place home.")
 	var reason:String=context_error()
 	if reason.is_empty():reason=app.household.adoption_availability([primary])
@@ -41,8 +42,66 @@ func show_phone() -> void:
 	var pets:Button=app.button("Juniper Pet Shop",Vector2(302,552),Vector2(820,52),show_pets,false,app.overlay)
 	pets.name="PhonePetShop";pets.disabled=not pet_reason.is_empty();pets.tooltip_text=pet_reason
 	app.paragraph("Adopt a cat or a dog and shape its sex, coat and markings yourself. Bowls, cat trees and kennels are sold alongside.",Vector2(307,610),Vector2(806,52),16,P.INK,app.overlay)
-	app.paragraph(reason if not reason.is_empty() else pet_reason,Vector2(307,668),Vector2(806,32),14,P.TEAL,app.overlay)
-	app.button("Back to life",Vector2(302,706),Vector2(820,44),app.close_overlay,false,app.overlay)
+	var bill:Dictionary=sim_bill()
+	var bill_label:String="Household bills"
+	if bill.is_empty():
+		bill_label="Household bills · nothing due"
+	else:
+		bill_label="Household bills · §%d due%s" % [int(bill.amount)+int(bill.get("late_fee",0)), " (overdue)" if bool(bill.overdue) else ""]
+	var bills:Button=app.button(bill_label,Vector2(302,660),Vector2(820,44),show_bills,false,app.overlay)
+	bills.name="PhoneBills"
+	if bill.is_empty():
+		bills.tooltip_text="The next bill is for what the home is worth: about §%d." % LifeSim.bill_amount_for(owner.home_value())
+	elif bool(bill.overdue):
+		bills.tooltip_text="The utilities are cut until this bill is paid."
+	else:
+		bills.tooltip_text="Due by day %d." % int(bill.due_day)
+	app.button("Back to life",Vector2(302,710),Vector2(820,44),app.close_overlay,false,app.overlay)
+
+## The selected Lifelet's bill record, with the overdue state folded in so the
+## phone can describe it without duplicating the rule.
+func sim_bill() -> Dictionary:
+	var record:Dictionary=app.household.bill().duplicate(true)
+	if record.is_empty():return record
+	record["overdue"]=app.household.day>int(record.due_day)
+	return record
+
+func show_bills() -> void:
+	var owner:LifeSim=app.household.bill_owner()
+	_panel("Keeping the lights on.","The household pays its way. A bill arrives every week for what the home is worth, and the utilities are cut if one is left unpaid.")
+	var bill:Dictionary=app.household.bill()
+	if bill.is_empty():
+		app.text_label("Nothing is due.",Vector2(302,354),Vector2(820,50),34,P.INK,true,app.overlay)
+		app.paragraph("A bill arrives every %d days. The home is worth §%s, so the next one will be about §%d." % [LifeSim.BILL_PERIOD_DAYS, app.commas(owner.home_value()), LifeSim.bill_amount_for(owner.home_value())],Vector2(307,420),Vector2(806,72),18,P.MUTED,app.overlay)
+		app.button("Back to phone",Vector2(302,675),Vector2(820,47),show_phone,false,app.overlay)
+		return
+	var owed:int=app.household.bill_total_due()
+	var overdue:bool=app.household.utilities_cut() or app.household.day>int(bill.due_day)
+	app.card(Vector2(302,352),Vector2(820,180),P.PALE,15,app.overlay)
+	app.text_label("§%d" % owed,Vector2(326,368),Vector2(400,60),44,P.INK,true,app.overlay)
+	app.text_label("Home value §%s" % app.commas(owner.home_value()),Vector2(330,432),Vector2(380,30),17,P.MUTED,false,app.overlay)
+	app.text_label("Issued day %d  ·  due day %d" % [int(bill.issued_day),int(bill.due_day)],Vector2(330,462),Vector2(500,26),16,P.MUTED,false,app.overlay)
+	if int(bill.get("late_fee",0))>0:
+		app.text_label("Includes a §%d late fee" % int(bill.late_fee),Vector2(330,490),Vector2(500,26),16,P.CORAL,false,app.overlay)
+	if overdue:
+		app.text_label("Utilities cut",Vector2(700,380),Vector2(400,40),26,P.CORAL,true,app.overlay)
+		app.paragraph("Cooking, hot water and anything electrical are unavailable until this is paid.",Vector2(700,424),Vector2(410,60),15,P.MUTED,app.overlay)
+	var pay:Button=app.button("Pay §%d" % owed,Vector2(302,556),Vector2(400,52),func():pay_bill(),true,app.overlay)
+	pay.name="PhonePayBill"
+	pay.disabled=app.household.funds<owed
+	pay.tooltip_text=("The household has §%s." % app.commas(app.household.funds)) if app.household.funds<owed else "Settle the bill and restore the utilities."
+	app.paragraph("Funds §%s" % app.commas(app.household.funds),Vector2(718,566),Vector2(400,34),20,P.INK,app.overlay)
+	app.paragraph("The household has paid §%s in bills so far, %d of them late." % [app.commas(owner.bills_paid_total), owner.bills_late],Vector2(307,628),Vector2(806,40),15,P.MUTED,app.overlay)
+	app.button("Back to phone",Vector2(302,675),Vector2(820,47),show_phone,false,app.overlay)
+
+## Pay the outstanding bill and report exactly what happened.
+func pay_bill() -> void:
+	var result:Dictionary=app.household.pay_bill()
+	if bool(result.get("ok",false)):
+		app.refresh_hud()
+		show_bills()
+	else:
+		app.show_notice(str(result.get("reason","The bill could not be paid.")))
 
 func show_pets() -> void:
 	app.pet_shop.show_shop()

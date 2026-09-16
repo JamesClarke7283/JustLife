@@ -132,7 +132,7 @@ func _test_pending_events_and_affordability() -> void:
 		next_morning(sim)
 	check(sim.day == 7 and sim.story_events.size() == 3, "Unanswered events must stay bounded at three.")
 	check(sim.story_events[0].day == 2, "An unanswered invitation must remain available instead of expiring.")
-	check(sim.funds == 2500 - 6 * 35, "Ignoring stories must charge no penalties beyond existing household bills.")
+	check(sim.funds == 2500 and not sim.pending_bill.is_empty(), "Ignoring stories must charge no penalty: bills wait to be paid rather than being taken silently.")
 	sim.funds = 0
 	check(not sim.get_story_events()[0].choices[0].available, "The UI must see that a paid choice is unavailable when broke.")
 	var before: Dictionary = sim.get_state()
