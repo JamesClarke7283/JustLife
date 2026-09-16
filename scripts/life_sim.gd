@@ -47,6 +47,7 @@ const NEED_NAMES: Array[String] = ["hunger", "energy", "hygiene", "bladder", "fu
 ## intact. A break from these keeps the action's `elapsed`, so the progress bar
 ## continues where it stopped instead of restarting the whole shift.
 const RESUMABLE_BREAK_ACTIONS: Array[String] = ["job"]
+const LifeWantsManager = preload("res://scripts/wants_manager.gd")
 const TRAIT_NAMES: Array[String] = ["Creative", "Outgoing", "Active", "Bookworm", "Foodie", "Neat"]
 const ASPIRATION_NAMES: Array[String] = ["Maker", "Connected", "Successful", "Balanced"]
 const NEED_DECAY: Dictionary = {"hunger": 3.5, "energy": 3.0, "hygiene": 2.1, "bladder": 4.0, "fun": 2.5, "social": 2.0}
@@ -73,6 +74,7 @@ var skills: Dictionary = {}
 var relationships: Dictionary = {}
 var career: Dictionary = {}
 var wants: Array = []
+var whims: Dictionary = {}
 var funds: int = 2500
 var day: int = 1
 var minutes: float = 480.0
@@ -127,7 +129,7 @@ var story_events: Array = []
 var story_history: Array = []
 var _story_generated_day: int = 1
 const STORY_KINDS: Array[String] = ["neighbor_invitation", "career_opportunity", "hobby_exhibition", "garden_exchange", "learning_circle", "community_picnic", "block_party", "flea_market"]
-const SOCIAL_ACTIONS: Array[String] = ["friendly", "joke", "deep_talk", "hug", "share_interests", "sympathize", "gossip", "flirt", "argue", "ask_partner", "commit", "break_up", "playful_prank", "bold_introduction"]
+const SOCIAL_ACTIONS: Array[String] = ["friendly", "joke", "deep_talk", "hug", "share_interests", "sympathize", "gossip", "flirt", "argue", "ask_partner", "commit", "break_up", "playful_prank", "bold_introduction", "comfort_loss", "share_memories"]
 # Spending satisfaction: a perk is bought once and changes a multiplier at the
 # same call sites the traits already use, while a potion acts on the spot.
 const REWARDS: Dictionary = {
@@ -242,6 +244,8 @@ func new_household(profile: Dictionary) -> void:
 	_leisure_history.clear()
 	_warned_needs.clear()
 	_create_wants()
+	var wants_and_fears_enabled: bool = bool(profile.get("wants_and_fears", false))
+	whims = LifeWantsManager.fresh_state(character, str(get_mood().label), needs, wants_and_fears_enabled)
 	_emit_changed()
 
 
@@ -261,7 +265,7 @@ func _build_actions() -> void:
 	_define("bin_meal","Throw it in the bin",5.0,{},0,"",0.0,"Carry spoiled food to the rubbish bin and tip it out. The bin takes it; nothing is eaten.")
 	_define("clean_plate","Wash this plate",10.0,{"hygiene":-1.0},0,"",0.0,"Carry the used plate to a sink and wash it.")
 	_define("snack", "Grab a snack", 15.0, {"hunger": 32.0}, 4, "", 0.0, "A quick bite to keep the day going.")
-	_define("cook", "Cook a fresh meal", 45.0, {"fun": 8.0, "hygiene": -5.0}, 12, "cooking", 34.0, "Choose a recipe to prepare and share. Cooking skill unlocks more dishes. Eating restores hunger. Ingredients start at §12.")
+	_define("cook", "Cook a fresh meal", 45.0, {"fun": 8.0, "hygiene": -5.0}, 8, "cooking", 34.0, "Choose a recipe to prepare and share. Cooking skill unlocks more dishes. Eating restores hunger. Ingredients start at §8.")
 	_define("sleep", "Sleep", 360.0, {"energy": 95.0, "fun": 15.0}, 0, "", 0.0, "A full night's rest restores energy and chases the boredom away.")
 	_define("try_for_baby", "Try for Baby", LifeBabyPlan.DURATION, {"social": 20.0, "fun": 14.0, "energy": -6.0}, 0, "", 0.0, "An intimate moment with your partner while you share the bed. If you both want to, this can begin a pregnancy.")
 	_define("nap", "Take a nap", 75.0, {"energy": 38.0}, 0, "", 0.0, "A short, refreshing nap.")
@@ -301,6 +305,9 @@ func _build_actions() -> void:
 	_define("wear_tee", "Wear the tee", 4.0, {}, 0, "", 0.0, "Change into the plain crew tee.")
 	_define("wear_hoodie", "Wear the hoodie", 4.0, {}, 0, "", 0.0, "Change into the soft hoodie.")
 	_define("warm_up", "Warm up by the fire", 25.0, {"fun": 16.0, "energy": 8.0}, 0, "", 0.0, "A quiet moment by the hearth.")
+	_define("mourn", "Mourn", 30.0, {"fun": -4.0}, 0, "", 0.0, "Spend a quiet moment in respectful silence. Shedding tears eases grief.")
+	_define("leave_flowers", "Leave fresh flowers", 15.0, {"fun": 10.0}, 15, "", 0.0, "Place fresh blooms (§15) at the memorial to honour their memory.")
+	_define("remember_passed", "Reminisce", 25.0, {"fun": 14.0, "social": 4.0}, 0, "", 0.0, "Reflect on fond memories and wisdom shared with the departed.")
 	_define("play_games", "Play video games", 45.0, {"fun": 40.0, "energy": -4.0}, 0, "logic", 10.0, "An hour of games at the computer. Great fun, a little Logic.")
 	_define("friendly", "Have a friendly chat", 25.0, {"social": 28.0, "fun": 6.0}, 0, "charisma", 18.0, "Say hello, catch up and grow your friendship.")
 	_define("joke", "Tell a joke", 20.0, {"social": 22.0, "fun": 16.0}, 0, "charisma", 16.0, "Share a laugh and strengthen your friendship.")
@@ -314,6 +321,8 @@ func _build_actions() -> void:
 	_define("ask_partner", "Ask to become partners", 35.0, {"social": 15.0, "fun": 8.0}, 0, "charisma", 12.0, "Choose a relationship together. Both adults need 45 friendship and 35 romance, and must be available.")
 	_define("commit", "Make a commitment", 45.0, {"social": 20.0, "fun": 10.0}, 0, "charisma", 16.0, "Affirm your shared future with your current partner, with 65 friendship and 65 romance.")
 	_define("break_up", "End the relationship", 25.0, {"social": 5.0, "fun": -8.0}, 0, "", 0.0, "End your partnership honestly. Friendship falls by 12 and romance by 35; both become available again.")
+	_define("comfort_loss", "Comfort over loss", 25.0, {"social": 32.0, "fun": 8.0}, 0, "charisma", 20.0, "Console a grieving friend or family member. Warm words make the sorrow easier to bear.")
+	_define("share_memories", "Share memories", 30.0, {"social": 28.0, "fun": 12.0}, 0, "charisma", 16.0, "Talk about happy times spent together, keeping their spirit alive in the home.")
 	# Emotion-gated opportunities: offered only while that feeling is the strongest.
 	_define("paint_masterpiece", "Paint a masterpiece", 120.0, {"fun": 45.0, "hygiene": -7.0}, 30, "creativity", 60.0, "Ride the inspiration into something remarkable. Sells for far more than an ordinary canvas.")
 	_define("study_hard", "Study hard", 120.0, {"fun": 6.0, "energy": -12.0}, 0, "logic", 70.0, "Deep work while your mind is sharp. Builds Logic quickly.")
@@ -371,6 +380,7 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 				if int(WEAR_ACTIONS[wear_id]) != int(character.get("outfit", 0)): ids.append(wear_id)
 		"garden_bed": ids = ["water"]
 		"fireplace": ids = ["warm_up"]
+		"urn", "tombstone": ids = ["mourn", "leave_flowers", "remember_passed"]
 		"neighbor", "maya", "leo", "priya", "tom": ids = SOCIAL_ACTIONS
 	if str(character.age_stage) in LifeEducation.SCHOOL_STAGES:
 		if kind in ["desk","computer"]: ids = ["school","homework","study","study_hard"] + (["play_games"] if kind == "computer" else [])
@@ -1010,6 +1020,21 @@ func _finish_front() -> void:
 	action["phase"] = "finished"
 	if is_instance_valid(meal_service):meal_service.finished(self,action)
 	if is_instance_valid(sanitation_service):sanitation_service.finished(self,action)
+	if not whims.is_empty():
+		var w_res: Dictionary = LifeWantsManager.evaluate_action(whims, id)
+		if bool(w_res.get("fulfilled", false)):
+			var rew: int = int(w_res.reward)
+			satisfaction += rew
+			var m: Dictionary = w_res.moodlet
+			add_moodlet(str(m.label), str(m.emotion), str(m.description), float(m.duration), int(m.strength))
+			_emit_notice("Desire fulfilled: %s! +%d satisfaction." % [str(w_res.whim.label), rew])
+			LifeWantsManager.refresh_whims(whims, character, needs, str(get_mood().label))
+		if bool(w_res.get("cured_fear", false)):
+			var frew: int = int(w_res.fear_reward)
+			satisfaction += frew
+			var fm: Dictionary = w_res.fear_moodlet
+			add_moodlet(str(fm.label), str(fm.emotion), str(fm.description), float(fm.duration), int(fm.strength))
+			_emit_notice("Conquered fear: %s! +%d satisfaction!" % [str(w_res.fear.label), frew])
 	_emit_action_finished(action)
 	_idle_minutes = 0.0
 	_update_wants()
@@ -1521,6 +1546,24 @@ func _activity_memory(id:String) -> void:
 		"deep_read":add_moodlet("Lost in a book","Focused","The afternoon disappeared into the pages.",200,2)
 		"experiment_recipe":add_moodlet("Something new on the stove","Playful","An invented dish that actually worked.",150,2)
 		"deep_clean":add_moodlet("A tidy home","Happy","Every surface gleams, and it feels lighter in here.",180,2)
+		"mourn":
+			_ease_mourning(720.0)
+			add_moodlet("Peaceful Remembrance","Happy","Taking time to grieve brings a quiet peace to the soul.",240,1)
+		"leave_flowers":
+			add_moodlet("Honoured Memory","Happy","Fresh blossoms by the memorial honour a life well lived.",360,2)
+			remember("Placed fresh flowers","Honoured the memory of the departed with fresh blossoms.")
+		"remember_passed":
+			add_moodlet("Fond Memories","Inspired","Remembering their laughter and wisdom inspires you today.",300,2)
+		"comfort_loss":
+			_ease_mourning(960.0)
+			add_moodlet("Shared Solace","Happy","Sharing grief with a friend lightens the heaviest burden.",360,2)
+		"share_memories":
+			add_moodlet("Cherished Stories","Happy","Talking through cherished memories keeps loved ones close.",240,1)
+
+func _ease_mourning(amount: float) -> void:
+	for moodlet: Dictionary in moodlets:
+		if str(moodlet.get("label", "")) == "Mourning":
+			moodlet.remaining = maxf(0.0, float(moodlet.get("remaining", 0.0)) - amount)
 
 
 func _new_day() -> void:
@@ -2516,7 +2559,7 @@ func get_mood() -> Dictionary:
 
 
 func get_state() -> Dictionary:
-	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "bladder_grace":bladder_grace, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "wants": wants.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "last_bill_day": last_bill_day, "pending_bill":pending_bill.duplicate(true), "bills_paid_total":bills_paid_total, "bills_late":bills_late, "utilities_cut":utilities_cut, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "routine_memory_days":routine_memory_days.duplicate(true)}
+	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "bladder_grace":bladder_grace, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "wants": wants.duplicate(true), "whims": whims.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "last_bill_day": last_bill_day, "pending_bill":pending_bill.duplicate(true), "bills_paid_total":bills_paid_total, "bills_late":bills_late, "utilities_cut":utilities_cut, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "routine_memory_days":routine_memory_days.duplicate(true)}
 
 
 func save_game(world_data: Array = []) -> bool:
@@ -2646,6 +2689,10 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 		away_state.exit_position = _as_vector3(away_state.exit_position)
 		for key:String in ["version","departure_day","return_day"]: away_state[key] = int(away_state[key])
 	satisfaction = int(state.get("satisfaction", 0))
+	if state.has("whims") and LifeWantsManager.validate_save(state.whims):
+		whims = state.whims.duplicate(true)
+	else:
+		whims = LifeWantsManager.fresh_state(character, str(get_mood().label), needs)
 	last_bill_day = int(state.get("last_bill_day", 0))
 	pending_bill = state.get("pending_bill", {}).duplicate(true) if state.get("pending_bill", {}) is Dictionary else {}
 	bills_paid_total = int(state.get("bills_paid_total", 0))
@@ -3489,3 +3536,25 @@ func complete_adoption_arrival(action:Dictionary) -> bool:
 	_emit_action_finished(action)
 	_start_front();_emit_changed()
 	return true
+
+func get_whims() -> Array:
+	return whims.get("whims", [])
+
+func get_fears() -> Array:
+	return whims.get("fears", [])
+
+func pin_whim(index: int, pinned: bool) -> bool:
+	var ok: bool = LifeWantsManager.pin_whim(whims, index, pinned)
+	if ok: _emit_changed()
+	return ok
+
+func dismiss_whim(index: int) -> bool:
+	var ok: bool = LifeWantsManager.dismiss_whim(whims, index, character, needs, str(get_mood().label))
+	if ok: _emit_changed()
+	return ok
+
+func trigger_fear(fear_id: String) -> bool:
+	var ok: bool = LifeWantsManager.add_fear(whims, fear_id)
+	if ok: _emit_changed()
+	return ok
+

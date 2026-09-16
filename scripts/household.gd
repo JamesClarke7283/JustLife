@@ -11,6 +11,7 @@ signal baby_born(mother_id: String)
 signal pregnancy_began(mother_id: String)
 signal notice(message: String)
 signal selection_changed(member_id: String)
+signal member_passed_away(id: String, name: String, memorial_kind: String, payout: int)
 
 const SAVE_PATH = "user://justlife_save.json"
 const MAX_MEMBERS = 8
@@ -67,7 +68,9 @@ func add_member(profile: Dictionary) -> String:
 	var sim=LifeSim.new()
 	sim.name="Life_"+id
 	add_child(sim)
-	sim.new_household(profile)
+	var member_profile: Dictionary = profile.duplicate(true)
+	member_profile["wants_and_fears"] = true
+	sim.new_household(member_profile)
 	sim.day=day;sim.minutes=minutes;sim.funds=funds;sim.speed=speed
 	sim.household_bills_enabled=members.is_empty()
 	sim.set_home_value_provider(home_value_provider)
@@ -199,10 +202,70 @@ func tick(delta: float) -> void:
 	# and a save/load all agree about when the baby is due.
 	pregnancy_tick()
 	_caregiving_tick()
+	_lifecycle_tick()
 	_sync_wallet()
 	if paired:
 		_reconcile_cooperations()
 		_end_cooperation_change()
+
+func _lifecycle_tick() -> void:
+	if speed <= 0: return
+	for member: Dictionary in members:
+		var sim: LifeSim = member.sim
+		if is_instance_valid(sim) and LifeLifecycle.due_to_pass(str(sim.character.get("age_stage", "")), sim.lifecycle):
+			if not sim.is_away() and sim.action_queue.is_empty():
+				pass_away(str(member.id))
+				break
+
+func pass_away(id: String) -> Dictionary:
+	var dying: LifeSim = member_sim(id)
+	if dying == null: return {"ok": false, "error": "Unknown member"}
+	if dying.is_away() or not dying.action_queue.is_empty():
+		return {"ok": false, "error": "Member is busy or away"}
+	var dying_name: String = str(dying.character.get("name", "Elder"))
+	var member_index: int = -1
+	for i in range(members.size()):
+		if str(members[i].id) == id:
+			member_index = i
+			break
+	if member_index < 0: return {"ok": false, "error": "Member index not found"}
+	
+	var spot := Vector3.ZERO
+	if dying.character.has("world_state") and dying.character.world_state.has("player"):
+		var p: Array = dying.character.world_state.player
+		spot = Vector3(float(p[0]), float(p[1]), float(p[2]))
+	
+	var is_outdoors: bool = absf(spot.x) > 4.5 or absf(spot.z) > 4.5
+	var memorial_kind: String = "tombstone" if is_outdoors else "urn"
+	var memorial_id: String = "memorial_%s_%d" % [id, int(day)]
+	
+	family_graph = LifeFamilyGraph.bury(family_graph, id)
+	var payout: int = 1200
+	funds += payout
+	
+	for member in members:
+		if str(member.id) != id and is_instance_valid(member.sim):
+			member.sim.add_moodlet("Mourning", "Sad", "Grieving the peaceful passing of %s. Their memory endures in the household." % dying_name, 2880.0, 3)
+			if member.sim.relationships.has(id):
+				var rel: Dictionary = member.sim.relationships[id]
+				var role_label: String = str(rel.get("family_role", "none"))
+				if role_label != "none":
+					rel.status = "Departed %s" % LifeFamilyGraph.label(role_label)
+				else:
+					rel.status = "Departed Housemate"
+	
+	members.remove_at(member_index)
+	remove_child(dying)
+	dying.queue_free()
+	
+	if selected_index >= members.size():
+		selected_index = maxi(0, members.size() - 1)
+	if not members.is_empty():
+		selection_changed.emit(selected_id())
+		
+	notice.emit("%s has passed away peacefully in old age. A §%d memorial benefit was delivered to the household." % [dying_name, payout])
+	member_passed_away.emit(id, dying_name, memorial_kind, payout)
+	return {"ok": true, "departed_id": id, "name": dying_name, "payout": payout, "memorial_kind": memorial_kind, "memorial_id": memorial_id, "position": spot}
 
 func _caregiving_tick() -> void:
 	# A baby cannot meet its own needs. When one is desperate, an available
@@ -525,9 +588,10 @@ func restore_state(data: Dictionary) -> Dictionary:
 func _prepare_saved_family(data:Dictionary) -> Dictionary:
 	var ids:Array[String]=[]
 	for entry:Dictionary in data.members:ids.append(str(entry.id))
+	var departed_set: Array[String] = LifeFamilyGraph.departed_ids(data.get("family_graph", {}))
 	for entry:Dictionary in data.members:
 		for target:String in entry.state.relationships:
-			if not ids.has(target) and str(entry.state.relationships[target].get("family_role","none"))!="none":
+			if not ids.has(target) and not departed_set.has(target) and str(entry.state.relationships[target].get("family_role","none"))!="none":
 				return {"ok":false,"error":"The family graph cannot declare relatives outside this household."}
 	var legacy:bool=not data.has("family_graph")
 	var graph:Dictionary=LifeFamilyGraph.fresh()
@@ -559,12 +623,25 @@ func _prepare_saved_family(data:Dictionary) -> Dictionary:
 func _validate_member_identity(data:Dictionary) -> String:
 	var expected_ids:Array[String]=[]
 	var neighbor_partners:Dictionary={}
-	for index:int in range(data.members.size()):
-		expected_ids.append("player" if index==0 else "housemate_%d" % index)
+	var departed_set: Array[String] = LifeFamilyGraph.departed_ids(data.get("family_graph", {}))
+	if departed_set.is_empty():
+		for index:int in range(data.members.size()):
+			expected_ids.append("player" if index==0 else "housemate_%d" % index)
+		for index:int in range(data.members.size()):
+			var entry:Variant=data.members[index]
+			if not entry is Dictionary or entry.get("id")!=expected_ids[index] or not entry.get("state") is Dictionary:
+				return "The saved household has an invalid Lifelet identity."
+	else:
+		for index:int in range(data.members.size()):
+			var entry:Variant=data.members[index]
+			if not entry is Dictionary or not entry.get("id") is String or not entry.get("state") is Dictionary:
+				return "The saved household has an invalid Lifelet identity."
+			var mid: String = str(entry.id)
+			if (mid != "player" and not mid.begins_with("housemate_")) or expected_ids.has(mid) or departed_set.has(mid):
+				return "The saved household has an invalid Lifelet identity."
+			expected_ids.append(mid)
 	for index:int in range(data.members.size()):
 		var entry:Variant=data.members[index]
-		if not entry is Dictionary or entry.get("id")!=expected_ids[index] or not entry.get("state") is Dictionary:
-			return "The saved household has an invalid Lifelet identity."
 		var relations:Variant=entry.state.get("relationships")
 		if not relations is Dictionary:return "The saved household has invalid relationships."
 		if relations.has(expected_ids[index]):return "A Lifelet cannot have a relationship with their own household identity."
@@ -582,7 +659,7 @@ func _validate_member_identity(data:Dictionary) -> String:
 			if LifeFamilyGraph.inverse(str(relationship.get("family_role","none")))!=str(reverse_relations[expected_ids[index]].get("family_role","none")):
 				return "The saved household has one-sided family roles."
 		for relation_id:Variant in relations:
-			if not relation_id is String or (str(relation_id) not in LifeResidentCatalogue.IDS and str(relation_id) not in expected_ids):
+			if not relation_id is String or (str(relation_id) not in LifeResidentCatalogue.IDS and str(relation_id) not in expected_ids and str(relation_id) not in departed_set):
 				return "The saved household contains an unknown relationship identity."
 		var partner_id:String=str(entry.state.get("romantic_partner",""))
 		if partner_id in expected_ids:

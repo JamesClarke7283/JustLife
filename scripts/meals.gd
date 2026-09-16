@@ -23,10 +23,15 @@ const PLATTER_HALF_SIZE := Vector2(.25,.168)
 const SURFACE_INSET := .01
 const RECIPES := {
 	"garden_skillet":{"label":"Garden skillet", "servings":4, "cost":12, "skill":1, "nutrition":70.0, "duration":45.0, "xp":34.0, "description":"Toasted grains, roasted vegetables and fresh basil.", "model":"meal"},
+	"grilled_cheese":{"label":"Grilled cheese sandwich", "servings":4, "cost":8, "skill":1, "nutrition":65.0, "duration":35.0, "xp":25.0, "description":"Toasted golden bread with warm, gooey melted cheddar cheese.", "model":"meal_grilled_cheese"},
 	"herb_pasta":{"label":"Herb garden pasta", "servings":4, "cost":16, "skill":2, "nutrition":76.0, "duration":50.0, "xp":40.0, "description":"Curled pasta folded with garden herbs and tomato.", "model":"meal_herb_pasta"},
-	"harvest_bake":{"label":"Harvest vegetable bake", "servings":8, "cost":24, "skill":4, "nutrition":82.0, "duration":70.0, "xp":55.0, "description":"A generous dish of vegetables under a golden baked topping.", "model":"meal_harvest_bake"},
+	"garden_salad":{"label":"Garden fresh salad", "servings":4, "cost":10, "skill":2, "nutrition":72.0, "duration":40.0, "xp":30.0, "description":"Crisp garden greens, cucumbers, and ripe tomatoes tossed lightly.", "model":"meal_garden_salad"},
 	"mushroom_soup":{"label":"Mushroom soup", "servings":4, "cost":20, "skill":3, "nutrition":74.0, "duration":60.0, "xp":46.0, "description":"Sliced mushrooms simmered in a herbed cream broth.", "model":"meal_mushroom_soup"},
-	"berry_crumble":{"label":"Berry crumble", "servings":6, "cost":28, "skill":5, "nutrition":78.0, "duration":80.0, "xp":62.0, "description":"Baked berries under an uneven golden crumble.", "model":"meal_berry_crumble"}
+	"pancake_stack":{"label":"Fluffy pancake stack", "servings":4, "cost":14, "skill":3, "nutrition":78.0, "duration":45.0, "xp":38.0, "description":"Golden fluffy pancakes topped with melting butter and maple syrup.", "model":"meal_pancake_stack"},
+	"harvest_bake":{"label":"Harvest vegetable bake", "servings":8, "cost":24, "skill":4, "nutrition":82.0, "duration":70.0, "xp":55.0, "description":"A generous dish of vegetables under a golden baked topping.", "model":"meal_harvest_bake"},
+	"berry_crumble":{"label":"Berry crumble", "servings":6, "cost":28, "skill":5, "nutrition":78.0, "duration":80.0, "xp":62.0, "description":"Baked berries under an uneven golden crumble.", "model":"meal_berry_crumble"},
+	"sunday_roast":{"label":"Homestyle Sunday roast", "servings":8, "cost":32, "skill":6, "nutrition":88.0, "duration":75.0, "xp":68.0, "description":"Tender carved roast with crisp roast potatoes, glazed baby carrots, and rich savory gravy.", "model":"meal_sunday_roast"},
+	"layer_cake":{"label":"Gourmet celebration layer cake", "servings":8, "cost":42, "skill":8, "nutrition":92.0, "duration":90.0, "xp":80.0, "description":"Multi-tiered vanilla sponge with rich buttercream rosettes and fresh raspberries.", "model":"meal_layer_cake"}
 }
 const QUALITY_LABELS := ["", "Homestyle", "Delicious", "Excellent"]
 

@@ -36,10 +36,6 @@ window/stretch/aspect="expand"
 
 enabled=PackedStringArray("res://addons/godot_mcp_toolkit/plugin.cfg")
 
-[mcp_toolkit]
-
-status="No .mcp.json found — use Project > Tools > MCP Toolkit > Write .mcp.json to create one."
-
 [physics]
 
 3d/physics_engine="Jolt Physics"
@@ -48,6 +44,7 @@ status="No .mcp.json found — use Project > Tools > MCP Toolkit > Write .mcp.js
 
 rendering_device/driver.windows="d3d12"
 renderer/rendering_method.mobile="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true
 lights_and_shadows/directional_shadow/size=2048
 anti_aliasing/quality/msaa_3d=1
 scaling_3d/scale=0.9
