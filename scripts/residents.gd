@@ -1,6 +1,7 @@
 extends RefCounted
 class_name LifeResidents
 ## Stable residents own homes; only actors physically present can be approached.
+const Building=preload("res://scripts/building_state.gd")
 const PEOPLE=LifeResidentCatalogue.PEOPLE
 var app:Node
 var locations:Dictionary={}
@@ -68,10 +69,30 @@ func _default_state(id:String,place:String) -> Dictionary:
  var at:=Vector3(8.25*side,.16,float(person.get("lane",8.0)))
  var phase:String="walking" if float(person.get("walk_wait",24.0))<=0.0 else "home"
  var wait:float=float(person.get("walk_wait",24.0)) if phase=="walking" else float(person.get("rest_wait",24.0))
- if place==str(person.home):at=Vector3(-.5,.16,.1);phase="visiting";wait=5.0
+ if place==str(person.home):at=_home_stand_point();phase="visiting";wait=5.0
  elif place in LifeNeighborhood.RESIDENT_HOMES:phase="home";wait=999999.0
  elif place!="home":at=Vector3(2.5*side,.16,2.75);phase="visiting";wait=float(person.get("visit_wait",5.0))
  return {"position":[at.x,at.y,at.z],"direction":-side,"phase":phase,"wait":wait,"rotation":PI*.5*-side,"waypoint":0}
+
+## A host needs a walkable tile inside their own house. The old shared
+## (-0.5, 0.1) stand sat inside Tom's shower, so talking to him at home
+## started from a blocked body.
+func _home_stand_point() -> Vector3:
+ return clear_home_stand(app.world)
+
+static func clear_home_stand(world:LifeWorld,preferred:Vector3=Vector3(-.5,.16,.1)) -> Vector3:
+ if not is_instance_valid(world) or world.construction==null or world.construction.building_state.is_empty():
+  return preferred
+ var nav:LifeLotNavigation=world.lot_navigation
+ for radius:int in range(0,21):
+  for dx:int in range(-radius,radius+1):
+   for dz:int in range(-radius,radius+1):
+    if maxi(absi(dx),absi(dz))!=radius:continue
+    var at:=Vector3(preferred.x+float(dx)*.25,Building.GROUND_Y,preferred.z+float(dz)*.25)
+    if not nav.point_clear(0,at):continue
+    var talk:Vector3=world.nearest_clear_point(at+Vector3(0,0,1.0),0)
+    if talk.is_finite() and talk.distance_to(at)>=.7:return at
+ return preferred
 
 func attach(place:String) -> void:
  sidewalk_routes.clear()
@@ -80,6 +101,13 @@ func attach(place:String) -> void:
  for id:String in PEOPLE:
   if not locations[place].has(id):locations[place][id]=_default_state(id,place)
   var state:Dictionary=locations[place][id]
+  # Old saves kept Tom inside his shower. Re-seat a host whose stored
+  # tile is no longer walkable before the actor is created.
+  if place==str(PEOPLE[id].home):
+   var stored:=Vector3(float(state.position[0]),float(state.position[1]),float(state.position[2]))
+   if not app.world.lot_navigation.point_clear(0,stored):
+    var stand:Vector3=_home_stand_point()
+    state.position=[stand.x,stand.y,stand.z]
   var at:Array=state.position
   var actor:LifeActor=app.spawn_actor(id,PEOPLE[id],Vector3(at[0],at[1],at[2]))
   actor.rotation.y=float(state.rotation)
