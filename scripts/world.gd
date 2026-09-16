@@ -112,11 +112,48 @@ func ensure_memorial(member_id: String) -> bool:
 		Vector3(3.6, 0.16, 3.2), Vector3(-3.6, 0.16, 3.2), Vector3(2.4, 0.16, -3.6),
 		Vector3(-4.6, 0.16, 1.2), Vector3(4.2, 0.16, 1.8), Vector3(0.8, 0.16, 3.0),
 	]
+	# The garden stone is walkable, so `can_place` accepts it everywhere and never
+	# reports the stones already standing there. A household can farewell more
+	# Lifelets than the nine authored places hold, and without comparing against
+	# the stones present every later remembrance was stacked inside the first.
+	var spacing: float = float(LifeCatalog.ITEMS["memorial"].size.x) + 0.18
+	var taken: Array[Vector2] = []
+	for item: Dictionary in items:
+		if str(item.get("kind", "")) == "memorial" and is_instance_valid(item.get("node")):
+			taken.append(Vector2(item.node.position.x, item.node.position.z))
+	# Further ground along the front garden, so a long-lived household still has
+	# somewhere to remember each of its own.
+	for index: int in range(14):
+		spots.append(Vector3(-5.0 + 0.76 * float(index), 0.16, 4.4))
+	var fallback: Vector3 = Vector3(0.8, 0.16, 3.0)
+	var used_fallback: bool = false
 	for at: Vector3 in spots:
-		if can_place("memorial", at, 0):
-			add_item({"id":"memorial_%s" % member_id,"kind":"memorial","x":at.x,"z":at.z,"rotation":0.0,"for":member_id})
-			return true
-	add_item({"id":"memorial_%s" % member_id,"kind":"memorial","x":0.8,"z":3.0,"rotation":0.0,"for":member_id})
+		if not can_place("memorial", at, 0):
+			continue
+		var crowded: bool = false
+		for other: Vector2 in taken:
+			if other.distance_to(Vector2(at.x, at.z)) < spacing:
+				crowded = true
+				break
+		if crowded:
+			continue
+		add_item({"id":"memorial_%s" % member_id,"kind":"memorial","x":at.x,"z":at.z,"rotation":0.0,"for":member_id})
+		return true
+	# Every candidate is walled off: shift the last one clear of what stands there
+	# rather than planting a second stone inside a first.
+	var offset: Vector3 = fallback
+	for step: int in range(24):
+		offset = Vector3(fallback.x + 0.76 * float(step + 1), fallback.y, fallback.z)
+		if not can_place("memorial", offset, 0):
+			continue
+		used_fallback = true
+		for other: Vector2 in taken:
+			if other.distance_to(Vector2(offset.x, offset.z)) < spacing:
+				used_fallback = false
+				break
+		if used_fallback:
+			break
+	add_item({"id":"memorial_%s" % member_id,"kind":"memorial","x":offset.x,"z":offset.z,"rotation":0.0,"for":member_id})
 	return true
 
 func _build_memorial(parent: Node3D) -> void:

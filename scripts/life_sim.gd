@@ -1669,6 +1669,12 @@ func _advance_bill_cycle() -> void:
 		if last_bill_day == 0 or day - last_bill_day >= BILL_PERIOD_DAYS:
 			var amount: int = bill_amount_for(home_value())
 			pending_bill = {"amount": amount, "issued_day": day, "due_day": day + BILL_DUE_DAYS, "late_fee": 0}
+			# The week is anchored to the issue, not to the payment. Stamping the
+			# payment instead made the period "seven days after the last payment",
+			# so a household that settled a fortnight-old bill skipped every week
+			# in between and was charged nothing, while a prompt payer kept the
+			# promised weekly cadence.
+			last_bill_day = day
 			_emit_notice("The household bills arrived: §%d, due by day %d. Pay them from the phone." % [amount, int(pending_bill.due_day)])
 		return
 	# A bill past its due date is overdue: one late fee, once.
@@ -1708,7 +1714,6 @@ func pay_bill() -> Dictionary:
 		return {"ok": false, "reason": "The household needs §%d and has §%d." % [owed, funds]}
 	funds -= owed
 	bills_paid_total += owed
-	last_bill_day = day
 	pending_bill.clear()
 	var restored: bool = utilities_cut
 	utilities_cut = false
@@ -3528,6 +3533,14 @@ func pass_on(cause: String = "") -> bool:
 	character["life_status"] = "passed"
 	character["passing_cause"] = cause
 	lifecycle["passed"] = true
+	# A passing ends every plan, and a queued meal action owns a dish in the
+	# meal ledger. Release that custody exactly as cancelling the action does:
+	# otherwise the plate stays owned with no action to claim it, and the
+	# household's own save is refused afterwards with "A carried or active food
+	# has no matching action."
+	for action: Dictionary in action_queue.duplicate():
+		if is_instance_valid(meal_service):
+			meal_service.canceled(self,action)
 	action_queue.clear()
 	away_state = {}
 	starvation_minutes = 0.0
@@ -3745,6 +3758,26 @@ func pin_whim(index: int, pinned: bool) -> bool:
 	var ok: bool = LifeWantsManager.pin_whim(whims, index, pinned)
 	if ok: _emit_changed()
 	return ok
+
+## Pin the whim a player is actually looking at. The Wishes panel runs while the
+## simulation keeps ticking, so the whim in a slot can be replaced between the
+## moment the card is drawn and the moment its button is pressed. Pinning by
+## index would then suppress a whim the player never saw; pinning by identity
+## applies to the card's own whim, and does nothing once that whim has refreshed.
+func pin_whim_id(whim_id: String, pinned: bool) -> bool:
+	return pin_whim(_whim_index(whim_id), pinned) if not whim_id.is_empty() else false
+
+func dismiss_whim_id(whim_id: String) -> bool:
+	if whim_id.is_empty():
+		return false
+	return dismiss_whim(_whim_index(whim_id))
+
+func _whim_index(whim_id: String) -> int:
+	var active: Array = get_whims()
+	for index: int in range(active.size()):
+		if str((active[index] as Dictionary).get("id", "")) == whim_id:
+			return index
+	return -1
 
 func dismiss_whim(index: int) -> bool:
 	var ok: bool = LifeWantsManager.dismiss_whim(whims, index, character, needs, str(get_mood().label))

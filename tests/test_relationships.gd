@@ -152,8 +152,13 @@ func _test_household_reciprocity() -> void:
 	home.begin_action("player")
 	home.tick(25.0 / LifeSim.GAME_MINUTES_PER_SECOND)
 	check(first.romantic_partner.is_empty() and second.romantic_partner.is_empty() and second.relationships.player.bond == "separated", "A household breakup must free both partners and retain their shared history.")
+	# The breakup just changed who is partnered, and the household publishes that
+	# to every member on each finished action. A fixture that edits the pair's own
+	# relationship rows and then asks directly must publish the same way, or it is
+	# testing a state the game never holds.
 	first.relationships.maya.friendship = 80.0
 	first.relationships.maya.romance = 80.0
+	home._sync_social_context()
 	check(first.queue_action("ask_partner", "maya"), "A now-single adult may form a new eligible partnership.")
 	home.begin_action("player")
 	home.tick(35.0 / LifeSim.GAME_MINUTES_PER_SECOND)

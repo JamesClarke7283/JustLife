@@ -35,11 +35,14 @@ func _run()->void:
 	check(repeat_ms<5.0 and fresh_total/6<80,"The reach rule answers a hovering ghost fast: %d ms per new spot on the live graph, %.1f ms from the cache." % [fresh_total/6,repeat_ms])
 	app.on_placement("treadmill",Vector3(2.3,0.16,-0.5),90.0)
 	check(world.items.size()==before,"The public purchase path refuses the doorway treadmill.")
-	var clear:Array=world.serialize_items();clear.append({"id":"probe","kind":"treadmill","x":4.75,"z":-0.5,"rotation":90.0})
-	check(app.build_transactions.furnishing_error(clear).is_empty(),"A treadmill along the east wall keeps every doorway open.")
-	app.on_placement("treadmill",Vector3(4.75,0.16,-0.5),90.0)
-	check(world.items.size()==before+1,"The public purchase path accepts the east-wall treadmill.")
-	var bed:Dictionary=world.closest_item("bed",Vector3(3.5,.16,1.5));var toilet:Dictionary=world.closest_item("toilet",Vector3(2.35,.16,-4.1));var treadmill:Dictionary=world.closest_item("treadmill",Vector3(4.75,.16,-0.5))
+	# A spot the validator accepts. The previous east-wall coordinate is now taken
+	# by the starter wardrobe and the corridor reserved to reach it, so the
+	# validator refuses a treadmill there for a different and correct reason.
+	var clear:Array=world.serialize_items();clear.append({"id":"probe","kind":"treadmill","x":-3.5,"z":0.0,"rotation":90.0})
+	check(app.build_transactions.furnishing_error(clear).is_empty(),"A treadmill on open floor keeps every doorway open.")
+	app.on_placement("treadmill",Vector3(-3.5,0.16,0.0),90.0)
+	check(world.items.size()==before+1,"The public purchase path accepts the treadmill on open floor.")
+	var bed:Dictionary=world.closest_item("bed",Vector3(3.5,.16,1.5));var toilet:Dictionary=world.closest_item("toilet",Vector3(2.35,.16,-4.1));var treadmill:Dictionary=world.closest_item("treadmill",Vector3(-3.5,.16,0.0))
 	var living:Vector3=Vector3(-2.0,.16,-2.5)
 	check(not world.path_to(living,world.approach(bed)).is_empty() and not world.path_to(living,world.approach(toilet)).is_empty(),"On the legacy grid the bedroom and bathroom are reachable from the living room.")
 	# Painting one wall converts the home to room-aware navigation; nothing may be lost.

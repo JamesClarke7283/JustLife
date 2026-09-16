@@ -267,6 +267,25 @@ func _creator_case()->void:
 	check(app.creator_age_stages()==["baby"],"The baby creator offers the baby stage alone.")
 	check(str(app.profile.get("age_stage",""))=="baby","The creator is seeded as the baby stage.")
 	check(app.household_profiles.size()==1,"The baby creator customises the single new Lifelet.")
+	# Every clothing button the baby creator actually shows must be one the
+	# newborn model has. The ordinary creator drew all five tops and both bottoms
+	# for every stage, and the birth validator refuses clothing a baby's model
+	# does not author, so pressing the offered Jacket or Shorts made "Welcome the
+	# baby" refuse for good. The hairstyle row already filtered for this reason.
+	app.set_creator_tab("Wardrobe")
+	await process_frame
+	var offered_clothing:Array[String]=[]
+	for node:Node in app.find_children("*","Button",true,false):
+		var clothing_button:Button=node
+		if clothing_button.is_visible_in_tree() and clothing_button.text in ["Casual","Jacket","Cardigan","Tee","Hoodie","Trousers","Shorts"]:
+			offered_clothing.append(str(clothing_button.text))
+	check(offered_clothing==["Casual","Trousers"],"The baby creator offers only the garments the newborn model authors (got %s)." % str(offered_clothing))
+	for label:String in offered_clothing:
+		for node:Node in app.find_children("*","Button",true,false):
+			var clothing_button:Button=node
+			if clothing_button.is_visible_in_tree() and str(clothing_button.text)==label:
+				clothing_button.pressed.emit();await process_frame;break
+	check(LifeBabyPlan.profile_error(app.profile).is_empty(),"Pressing every offered clothing button leaves a newborn the game accepts: %s" % LifeBabyPlan.profile_error(app.profile))
 	# The player edits name, gender, skin, hair, eyes and a face slider.
 	app.profile.name="Wren Solis"
 	app.profile.frame=0
@@ -287,6 +306,10 @@ func _creator_case()->void:
 	var baby=household.member_sim(baby_id)
 	check(str(baby.character.name)=="Wren Solis" and int(baby.character.frame)==0 and str(baby.character.skin_color)=="925c40" and int(baby.character.hair)==2 and str(baby.character.hair_color)=="dfccb0" and str(baby.character.eye_color)=="55738f" and absf(float(baby.character.face_round)-.42)<.001,"The baby keeps every edit the player made.")
 	check(not bool(baby.household_bills_enabled),"The baby carries no household bills.")
+	# A born Lifelet is built directly rather than through add_member, so it needs
+	# the household's Wants and Fears flag too; without it the newborn had no
+	# whims at all and their Wishes panel stayed empty for life.
+	check(baby.get_whims().size()==3 and bool(baby.whims.get("enabled",false)),"The newborn has the household's three active whims.")
 	var parents:Array=[]
 	for edge:Dictionary in household.family_graph.parents:
 		if str(edge.b)==baby_id:parents.append(str(edge.a))

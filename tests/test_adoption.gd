@@ -62,6 +62,11 @@ func _main_case() -> void:
 	check(child.lifecycle.lifespan=="long" and not bool(child.lifecycle.auto_age) and str(child.character.age_stage)=="child","The child's stage and inherited aging preference are coherent.")
 	check(child.needs=={"hunger":76.0,"energy":85.0,"hygiene":86.0,"bladder":78.0,"fun":62.0,"social":58.0},"The child receives the normal initial needs, without fabricated recovery.")
 	check(str(child.get_current_action().id)=="arrive_home" and not bool(child.get_current_action().paid),"Only an unpaid arrival route is pending after membership is committed.")
+	# The household enables Wants and Fears for every Lifelet it holds, and an
+	# adopted child is built directly rather than through add_member. Without the
+	# same flag here the child started with no whims at all and could never earn
+	# one, so their Wishes panel stayed permanently empty.
+	check(child.get_whims().size()==3 and bool(child.whims.get("enabled",false)),"The adopted child has the household's three active whims.")
 	var adopted:Dictionary=state(household);positive(adopted,"JSON roundtrip preserves the partial paid queue and new unpaid arrival.")
 	var repeated:Dictionary=apply(household,prepared.request)
 	check(bool(repeated.ok) and bool(repeated.duplicate) and state(household)==adopted,"Repeated confirmation returns the same child and changes nothing.")

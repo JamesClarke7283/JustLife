@@ -99,7 +99,11 @@ func _test_pause_and_clock() -> void:
 	_advance(sim, 2.0)
 	_check(sim.day == 2 and is_equal_approx(sim.minutes, 1.0) and sim.funds == 2500, "Midnight must roll the day and issue a bill without charging it silently.")
 	_check(sim.pending_bill.size() == 4 and int(sim.pending_bill.amount) == LifeSim.bill_amount_for(sim.home_value()) and int(sim.pending_bill.issued_day) == 2, "A bill is issued for the value of the home and carries a due date.")
-	_check(int(sim.pending_bill.due_day) == 2 + LifeSim.BILL_DUE_DAYS and sim.last_bill_day == 0, "An issued bill falls due on its own date and is charged only when paid.")
+	# `last_bill_day` now records the last issue rather than the last payment, so it
+	# is asserted by the cadence check below. This check keeps its own subject:
+	# the due date, and that issuing a bill charges nothing (the funds assertion
+	# above and the zero late fee here).
+	_check(int(sim.pending_bill.due_day) == 2 + LifeSim.BILL_DUE_DAYS and int(sim.pending_bill.late_fee) == 0, "An issued bill falls due on its own date and is charged only when paid.")
 	# Cross the due-date boundary without starving an unattended fixture.
 	sim.day = int(sim.pending_bill.due_day)
 	sim.minutes = 1439.0
@@ -110,6 +114,33 @@ func _test_pause_and_clock() -> void:
 	var settlement: Dictionary = sim.pay_bill()
 	_check(bool(settlement.ok) and sim.funds == before_funds - settlement.paid and not sim.utilities_cut and sim.pending_bill.is_empty() and bool(sim.get_action_availability("cook").available), "Paying debits exactly the bill, restores the utilities and frees the gated action.")
 	_check(sim.bills_paid_total == settlement.paid and sim.bills_late == 1, "The paid and late ledgers record exactly what happened.")
+	# The week is anchored to the issue, not to the payment. Anchoring it to the
+	# payment made the period "seven days after the last payment", so settling a
+	# long-overdue bill skipped the bill that was already due and the household
+	# was charged nothing for that stretch.
+	var cadence: LifeSim = LifeSim.new()
+	root.add_child(cadence)
+	cadence.new_household({"name": "Cadence", "age_stage": "adult"})
+	cadence.household_bills_enabled = true
+	cadence.funds = 1000000
+	var issued_days: Array[int] = []
+	var paid_day: int = -1
+	var next_after_payment: int = -1
+	for index: int in range(40):
+		cadence.day += 1
+		cadence._new_day()
+		if not cadence.pending_bill.is_empty():
+			var issued: int = int(cadence.pending_bill.issued_day)
+			if not issued_days.has(issued):
+				issued_days.append(issued)
+				if paid_day > 0 and next_after_payment < 0:
+					next_after_payment = issued
+		if cadence.day == 20 and not cadence.pending_bill.is_empty():
+			cadence.pay_bill()
+			paid_day = 20
+	_check(paid_day == 20 and next_after_payment > 0 and next_after_payment - paid_day <= 2,
+		"A bill outstanding for a fortnight is followed by the next issued bill, not another full week of grace (issued %d after paying on %d)." % [next_after_payment, paid_day])
+	cadence.free()
 	for need_name: String in Simulation.NEED_NAMES:
 		sim.needs[need_name] = 0.01
 	_advance(sim, 120)

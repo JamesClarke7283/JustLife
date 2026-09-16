@@ -1363,7 +1363,12 @@ func commit_baby(profile: Dictionary, spawn: Vector3, destination: Vector3, worl
 	if snapshot.has("snapshot_error"):return {"ok":false,"error":str(snapshot.snapshot_error)}
 	var id:String="housemate_%d" % members.size()
 	var baby:=LifeSim.new()
-	baby.new_household(profile)
+	# The household enables Wants and Fears for every Lifelet it adds, exactly as
+	# add_member does. A born or adopted member builds its LifeSim directly, so
+	# without this it started with no whims at all and could never earn one.
+	var baby_profile:Dictionary=profile.duplicate(true)
+	baby_profile["wants_and_fears"]=true
+	baby.new_household(baby_profile)
 	baby.day=day;baby.minutes=minutes;baby.funds=funds;baby.speed=speed
 	baby.education=LifeEducation.fresh("baby",day)
 	baby.career.schedule=LifeCareerSchedule.fresh(day)
@@ -1515,7 +1520,11 @@ func commit_adoption(request:Dictionary,spawn:Vector3,destination:Vector3,world_
 	if snapshot.has("snapshot_error"):return {"ok":false,"error":str(snapshot.snapshot_error)}
 	var id:String="housemate_%d" % members.size()
 	var child:=LifeSim.new()
-	child.new_household(LifeAdoption.candidate(int(request.serial),int(request.choice)))
+	# Same household rule as a birth and as add_member: every Lifelet the
+	# household holds has Wants and Fears enabled.
+	var child_profile:Dictionary=LifeAdoption.candidate(int(request.serial),int(request.choice)).duplicate(true)
+	child_profile["wants_and_fears"]=true
+	child.new_household(child_profile)
 	child.day=day;child.minutes=minutes;child.funds=funds-LifeAdoption.FEE;child.speed=speed
 	child.education=LifeEducation.fresh("child",day);child.education.first_class_day=day+1
 	child.career.schedule=LifeCareerSchedule.fresh(day)

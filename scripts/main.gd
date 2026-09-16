@@ -79,6 +79,10 @@ var pause_before_menu: int = 1
 var speed_before_build: int = 1
 var overlay_pauses_sim: bool = false
 var overlay_open: bool = false
+## Raised while a button inside the Wishes panel redraws that panel. The panel
+## keeps the simulation running, so a press rebuilds it from the current whims
+## rather than leaving the player reading cards whose slot has already refreshed.
+var wishes_redrawing: bool = false
 var selected_item: Dictionary = {}
 var build_undo: Array = []
 var build_transactions:LifeBuildTransactions
@@ -616,13 +620,26 @@ func draw_creator() -> void:
 		small_caps("Top",Vector2(1102,368))
 		var outfit_names:Array=["Casual","Jacket","Cardigan","Tee","Hoodie"]
 		var outfit_tips:Array=["Short-sleeve shirt with a light collar and placket","Cropped bomber with a stand collar and zip","Open knit cardigan over a cream tee","Plain crew-neck tee","Soft hoodie with a kangaroo pocket"]
-		for i in range(outfit_names.size()):
-			var b=button(outfit_names[i],Vector2(1100+(i%3)*97,392+floori(float(i)/3)*36),Vector2(89,32),func():set_creator_clothing("outfit",i),int(profile.get("outfit",0))==i)
+		var bottom_names:Array=["Trousers","Shorts"]
+		# Only the garments this stage's model authors are offered, exactly as the
+		# hairstyle row above does. A baby authors one romper and no jacket, and
+		# the birth validator refuses clothing the model does not have, so an
+		# offered-but-unauthored button made "Welcome the baby" refuse forever.
+		var offered_outfits:Array=range(outfit_names.size())
+		var offered_bottoms:Array=range(bottom_names.size())
+		if is_instance_valid(preview) and preview.has_method("authored_wardrobe"):
+			var wardrobe:Dictionary=preview.authored_wardrobe()
+			offered_outfits=wardrobe.outfits
+			offered_bottoms=wardrobe.bottoms
+		for slot:int in range(offered_outfits.size()):
+			var i:int=int(offered_outfits[slot])
+			var b=button(outfit_names[i],Vector2(1100+(slot%3)*97,392+floori(float(slot)/3)*36),Vector2(89,32),func():set_creator_clothing("outfit",i),int(profile.get("outfit",0))==i)
 			compact_button(b);b.size=Vector2(89,32)
 			b.tooltip_text=outfit_tips[i]
 		small_caps("Bottoms",Vector2(1102,470))
-		for i in range(2):
-			button(["Trousers","Shorts"][i],Vector2(1100+i*146,494),Vector2(137,32),func():set_creator_clothing("bottom",i),int(profile.get("bottom",0))==i)
+		for slot:int in range(offered_bottoms.size()):
+			var i:int=int(offered_bottoms[slot])
+			button(bottom_names[i],Vector2(1100+slot*146,494),Vector2(137,32),func():set_creator_clothing("bottom",i),int(profile.get("bottom",0))==i)
 		small_caps("Top color",Vector2(1102,532))
 		swatches(["c97c66","417a71","efeadb","7195b3","bd9b68","3d4145"],"top_color",Vector2(1100,556),32,8)
 		small_caps("Bottom color",Vector2(1102,596))
@@ -2985,6 +3002,19 @@ func _select_career(track_id:String) -> void:
 		close_overlay()
 		draw_live()
 
+## Rebuild the Wishes panel from the Lifelet's current whims. The panel runs while
+## the simulation keeps ticking, so a card's slot can refresh between the moment
+## it is drawn and the moment the player presses its Pin or dismiss button. The
+## handlers are bound to a slot index, so without this redraw a press applied to
+## whichever whim had since taken that slot rather than the one on the card. The
+## re-entrancy guard stops the rebuilt panel's own handlers from rebuilding again.
+func _redraw_wishes() -> void:
+	if wishes_redrawing:
+		return
+	wishes_redrawing=true
+	show_wishes()
+	wishes_redrawing=false
+
 func show_wishes() -> void:
 	close_overlay();overlay_open=true;dismiss_layer()
 	card(Vector2(440,50),Vector2(560,780),P.WHITE,24,overlay)
@@ -3036,11 +3066,11 @@ func show_wishes() -> void:
 		
 		# Pin / Unpin button
 		var is_pinned: bool = bool(w.get("pinned", false))
-		var pin_btn:=button("Pinned" if is_pinned else "Pin",Vector2(350,14),Vector2(65,30),func():sim.pin_whim(i, not is_pinned);show_wishes(),is_pinned,wcard)
+		var pin_btn:=button("Pinned" if is_pinned else "Pin",Vector2(350,14),Vector2(65,30),func():sim.pin_whim_id(str(w.get("id","")), not is_pinned);_redraw_wishes(),is_pinned,wcard)
 		pin_btn.tooltip_text="Keep this whim from refreshing" if not is_pinned else "Unpin whim"
 		
 		# Dismiss button
-		var dismiss_btn:=button("✕",Vector2(422,14),Vector2(36,30),func():sim.dismiss_whim(i);show_wishes(),false,wcard)
+		var dismiss_btn:=button("✕",Vector2(422,14),Vector2(36,30),func():sim.dismiss_whim_id(str(w.get("id","")));_redraw_wishes(),false,wcard)
 		dismiss_btn.disabled=is_pinned or bool(w.get("completed", false))
 		dismiss_btn.tooltip_text="Dismiss desire for a new one" if not is_pinned else "Unpin first to dismiss"
 	

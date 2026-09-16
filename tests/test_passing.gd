@@ -111,6 +111,44 @@ func run() -> void:
 		if str(item.get("kind", "")) == "memorial" and str(item.get("for", "")) == "player":
 			stones += 1
 	check(stones == 1, "The garden stone is recorded on the lot")
+	# The garden stone is walkable, so can_place accepts it anywhere and cannot
+	# report the stones already standing there. Without comparing against them,
+	# every later remembrance was planted inside the first one.
+	var spots: Dictionary = {}
+	for index: int in range(10):
+		lot.ensure_memorial("filler_%d" % index)
+	for item: Dictionary in lot.items:
+		if str(item.get("kind", "")) != "memorial":
+			continue
+		var at: Vector2 = Vector2(item.node.position.x, item.node.position.z)
+		spots[at] = int(spots.get(at, 0)) + 1
+	var crowded: Array[String] = []
+	for at: Vector2 in spots:
+		if int(spots[at]) > 1:
+			crowded.append("%s x%d" % [str(at), int(spots[at])])
+	check(spots.size() == 11 and crowded.is_empty(), "Eleven remembrance stones each stand in their own place (distinct %d, crowded %s)." % [spots.size(), str(crowded)])
+	# A passing ends every plan, and a queued meal action owns a dish in the meal
+	# ledger. The dish must be released, not left owned with no action to claim
+	# it, or the household's own save is refused afterwards with "A carried or
+	# active food has no matching action."
+	var carried: Dictionary = home.meals.create_batch("garden_skillet", "player", 2, "home", 0.0)
+	var batches: Array = home.meals.get_state().get("batches", [])
+	var held_id: String = str(home.meals.carried_by("player").get("id", ""))
+	check(not held_id.is_empty(), "The carrier really holds a cooked dish")
+	var living: Array = [{"id": "player", "state": {"character": {"life_status": "living"}}}]
+	check(LifeMeals.validate_actions(home.meals.get_state(), living) != "", "A living Lifelet holding an unclaimed dish is refused, as before")
+	var passed_members: Array = [{"id": "player", "state": {"character": {"life_status": "passed"}}}]
+	check(LifeMeals.validate_actions(home.meals.get_state(), passed_members) == "", "A passed Lifelet's released dish no longer blocks the save")
+	var carrier := LifeSim.new()
+	root.add_child(carrier)
+	carrier.new_household({"name": "Carrier", "age_stage": "elder"})
+	carrier.register_targets([{"id": "plate", "kind": "plate", "position": Vector3.ZERO}], false)
+	carrier.queue_action("eat_meal", "plate", Vector3.ZERO)
+	check(carrier.get_current_action().id == "eat_meal", "The carrier has a real eating action to interrupt")
+	carrier.lifecycle.progress = 1.0
+	check(carrier.pass_on(), "The carrier passes on while a plate is in hand")
+	check(carrier.action_queue.is_empty(), "The passing empties the queue")
+	carrier.queue_free()
 	home.queue_free()
 	restored.queue_free()
 	solo.queue_free()

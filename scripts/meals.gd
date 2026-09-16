@@ -433,5 +433,20 @@ static func validate_actions(data:Dictionary,members:Array,custody:Dictionary={}
 		if active_owners.has(id):return "Food has both current-action ownership and canceled stair custody."
 		active_owners[id]=str(custody[id])
 	for id:String in foods:
-		if not str(foods[id].owner).is_empty() and not active_owners.has(id):return "A carried or active food has no matching action."
+		if str(foods[id].owner).is_empty() or active_owners.has(id):continue
+		if LifeMeals.is_passed_owner(str(foods[id].owner),members):continue
+		return "A carried or active food has no matching action."
 	return ""
+
+## A Lifelet who passed on holds nothing: passing releases their plate through the
+## meal service and empties their queue, leaving the owner cleared but the plate
+## still marked carried from that pose. They can never resume it, so it is a
+## released plate rather than an unclaimed one, and the household must still be
+## able to save.
+static func is_passed_owner(member_id: String, members: Array) -> bool:
+	for member:Variant in members:
+		if not member is Dictionary:continue
+		var state:Variant=member.get("state",{})
+		if not state is Dictionary or str(member.get("id",""))!=member_id:continue
+		return str((state.get("character",{}) as Dictionary).get("life_status","living"))=="passed"
+	return false
