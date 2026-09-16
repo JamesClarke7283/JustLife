@@ -153,6 +153,10 @@ func ensure_memorial(member_id: String) -> bool:
 				break
 		if used_fallback:
 			break
+	# No candidate survived support and spacing checks. Keep the household's
+	# memorial pending rather than adding an overlapping or out-of-lot stone.
+	if not used_fallback:
+		return false
 	add_item({"id":"memorial_%s" % member_id,"kind":"memorial","x":offset.x,"z":offset.z,"rotation":0.0,"for":member_id})
 	return true
 

@@ -259,7 +259,7 @@ func _test_combined_persistence() -> void:
 	sim.utilities_cut = true
 	sim.bills_paid_total = 900
 	sim.bills_late = 1
-	sim.last_bill_day = 1
+	sim.last_bill_day = 2
 	sim.starvation_minutes = 12.5
 	sim.exhaustion_minutes = 8.0
 	sim.deferred_passing_minutes = 17.0
@@ -270,7 +270,7 @@ func _test_combined_persistence() -> void:
 	var result: Dictionary = restored.restore_state(snapshot)
 	_check(bool(result.ok), "Bills, passing pressure and wants/fears restore together: " + str(result.get("error", "")))
 	# JSON numbers are floats; compare nested records with the parsed snapshot.
-	_check(restored.pending_bill == snapshot.pending_bill and restored.utilities_cut and restored.bills_paid_total == 900 and restored.bills_late == 1 and restored.last_bill_day == 1, "Combined saves retain the complete household bill ledger.")
+	_check(restored.pending_bill == snapshot.pending_bill and restored.utilities_cut and restored.bills_paid_total == 900 and restored.bills_late == 1 and restored.last_bill_day == 2, "Combined saves retain the complete household bill ledger.")
 	_check(restored.starvation_minutes == 12.5 and restored.exhaustion_minutes == 8.0 and restored.deferred_passing_minutes == 17.0, "Combined saves retain every passing-pressure timer.")
 	_check(restored.whims == snapshot.whims, "Combined saves retain pinned wishes and active fears.")
 	var before: Dictionary = restored.get_state()
@@ -288,6 +288,16 @@ func _test_combined_persistence() -> void:
 	legacy.erase("bills_paid_total")
 	legacy["bills_paid"] = 420
 	_check(bool(restored.restore_state(legacy).ok) and restored.bills_paid_total == 420, "Older saves retain their historical bill payments.")
+	for old_payment_day: int in [0, 1]:
+		legacy.last_bill_day = old_payment_day
+		_check(bool(restored.restore_state(legacy).ok) and restored.last_bill_day == 2, "An older outstanding bill restores its issue date instead of its previous payment date.")
+		_check(bool(restored.pay_bill().ok), "An older outstanding bill can be paid after restoring.")
+		restored.day = 8
+		restored._advance_bill_cycle()
+		_check(restored.pending_bill.is_empty(), "Paying a restored bill does not issue another before its weekly anniversary.")
+		restored.day = 9
+		restored._advance_bill_cycle()
+		_check(int(restored.pending_bill.get("issued_day", -1)) == 9, "The next bill after restoring arrives one week after the original issue.")
 	var mirror: Node = _new_sim()
 	mirror.set_bill_mirror({}, false, 420, 1, 7)
 	mirror.day = 8

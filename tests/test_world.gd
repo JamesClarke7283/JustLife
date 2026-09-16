@@ -68,6 +68,7 @@ func _run() -> void:
 	# aimed at it could ever return it.
 	await _check_starter_furnishings_are_pickable(world, sim)
 	_test_placement(world)
+	_test_memorial_exhaustion(world)
 	# Doorway blocking is a usability diagnostic, not a claim that build mode currently
 	# promises to preserve every route after arbitrary remodeling.
 	world.create_home([])
@@ -179,3 +180,34 @@ func _test_placement(world: Node3D) -> void:
 	check(world.can_place("rug", Vector3(-2, 0.16, 1), 0), "Floor rugs should be allowed beneath furniture.")
 	var removed: Dictionary = world.remove_item("test_sofa")
 	check(not removed.is_empty() and world.can_place("plant", Vector3(-2, 0.16, 1), 0), "Removing an item should free its footprint for replacement.")
+
+func _test_memorial_exhaustion(world: Node3D) -> void:
+	world.create_home([])
+	check(world.ensure_memorial("remembered"), "A remembrance stone is placed when the lot has room.")
+	var first_layout: Array = world.serialize_items()
+	check(world.ensure_memorial("remembered") and world.serialize_items() == first_layout, "Requesting an existing remembrance stone does not duplicate it.")
+	# Purchased stones share these positions too. Fill available memorial places
+	# until the public placement method reports exhaustion, then verify that the
+	# final attempt preserves a loadable lot instead of adding its last rejected
+	# fallback outside the lot.
+	var exhausted: bool = false
+	for index: int in range(64):
+		var before: Array = world.serialize_items()
+		if not world.ensure_memorial("capacity_%d" % index):
+			exhausted = true
+			check(world.serialize_items() == before, "An exhausted memorial placement leaves the lot unchanged.")
+			break
+		var layout_error: String = world.validate_home_layout(world.serialize_items())
+		check(layout_error.is_empty(), "Every remembrance stone keeps the lot loadable: " + layout_error)
+		if not layout_error.is_empty():
+			break
+	check(exhausted, "A full set of memorial places is reported without creating an invalid fallback.")
+	var crowded: bool = false
+	var spacing: float = float(Catalog.ITEMS.memorial.size.x) + 0.18
+	for first: int in range(world.items.size()):
+		for second: int in range(first + 1, world.items.size()):
+			var a: Vector3 = world.items[first].node.position
+			var b: Vector3 = world.items[second].node.position
+			if Vector2(a.x, a.z).distance_to(Vector2(b.x, b.z)) < spacing:
+				crowded = true
+	check(not crowded, "Exhausting memorial places never stacks stones on each other.")

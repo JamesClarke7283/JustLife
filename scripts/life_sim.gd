@@ -2785,6 +2785,10 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 		whims = LifeWantsManager.fresh_state(character, str(get_mood().label), needs)
 	last_bill_day = int(state.get("last_bill_day", 0))
 	pending_bill = state.get("pending_bill", {}).duplicate(true) if state.get("pending_bill", {}) is Dictionary else {}
+	# Older saves recorded the last payment here. An outstanding bill retains
+	# its issue date, which anchors the weekly cadence after it is paid.
+	if not pending_bill.is_empty():
+		last_bill_day = int(pending_bill.issued_day)
 	bills_paid_total = int(state.get("bills_paid_total", state.get("bills_paid", 0)))
 	bills_late = int(state.get("bills_late", 0))
 	utilities_cut = bool(state.get("utilities_cut", false))
