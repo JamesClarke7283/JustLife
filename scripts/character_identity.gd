@@ -65,6 +65,84 @@ const OUTFIT_CATEGORY_PRESETS: Dictionary = {
 	"sleep": {"outfit": 4, "bottom": 1, "top_color": "d6ccbb", "bottom_color": "72534b", "shoe_color": "e9e2d6"},
 	"party": {"outfit": 2, "bottom": 0, "top_color": "96454d", "bottom_color": "303d42", "shoe_color": "32292a"},
 }
+const CATEGORY_OUTFIT_NAMES: Dictionary = {
+	"everyday": ["Casual", "Jacket", "Cardigan", "Tee", "Hoodie"],
+	"formal": ["Tuxedo", "Dinner Jacket", "Evening Suit", "Classic Tailored", "Black Tie"],
+	"athletic": ["Active Tank", "Speed Jersey", "Warm-up Tee", "Sport Crew", "Training Hoodie"],
+	"sleep": ["Comfort Robe", "Lounge Wrap", "Soft Kimono", "Sleep Tunic", "Night Gown"],
+	"party": ["Wrap Dress", "Peplum Cardigan", "Festive Sash", "Cocktail Wrap", "Celebration Knit"],
+}
+const CATEGORY_OUTFIT_TIPS: Dictionary = {
+	"everyday": [
+		"Short-sleeve shirt with a light collar and placket",
+		"Cropped bomber with a stand collar and zip",
+		"Open knit cardigan over a cream tee",
+		"Plain crew-neck tee",
+		"Soft hoodie with a kangaroo pocket"
+	],
+	"formal": [
+		"Full tailored tuxedo jacket with silk lapels and dress tie",
+		"Dinner jacket with stand collar and French cuffs",
+		"Evening suit coat with structured drape",
+		"Classic tailored coat for ceremonies",
+		"Refined black tie ensemble with crisp accents"
+	],
+	"athletic": [
+		"Breathable active tank with ribbed armhole binding",
+		"Speed training jersey with chevron chest detailing",
+		"Performance warm-up crew for outdoor conditioning",
+		"Lightweight athletic layer built for movement",
+		"Flexible training top with relaxed athletic cut"
+	],
+	"sleep": [
+		"Plush lounging robe with belted waist sash and shawl collar",
+		"Cozy open lounge wrap for quiet mornings",
+		"Soft draped kimono robe with wide folded collar",
+		"Relaxed sleep tunic with ribbed cuffs",
+		"Warm bedtime lounging gown"
+	],
+	"party": [
+		"Elegant wrap dress with dramatic diagonal sash and flared hem",
+		"Celebration peplum cardigan with tailored sleeves",
+		"Festive party wrap with accent waist sash",
+		"Chic cocktail evening wrap for dancing",
+		"Draped party knit with flowing silhouette"
+	],
+}
+const CATEGORY_BOTTOM_NAMES: Dictionary = {
+	"everyday": ["Trousers", "Shorts"],
+	"formal": ["Dress Trousers", "Formal Shorts"],
+	"athletic": ["Track Pants", "Running Shorts"],
+	"sleep": ["Pyjama Bottoms", "Sleep Shorts"],
+	"party": ["Tailored Slacks", "Party Shorts"],
+}
+const CATEGORY_PALETTES: Dictionary = {
+	"everyday": {
+		"top": ["c97c66", "417a71", "efeadb", "7195b3", "bd9b68", "3d4145"],
+		"bottom": ["eadfc9", "3e5955", "51697c", "493e37", "b88a72", "292f32"],
+		"shoes": ["e9e4d9", "49382e", "32292a", "eee5d6", "433d39", "1f1c1a"],
+	},
+	"formal": {
+		"top": ["2d3748", "1a202c", "742a2a", "2b4c7e", "4a5568", "f7fafc"],
+		"bottom": ["1a202c", "2d3748", "2b4c7e", "3f3f46", "23272e", "e2e8f0"],
+		"shoes": ["1a202c", "2d241e", "3b2f2f", "4a3728", "1f1c1a", "262626"],
+	},
+	"athletic": {
+		"top": ["397a75", "e53e3e", "3182ce", "38a169", "d69e2e", "2d3748"],
+		"bottom": ["2d3748", "3e4940", "1a202c", "2b4c7e", "4a5568", "edf2f7"],
+		"shoes": ["e6e4dc", "3182ce", "e53e3e", "1a202c", "dd6b20", "f7fafc"],
+	},
+	"sleep": {
+		"top": ["d6ccbb", "b7c4cf", "d8b4a0", "c3b1e1", "b2c9ab", "e2e8f0"],
+		"bottom": ["72534b", "5c6b73", "8c7a6b", "6e7c7a", "4a5568", "cbd5e0"],
+		"shoes": ["e9e2d6", "b8a99a", "8d7b68", "cfc6b8", "5a504a", "f0ece1"],
+	},
+	"party": {
+		"top": ["96454d", "6b46c1", "d69e2e", "319795", "b83280", "1a202c"],
+		"bottom": ["303d42", "1a202c", "44337a", "234e52", "2d3748", "e2e8f0"],
+		"shoes": ["32292a", "d69e2e", "6b46c1", "1a202c", "b83280", "4a5568"],
+	},
+}
 const FIRST_NAMES: Array[String] = ["Mara", "Ellis", "Jules", "Noa", "Robin", "Avery", "Morgan", "Jamie", "Remy", "Sage", "Wren", "Alex", "Drew", "Riley", "Marin", "Sasha", "Indigo", "Quinn", "Rowan", "Kit", "Charlie", "River", "Micah", "Skyler", "Emery", "Finley", "Cameron", "Reese", "Blair", "Lane", "Devon", "Arden"]
 const LAST_NAMES: Array[String] = ["Vale", "Rowan", "Park", "Rivera", "Ash", "Woods", "Bell", "Reed", "Finch", "Ellis", "Moss", "Linden", "Brooks", "Solis", "Hayes", "North", "Sutton", "Lane", "Flores", "Reyes", "Song", "Kim", "Patel", "Shah", "Okafor", "Mensah", "Clarke", "Bennett", "Castillo", "Hale", "Laurent", "Silva"]
 
@@ -145,6 +223,18 @@ static func next_category(value: Variant) -> String:
 
 static func category_label(value: Variant) -> String:
 	return str(OUTFIT_CATEGORY_LABELS.get(normalize_category(value), "Everyday"))
+
+static func get_category_tops(category: String) -> Array:
+	return CATEGORY_OUTFIT_NAMES.get(normalize_category(category), CATEGORY_OUTFIT_NAMES["everyday"])
+
+static func get_category_top_tips(category: String) -> Array:
+	return CATEGORY_OUTFIT_TIPS.get(normalize_category(category), CATEGORY_OUTFIT_TIPS["everyday"])
+
+static func get_category_bottoms(category: String) -> Array:
+	return CATEGORY_BOTTOM_NAMES.get(normalize_category(category), CATEGORY_BOTTOM_NAMES["everyday"])
+
+static func get_category_palettes(category: String) -> Dictionary:
+	return CATEGORY_PALETTES.get(normalize_category(category), CATEGORY_PALETTES["everyday"])
 
 static func ensure_wardrobe(look: Dictionary) -> Dictionary:
 	var stage: String = LifeLifecycle.stage_for(look)

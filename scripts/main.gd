@@ -1,6 +1,7 @@
 extends Node
 
 const P = preload("res://scripts/palette.gd")
+const LifeLog = preload("res://scripts/logger.gd")
 const LifeWantsManager = preload("res://scripts/wants_manager.gd")
 const CREATOR_FACE_GROUPS: Dictionary = {
 	"Shape":["face_round","jaw_strong","chin_length","face_length"],
@@ -64,6 +65,9 @@ var need_values: Dictionary = {}
 var pregnancy_meter: ProgressBar
 var pregnancy_label: Label
 var queue_box: HBoxContainer
+var queue_caption: Label
+var queue_toggle: Button
+var queue_collapsed: bool = false
 var last_queue: String = ""
 var notice_label: Label
 var notice_card: Panel
@@ -146,6 +150,8 @@ var adoption_flow:LifeAdoptionFlow
 var traversal:LifeTraversal
 
 func _ready() -> void:
+	LifeLog.initialize()
+	LifeLog.info("LIFECYCLE", "JustLife engine started", {"cmdline": OS.get_cmdline_args()})
 	# Check before opening the menu: its save listing can initialize storage.
 	if "--release-check" in OS.get_cmdline_user_args() and not preload("res://scripts/release_probe.gd").isolated_environment():
 		set_process(false)
@@ -381,7 +387,7 @@ func clear_ui() -> void:
 	need_bars.clear();need_values.clear();need_fills.clear();speed_buttons.clear();live_floor_buttons.clear()
 	household_chips.clear();cancel_action_button=null
 	skill_labels.clear();skill_bars.clear();skill_progress_labels.clear();relationship_labels.clear();career_labels.clear();goal_labels.clear()
-	queue_box=null;time_label=null;funds_label=null;mood_label=null;action_label=null;action_context=null;action_bar=null;mood_ring=null;mood_pill=null;moodlet_tiles.clear()
+	queue_box=null;queue_card=null;queue_scroll=null;queue_caption=null;queue_toggle=null;time_label=null;funds_label=null;mood_label=null;action_label=null;action_context=null;action_bar=null;mood_ring=null;mood_pill=null;moodlet_tiles.clear()
 	pregnancy_meter=null;pregnancy_label=null
 	build_quote=null;build_quote_card=null;roof_visibility_button=null
 	last_queue=""
@@ -618,19 +624,16 @@ func draw_creator() -> void:
 		text_label(LifeCharacterIdentity.category_label(creator_outfit_category)+" look",Vector2(1100,300),Vector2(290,30),22,P.INK,true)
 		paragraph(str(LifeCharacterIdentity.OUTFIT_CATEGORY_BLURBS.get(creator_outfit_category,"")),Vector2(1102,330),Vector2(269,36),14)
 		small_caps("Top",Vector2(1102,368))
-		var outfit_names:Array=["Casual","Jacket","Cardigan","Tee","Hoodie"]
-		var outfit_tips:Array=["Short-sleeve shirt with a light collar and placket","Cropped bomber with a stand collar and zip","Open knit cardigan over a cream tee","Plain crew-neck tee","Soft hoodie with a kangaroo pocket"]
-		var bottom_names:Array=["Trousers","Shorts"]
-		# Only the garments this stage's model authors are offered, exactly as the
-		# hairstyle row above does. A baby authors one romper and no jacket, and
-		# the birth validator refuses clothing the model does not have, so an
-		# offered-but-unauthored button made "Welcome the baby" refuse forever.
+		var outfit_names:Array=LifeCharacterIdentity.get_category_tops(creator_outfit_category)
+		var outfit_tips:Array=LifeCharacterIdentity.get_category_top_tips(creator_outfit_category)
+		var bottom_names:Array=LifeCharacterIdentity.get_category_bottoms(creator_outfit_category)
 		var offered_outfits:Array=range(outfit_names.size())
 		var offered_bottoms:Array=range(bottom_names.size())
 		if is_instance_valid(preview) and preview.has_method("authored_wardrobe"):
 			var wardrobe:Dictionary=preview.authored_wardrobe()
-			offered_outfits=wardrobe.outfits
-			offered_bottoms=wardrobe.bottoms
+			if profile.get("age_stage", "adult") == "baby":
+				offered_outfits=wardrobe.outfits
+				offered_bottoms=wardrobe.bottoms
 		for slot:int in range(offered_outfits.size()):
 			var i:int=int(offered_outfits[slot])
 			var b=button(outfit_names[i],Vector2(1100+(slot%3)*97,392+floori(float(slot)/3)*36),Vector2(89,32),func():set_creator_clothing("outfit",i),int(profile.get("outfit",0))==i)
@@ -640,12 +643,27 @@ func draw_creator() -> void:
 		for slot:int in range(offered_bottoms.size()):
 			var i:int=int(offered_bottoms[slot])
 			button(bottom_names[i],Vector2(1100+slot*146,494),Vector2(137,32),func():set_creator_clothing("bottom",i),int(profile.get("bottom",0))==i)
-		small_caps("Top color",Vector2(1102,532))
-		swatches(["c97c66","417a71","efeadb","7195b3","bd9b68","3d4145"],"top_color",Vector2(1100,556),32,8)
-		small_caps("Bottom color",Vector2(1102,596))
-		swatches(["eadfc9","3e5955","51697c","493e37","b88a72","292f32"],"bottom_color",Vector2(1100,620),32,8)
-		small_caps("Shoes",Vector2(1102,660))
-		swatches(["e9e4d9","49382e","32292a","eee5d6","433d39","1f1c1a"],"shoe_color",Vector2(1100,684),28,8)
+		var palettes:Dictionary=LifeCharacterIdentity.get_category_palettes(creator_outfit_category)
+		small_caps("Top color",Vector2(1102,524))
+		swatches(palettes.top,"top_color",Vector2(1100,546),28,8)
+		small_caps("Bottom color",Vector2(1102,582))
+		swatches(palettes.bottom,"bottom_color",Vector2(1100,604),28,8)
+		small_caps("Shoes",Vector2(1102,640))
+		swatches(palettes.shoes,"shoe_color",Vector2(1100,662),26,8)
+		var set_preset=func(top_col:String,bot_col:String,shoe_col:String=""):
+			profile.top_color=top_col
+			profile.bottom_color=bot_col
+			if not shoe_col.is_empty():
+				profile.shoe_color=shoe_col
+			LifeCharacterIdentity.store_current(profile)
+			refresh_preview()
+		small_caps("Complete palette",Vector2(1102,696))
+		var b_coastal=button("Coastal",Vector2(1100,720),Vector2(88,32),func():set_preset.call("efeadb","51697c","e9e4d9"))
+		compact_button(b_coastal);b_coastal.size=Vector2(88,32)
+		var b_earthy=button("Earthy",Vector2(1197,720),Vector2(88,32),func():set_preset.call("c97c66","eadfc9","49382e"))
+		compact_button(b_earthy);b_earthy.size=Vector2(88,32)
+		var b_sage=button("Sage",Vector2(1294,720),Vector2(88,32),func():set_preset.call("417a71","493e37","32292a"))
+		compact_button(b_sage);b_sage.size=Vector2(88,32)
 	icon_button("rotate_left","Turn Lifelet left",Vector2(626,726),Vector2(48,42),func():creator_spin-=.5;preview.rotation.y=creator_spin).name="CreatorTurnLeft"
 	icon_button("rotate_right","Turn Lifelet right",Vector2(769,726),Vector2(48,42),func():creator_spin+=.5;preview.rotation.y=creator_spin).name="CreatorTurnRight"
 	text_label("DRAG TO ROTATE",Vector2(380,782),Vector2(160,24),11,P.MUTED)
@@ -1685,20 +1703,44 @@ var queue_card: Panel
 var queue_scroll: ScrollContainer
 
 func draw_queue() -> void:
-	queue_card=card(Vector2(300,134),Vector2(800,58),Color("f8faf2",.92),14)
+	queue_card=card(Vector2(24,268),Vector2(262,58),Color("f8faf2",.92),14)
 	queue_card.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	# Children of a card position inside it, so the caption and the strip use the
 	# card's own local coordinates rather than the canvas ones they had before.
-	var caption:=small_caps("Next up",Vector2(12,4),Vector2(70,18),queue_card)
-	caption.add_theme_color_override("font_color",P.INK)
+	queue_caption=small_caps("Queue",Vector2(12,4),Vector2(65,18),queue_card)
+	queue_caption.add_theme_color_override("font_color",P.INK)
+	queue_toggle=button("−",Vector2(236,4),Vector2(20,20),_toggle_queue,false,queue_card)
+	compact_button(queue_toggle)
+	queue_toggle.tooltip_text="Collapse action queue"
 	queue_scroll=ScrollContainer.new()
 	queue_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
 	queue_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
-	rect(queue_scroll,Vector2(76,6),Vector2(716,46),queue_card)
+	rect(queue_scroll,Vector2(72,6),Vector2(160,46),queue_card)
 	queue_box=HBoxContainer.new()
 	queue_box.add_theme_constant_override("separation",8)
 	queue_scroll.add_child(queue_box)
 	queue_box.custom_minimum_size=Vector2(0,42)
+	_update_queue_collapse()
+
+func _toggle_queue() -> void:
+	queue_collapsed=not queue_collapsed
+	_update_queue_collapse()
+
+func _update_queue_collapse() -> void:
+	if not is_instance_valid(queue_card) or not is_instance_valid(queue_scroll) or not is_instance_valid(queue_toggle):
+		return
+	if queue_collapsed:
+		queue_scroll.visible=false
+		queue_card.size=Vector2(96,26)
+		queue_toggle.position=Vector2(72,3)
+		queue_toggle.text="+"
+		queue_toggle.tooltip_text="Expand action queue"
+	else:
+		queue_scroll.visible=true
+		queue_card.size=Vector2(262,58)
+		queue_toggle.position=Vector2(236,4)
+		queue_toggle.text="−"
+		queue_toggle.tooltip_text="Collapse action queue"
 
 func refresh_hud() -> void:
 	if portrait_stale and mode=="live" and not overlay_open:
@@ -1821,11 +1863,11 @@ func refresh_hud() -> void:
 				c.queue_free()
 			for i in range(sim.action_queue.size()):
 				var a:Dictionary=sim.action_queue[i]
-				var b=Button.new();b.custom_minimum_size=Vector2(155,43)
+				var b=Button.new();b.custom_minimum_size=Vector2(150,42)
 				queue_box.add_child(b)
-				b.size=Vector2(155,43)
+				b.size=Vector2(150,42)
 				compact_button(b)
-				b.custom_minimum_size=Vector2(155,43)
+				b.custom_minimum_size=Vector2(150,42)
 				var shared:bool=not str(a.get("cooperation_id","")).is_empty()
 				var queue_title:String=("Learn together" if str(a.id)=="homework" else "Help with homework") if shared else str(a.label)
 				if str(a.id) in ["school_day","career_day"] and not away.is_empty():queue_title=("At work" if str(a.id)=="career_day" else "At school") if str(away.phase)=="away" else "Coming home"
@@ -1834,15 +1876,17 @@ func refresh_hud() -> void:
 				# player which chip cancels which activity.
 				var target_kind:String=_queue_target_kind(a)
 				if not target_kind.is_empty():queue_title+=" · "+target_kind
-				var title=text_label(queue_title,Vector2(10,6),Vector2(112,31),12,P.INK,false,b)
+				var title=text_label(queue_title,Vector2(8,5),Vector2(118,31),12,P.INK,false,b)
 				title.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
-				title.size=Vector2(112,31)
+				title.size=Vector2(118,31)
 				var returning:bool=str(a.id) in ["school_day","career_day"] and str(away.get("phase",""))=="returning"
 				b.disabled=returning
-				if not returning:text_label("×",Vector2(132,6),Vector2(17,31),17,P.MUTED,false,b)
+				if not returning:text_label("×",Vector2(130,5),Vector2(16,31),16,P.MUTED,false,b)
 				b.tooltip_text=queue_title+(" · With "+str(partner.character.name) if shared and partner else "")+(" · Click to cancel for both Lifelets" if shared else " · Click to cancel this activity")
 				if returning:b.tooltip_text="Coming home · Available after reaching the front garden"
 				b.pressed.connect(func():cancel_current_action(i))
+		if is_instance_valid(queue_caption):
+			queue_caption.text="Next up" if sim.action_queue.size()>1 else "Queue"
 		# The queue card is only meaningful while something is queued.
 		if is_instance_valid(queue_card):
 			queue_card.visible=not sim.action_queue.is_empty()
@@ -3574,6 +3618,7 @@ func play_click() -> void:
 
 func quit_game() -> void:
 	if is_queued_for_deletion():return
+	LifeLog.info("LIFECYCLE", "Game quit requested")
 	var tree:SceneTree=get_tree()
 	queue_free()
 	# Let the audio server release stopped playbacks before engine teardown.
@@ -3586,6 +3631,7 @@ func _exit_tree() -> void:
 			audio.stream_paused=false
 			audio.stop()
 			audio.stream=null
+	LifeLog.shutdown()
 
 func _process(delta:float) -> void:
 	elapsed+=delta

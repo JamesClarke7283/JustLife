@@ -854,8 +854,14 @@ func _step(game_minutes: float) -> void:
 	elif action_queue.is_empty():
 		_idle_minutes += game_minutes
 		# An idle Lifelet pauses a quarter hour between pastimes, but not while a
-		# school or work day is open: then the next choice follows within a minute.
-		if autonomy and (_idle_minutes >= 15.0 or (_idle_minutes >= 1.0 and not _autonomy_duty_id().is_empty())):
+		# school or work day is open or when an urgent need requires recovery:
+		# then the next choice follows within a minute.
+		var pressing_need: bool = false
+		for need_name: String in NEED_NAMES:
+			if float(needs[need_name]) < 40.0:
+				pressing_need = true
+				break
+		if autonomy and (_idle_minutes >= 15.0 or (_idle_minutes >= 1.0 and (not _autonomy_duty_id().is_empty() or pressing_need))):
 			_choose_autonomous_action()
 	_tick_bladder(game_minutes,bladder_before)
 	_check_need_notices()

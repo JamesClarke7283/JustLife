@@ -461,6 +461,8 @@ func set_outfit(index: int) -> void:
 		var selected: String = OUTFIT_NAMES[int(profile["outfit"])]
 		if _model.find_child(selected, true, false) == null: selected = OUTFIT_NAMES[0]
 		_apply_outfit_visibility(_model,selected)
+		if is_instance_valid(_look_root):
+			_apply_look_variation(_look_root, str(profile.get("outfit_category", "everyday")), int(profile["outfit"]))
 
 
 func set_bottom(index: int) -> void:
@@ -699,8 +701,51 @@ func _apply_look_layers() -> void:
 				entry.skeleton.set_bone_pose_rotation(int(entry.index), source.skeleton.get_bone_pose_rotation(int(source.index)))
 				break
 	_apply_outfit_visibility(_model, group)
+	_apply_look_variation(_look_root, category, int(profile.get("outfit", 0)))
 	_recolor(_look_root, {})
 	_apply_spirit(_look_root)
+
+
+func _apply_look_variation(root_node: Node, category: String, outfit_index: int) -> void:
+	if root_node == null:
+		return
+	match category:
+		"formal":
+			var tie = root_node.find_child("Outfit_Formal_Tie", true, false)
+			if tie != null:
+				tie.visible = outfit_index in [0, 4]
+			var lapel = root_node.find_child("Outfit_Formal_Lapel", true, false)
+			var lapel2 = root_node.find_child("Outfit_Formal_Lapel.001", true, false)
+			if lapel2 == null:
+				lapel2 = root_node.find_child("Outfit_Formal_Lapel_001", true, false)
+			for l in [lapel, lapel2]:
+				if l != null:
+					l.visible = outfit_index != 2
+		"athletic":
+			var chevron = root_node.find_child("Outfit_Athletic_Chevron", true, false)
+			if chevron != null:
+				chevron.visible = outfit_index in [0, 1, 4]
+			var b1 = root_node.find_child("Outfit_Athletic_Binding", true, false)
+			var b2 = root_node.find_child("Outfit_Athletic_Binding.001", true, false)
+			if b2 == null:
+				b2 = root_node.find_child("Outfit_Athletic_Binding_001", true, false)
+			for b in [b1, b2]:
+				if b != null:
+					b.visible = outfit_index in [0, 2, 4]
+		"sleep":
+			var sash = root_node.find_child("Outfit_Sleep_Sash", true, false)
+			if sash != null:
+				sash.visible = outfit_index in [0, 2, 4]
+			var shawl = root_node.find_child("Outfit_Sleep_Shawl", true, false)
+			if shawl != null:
+				shawl.visible = outfit_index in [0, 1, 4]
+		"party":
+			var sash = root_node.find_child("Outfit_Party_Sash", true, false)
+			if sash != null:
+				sash.visible = outfit_index in [0, 2, 4]
+			var hem = root_node.find_child("Outfit_Party_Hem", true, false)
+			if hem != null:
+				hem.visible = outfit_index in [0, 1, 4]
 
 
 func _create_props() -> void:

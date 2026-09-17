@@ -192,7 +192,7 @@ static func prepare(valid_id: Callable) -> bool:
 	var root: String = root_path()
 	if root.is_empty():
 		return _fail("Choose an absolute JUSTLIFE_DATA_DIR, or make your home folder available for .justlife saves.")
-	if not safe_directory(root, true) or not safe_directory(root.path_join("saves"), true):
+	if not safe_directory(root, true) or not safe_directory(root.path_join("saves"), true) or not safe_directory(root.path_join("logs"), true):
 		return _fail("The .justlife save folder is unavailable, linked, or cannot be created. Your existing saves were not changed.")
 	if _ready:
 		last_error = ""

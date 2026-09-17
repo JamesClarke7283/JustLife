@@ -122,26 +122,60 @@ def world_points(o):
     return [o.matrix_world @ v.co for v in o.data.vertices]
 
 
+def delete_sleeves(o):
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    deform = bm.verts.layers.deform.verify()
+    arm_groups = {g.index for g in o.vertex_groups if "Arm" in g.name or "Forearm" in g.name}
+    spine_groups = {g.index for g in o.vertex_groups if "Spine" in g.name}
+    doomed = [v for v in bm.verts if sum(v[deform].get(g, 0.0) for g in arm_groups) > 0.12 and sum(v[deform].get(g, 0.0) for g in arm_groups) >= sum(v[deform].get(g, 0.0) for g in spine_groups) * 0.7]
+    if doomed:
+        bmesh.ops.delete(bm, geom=doomed, context="VERTS")
+    bm.to_mesh(o.data)
+    bm.free()
+
+
 def bounds(o):
     pts = world_points(o)
     return Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts))), Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts)))
 
 
-def lengthen(o, drop, flare=0.0, from_frac=0.42):
-    lo, hi = bounds(o)
+def torso_bounds(o):
+    arm_groups = {g.index for g in o.vertex_groups if "Forearm" in g.name or "Arm" in g.name}
+    pts = []
+    for v in o.data.vertices:
+        is_arm = any(g.group in arm_groups and g.weight > 0.15 for g in v.groups)
+        if not is_arm:
+            pts.append(o.matrix_world @ v.co)
+    if not pts:
+        pts = world_points(o)
+    return Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts))), Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts)))
+
+
+def lengthen(o, drop, flare=0.0, from_frac=0.42, scale=1.0):
+    lo, hi = torso_bounds(o)
     waist = lo.z + (hi.z - lo.z) * from_frac
     inv = o.matrix_world.inverted()
+    arm_groups = {g.index for g in o.vertex_groups if "Forearm" in g.name or "Arm" in g.name}
+    arm_vert_indices = {
+        v.index for v in o.data.vertices
+        if any(g.group in arm_groups and g.weight > 0.15 for g in v.groups)
+    }
     bm = bmesh.new()
     bm.from_mesh(o.data)
     for v in bm.verts:
+        if v.index in arm_vert_indices:
+            continue
         w = o.matrix_world @ v.co
         if w.z >= waist:
             continue
         t = (waist - w.z) / max(waist - lo.z, 1e-4)
         w.z -= drop * t
         if flare:
-            w.x += math.copysign(flare * t * abs(w.x), w.x) if abs(w.x) > 1e-4 else 0.0
-            w.y += flare * t * 0.35
+            off_x = (0.01 + flare * 0.4) * scale * t
+            off_y = (0.025 + flare * 0.5) * scale * t
+            w.x += math.copysign(off_x, w.x) if abs(w.x) > 1e-4 else 0.0
+            w.y += math.copysign(off_y, w.y) if abs(w.y) > 1e-4 else 0.0
         v.co = inv @ w
     bm.to_mesh(o.data)
     bm.free()
@@ -172,7 +206,7 @@ def author(family):
 
     formal = empty("Outfit_Formal", root)
     coat = duplicate(shell, "Outfit_Formal_Coat", formal)
-    lengthen(coat, 0.22 * scale, 0.06, 0.38)
+    lengthen(coat, 0.22 * scale, 0.06, 0.38, scale)
     skin_like(coat, shell, rig)
     for n, suffix in [("Outfit_Jacket_Cuff", "Cuff"), ("Outfit_Jacket_Cuff.001", "Cuff.001"), ("Outfit_Jacket_Stand_collar", "Collar")]:
         if n in D.objects:
@@ -198,30 +232,39 @@ def author(family):
 
     athletic = empty("Outfit_Athletic", root)
     tank = duplicate(tee, "Outfit_Athletic_Tank", athletic)
-    arm_x = (s_hi.x - s_lo.x) * 0.34
-    arm_z = s_lo.z + (s_hi.z - s_lo.z) * 0.52
-    delete_where(tank, lambda p: abs(p.x) > arm_x and p.z > arm_z)
+    delete_sleeves(tank)
     skin_like(tank, tee, rig)
     if "Outfit_Tee_Hem" in D.objects:
         duplicate(D.objects["Outfit_Tee_Hem"], "Outfit_Athletic_Hem", athletic)
-    t_pts = world_points(tank)
-    for sgn, tag in ((1, ""), (-1, ".001")):
-        hole = [p for p in t_pts if p.x * sgn > 0.08 * scale and p.z > arm_z - 0.04 * scale]
-        if len(hole) < 6:
+    t_lo, t_hi = bounds(tank)
+    neck_z = t_hi.z - 0.15 * (t_hi.z - t_lo.z)
+    bottom_z = t_lo.z + 0.15 * (t_hi.z - t_lo.z)
+
+    bm_t = bmesh.new()
+    bm_t.from_mesh(tank.data)
+    for tag, sgn in (("", 1), (".001", -1)):
+        arm_edges = [e for e in bm_t.edges if e.is_boundary and bottom_z < e.verts[0].co.z < neck_z and e.verts[0].co.x * sgn > 0.05 * scale]
+        rim_faces = set()
+        for e in arm_edges:
+            for f in e.link_faces:
+                rim_faces.add(f)
+        if not rim_faces:
             continue
-        cc = sum(hole, Vector()) / len(hole)
-        rr = sum((p - cc).length for p in hole) / len(hole)
-
-        def bind(u, v, cc=cc, rr=rr):
-            a = u * math.tau
-            b = v * math.tau
-            R = rr * 0.92
-            r = 0.008 * scale
-            return cc + Vector((math.cos(a) * (R + r * math.cos(b)), math.sin(a) * (R + r * math.cos(b)) * 0.55, r * math.sin(b)))
-
-        band = new_mesh_object("Outfit_Athletic_Binding" + tag, surface(bind, 20, 8, True, True), "Top_seam", athletic)
+        bm_band = bmesh.new()
+        vert_map = {}
+        for f in rim_faces:
+            face_verts = []
+            for v in f.verts:
+                if v not in vert_map:
+                    vert_map[v] = bm_band.verts.new(v.co + v.normal * (0.003 * scale))
+                face_verts.append(vert_map[v])
+            bm_band.faces.new(face_verts)
+        bmesh.ops.recalc_face_normals(bm_band, faces=bm_band.faces)
+        band = new_mesh_object("Outfit_Athletic_Binding" + tag, bm_band, "Top_seam", athletic)
         skin_like(band, tank, rig)
+    bm_t.free()
 
+    t_pts = world_points(tank)
     def stripe(u, v):
         x = (-0.16 + 0.32 * u) * scale
         z = s_lo.z + (s_hi.z - s_lo.z) * (0.58 + 0.08 * v)
@@ -233,7 +276,7 @@ def author(family):
 
     sleep = empty("Outfit_Sleep", root)
     robe = duplicate(hoodie, "Outfit_Sleep_Robe", sleep)
-    lengthen(robe, 0.28 * scale, 0.10, 0.36)
+    lengthen(robe, 0.28 * scale, 0.10, 0.36, scale)
     skin_like(robe, hoodie, rig)
     if "Outfit_Hoodie_Cuff" in D.objects:
         duplicate(D.objects["Outfit_Hoodie_Cuff"], "Outfit_Sleep_Cuff", sleep)
@@ -261,7 +304,7 @@ def author(family):
 
     party = empty("Outfit_Party", root)
     wrap = duplicate(cardigan, "Outfit_Party_Wrap", party)
-    lengthen(wrap, 0.12 * scale, 0.12, 0.30)
+    lengthen(wrap, 0.12 * scale, 0.12, 0.30, scale)
     skin_like(wrap, cardigan, rig)
     for n, suffix in [("Outfit_Cardigan_Sleeve", "Sleeve"), ("Outfit_Cardigan_Sleeve.001", "Sleeve.001")]:
         if n in D.objects:
@@ -277,14 +320,20 @@ def author(family):
 
     sash_p = new_mesh_object("Outfit_Party_Sash", surface(diagonal, 16, 5), "Bottom", party)
     skin_like(sash_p, wrap, rig)
-    for i, drop in enumerate((0.10, 0.16, 0.07)):
-        def panel(u, v, i=i, drop=drop):
-            x = (-0.16 + 0.16 * i + 0.14 * u) * scale
-            z = c_lo.z - drop * scale * v
-            y = c_lo.y + 0.02 * scale * v
-            return Vector((x * (1 + 0.08 * v), y, z))
-        hem = new_mesh_object("Outfit_Party_Hem" + ("" if i == 0 else ".%03d" % i), surface(panel, 8, 6), "Top", party)
-        skin_like(hem, wrap, rig)
+
+    def peplum(u, v):
+        a = u * math.tau
+        Rx = (c_hi.x - c_lo.x) * 0.49
+        Ry = (c_hi.y - c_lo.y) * 0.49
+        drop = (0.12 + 0.03 * math.cos(a)) * scale
+        flare = 0.035 * scale * v
+        x = (Rx + flare) * math.cos(a)
+        y = (Ry + flare * 0.8) * math.sin(a)
+        z = c_lo.z - drop * v + 0.01 * scale
+        return Vector((x, y, z))
+
+    hem = new_mesh_object("Outfit_Party_Hem", surface(peplum, 32, 8, True, False), "Top", party)
+    skin_like(hem, wrap, rig)
 
     for o in D.objects:
         if o.name.startswith(LOOKS):
