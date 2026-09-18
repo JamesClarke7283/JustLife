@@ -208,6 +208,17 @@ func _destinations_for(id:String) -> Array:
  var person:Dictionary=PEOPLE[id]
  var anchor_kind:String=str(person.get("routine",{}).get("anchor_kind",""))
  var at_routine_venue:bool=active_place==str(person.get("routine",{}).get("venue",""))
+ # The household's own lot is entered by invitation only. A neighbor walking the
+ # lane, or stepping back on after a routine, stays on the front path and the
+ # sidewalk: the old indoor waypoints put uninvited residents inside the house.
+ # An invited guest is driven by home_visit, which owns its own route.
+ if active_place=="home" and not home_visit.owns(id):
+  var outside:Array=[]
+  for z:float in [7.15,7.55,7.95]:
+   for x:float in [-1.4,-.7,0.0,.7,1.4]:
+    var point:=Vector3(x,.16,z)
+    if app.world.lot_navigation.point_clear(0,point):outside.append(point)
+  return outside if not outside.is_empty() else [Vector3(0,.16,8.1)]
  if anchor_kind.is_empty() or not at_routine_venue:
   return [Vector3(-.5,.16,2.9),Vector3(1.8,.16,2.8),Vector3(-.5,.16,.1)]
  var cache_key:String=active_place+"/"+anchor_kind
@@ -220,6 +231,16 @@ func _destinations_for(id:String) -> Array:
  if result.is_empty():result=[Vector3(-.5,.16,2.9),Vector3(1.8,.16,2.8),Vector3(-.5,.16,.1)]
  _anchor_cache[cache_key]=result
  return result
+
+## A turned-away caller walks back to their usual lane presence.
+func home_visit_bell_departed(id:String) -> void:
+ if not PEOPLE.has(id):return
+ var state:Dictionary=locations.get(active_place,{}).get(id,{})
+ if state.is_empty():return
+ state.phase="walking"
+ state.wait=float(PEOPLE[id].get("walk_wait",24.0))
+ sidewalk_routes.erase(id)
+ publish_targets(true)
 
 func tick(delta:float) -> void:
  if active_place.is_empty() or not locations.has(active_place):return
@@ -255,11 +276,14 @@ func tick(delta:float) -> void:
    app.world.set_actor_away(id,true,true);sidewalk_routes.erase(id);continue
   elif bool(state.get("routine_away",false)) and not routine_on:
    # The routine window closed while they were out at this lot: step back on.
+   # On the household's own lot they rejoin the front path, never the rooms.
    state.routine_away=false
-   state.phase="visiting";state.wait=float(person.get("visit_wait",5.0))
+   state.phase="visiting" if active_place!="home" else "walking"
+   state.wait=float(person.get("visit_wait",5.0))
    actor.visible=true
    app.world.set_actor_away(id,false,false);sidewalk_routes.erase(id)
   if guest:sidewalk_routes.erase(id);home_visit.tick(delta);continue
+  if home_visit.owns_bell(id):sidewalk_routes.erase(id);home_visit.tick_bell(delta);continue
   var speaker:Dictionary=_speaker(id)
   var moving:bool=false
   var talk:String=""

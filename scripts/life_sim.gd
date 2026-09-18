@@ -59,8 +59,26 @@ const CAREER_TRACKS: Dictionary = {
 	"technology":{"label":"Technology","skill":"logic","base_salary":200,"titles":["Support specialist","Junior developer","Software engineer","Technical lead","Principal engineer"]},
 	"community":{"label":"Community work","skill":"charisma","base_salary":150,"titles":["Community assistant","Event organizer","Outreach specialist","Program manager","Community director"]},
 	"fitness":{"label":"Wellness club","skill":"fitness","base_salary":170,"titles":["Club assistant","Fitness coach","Personal trainer","Wellness lead","Body architect"]},
-	"botany":{"label":"Botany guild","skill":"gardening","base_salary":155,"titles":["Garden centre clerk","Plant technician","Botanist","Head horticulturist","Master gardener"]}
+	"botany":{"label":"Botany guild","skill":"gardening","base_salary":155,"titles":["Garden centre clerk","Plant technician","Botanist","Head horticulturist","Master gardener"]},
+	# The criminal track pays far better than honest work because the money is
+	# the reward for the risk. Anyone can walk into it: `entry` names no skill and
+	# no fee, so the only career a fresh Lifelet can always start is this one.
+	"criminal":{"label":"Criminal","skill":"charisma","base_salary":1000,"titles":["Lookout","Runner","Fence","Fixer","Kingpin"],
+		"entry":{"cost":0,"skill":"","level":0}},
+	# A technical trade is bought, not walked into: the household pays the §900
+	# course fee and the Lifelet must already think in steps (Logic 8).
+	"technical":{"label":"Technical work","skill":"logic","base_salary":240,"titles":["Apprentice technician","Bench technician","Systems technician","Lead technician","Master technician"],
+		"entry":{"cost":900,"skill":"logic","level":8}}
 }
+## What a home insurance policy is. The catalogue lives here so a save and the
+## phone price the same product; the household owns the purchased record.
+const INSURANCE_POLICIES: Dictionary = {
+	"home":{"label":"Home insurance","premium":450}
+}
+## The nightly break-in that makes a policy worth buying: a real loss, capped at
+## what the purse actually holds so funds can never go negative.
+const ROBBERY_PERIOD_DAYS: int = 3
+const ROBBERY_LOSS: int = 600
 
 var needs: Dictionary = {}
 var character: Dictionary = {}
@@ -90,9 +108,15 @@ var last_bill_day: int = 0
 ## phone marks it paid; letting it lapse charges a late fee and cuts the
 ## utilities, which the household can only clear by settling up.
 var pending_bill: Dictionary = {}
+## The game day the full-length mirror last gave its Charisma level. A furniture
+## panel request rides the action itself (`open_wardrobe_panel`), not this state.
+var _mirror_level_day: int = -1
 var bills_paid_total: int = 0
 var bills_late: int = 0
 var utilities_cut: bool = false
+## A purchased home insurance policy, or {} while uninsured. Held on the bill
+## owner like the ledger: the household buys one policy, every member mirrors it.
+var insurance_policy_id: String = ""
 ## The value of the furnished home, which sets the size of the next bill. The
 ## owning scene supplies a provider, so the amount is read from the furnishings
 ## actually placed at the moment a bill is issued.
@@ -148,6 +172,8 @@ const TRAIT_ACTIONS: Dictionary = {"sketch_for_fun":"Creative", "host_a_chat":"O
 # One opportunity per mood: only offered while that feeling is the strongest one.
 const EMOTION_ACTIONS: Dictionary = {"paint_masterpiece":"Inspired", "study_hard":"Focused", "playful_prank":"Playful", "push_through":"Energized", "bold_introduction":"Confident"}
 const AGE_GATED_ACTIONS: Array[String] = ["jog", "play_toys", "morning_run"]
+## Built once from the skill roster: the computer's mastery actions, one per skill.
+const COMPUTER_MASTERY_ACTIONS: Array[String] = ["computer_cooking", "computer_creativity", "computer_charisma", "computer_logic", "computer_gardening", "computer_parenting", "computer_fitness", "computer_music"]
 const LEISURE_ACTIONS: Array[String] = ["paint", "read", "watch", "relax", "play_piano", "play_chess", "dance", "play_games", "practice_speech", "stretch", "warm_up", "jog", "play_toys", "sketch_for_fun", "deep_read", "experiment_recipe", "morning_run", "push_through"]
 const PRE_DUTY_LEISURE: Array[String] = ["relax", "read", "watch", "stretch", "warm_up", "paint"]  # brief pastimes before a school or work day; the short ones sit ahead of the canvas
 const DEPARTURE_WALK: float = 15.0  # game minutes allowed for the walk from a pastime to the lot exit in a busy home
@@ -273,6 +299,7 @@ func new_household(profile: Dictionary) -> void:
 	bills_paid_total = 0
 	bills_late = 0
 	utilities_cut = false
+	insurance_policy_id = ""
 	purchased_perks.clear()
 	_idle_minutes = 0.0
 	autonomy_state = {"version":1,"contacts":{},"deferred":{}}
@@ -310,8 +337,8 @@ func _build_actions() -> void:
 	_define("clear_table", "Clear the table", 10.0, {"hygiene": -1.0}, 0, "", 0.0, "Gather the used plates and finished dishes from this surface and take them to the sink.")
 	_define("empty_bin", "Empty the bin", 8.0, {"hygiene": -2.0}, 0, "", 0.0, "Take the full rubbish bag out to the street. A tidy home smells fresher.")
 	_define("practice_instrument", "Practise an instrument", 60.0, {"fun": 38.0, "energy": -5.0}, 0, "music", 36.0, "Play through a few pieces. Music skill grows with every session.")
-	_define("study_book", "Study from a book", 60.0, {"fun": 12.0, "energy": -4.0}, 0, "", 0.0, "Work through a book from the shelf. Skill books teach Cooking, Fitness, Gardening and Music.")
-	_define("buy_book", "Buy a skill book…", 0.0, {}, 0, "", 0.0, "Choose a skill book for this shelf. Books stay here ready to study.")
+	_define("study_book", "Study from a book", 60.0, {"fun": 12.0, "energy": -4.0}, 0, "", 0.0, "Work through a book from the shelf. Skill books teach every skill up to level 9; the computer takes a Lifelet the rest of the way to 10.")
+	_define("buy_book", "Buy a skill book…", 0.0, {}, 0, "", 0.0, "Choose a skill book for this shelf. One subject per skill; books stay here ready to study up to level 9.")
 	_define("switch_light", "Switch the light", 1.0, {}, 0, "", 0.0, "Turn this light on or off. A dark room is cosy; a bright one is easier to work in.")
 	_define("watch_together", "Watch TV together", 60.0, {"fun": 46.0, "social": 26.0, "energy": 4.0}, 0, "charisma", 8.0, "Share the sofa and a show with your guest. Company makes it twice the fun.")
 	_define("toilet", "Use toilet", 15.0, {"bladder": 95.0, "hygiene": -3.0}, 0, "", 0.0, "Take care of a pressing need. Your Lifelet washes their hands afterwards.")
@@ -327,6 +354,10 @@ func _build_actions() -> void:
 	_define("water", "Tend the plants", 25.0, {"fun": 15.0, "hygiene": -4.0}, 0, "gardening", 28.0, "Care for greenery and learn Gardening.")
 	_define("bath", "Take a long bath", 40.0, {"hygiene": 90.0, "fun": 14.0, "energy": 8.0}, 0, "", 0.0, "Sink into warm water. Slower than a shower, but restful.")
 	_define("practice_speech", "Practice a speech", 40.0, {"fun": 10.0, "social": 6.0}, 0, "charisma", 30.0, "Rehearse in front of the mirror and build Charisma.")
+	_define("talk_to_myself", "Talk to yourself", 30.0, {"fun": 8.0}, 0, "charisma", 0.0, "Hold your own gaze in a full-length mirror and say it out loud. A whole level of Charisma, once a day.")
+	_define("change_in_mirror", "Change wardrobe…", 6.0, {}, 0, "", 0.0, "Open your wardrobe here and try a look on in the glass before you buy it.")
+	_define("do_makeup", "Do your makeup…", 8.0, {"fun": 6.0}, 0, "", 0.0, "Sit at the dressing table and try a lip or eye look on before you buy it.")
+	_define("change_jewelry", "Change jewelry…", 6.0, {}, 0, "", 0.0, "Try a stud, a hoop or a chain on at the dressing table before you buy it.")
 	_define("play_piano", "Play the piano", 60.0, {"fun": 36.0}, 0, "music", 38.0, "Practice scales and songs. Music skill grows with every session.")
 	_define("play_chess", "Play chess", 60.0, {"fun": 30.0}, 0, "logic", 36.0, "Think a few moves ahead and build Logic.")
 	_define("jog", "Go for a run", 45.0, {"fun": 18.0, "energy": -14.0, "hygiene": -18.0}, 0, "fitness", 40.0, "A steady run builds Fitness. Expect to need a shower afterwards.")
@@ -334,6 +365,7 @@ func _build_actions() -> void:
 	_define("dance", "Dance to a record", 35.0, {"fun": 40.0, "energy": -8.0, "hygiene": -6.0}, 0, "fitness", 12.0, "Put a record on and move. Great fun, a little tiring.")
 	_define("play_toys", "Play with toys", 45.0, {"fun": 42.0, "social": 4.0}, 0, "creativity", 14.0, "Imaginative play for children. Builds a little Creativity.")
 	_define("change_outfit", "Change outfit", 4.0, {}, 0, "", 0.0, "Switch to the next saved outfit type in your wardrobe.")
+	_define("change_in_wardrobe", "Open the wardrobe…", 6.0, {}, 0, "", 0.0, "Browse your tops, hair, makeup and jewelry and see each one on before you keep it.")
 	_define("wear_everyday", "Wear everyday clothes", 4.0, {}, 0, "", 0.0, "Change into the Everyday look you designed.")
 	_define("wear_formal", "Wear formal clothes", 4.0, {}, 0, "", 0.0, "Change into the Formal look you designed.")
 	_define("wear_athletic", "Wear athletic clothes", 4.0, {}, 0, "", 0.0, "Change into the Athletic look you designed.")
@@ -377,6 +409,11 @@ func _build_actions() -> void:
 	_define("experiment_recipe", "Experiment with a recipe", 45.0, {"fun": 30.0, "hygiene": -5.0}, 0, "creativity", 30.0, "Try a dish nobody has written down. Fun and creativity, and something new to eat.")
 	_define("deep_clean", "Deep clean", 45.0, {"hygiene": 6.0, "fun": 10.0}, 0, "", 0.0, "Scrub the surfaces until the room sparkles. Slow, but oddly satisfying.")
 	_define("remember_life", "Remember a life", 20.0, {"social": 12.0, "fun": 6.0}, 0, "", 0.0, "Stand with the stone and remember who they were.")
+	# The computer is where a subject is truly mastered. A skill book stops at
+	# level 9; only focused screen work carries a Lifelet to level 10, so a
+	# bookshelf is the cheap route and the computer the final one.
+	for skill_name: String in SKILL_NAMES:
+		_define("computer_"+skill_name, "Master %s on the computer" % skill_name.capitalize(), 120.0, {"fun": 4.0, "energy": -14.0}, 0, skill_name, 70.0, "Concentrated study of %s at the computer. This is the only way to reach level 10." % skill_name.capitalize())
 
 
 func _define(id: String, label: String, duration: float, changes: Dictionary, cost: int, skill: String, xp: float, description: String) -> void:
@@ -405,11 +442,12 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"bookshelf", "book_nook": ids = ["read", "study", "study_book", "buy_book", "deep_read"]
 		"easel": ids = ["paint", "paint_masterpiece", "sketch_for_fun"]
 		"desk": ids = ["work", "study", "job", "study_hard"]
-		"computer": ids = ["work", "study", "job", "play_games", "study_hard"]
+		"computer": ids = ["work", "study", "job", "play_games", "study_hard"] + COMPUTER_MASTERY_ACTIONS
 		"plant": ids = ["water","plant_wee"] if float(needs.bladder)<=BLADDER_DESPERATE else ["water"]
 		"puddle": ids = ["mop_puddle"]
 		"bathtub": ids = ["bath"]
-		"mirror": ids = ["practice_speech"]
+		"mirror": ids = ["talk_to_myself", "change_in_mirror", "practice_speech"]
+		"dressing_table": ids = ["do_makeup", "change_jewelry"]
 		"piano": ids = ["play_piano"]
 		"chess": ids = ["play_chess"]
 		"treadmill": ids = ["jog", "push_through"]  # children see the disabled entry with its reason
@@ -418,6 +456,10 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"toybox": ids = ["play_toys"]  # adults see the disabled entry with its reason
 		"wardrobe":
 			var worn_category: String = LifeCharacterIdentity.normalize_category(character.get("outfit_category", "everyday"))
+			# The wardrobe opens the styling panel, where every option is shown on
+			# the Lifelet before it is kept. The instant category swaps stay below
+			# it, so a player who already knows what they want is one click away.
+			ids.append("change_in_wardrobe")
 			ids.append("change_outfit")
 			for wear_id: String in WEAR_CATEGORY_ACTIONS:
 				if str(WEAR_CATEGORY_ACTIONS[wear_id]) != worn_category: ids.append(wear_id)
@@ -619,13 +661,22 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 		var reason:String=LifeMeals.recipe_error(recipe,int(skills.cooking.level),str(character.age_stage),funds)
 		if not reason.is_empty():_emit_notice(reason);return false
 		definition=LifeMeals.cooking_definition(definition,recipe)
+	if id=="study_book" and is_instance_valid(household_service):
+		# The shelf owns which subject a session teaches. Bind it now so a save
+		# taken mid-read remembers what the Lifelet was actually studying, and so
+		# a shelf of finished books cannot be read for a free skill.
+		var subject:String=household_service.study_skill_for(self,target_id)
+		if subject.is_empty():
+			_emit_notice(household_service.action_availability(self,id,target_id))
+			return false
+		definition=household_service.study_definition(definition,subject)
 	if funds < int(definition["cost"]):
 		_emit_notice("You need §%d for %s." % [int(definition["cost"]), str(definition["label"]).to_lower()])
 		return false
 	if id in ["job","career_day"] and int(career["worked_day"]) == day:
 		_emit_notice("Today's shift is complete. You can work again tomorrow.")
 		return false
-	if id in SOCIAL_ACTIONS or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "bin_meal", "jog", "play_toys", "put_in_fridge"]:
+	if id in SOCIAL_ACTIONS or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or COMPUTER_MASTERY_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "bin_meal", "jog", "play_toys", "put_in_fridge"]:
 		var availability: Dictionary = get_action_availability(id, target_id)
 		if not bool(availability.available):
 			_emit_notice(str(availability.reason))
@@ -928,7 +979,10 @@ func _apply_continuous_effects(action: Dictionary, fraction: float) -> void:
 			if float(effect.multiplier) >= 1.0: bonus = maxf(bonus, float(effect.multiplier))
 			else: penalty = minf(penalty, float(effect.multiplier))
 		multiplier *= bonus * penalty
-		_gain_skill(skill_name, float(action["xp"]) * fraction * multiplier, float(action["xp"]) * fraction)
+		# A book session teaches only as far as the book ceiling; the computer's
+		# mastery actions carry the usual level-10 cap.
+		var book_limit: int = LifeHouseholdFlow.BOOK_MAX_LEVEL if str(action.get("book_skill","")) == skill_name else 0
+		_gain_skill(skill_name, float(action["xp"]) * fraction * multiplier, float(action["xp"]) * fraction, book_limit)
 
 
 func _activity_emotion(id: String) -> String:
@@ -963,7 +1017,7 @@ static func emotion_color(emotion: String) -> Color:
 	return Color(colors.get(emotion,"7aaf89"))
 
 
-func _gain_skill(skill_name: String, amount: float, practice: float = -1.0) -> void:
+func _gain_skill(skill_name: String, amount: float, practice: float = -1.0, book_limit: int = 0) -> void:
 	# Chapter practice counts the effort put in; emotion and trait bonuses only speed the skill.
 	_record_practice(skill_name, amount if practice < 0.0 else practice)
 	var skill: Dictionary = skills[skill_name]
@@ -971,11 +1025,17 @@ func _gain_skill(skill_name: String, amount: float, practice: float = -1.0) -> v
 		return
 	skill["xp"] = float(skill["xp"]) + amount
 	var required: float = float(int(skill["level"]) * 50)
-	while float(skill["xp"]) >= required and int(skill["level"]) < 10:
+	var ceiling: int = book_limit if book_limit > 0 else 10
+	while float(skill["xp"]) >= required and int(skill["level"]) < ceiling:
 		skill["xp"] = float(skill["xp"]) - required
 		skill["level"] = int(skill["level"]) + 1
 		_emit_notice("%s reached %s level %d!" % [character["name"], skill_name.capitalize(), int(skill["level"])])
 		required = float(int(skill["level"]) * 50)
+	# A book cannot carry a skill past level 9: the tenth level is the computer's.
+	# Leftover XP stays banked, so the shelf keeps teaching until the ceiling is
+	# reached and the computer then continues from exactly here.
+	if book_limit > 0 and int(skill["level"]) >= book_limit:
+		skill["xp"] = minf(float(skill["xp"]), required - 1.0)
 
 
 func _finish_front() -> void:
@@ -1060,6 +1120,15 @@ func _finish_front() -> void:
 		action["social_accepted"] = _apply_social(action)
 		if bool(action.social_accepted): _record_autonomy_contact(_social_target(str(action.target_id)),id)
 		action["social_events"] = _recent_social_events.duplicate(true)
+	elif id == "talk_to_myself":
+		# A full-length mirror is a real confidence practice: one full level of
+		# Charisma a day, and the moodlet that comes with feeling good.
+		var granted:bool=_mirror_level_grant()
+		add_moodlet("Feeling sure of myself","Confident","A good long look in the mirror does wonders.",240,2)
+		_emit_notice("A whole level of Charisma, and it shows." if granted else "A good talk with the mirror. You have already gained from this today.")
+		action["open_wardrobe_panel"]=true
+	elif id == "change_in_wardrobe" or id == "change_in_mirror" or id == "do_makeup" or id == "change_jewelry":
+		action["open_wardrobe_panel"]=id
 	elif id == "water":
 		_emit_notice("The plants look happier. Gardening skill improved.")
 	elif id == "change_outfit" or WEAR_CATEGORY_ACTIONS.has(id) or WEAR_ACTIONS.has(id):
@@ -1118,6 +1187,16 @@ func _finish_front() -> void:
 	_update_wants()
 	_start_front()
 	_emit_changed()
+
+
+## The mirror's own Charisma level. Once a game day, so a Lifelet cannot stand in
+## front of the glass and level the whole skill in one afternoon.
+func _mirror_level_grant() -> bool:
+	if _mirror_level_day == day:return false
+	_mirror_level_day = day
+	skills["charisma"]["level"] = mini(int(skills["charisma"]["level"]) + 1, 10)
+	skills["charisma"]["xp"] = 0.0
+	return true
 
 
 func _maybe_credit_host(action_id: String) -> void:
@@ -1241,6 +1320,12 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 		reason = "This Lifelet has no further birthday stage."
 	elif id in ["job", "work"] and str(character.life_stage) != "adult":
 		reason = "Full-time careers and freelance work are available to adults."
+	elif COMPUTER_MASTERY_ACTIONS.has(id):
+		# The computer is allowed to finish the tenth level, and refused exactly
+		# there: once a subject is mastered the screen has nothing left to teach.
+		var mastery_skill:String=id.trim_prefix("computer_")
+		if int(skills.get(mastery_skill,{"level":1}).level)>=10:
+			reason = "%s is already at level 10. This Lifelet has mastered it." % mastery_skill.capitalize()
 	elif is_instance_valid(household_service) and id in LifeHouseholdFlow.SERVICE_ACTIONS:
 		reason=household_service.action_availability(self,id,target_id)
 	elif id == "cook" and str(character.age_stage) == "child":
@@ -1545,15 +1630,37 @@ func choose_career(track_id:String) -> bool:
 		_emit_notice("Careers become available in young adulthood.");return false
 	if not CAREER_TRACKS.has(track_id):return false
 	if career.get("track","studio")==track_id:return true
+	# One gate for the picker, the queue and this entry point: a track that
+	# demands a fee or a skill level is refused here exactly as the menu shows it.
+	var entry_error:String=career_entry_error(track_id)
+	if not entry_error.is_empty():_emit_notice(entry_error);return false
 	for action in action_queue:
 		if action.id in ["job","career_day"]:_emit_notice("Finish or cancel your shift before changing careers.");return false
 	var track:Dictionary=CAREER_TRACKS[track_id]
+	var entry_fee:int=int(track.get("entry",{}).get("cost",0))
+	if entry_fee>0:funds-=entry_fee
 	career={"schedule":LifeCareerSchedule.fresh(day,day+1 if minutes>LifeCareerSchedule.CLOSE else day),"track":track_id,"title":track.titles[0],"level":1,"performance":0.0,"salary":track.base_salary,"worked_day":int(career.worked_day)}
 	remember("A new direction","Joined "+str(track.label))
 	add_moodlet("New possibilities","Inspired","A new career is a chance to grow.",240,2)
-	_emit_notice("Your new job: %s. §%d per shift." % [career.title,career.salary])
+	_emit_notice("Your new job: %s. §%d per shift.%s" % [career.title,career.salary," §%d course fee paid." % entry_fee if entry_fee>0 else ""])
 	_emit_changed()
 	return true
+
+
+## Whether this Lifelet may take up a track, as the player-readable reason it may
+## not. Empty means the door is open. The career picker and `choose_career` both
+## read this one answer, so a greyed-out button and a refused queue never disagree.
+func career_entry_error(track_id:String) -> String:
+	if not CAREER_TRACKS.has(track_id):return "That line of work is not offered here."
+	if str(character.life_stage)!="adult":return "Careers become available in young adulthood."
+	var entry:Dictionary=CAREER_TRACKS[track_id].get("entry",{})
+	var skill_name:String=str(entry.get("skill",""))
+	var required:int=int(entry.get("level",0))
+	if not skill_name.is_empty() and required>0 and int(skills.get(skill_name,{"level":1}).level)<required:
+		return "Requires %s level %d. This Lifelet is at %s level %d." % [skill_name.capitalize(),required,skill_name.capitalize(),int(skills.get(skill_name,{"level":1}).level)]
+	var fee:int=int(entry.get("cost",0))
+	if funds<fee:return "The §%d course fee needs §%d more." % [fee,fee-funds]
+	return ""
 
 func add_moodlet(label:String,emotion:String,description:String,duration:float,strength:int=2) -> void:
 	for i in range(moodlets.size()-1,-1,-1):
@@ -1693,13 +1800,77 @@ func _advance_bill_cycle() -> void:
 
 ## The ledger is owned by the household's first member; every other member keeps
 ## a read-only mirror so action availability and the phone agree with it.
-func set_bill_mirror(record: Dictionary, cut: bool, paid_total: int, late: int, paid_day: int = -1) -> void:
+func set_bill_mirror(record: Dictionary, cut: bool, paid_total: int, late: int, paid_day: int = -1, policy: String = "") -> void:
 	pending_bill = record.duplicate(true)
 	utilities_cut = cut
 	bills_paid_total = paid_total
 	bills_late = late
+	insurance_policy_id = policy
 	if paid_day >= 0:
 		last_bill_day = paid_day
+
+
+## The household's insurance, as the phone reads it. Empty while uninsured.
+func insurance_policy() -> Dictionary:
+	if insurance_policy_id.is_empty() or not INSURANCE_POLICIES.has(insurance_policy_id):
+		return {}
+	return {"id":insurance_policy_id,"label":str(INSURANCE_POLICIES[insurance_policy_id].label),"premium":int(INSURANCE_POLICIES[insurance_policy_id].premium)}
+
+
+## Buy the named policy. Refused, with its reason, while a policy is already in
+## force or the policy is unknown; the premium is charged only on success so a
+## refusal can never take the household's money.
+func buy_insurance(policy_id:String="home") -> Dictionary:
+	if not INSURANCE_POLICIES.has(policy_id):
+		return {"ok":false,"error":"That policy is not offered."}
+	if not insurance_policy_id.is_empty():
+		return {"ok":false,"error":"The home is already insured for §%d a term. Cancel it first to change cover." % int(INSURANCE_POLICIES[insurance_policy_id].premium)}
+	var premium:int=int(INSURANCE_POLICIES[policy_id].premium)
+	if funds<premium:
+		return {"ok":false,"error":"The household needs §%d for this policy and has §%d." % [premium,funds]}
+	funds-=premium
+	insurance_policy_id=policy_id
+	_emit_notice("Home insurance bought for §%d. A break-in will be paid back in full." % premium)
+	_emit_changed()
+	return {"ok":true,"premium":premium,"label":str(INSURANCE_POLICIES[policy_id].label)}
+
+
+## Give up the policy. Nothing is refunded: cover is a running cost, not a
+## deposit, so canceling after a payout never turns a profit.
+func cancel_insurance() -> Dictionary:
+	if insurance_policy_id.is_empty():
+		return {"ok":false,"error":"The home is not insured."}
+	insurance_policy_id=""
+	_emit_notice("Home insurance canceled. The household is uncovered again.")
+	_emit_changed()
+	return {"ok":true}
+
+
+## A break-in takes a real sum and says so. An insured home is reimbursed the
+## full loss in the same breath, so the notice still reports both halves; an
+## uninsured home simply loses the money. The loss is capped at the purse so
+## funds can never go negative.
+func robbery() -> Dictionary:
+	var loss:int=mini(ROBBERY_LOSS,funds)
+	if loss<=0:
+		return {"ok":false,"reason":"Nothing was taken. The house was empty."}
+	funds-=loss
+	if insurance_policy_id.is_empty():
+		_emit_notice("A burglar broke in and took §%d. Home insurance from the phone would have covered it." % loss)
+		_emit_changed()
+		return {"ok":true,"stolen":loss,"reimbursed":0,"insured":false}
+	_emit_notice("A burglar broke in and took §%d. Home insurance paid it all back." % loss)
+	funds+=loss
+	_emit_changed()
+	return {"ok":true,"stolen":loss,"reimbursed":loss,"insured":true}
+
+
+## The nightly crime check. Only the bill owner rolls, so one household hears one
+## break-in; the household drives this, exactly like the bill cycle.
+func robbery_check() -> Dictionary:
+	if day%ROBBERY_PERIOD_DAYS!=0:
+		return {"ok":false,"reason":"No break-in tonight."}
+	return robbery()
 
 
 ## The full amount owed right now, including any late fee. Every member carries
@@ -2647,7 +2818,7 @@ func get_mood() -> Dictionary:
 
 
 func get_state() -> Dictionary:
-	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "bladder_grace":bladder_grace, "starvation_minutes":starvation_minutes, "exhaustion_minutes":exhaustion_minutes, "deferred_passing_minutes":deferred_passing_minutes, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "wants": wants.duplicate(true), "whims": whims.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "last_bill_day": last_bill_day, "pending_bill":pending_bill.duplicate(true), "bills_paid_total":bills_paid_total, "bills_late":bills_late, "utilities_cut":utilities_cut, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "routine_memory_days":routine_memory_days.duplicate(true)}
+	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "bladder_grace":bladder_grace, "starvation_minutes":starvation_minutes, "exhaustion_minutes":exhaustion_minutes, "deferred_passing_minutes":deferred_passing_minutes, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "wants": wants.duplicate(true), "whims": whims.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "last_bill_day": last_bill_day, "pending_bill":pending_bill.duplicate(true), "bills_paid_total":bills_paid_total, "bills_late":bills_late, "utilities_cut":utilities_cut, "insurance_policy_id":insurance_policy_id, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "routine_memory_days":routine_memory_days.duplicate(true)}
 
 
 func save_game(world_data: Array = []) -> bool:
@@ -2798,6 +2969,7 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 	bills_paid_total = int(state.get("bills_paid_total", state.get("bills_paid", 0)))
 	bills_late = int(state.get("bills_late", 0))
 	utilities_cut = bool(state.get("utilities_cut", false))
+	insurance_policy_id = str(state.get("insurance_policy_id", state.get("insurance_policy","")))
 	# Permanent perks survive the save; one-use potions were never recorded.
 	purchased_perks.clear()
 	for perk: Variant in state.get("purchased_perks", []):
@@ -3026,6 +3198,11 @@ func _validate_state(state: Dictionary) -> String:
 		return "Save contains a bill paid in the future."
 	if not state.get("utilities_cut", false) is bool:
 		return "Save contains invalid utility state."
+	# Cover is either absent or one of the policies this build sells; an unknown
+	# id would let a corrupt save mint free reimbursements.
+	var saved_policy:Variant=state.get("insurance_policy_id",state.get("insurance_policy",""))
+	if not saved_policy is String or (not str(saved_policy).is_empty() and not INSURANCE_POLICIES.has(str(saved_policy))):
+		return "Save contains an unknown insurance policy."
 	# A pending bill is either absent or a complete, self-consistent record.
 	var bill: Variant = state.get("pending_bill", {})
 	if not bill is Dictionary:
@@ -3109,6 +3286,18 @@ func _validate_state(state: Dictionary) -> String:
 			elif str(action.get("cooperation_role","")) != ("helper" if action_id == "help_homework" else "learner") or action_id not in ["homework","help_homework"]:
 				return "Save contains an invalid cooperative action."
 			if action_id == "help_homework" and str(profile.get("life_stage","adult")) != "adult": return "Save contains a non-adult homework helper."
+		if COMPUTER_MASTERY_ACTIONS.has(action_id):
+			# A mastery action is bound to its subject by the id itself, so the
+			# saved skill must agree and the Lifelet must not already be at 10.
+			var mastery_skill:String=str(_actions[action_id].skill)
+			if action_id!="computer_"+mastery_skill or int(state.skills.get(mastery_skill,{"level":1}).level)>=10:
+				return "Save contains computer study for an unknown or mastered skill."
+		if action.get("book_skill","")!="":
+			# A shelf session is bound to the subject of the book it was started
+			# from, and that subject must still be short of the book ceiling.
+			var book_skill:String=str(action.get("book_skill",""))
+			if action_id!="study_book" or str(_actions[action_id].skill)!=book_skill or not LifeHouseholdFlow.BOOK_SKILLS.has(book_skill) or int(state.skills.get(book_skill,{"level":1}).level)>=LifeHouseholdFlow.BOOK_MAX_LEVEL:
+				return "Save contains a skill book session for an unknown or finished subject."
 		if action_id in ["job","career_day","work"] and str(profile.get("life_stage","adult")) != "adult": return "Save contains adult work queued for a non-adult Lifelet."
 		if action_id == "cook":
 			var recipe:Variant=action.get("recipe","garden_skillet")

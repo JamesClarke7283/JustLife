@@ -35,7 +35,8 @@ const ITEMS = {
 	"yoga_mat": {"label":"Sunrise yoga mat", "category":"Activities", "price":60, "size":Vector2(.7,1.85), "height":.05, "color":"6e5470"},
 	"stereo": {"label":"Record night stereo", "category":"Activities", "price":300, "size":Vector2(.95,.45), "height":1.0, "color":"624435"},
 	"toybox": {"label":"Toy chest of wonders", "category":"Activities", "price":90, "size":Vector2(.85,.55), "height":.65, "color":"9ec1cf"},
-	"mirror": {"label":"Honest mirror", "category":"Decor", "price":120, "size":Vector2(.75,.45), "height":1.75, "color":"c8a562"},
+	"mirror": {"label":"Full-length mirror", "category":"Decor", "price":120, "size":Vector2(.75,.45), "height":1.75, "color":"c8a562"},
+	"dressing_table": {"label":"Dressing table", "category":"Decor", "price":320, "size":Vector2(1.10,.72), "height":1.50, "color":"d7ae7e"},
 	"garden_bed": {"label":"Kitchen garden bed", "category":"Decor", "price":140, "size":Vector2(1.65,.9), "height":.7, "color":"42352d"},
 	"fireplace": {"label":"Hearth & home fireplace", "category":"Decor", "price":620, "size":Vector2(1.5,.55), "height":1.6, "color":"8c5a4a"},
 	"side_table": {"label":"Corner side table", "category":"Decor", "price":70, "size":Vector2(.55,.55), "height":.95, "color":"d7ae7e"},
@@ -51,6 +52,12 @@ const ITEMS = {
 	"pet_bowl": {"label":"Food & water bowl", "category":"Pets", "price":60, "size":Vector2(.4,.32), "height":.12, "color":"c8a562"},
 	"cat_tree": {"label":"Climbing cat tree", "category":"Pets", "price":240, "size":Vector2(.55,.55), "height":1.25, "color":"d7ae7e"},
 	"kennel": {"label":"Garden dog kennel", "category":"Pets", "price":320, "size":Vector2(.95,1.1), "height":.85, "color":"8c5a4a"},
+	"pet_bed_cat": {"label":"Cosy cat bed", "category":"Pets", "price":120, "size":Vector2(.62,.52), "height":.20, "color":"9aa7be"},
+	"pet_bed_dog": {"label":"Cushioned dog bed", "category":"Pets", "price":160, "size":Vector2(.92,.68), "height":.32, "color":"9aa7be"},
+	"pet_toy_cat": {"label":"Feather mouse toy", "category":"Pets", "price":25, "size":Vector2(.18,.18), "height":.18, "color":"c97c4e"},
+	"pet_toy_dog": {"label":"Knotted rope bone", "category":"Pets", "price":30, "size":Vector2(.26,.16), "height":.12, "color":"c97c4e"},
+	"cat_toy_box": {"label":"Cat Toy Box", "category":"Pets", "price":50, "size":Vector2(.56,.40), "height":.35, "color":"7fa8c6"},
+	"dog_toy_box": {"label":"Dog Toy Box", "category":"Pets", "price":50, "size":Vector2(.56,.40), "height":.35, "color":"7fa8c6"},
 	"urn": {"label":"Ceramic memorial urn", "category":"Decor", "price":120, "size":Vector2(.3,.3), "height":.42, "color":"3e6b65"},
 	"tombstone": {"label":"Carved stone gravestone", "category":"Decor", "price":180, "size":Vector2(.56,.36), "height":.85, "color":"52555a"}
 }

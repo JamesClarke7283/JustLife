@@ -73,7 +73,7 @@ func sync_world(reconcile:bool=true)->void:
 		views[id].position=Vector3(float(puddle.position[0]),_display_height(puddle),float(puddle.position[2]))
 		var scale:float=float(puddle.get("scale",1.0));views[id].scale=Vector3(scale,1.0,scale)
 		app.world.assign_structure_layer(views[id],int(puddle.level))
-		views[id].get_node("PuddlePicking").collision_layer=LifeWorld.PICK_GROUND if int(puddle.level)==0 else LifeWorld.PICK_UPPER
+		views[id].get_node("PuddlePicking").collision_layer=(LifeWorld.PICK_GROUND if int(puddle.level)==0 else LifeWorld.PICK_UPPER)|LifeWorld.PICK_SURFACE
 	var removed:bool=false
 	for id:String in views.keys():
 		if not present.has(id) or not is_instance_valid(views[id]):

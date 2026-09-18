@@ -38,12 +38,50 @@ const COAT_LENGTH_LABELS: Dictionary = {"short": "Short", "medium": "Medium", "l
 const MARKINGS: Array[String] = ["none", "bicolour", "tuxedo", "tabby", "points", "mask"]
 const MARKING_LABELS: Dictionary = {"none": "Plain", "bicolour": "Bicolour", "tuxedo": "Tuxedo", "tabby": "Tabby", "points": "Points", "mask": "Mask"}
 
-## Accessories. The bowl suits any pet; a cat tree needs a cat and a kennel
-## needs a dog, so the shop only offers what the household can actually use.
-const ACCESSORY_KINDS: Array[String] = ["pet_bowl", "cat_tree", "kennel"]
-const ACCESSORY_SPECIES: Dictionary = {"pet_bowl": "", "cat_tree": "cat", "kennel": "dog"}
-const ACCESSORY_LABELS: Dictionary = {"pet_bowl": "Food & water bowl", "cat_tree": "Cat tree", "kennel": "Dog kennel"}
-const ACCESSORY_PRICES: Dictionary = {"pet_bowl": 60, "cat_tree": 240, "kennel": 320}
+## Accessories. The bowl suits any pet; a cat tree, a cat bed and a cat toy box
+## each need a cat, and a kennel, a dog bed and a dog toy box each need a dog,
+## so the shop only offers what the household can actually use. The two toys are
+## the single pieces a toy box already holds six of.
+const ACCESSORY_KINDS: Array[String] = ["pet_bowl", "cat_tree", "kennel", "pet_bed_cat", "pet_bed_dog", "pet_toy_cat", "pet_toy_dog", "cat_toy_box", "dog_toy_box"]
+const ACCESSORY_SPECIES: Dictionary = {
+	"pet_bowl": "", "cat_tree": "cat", "kennel": "dog",
+	"pet_bed_cat": "cat", "pet_bed_dog": "dog",
+	"pet_toy_cat": "cat", "pet_toy_dog": "dog",
+	"cat_toy_box": "cat", "dog_toy_box": "dog",
+}
+const ACCESSORY_LABELS: Dictionary = {
+	"pet_bowl": "Food & water bowl", "cat_tree": "Cat tree", "kennel": "Dog kennel",
+	"pet_bed_cat": "Cosy cat bed", "pet_bed_dog": "Cushioned dog bed",
+	"pet_toy_cat": "Feather mouse toy", "pet_toy_dog": "Knotted rope bone",
+	"cat_toy_box": "Cat Toy Box", "dog_toy_box": "Dog Toy Box",
+}
+const ACCESSORY_PRICES: Dictionary = {
+	"pet_bowl": 60, "cat_tree": 240, "kennel": 320,
+	"pet_bed_cat": 120, "pet_bed_dog": 160,
+	"pet_toy_cat": 25, "pet_toy_dog": 30,
+	"cat_toy_box": 50, "dog_toy_box": 50,
+}
+## The six toys a toy box comes with, and where they sit inside it. Each box is
+## sold full, and buying one places the box and its six toys as a set.
+const TOY_BOX_TOYS: Dictionary = {"cat_toy_box": "cat", "dog_toy_box": "dog"}
+const TOYS_PER_BOX: int = 6
+
+## Collar and leash colours. A pet's collar and leash are its own, chosen when
+## the pet is shaped and kept in the save, so a household can tell two animals
+## apart at a glance. These are authored accessory tones rather than coat tones.
+const COLLAR_COLORS: Array[String] = [
+	"be5a4b", "d94f4f", "e0803a", "e8b74a", "6fae5a",
+	"3f9b8e", "4a8fd0", "6b5fbe", "a9559b", "e07fae",
+	"8a5a3c", "4a4f55", "2e3438", "8c8f94", "e6e2d8", "f2f0ea",
+]
+## A leash is usually the plainer of the two, so it gets a shorter, calmer set
+## that always contrasts with the collar it hangs beside.
+const LEASH_COLORS: Array[String] = [
+	"4a4f55", "2e3438", "8a5a3c", "3f9b8e", "4a8fd0", "6b5fbe",
+	"be5a4b", "6fae5a", "8c8f94", "e6e2d8",
+]
+const DEFAULT_COLLAR: String = "be5a4b"
+const DEFAULT_LEASH: String = "4a4f55"
 
 const NAMES: Dictionary = {
 	"female": ["Willow", "Hazel", "Clover", "Poppy", "Nala", "Sable", "Juniper", "Pip", "Mabel", "Fern", "Daisy", "Winnie"],
@@ -110,6 +148,8 @@ static func candidate(serial: int, choice: int) -> Dictionary:
 		"gradient": snappedf(blend, 0.01),
 		"coat_length": COAT_LENGTHS[rng.randi_range(0, COAT_LENGTHS.size() - 1)],
 		"marking": MARKINGS[rng.randi_range(0, MARKINGS.size() - 1)],
+		"collar_color": COLLAR_COLORS[rng.randi_range(0, COLLAR_COLORS.size() - 1)],
+		"leash_color": LEASH_COLORS[rng.randi_range(0, LEASH_COLORS.size() - 1)],
 	}
 
 
@@ -122,6 +162,8 @@ static func appearance(pet: Dictionary) -> Dictionary:
 		"gradient": clampf(float(pet.get("gradient", 0.0)), 0.0, 1.0),
 		"coat_length": str(pet.get("coat_length", "medium")) if COAT_LENGTHS.has(str(pet.get("coat_length", ""))) else "medium",
 		"marking": str(pet.get("marking", "none")) if MARKINGS.has(str(pet.get("marking", ""))) else "none",
+		"collar_color": normalised_colour(pet.get("collar_color", ""), DEFAULT_COLLAR),
+		"leash_color": normalised_colour(pet.get("leash_color", ""), DEFAULT_LEASH),
 	}
 
 
@@ -152,6 +194,10 @@ static func profile_error(value: Variant) -> String:
 		return "Choose a coat length."
 	if not MARKINGS.has(str(pet.get("marking", ""))):
 		return "Choose a marking."
+	if not colour(pet.get("collar_color", "")):
+		return "Choose a valid collar colour."
+	if not colour(pet.get("leash_color", "")):
+		return "Choose a valid leash colour."
 	return ""
 
 
@@ -162,7 +208,7 @@ static func request_error(value: Variant) -> String:
 	if not value is Dictionary:
 		return "This pet review is no longer valid. Open the shop again."
 	var request: Dictionary = value
-	if request.size() != 12:
+	if request.size() != 14:
 		return "This pet review is no longer valid. Open the shop again."
 	if not integer(request.get("member_count", 0), 1, 8):
 		return "This pet review is no longer valid. Open the shop again."
@@ -185,6 +231,8 @@ static func record_from(review: Dictionary, id: String, day: int) -> Dictionary:
 		"gradient": snappedf(clampf(float(review.gradient), 0.0, 1.0), 0.01),
 		"coat_length": str(review.coat_length),
 		"marking": str(review.marking),
+		"collar_color": normalised_colour(review.get("collar_color", ""), DEFAULT_COLLAR),
+		"leash_color": normalised_colour(review.get("leash_color", ""), DEFAULT_LEASH),
 		"day": day,
 		"fee": price_for(str(review.species)),
 	}
@@ -196,7 +244,7 @@ static func pet_error(value: Variant, index: int, known: Dictionary) -> String:
 	if not value is Dictionary:
 		return "Save contains an invalid pet."
 	var pet: Dictionary = value
-	if pet.size() != 12:
+	if pet.size() != 14:
 		return "Save contains a pet with unexpected fields."
 	var id: String = str(pet.get("id", ""))
 	if id.is_empty() or known.has(id):
@@ -218,6 +266,8 @@ static func pet_error(value: Variant, index: int, known: Dictionary) -> String:
 		return "Save contains an unknown coat length."
 	if not MARKINGS.has(str(pet.get("marking", ""))):
 		return "Save contains an unknown marking."
+	if not colour(pet.get("collar_color", "")) or not colour(pet.get("leash_color", "")):
+		return "Save contains an invalid collar or leash colour."
 	if not integer(pet.get("day", 0), 1, 1000000) or not integer(pet.get("fee", 0), 0, 1000000):
 		return "Save contains an invalid pet purchase record."
 	if int(pet.fee) != price_for(str(pet.species)):

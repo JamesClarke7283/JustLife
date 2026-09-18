@@ -15,12 +15,22 @@ class_name LifeHouseholdFlow
 ## through `get_state`/`restore`, so a save always resumes it.
 
 const SERVICE_ACTIONS: Array[String] = ["buy_book", "study_book", "empty_bin", "clear_table", "practice_instrument", "watch_together"]
+## One book per skill in `LifeSim.SKILL_NAMES`, so every subject has a shelf
+## route. Prices and XP follow the difficulty of the skill: the original four
+## keep their tuned values, and the four added later are priced to match.
 const BOOK_SKILLS: Dictionary = {
 	"cooking":{"label":"A Well-Fed Home","price":90,"xp":52.0},
 	"fitness":{"label":"Move With Purpose","price":80,"xp":48.0},
 	"gardening":{"label":"Soil and Season","price":85,"xp":50.0},
 	"music":{"label":"Notes for Beginners","price":110,"xp":58.0},
+	"creativity":{"label":"Sparks of Invention","price":100,"xp":54.0},
+	"charisma":{"label":"The Room Listens","price":95,"xp":50.0},
+	"logic":{"label":"Reasons in Order","price":105,"xp":56.0},
+	"parenting":{"label":"A Steady Hand","price":115,"xp":52.0},
 }
+## A book can carry a skill to level 9. The tenth level is reserved for the
+## computer, so the screen is the only way to become a true master of a subject.
+const BOOK_MAX_LEVEL: int = 9
 const MAX_BOOKS: int = 6
 const BIN_CAPACITY: int = 4
 ## Furniture put away into the household's storage unit. A stored furnishing is
@@ -179,6 +189,19 @@ func study_definition(base: Dictionary, skill: String) -> Dictionary:
 	return result
 
 
+## The subject a shelf session would teach: the first book whose skill has not yet
+## reached the book ceiling. Empty when every book on the shelf is finished, which
+## is exactly the case the menu refuses.
+func study_skill_for(sim: LifeSim, shelf_id: String) -> String:
+	for book: Dictionary in books_on(shelf_id):
+		var skill: String = str(book.skill)
+		if not BOOK_SKILLS.has(skill):
+			continue
+		if int(sim.skills.get(skill,{"level":1}).level) < BOOK_MAX_LEVEL:
+			return skill
+	return ""
+
+
 # ----------------------------------------------------------------- rubbish
 
 func bin_is_full(bin_id: String) -> bool:
@@ -318,6 +341,12 @@ func action_availability(sim: LifeSim, id: String, target_id: String) -> String:
 				return "Choose a bookshelf with a skill book on it."
 			if books_on(target_id).is_empty():
 				return "Buy a skill book for this shelf first."
+			# A book teaches up to level 9. Mastery at 10 belongs to the computer,
+			# so the shelf tells the player where to go next instead of silently
+			# capping their progress.
+			if not study_skill_for(sim, target_id).is_empty():
+				return ""
+			return "Every skill book on this shelf is already at level %d. Mastery at level 10 needs the computer." % BOOK_MAX_LEVEL
 		"empty_bin":
 			if kind != "rubbish_bin":
 				return "Choose the rubbish bin."

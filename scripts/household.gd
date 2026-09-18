@@ -208,6 +208,15 @@ func tick(delta: float) -> void:
 	minutes=members[0].sim.minutes
 	if day!=start_day:
 		_sync_bill_mirror()
+		# A break-in is the household's own event, rolled once by the money owner
+		# on the shared clock. It fires on the night it is due while the player
+		# simply plays, rather than waiting to be asked for.
+		var robber:LifeSim=bill_owner()
+		if robber!=null:
+			robber.funds=funds
+			robber.robbery_check()
+			funds=robber.funds
+			_sync_wallet()
 	# Conception to birth runs on the shared game clock, so fast speed, pause
 	# and a save/load all agree about when the baby is due.
 	pregnancy_tick()
@@ -447,6 +456,11 @@ func restore_state(data: Dictionary) -> Dictionary:
 		for c in candidates:c.sim.free()
 		return {"ok":false,"error":"The selected Lifelet is invalid."}
 	var lead:LifeSim=candidates[int(selected_value)].sim
+	var lead_policy:String=str(lead.insurance_policy_id)
+	for candidate:Dictionary in candidates:
+		if str(candidate.sim.insurance_policy_id)!=lead_policy:
+			for c in candidates:c.sim.free()
+			return {"ok":false,"error":"The saved Lifelets disagree about home insurance."}
 	for field:String in ["funds","day","minutes","speed"]:
 		var expected:float=float(lead.get(field))
 		var saved_value:Variant=data.get(field,expected)
@@ -773,7 +787,7 @@ func _sync_bill_mirror() -> void:
 		return
 	for member: Dictionary in members:
 		if member.sim != owner:
-			member.sim.set_bill_mirror(owner.pending_bill, owner.utilities_cut, owner.bills_paid_total, owner.bills_late, owner.last_bill_day)
+			member.sim.set_bill_mirror(owner.pending_bill, owner.utilities_cut, owner.bills_paid_total, owner.bills_late, owner.last_bill_day, owner.insurance_policy_id)
 
 ## The outstanding bill as the household sees it, empty when nothing is due.
 func bill() -> Dictionary:
@@ -801,6 +815,55 @@ func pay_bill() -> Dictionary:
 		funds = owner.funds
 		_sync_bill_mirror()
 		_sync_wallet()
+	return result
+
+
+## The household's home insurance, empty while uninsured. Mirrored from the
+## owner so the phone shows the same cover whoever is selected.
+func insurance() -> Dictionary:
+	var owner: LifeSim = bill_owner()
+	return {} if owner == null else owner.insurance_policy()
+
+
+## Buy home insurance with the shared purse. Refused, with its reason, while a
+## policy is already in force or the wallet cannot cover the premium; the money
+## is charged only on success. Returns `{ok, error}` for the phone.
+func buy_insurance(policy_id: String = "home") -> Dictionary:
+	var owner: LifeSim = bill_owner()
+	if owner == null:
+		return {"ok": false, "error": "There is no household to insure."}
+	owner.funds = funds
+	var result: Dictionary = owner.buy_insurance(policy_id)
+	if bool(result.get("ok", false)):
+		funds = owner.funds
+		_sync_bill_mirror()
+		_sync_wallet()
+	else:
+		result["error"] = str(result.get("error", result.get("reason", "That policy could not be bought.")))
+	return result
+
+
+## Give up the cover. Nothing is refunded; the owner's notice carries the news.
+func cancel_insurance() -> Dictionary:
+	var owner: LifeSim = bill_owner()
+	if owner == null:
+		return {"ok": false, "error": "There is no household to insure."}
+	var result: Dictionary = owner.cancel_insurance()
+	_sync_bill_mirror()
+	return result
+
+
+## A break-in against the shared purse. The owner rolls it and the household
+## takes the outcome, exactly as it settles a bill, so the loss is real money and
+## an insured home ends the night even.
+func robbery() -> Dictionary:
+	var owner: LifeSim = bill_owner()
+	if owner == null:
+		return {"ok": false, "reason": "There is no household to rob."}
+	owner.funds = funds
+	var result: Dictionary = owner.robbery()
+	funds = owner.funds
+	_sync_wallet()
 	return result
 
 # Cooperative homework has one authoritative clock: the learner's ordinary

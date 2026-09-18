@@ -1,5 +1,6 @@
 extends Node3D
 class_name LifePetActor
+const LifePetsPolicy=preload("res://scripts/pets.gd")
 ## An original household pet in the world. It owns its authored model, its mixed
 ## coat and a small idle animation; the controller owns where it stands and when
 ## it walks. The body is presentation only — the household owns the real pet
@@ -9,6 +10,10 @@ const COAT_SHADER: String = "res://assets/shaders/pet_coat.gdshader"
 ## The authored material names the coat shader overrides, exactly as the
 ## character actor overrides its own authored surfaces by name.
 const COAT_SURFACES: Array[String] = ["Fur", "Fur_Mark"]
+## The collar and leash are their own authored surfaces, coloured from the pet's
+## own saved accessory colours rather than the coat.
+const COLLAR_SURFACE: String = "Collar"
+const LEASH_SURFACE: String = "Leash"
 const LEG_NAMES: Array[String] = ["Leg_FL", "Leg_FR", "Leg_BL", "Leg_BR"]
 
 ## Authored standing height per species, so the coat gradient spans the body.
@@ -146,6 +151,15 @@ func _apply_coat() -> void:
 			if not original is StandardMaterial3D:
 				continue
 			var surface_name: String = str(original.resource_name)
+			if surface_name == COLLAR_SURFACE or surface_name == LEASH_SURFACE:
+				# The collar and leash take the pet's own accessory colours, so two
+				# animals with the same coat are still told apart in the home.
+				var accessory := StandardMaterial3D.new()
+				accessory.albedo_color = Color.from_string(str(coat.get("collar_color", LifePetsPolicy.DEFAULT_COLLAR)) if surface_name == COLLAR_SURFACE else str(coat.get("leash_color", LifePetsPolicy.DEFAULT_LEASH)), Color(LifePetsPolicy.DEFAULT_COLLAR))
+				accessory.roughness = 0.55
+				mesh.set_surface_override_material(surface_index, accessory)
+				_materials.append(accessory)
+				continue
 			if surface_name not in COAT_SURFACES:
 				continue
 			var material: StandardMaterial3D = null

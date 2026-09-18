@@ -5,6 +5,14 @@ const ARRIVAL_MINUTES:float=180.0
 const WELCOME_MINUTES:float=120.0
 const STAY_MINUTES:float=360.0
 const GREETING_MINUTES:float=25.0
+## An uninvited caller rings the doorbell and waits on the doorstep. They stay
+## outside the whole time: ringing is the only way in, and letting them in is the
+## household's decision. A visitor who was invited over is expected, so their
+## arrival is announced by the ordinary invite notice instead of a second ring.
+const RING_WAIT_MINUTES:float=90.0
+## How long the doorstep decision stays open before the caller gives up and
+## walks away on their own.
+const RING_LINGER_MINUTES:float=15.0
 const Building=preload("res://scripts/building_state.gd")
 var _owner:WeakRef
 var app:Node:
@@ -13,6 +21,15 @@ var app:Node:
 		return current.app if current!=null else null
 var state:Dictionary={}
 var next_serial:int=1
+## An uninvited caller on the doorstep, or empty. Their own record so a ring
+## never collides with an invited visit's saved state.
+var bell:Dictionary={}
+var next_bell_serial:int=1
+var _bell_action:Dictionary={}
+var _bell_notice_in:float=0.0
+## resident id -> absolute game day they were last turned away, so a caller does
+## not simply ring again the moment they are sent off.
+var _bell_denied:Dictionary={}
 var _welcome_action:Dictionary={}
 var _departure_action:Dictionary={}
 var _notice_in:float=0.0
@@ -27,6 +44,7 @@ func _packed(point:Vector3)->Array:return [point.x,point.y,point.z]
 func _vector(value:Array)->Vector3:return Vector3(value[0],value[1],value[2])
 func reset()->void:
 	state.clear();next_serial=1;_welcome_action={};_departure_action={};_notice_in=0.0
+	bell.clear();next_bell_serial=1;_bell_action={};_bell_notice_in=0.0
 
 func social_allowed(id:String,action:Dictionary={})->bool:
 	if not owns(id):return true
@@ -42,6 +60,7 @@ func welcome_start_allowed(action:Dictionary)->bool:
 
 func requirement(id:String)->String:
 	if active():return "One neighbor is already visiting. Say goodbye and let them leave first."
+	if ringing():return "Somebody is already at the door. Let them in or turn them away first."
 	if app.current_venue!="home" or app.mode!="live":return "Invite a neighbor while you are at home in Live mode."
 	if not LifeResidents.PEOPLE.has(id) or not app.residents.can_visit(id):return "Reach 20 friendship with this neighbor before inviting them over."
 	if _building().is_empty():return "This home needs a supported ground-floor layout before inviting a guest."
@@ -49,9 +68,165 @@ func requirement(id:String)->String:
 	if not app.residents._speaker(id).is_empty():return "Finish the current conversation with this neighbor before inviting them over."
 	return ""
 
+# ------------------------------------------------------------------ doorbell
+
+## Somebody uninvited is at the door. The porch is outside the house at every
+## point of the ring, so this can only ever resolve into an invitation.
+func ringing()->bool:return not bell.is_empty()
+func owns_bell(id:String)->bool:return ringing() and str(bell.guest)==id
+func bell_answered()->bool:return ringing() and str(bell.get("decision",""))=="let_in"
+func bell_refused()->bool:return ringing() and str(bell.get("decision",""))=="turned_away"
+func _bell_now()->float:return (app.household.day-1)*1440.0+app.household.minutes
+
+## A neighbor standing on the porch with no visit of their own and no
+## conversation under way rings the doorbell. Whether they are a friend or a
+## stranger, the household decides who comes in.
+func consider_ring(force:bool=false)->bool:
+	if app.current_venue!="home" or app.mode!="live" or app.household==null:return false
+	if ringing() or active() or not app.residents.trip.is_empty():return false
+	if force:return _start_ring()
+	if not app.residents.present("maya"):pass
+	for id:String in LifeResidents.PEOPLE:
+		if not app.residents.present(id):continue
+		if int(_bell_denied.get(id,-1))>=app.household.day:continue
+		if not app.residents._speaker(id).is_empty():continue
+		if not _at_doorstep(id,app.world.actors[id].position):continue
+		return _start_ring(id)
+	return false
+
+func _at_doorstep(id:String,at:Vector3)->bool:
+	# The doorstep sits on the ground outside the threshold, past the porch step.
+	if app.world.point_level(at)!=0:return false
+	return Vector2(at.x,at.z).distance_to(Vector2(_door().x,_door().z))<=2.6
+
+## The front door on this layout, taken from the house's own porch threshold.
+func _door()->Vector3:
+	return Vector3(0,.16,5.72)
+
+func _start_ring(id:String="")->bool:
+	var guest:String=id
+	if guest.is_empty():
+		for candidate:String in LifeResidents.PEOPLE:
+			if app.residents.present(candidate) and app.residents._speaker(candidate).is_empty():_at_doorstep(candidate,app.world.actors[candidate].position)
+		for candidate:String in LifeResidents.PEOPLE:
+			if app.residents.present(candidate):guest=candidate;break
+	if guest.is_empty() or not LifeResidents.PEOPLE.has(guest):return false
+	var actor:LifeActor=_body(guest)
+	if not is_instance_valid(actor):return false
+	var doorstep:Vector3=_doorstep_point(guest)
+	if not doorstep.is_finite():return false
+	bell={"serial":next_bell_serial,"guest":guest,"rang_at":_bell_now(),"phase_at":_bell_now(),"doorstep":doorstep,"decision":"","admitted_at":-1.0,"ring_announced":false,"blocked":false,"position":_packed(actor.position),"rotation":actor.rotation.y}
+	next_bell_serial+=1
+	app.show_notice("%s is at the door. Let them in, or ask them to leave." % str(LifeResidents.PEOPLE[guest].name).split(" ")[0])
+	if app.has_method("_refresh_guest_status"):app._refresh_guest_status()
+	return true
+
+## A clear standing spot on the porch, clear of the front step and of bodies.
+func _doorstep_point(id:String)->Vector3:
+	var door:=_door()
+	for z:float in [6.15,6.45,6.75,7.05]:
+		for x:float in [0.0,.5,-.5,1.0,-1.0,1.5,-1.5]:
+			var point:=Vector3(door.x+x,.16,z)
+			if not app.world.lot_navigation.point_clear(0,point):continue
+			if not app.traversal._free(id,point):continue
+			return point
+	return Vector3.INF
+
+## Let the caller in: they walk the ordinary welcome path and join the normal
+## invited visit, so everything downstream (greeting, meal, goodbye) is unchanged.
+func let_in()->bool:
+	if not ringing():app.show_notice("Nobody is at the door.");return false
+	if bell_answered():app.show_notice("They are already coming in.");return false
+	var guest:String=str(bell.guest)
+	if not app.residents.present(guest):app.show_notice("They have already left the door.");return false
+	if app.household.selected()==null:return false
+	# The doorstep record is spent the moment the household answers, so the
+	# ordinary invite's own "somebody is already at the door" rule does not
+	# refuse the very visit this answer is starting.
+	_clear_bell()
+	if not invite(guest):
+		var blocked_reason:String=requirement(guest)
+		if blocked_reason.is_empty():blocked_reason="Something else is happening at the door."
+		if not _begin_visit(guest," is coming in.",true):
+			# The porch no longer yields a route inside (path or layout changed):
+			# the caller leaves rather than standing at a door that will not open.
+			if app.residents.present(guest):turn_away(str(blocked_reason))
+			return false
+	app.show_notice("You let %s in." % str(LifeResidents.PEOPLE[guest].name).split(" ")[0])
+	if app.has_method("_refresh_guest_status"):app._refresh_guest_status()
+	return true
+
+## Turn the caller away. They walk back to the street and life carries on.
+func turn_away(message:String="")->bool:
+	if not ringing():app.show_notice("Nobody is at the door.");return false
+	var guest:String=str(bell.guest)
+	bell.decision="turned_away"
+	bell.phase_at=_bell_now()
+	_bell_denied[guest]=app.household.day
+	_clear_bell()
+	app.residents.home_visit_bell_departed(guest)
+	app.show_notice(message if not message.is_empty() else "%s heads off. Maybe another time." % str(LifeResidents.PEOPLE[guest].name).split(" ")[0])
+	if app.has_method("_refresh_guest_status"):app._refresh_guest_status()
+	return true
+
+func _clear_bell()->void:
+	bell={};_bell_action={};_bell_notice_in=0.0
+
+## The doorstep tick: the caller waits outside, facing the door, and gives up
+## after RING_LINGER_MINUTES. They never cross the threshold on their own.
+func tick_bell(delta:float)->void:
+	if not ringing():return
+	var id:String=str(bell.guest)
+	var actor:LifeActor=_body(id)
+	if not is_instance_valid(actor) or not actor.visible:
+		_clear_bell();return
+	var speed:float=float(app.household.speed)
+	if speed<=0:actor.animate(delta,0,false,"");return
+	var staying:bool=str(bell.get("decision",""))=="turned_away"
+	var deadline:float=float(bell.rang_at)+(RING_LINGER_MINUTES if staying else RING_WAIT_MINUTES)
+	if _bell_now()>=deadline:
+		turn_away("%s waited at the door and then headed home." % str(LifeResidents.PEOPLE[id].name).split(" ")[0]);return
+	var moving:bool=false
+	if staying:
+		var exit:Vector3=_curb_point(id)
+		if exit.is_finite():
+			var route:PackedVector3Array=app.traversal._floor_route(actor.position,exit,id)
+			if route.size()>1:
+				var next:Vector3=actor.position.move_toward(route[1],delta*speed*.75)
+				if app.traversal._step_clear(id,actor.position,next):
+					var direction:Vector3=route[1]-actor.position
+					actor.rotation.y=lerp_angle(actor.rotation.y,atan2(direction.x,direction.z),minf(delta*6,1))
+					actor.position=next;moving=true
+				if actor.position.distance_to(exit)<.4:
+					_clear_bell();actor.animate(delta,speed,moving,"");return
+	else:
+		var doorstep:Vector3=bell.doorstep if bell.doorstep is Vector3 else _doorstep_point(id)
+		if actor.position.distance_to(doorstep)>.25:
+			var route:PackedVector3Array=app.traversal._floor_route(actor.position,doorstep,id)
+			if route.size()>1:
+				var next:Vector3=actor.position.move_toward(route[1],delta*speed*.75)
+				if app.traversal._step_clear(id,actor.position,next):
+					actor.position=next;moving=true
+		# Face the door while waiting to be answered.
+		var toward:Vector3=_door()-actor.position
+		if toward.length()>.01:actor.rotation.y=lerp_angle(actor.rotation.y,atan2(toward.x,toward.z),minf(delta*4,1))
+	actor.animate(delta,speed,moving,"")
+	bell.position=_packed(actor.position);bell.rotation=actor.rotation.y
+	var resident:Dictionary=app.residents.locations.home.get(id,{})
+	if not resident.is_empty():
+		resident.position=_packed(actor.position);resident.rotation=actor.rotation.y
+
+
 func invite(id:String)->bool:
 	var reason:String=requirement(id)
 	if not reason.is_empty():app.show_notice(reason);return false
+	return _begin_visit(id," is coming over. Welcome them when they arrive.")
+
+## The doorbell's own admission. A caller is a neighbour, not necessarily a
+## friend, so this skips only the friendship rule — every layout, path and
+## presence check the ordinary invite makes still applies, and the guest then
+## joins exactly the same visit state machine.
+func _begin_visit(id:String,notice:String,auto_welcome:bool=false)->bool:
 	var actor:LifeActor=_body(id)
 	if not is_instance_valid(actor):app.show_notice("This neighbor is unavailable right now.");return false
 	var start:Vector3=actor.position if app.residents.present(id) else _curb_point(id)
@@ -72,13 +247,13 @@ func invite(id:String)->bool:
 	if not inside.is_finite() or not exit.is_finite() or _route(inside,exit,id).is_empty():
 		app.show_notice("Make room for a clear ground-floor gathering place and a route back to the sidewalk.");return false
 	# All fallible layout/presence checks precede any queue, body or lifecycle change.
-	state={"serial":next_serial,"guest":id,"phase":"arriving","created_at":_now(),"arrived_at":-1.0,"admitted_at":-1.0,"phase_at":_now(),"welcome":welcome,"inside":inside,"exit":exit,"route":{"points":incoming,"point":0},"greeting":{},"next_greeting":1,"departure":{},"blocked":false,"meal":{},"next_meal":1}
+	state={"serial":next_serial,"guest":id,"phase":"arriving","created_at":_now(),"arrived_at":-1.0,"admitted_at":-1.0,"phase_at":_now(),"welcome":welcome,"inside":inside,"exit":exit,"route":{"points":incoming,"point":0},"greeting":{},"next_greeting":1,"departure":{},"blocked":false,"meal":{},"next_meal":1,"auto_welcome":auto_welcome}
 	next_serial+=1
 	actor.position=start;app.world.set_actor_away(id,false,false)
 	var resident:Dictionary=app.residents.locations.home[id]
 	resident.phase="walking";resident.position=_packed(start)
 	app.residents.publish_targets(true)
-	app.show_notice(str(LifeResidents.PEOPLE[id].name)+" is coming over. Welcome them when they arrive.")
+	app.show_notice(str(LifeResidents.PEOPLE[id].name)+notice)
 	return true
 
 func _route(from:Vector3,to:Vector3,id:String)->PackedVector3Array:
@@ -171,13 +346,21 @@ func action_finished(member_id:String,action:Dictionary)->void:
 	if not bool(action.get("social_accepted",false)) or str(action.get("id",""))!="friendly":return
 	var host:LifeActor=_body(member_id);var guest:LifeActor=_body(str(state.guest))
 	if not is_instance_valid(host) or not host.visible or not guest.visible or host.position.distance_to(guest.position)>1.8:return
+	_admit(str(state.guest),event_time)
+
+## A welcomed guest walks inside. Shared by the ordinary "Welcome in" greeting
+## and by a caller the household already let in at the doorbell.
+func _admit(guest:String,event_time:float)->void:
+	if not active() or guest!=str(state.guest):return
+	var actor:LifeActor=_body(guest)
+	if not is_instance_valid(actor):return
 	var inside:Vector3=state.inside
-	if not _clear(str(state.guest),inside):inside=_inside_point(str(state.guest),guest.position)
+	if not _clear(guest,inside):inside=_inside_point(guest,actor.position)
 	if not inside.is_finite():goodbye("There is no clear gathering space. Your guest is heading home.",event_time);return
-	var route:PackedVector3Array=_route(guest.position,inside,str(state.guest))
+	var route:PackedVector3Array=_route(actor.position,inside,guest)
 	if route.is_empty():goodbye("The route inside is blocked. Your guest is heading home.",event_time);return
 	state.inside=inside;state.phase="entering";state.phase_at=event_time;state.admitted_at=event_time;state.route={"points":route,"point":0};state.greeting={};_welcome_action={}
-	app.show_notice(str(LifeResidents.PEOPLE[str(state.guest)].name)+" is coming inside.")
+	app.show_notice(str(LifeResidents.PEOPLE[guest].name)+" is coming inside.")
 
 func goodbye(message:String="Your guest is heading home after the current conversation.",event_time:float=-1.0)->void:
 	if not active() or str(state.phase)=="leaving":return
@@ -235,6 +418,12 @@ func tick(delta:float)->void:
 			if int(state.route.point)>=state.route.points.size():
 				if phase=="arriving":
 					state.phase="waiting";state.arrived_at=now;state.phase_at=now
+					if bool(state.get("auto_welcome",false)):
+						# The household already answered the doorbell: this caller
+						# was let in, so they come straight inside instead of being
+						# asked a second time at the threshold.
+						_admit(str(state.guest),now)
+						return
 					if app.household.speed>1:
 						app.household.set_speed(1);app.show_notice(str(LifeResidents.PEOPLE[id].name)+" is here. Slowing down so you can welcome them.")
 					else:app.show_notice("Your guest is here. Choose Welcome in to invite them inside.")
@@ -272,10 +461,22 @@ func snapshot()->Dictionary:
 		var actor:LifeActor=_body(str(saved.guest))
 		saved.position=_packed(actor.position);saved.rotation=actor.rotation.y
 		if not saved.get("meal",{}).is_empty():saved.meal.target=_packed(saved.meal.target)
-	return {"version":2,"next_serial":next_serial,"visit":saved}
+	var saved_bell:Dictionary=bell.duplicate(true)
+	if not saved_bell.is_empty():
+		var bell_actor:LifeActor=_body(str(saved_bell.guest))
+		if is_instance_valid(bell_actor):
+			saved_bell.position=_packed(bell_actor.position);saved_bell.rotation=bell_actor.rotation.y
+	return {"version":2,"next_serial":next_serial,"visit":saved,"doorbell":saved_bell,"next_bell_serial":next_bell_serial}
 
 func restore(value:Dictionary)->void:
 	state=value.get("visit",{}).duplicate(true);next_serial=int(value.get("next_serial",1));_welcome_action={};_departure_action={}
+	bell=value.get("doorbell",{}).duplicate(true);next_bell_serial=int(value.get("next_bell_serial",1));_bell_action={};_bell_notice_in=0.0
+	if not bell.is_empty():
+		bell.doorstep=_vector(bell.get("doorstep",[0.0,.16,6.15]))
+		bell.rang_at=float(bell.get("rang_at",0.0));bell.phase_at=float(bell.get("phase_at",0.0))
+		bell.serial=int(bell.get("serial",1));bell.rotation=float(bell.get("rotation",0.0))
+		bell.position=_vector(bell.get("position",[0.0,.16,6.15]))
+		if str(bell.get("decision","")) not in ["","let_in","turned_away"]:bell.decision=""
 	if state.is_empty():return
 	state.meal=state.get("meal",{});state.next_meal=int(state.get("next_meal",1))
 	if not state.meal.is_empty():state.meal.target=_vector(state.meal.target)
@@ -331,6 +532,8 @@ static func validate_saved(data:Dictionary)->String:
 	if found==null:return ""
 	var value:Variant=found.value
 	if not value is Dictionary or not Building.number(value.get("version"),1,2,true) or not Building.number(value.get("next_serial"),1,1000000000,true) or not value.get("visit") is Dictionary:return "Save contains an invalid home-visit record."
+	var doorbell_error:String=_validate_bell(value.get("doorbell",{}),value.get("next_bell_serial",1),found)
+	if not doorbell_error.is_empty():return doorbell_error
 	var visit:Dictionary=value.visit
 	if visit.is_empty():return ""
 	if int(value.version)==1 and (visit.has("meal") or visit.has("next_meal")):return "A version-one visit cannot contain a guest meal."
@@ -425,6 +628,32 @@ static func validate_saved(data:Dictionary)->String:
 			if index!=0 or phase not in ["waiting","inside","leaving"]:return "The saved guest conversation is active in an incompatible phase."
 			if phase=="leaving" and (visit.departure.is_empty() or member_id!=str(visit.departure.member)):return "A departing guest has an unowned active conversation."
 	if active_hosts>1:return "Two household members cannot own the same guest conversation."
+	return ""
+
+## A doorstep record is optional so older saves load unchanged. When present it
+## must name a known neighbor on a real ground point, with its clock inside the
+## save's own elapsed time — the same discipline the invited-visit record keeps.
+static func _validate_bell(bell:Variant,next_serial:Variant,found:Dictionary)->String:
+	if not bell is Dictionary:return "Save contains an invalid doorbell record."
+	if not Building.number(next_serial,1,1000000000,true):return "Save contains an invalid doorbell counter."
+	if bell.is_empty():return ""
+	if not Building.number(bell.get("serial"),1,float(next_serial)-1,true):return "Save contains an invalid doorbell identity."
+	if not LifeResidents.PEOPLE.has(str(bell.get("guest",""))):return "Save contains an unknown caller at the door."
+	if str(bell.get("decision","")) not in ["","let_in","turned_away"]:return "Save contains an invalid doorbell answer."
+	if not bell.get("ring_announced",false) is bool or not bell.get("blocked",false) is bool:return "Save contains invalid doorbell state."
+	var clock:Dictionary=found.member_state
+	if not Building.number(clock.get("day"),1,1000000,true) or not Building.number(clock.get("minutes"),0,1440):return "Save contains an invalid doorbell clock."
+	var now:float=(float(clock.day)-1)*1440.0+float(clock.minutes)
+	for key:String in ["rang_at","phase_at"]:
+		if not Building.number(bell.get(key),0,now):return "Save contains an invalid doorbell phase clock."
+	if not Building.number(bell.get("admitted_at"),-1,now):return "Save contains an invalid doorbell admission time."
+	if float(bell.phase_at)<float(bell.rang_at):return "Save contains a doorbell phase before its ring."
+	if not _point(bell.get("doorstep")) or not _point(bell.get("position")):return "Save contains an invalid doorstep position."
+	if not Building.number(bell.get("rotation"),-1000000,1000000):return "Save contains an invalid doorbell rotation."
+	# The caller must still be outside the house, on supported ground.
+	var at:=Vector3(bell.position[0],bell.position[1],bell.position[2])
+	if float(at.y)<.15999999 or float(at.y)>.16000001:return "The saved caller is not standing on the ground."
+	if not found.residents.get("locations",{}).get("home",{}).has(str(bell.guest)):return "Save is missing the caller's home-lot presence."
 	return ""
 
 static func _raw_started(action:Dictionary)->float:

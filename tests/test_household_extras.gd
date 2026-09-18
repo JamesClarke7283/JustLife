@@ -135,8 +135,8 @@ func _storage_unit(flow: LifeHouseholdFlow) -> void:
 	flow.storage.clear()
 
 
-## Fresh food keeps for one game day and turns green once spoiled; spoiled food
-## can be thrown in the bin instead of the sink.
+## Fresh food keeps for one game day and turns green once spoiled. Food left out
+## — fresh or spoiled — can be thrown in the bin instead of the sink.
 func _spoilage_and_bin() -> void:
 	var meals: LifeMeals = app.household.meals
 	var now: float = app.meal_flow.now()
@@ -149,7 +149,10 @@ func _spoilage_and_bin() -> void:
 		meals.set_batch_location(str(batch.id), "surface", str(table.id), table.node.to_global(slot), now)
 		batch.offset = [slot.x, slot.y, slot.z]
 		var menu: Array = app.sim.get_actions_for("meal", str(batch.id)).map(func(a: Dictionary) -> String: return str(a.id))
-		check(not menu.has("bin_meal") or app.sim.get_actions_for("meal", str(batch.id)).filter(func(a: Dictionary) -> bool: return str(a.id) == "bin_meal")[0].available == false, "Fresh food is not offered to the bin.")
+		# Anything left out may be tipped in the bin, fresh or spoiled: throwing
+		# food away on purpose is the household's own choice.
+		var offered: Array = app.sim.get_actions_for("meal", str(batch.id)).filter(func(a: Dictionary) -> bool: return str(a.id) == "bin_meal")
+		check(menu.has("bin_meal") and offered.size() == 1 and bool(offered[0].available), "Fresh food can still be thrown in the bin on purpose.")
 		batch.expires = now - 1.0
 		var spoiled: Array = app.sim.get_actions_for("meal", str(batch.id)).filter(func(a: Dictionary) -> bool: return str(a.id) == "bin_meal")
 		check(spoiled.size() == 1 and bool(spoiled[0].available), "Spoiled food offers Throw it in the bin.")

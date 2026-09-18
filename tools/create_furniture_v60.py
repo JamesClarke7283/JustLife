@@ -116,7 +116,36 @@ def floor_lamp():
     ell('Lamp bulb',(0,1.46,.38),(.05,.05,.05),'bulb')
     cyl('Lamp switch',(0,.30,-.135),.012,.02,'coral',axis='Y')
 
-catalog={'book_nook':book_nook,'coffee_table':coffee_table,'floor_lamp':floor_lamp}
+def dressing_table():
+    # A vanity for makeup and jewelry: a shallow drawer front, an oval glass on
+    # a tilting stand, and a tray of small pots. The working surface is at .78,
+    # the height a seated Lifelet's hands reach, and the table faces +z so the
+    # chair in front is where the player sits.
+    box('Vanity top',(0,.78,0),(1.10,.05,.50),'oak_light',.012)
+    box('Vanity apron',(0,.735,0),(1.06,.06,.48),'oak',.010)
+    box('Vanity drawer',(0,.700,.24),(.96,.075,.03),'cream',.008)
+    box('Vanity drawer pull',(0,.700,.263),(.16,.02,.022),'brass',.006)
+    for x in [-.46,.46]:
+        for z in [-.19,.19]:box('Vanity leg',(x,.375,z),(.06,.75,.06),'walnut',.012)
+    # The tilting glass: a frame with a stand and two arms, angled toward a sitter.
+    rod('Vanity glass stand',(0,.80,-.16),(0,1.06,-.20),.018,'brass')
+    rod('Vanity glass arm L',(-.20,1.06,-.20),(-.24,1.30,-.13),.013,'brass')
+    rod('Vanity glass arm R',(.20,1.06,-.20),(.24,1.30,-.13),.013,'brass')
+    box('Vanity glass',(0,1.28,-.11),(.60,.42,.03),'mirror_glass',.006)
+    box('Vanity glass frame',(0,1.28,-.135),(.66,.48,.02),'brass',.008)
+    box('Vanity stool seat',(0,.44,.46),(.42,.06,.34),'rose',.03)
+    for x in [-.15,.15]:
+        for z in [-.11,.11]:box('Vanity stool leg',(x,.215,.46),(.045,.43,.045),'walnut',.010)
+    # A tray of small pots and a brush, so the surface reads as a vanity.
+    box('Vanity tray',(-.30,.815,.02),(.34,.02,.22),'brass',.008)
+    for i in range(3):
+        ell('Vanity pot',(-.42+i*.11,.845,.02),(.038,.030,.038),['coral','plum','rose'][i])
+    cyl('Vanity brush',(.32,.825,-.02),.012,.16,'walnut',axis='Y')
+    torus('Vanity brush head',(.32,.905,-.02),.030,.014,'cream')
+    cyl('Vanity perfume',(.14,.845,.14),.026,.09,'mirror_glass',top=.016,axis='Y')
+    cyl('Vanity perfume cap',(.14,.895,.14),.014,.03,'brass',axis='Y')
+
+catalog={'book_nook':book_nook,'coffee_table':coffee_table,'floor_lamp':floor_lamp,'dressing_table':dressing_table}
 parser=argparse.ArgumentParser()
 parser.add_argument('--only',choices=tuple(catalog))
 parser.add_argument('--source-out',default='art/furniture_v60.blend')

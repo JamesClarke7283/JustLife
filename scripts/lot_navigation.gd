@@ -52,8 +52,9 @@ func _add(point:Vector3,location:Dictionary) -> int:
 func _build_graph() -> Dictionary:
 	_prepare_geometry()
 	for level:int in [0,1]:
-		for x:int in range(-36,37):
-			for z:int in range(-28,37):
+		var cells:Rect2i=Building.cell_range()
+		for x:int in range(cells.position.x,cells.end.x):
+			for z:int in range(cells.position.y,cells.end.y):
 				var cell:=Vector2i(x,z)
 				var at:=Vector3(x*CELL,Building.level_y(level),z*CELL)
 				if point_clear(level,at):_floor_ids[_cell_key(level,cell)]=_add(at,floor_location(level,at))

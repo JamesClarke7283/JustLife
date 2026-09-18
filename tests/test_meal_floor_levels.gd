@@ -190,7 +190,11 @@ func _food_views_and_validation()->void:
 	for pair:Array in [[lower,0],[upper,1],[floor_lower,0],[floor_upper,1]]:
 		var value:Dictionary=pair[0];var level:int=pair[1];var entry:Dictionary=food_app._find_item(str(value.id));var node:Node3D=flow.views[value.id]
 		check(scene_world.item_level(entry)==level,"Food target records actual level "+str(value.id))
-		check(node.get_node("FoodPicking").collision_layer==(World.PICK_GROUND if level==0 else World.PICK_UPPER),"Food picking mask follows support floor "+str(value.id))
+		# Food carries its support floor's pick bit, and the surface bit that lets
+		# it be picked ahead of the furniture it rests on.
+		var floor_bit:int=World.PICK_GROUND if level==0 else World.PICK_UPPER
+		var layer:int=node.get_node("FoodPicking").collision_layer
+		check((layer&floor_bit)==floor_bit and (layer&World.PICK_SURFACE)==World.PICK_SURFACE,"Food picking mask follows support floor "+str(value.id))
 		check(node.find_children("*","MeshInstance3D",true,false).all(func(mesh:MeshInstance3D)->bool:return mesh.layers==(World.VIEW_GROUND if level==0 else World.VIEW_UPPER)),"Every food mesh follows its support view layer "+str(value.id))
 	await physics_frame;await physics_frame
 	for level:int in [0,1]:

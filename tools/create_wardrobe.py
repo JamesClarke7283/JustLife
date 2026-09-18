@@ -24,7 +24,7 @@ parser.add_argument('--preview-dir',type=pathlib.Path,default=None)
 args=parser.parse_args(sys.argv[sys.argv.index('--')+1:] if '--' in sys.argv else [])
 FAMILIES=['adult','child','teen','elder'] if args.family=='all' else [args.family]
 GROUPS=['Root','Spine','Head','Arm_L','Forearm_L','Arm_R','Forearm_R','Leg_L','Shin_L','Leg_R','Shin_R']
-NEW_PREFIXES=('Outfit_Tee','Outfit_Hoodie','Skin_Leg_continuous','Bottom_Shorts','Hair_Pony','Hair_Long','Hair_Buzz','Hair_Waves','Hair_Bun')
+NEW_PREFIXES=('Outfit_Tee','Outfit_Hoodie','Skin_Leg_continuous','Bottom_Shorts','Hair_Pony','Hair_Long','Hair_Buzz','Hair_Waves','Hair_Bun','Hair_Braids','Hair_Topknot')
 D=bpy.data
 
 def link(o,parent):
@@ -255,6 +255,54 @@ def author(family):
     for o in bmade:
         if not o.name.endswith('_Cap'):D.objects.remove(o)
     shrink(D.objects['Hair_Buzz_Cap'],.004*hs)
+    # ---- Braids: the Long mass gathered into two plaits that fall in front of
+    # the shoulders, with the bandings a braid actually has.
+    braid,brmade=dup_group('Hair_Long','Hair_Braids')
+    for o in brmade:
+        if '_Front' in o.name:D.objects.remove(o)
+    bcap2=D.objects['Hair_Braids_Cap']; b2pts=world_points(bcap2); b2top=max(p.z for p in b2pts)
+    b2back=[p for p in b2pts if p.y>0.02*hs]
+    b2cy=sum(p.y for p in b2back)/len(b2back)
+    for side,sgn in (('L',1),('R',-1)):
+        # The plait leaves the nape at its own side and hangs down the front of
+        # the shoulder, so it is visible from the character's own front.
+        start=Vector((sgn*.055*hs,b2cy-.010*hs,b2top-.235*hs))
+        def plait(u,v,start=start,sgn=sgn):
+            t=v; a=u*math.tau
+            # Three-strand banding: the radius swells and pinches down the fall.
+            band=.006*hs*math.sin(t*math.tau*3.5)
+            lean=sgn*.022*hs*t*t          # drifts outward over the shoulder
+            drop=-(.255*hs)*t             # falls down the front
+            forward=-.020*hs*t*t          # eases in front of the collarbone
+            axis=start+Vector((lean,forward,drop))
+            r=(.028*hs*(1-.55*t)+band)*max(0.0,1-.15*t)
+            return axis+Vector((math.cos(a)*r,math.sin(a)*r,0))
+        new_mesh_object('Hair_Braids_Fall'+('' if side=='L' else '.001'),surface(plait,20,26,True,True),'Hair',braid)
+        # Two ties, low and lower, so the gathering reads at a glance.
+        for k,at_v in enumerate((.42,.86)):
+            c=start+Vector((sgn*.022*hs*at_v*at_v,-.020*hs*at_v*at_v,-.255*hs*at_v))
+            def tie(u,v,c=c,at_v=at_v):
+                a=u*math.tau;b=v*math.tau
+                R=.022*hs*(1-.55*at_v);r=.005*hs
+                return c+Vector((math.cos(a)*(R+r*math.cos(b)),math.sin(a)*(R+r*math.cos(b)),r*math.sin(b)))
+            new_mesh_object('Hair_Braids_Tie%d'%k+('' if side=='L' else '.001'),surface(tie,20,8,True,True),'Jewelry',braid)
+    # ---- Topknot: the Bun's knot pulled high onto the crown with a swept cap,
+    # leaving the nape clear, so it reads apart from the low Bun.
+    top,tmade=dup_group('Hair_Bun','Hair_Topknot')
+    for o in tmade:
+        if '_Knot' in o.name or '_Band' in o.name:D.objects.remove(o)
+    tcap=D.objects['Hair_Topknot_Cap']; tpts=world_points(tcap); ttop=max(p.z for p in tpts); tcx=sum(p.x for p in tpts)/len(tpts); tcy=sum(p.y for p in tpts)/len(tpts)
+    knot_c=Vector((tcx,tcy-.012*hs,ttop+.052*hs))
+    def top_ball(u,v):
+        a=u*math.tau; b=v*math.tau
+        r=.050*hs*(1+.10*math.cos(3*a))*(1-.18*b)
+        return knot_c+Vector((math.cos(a)*math.sin(b)*r,math.sin(a)*math.sin(b)*r*.92,math.cos(b)*r*.88))
+    new_mesh_object('Hair_Topknot_Knot',surface(top_ball,26,16,True,False),'Hair',top)
+    def top_band(u,v):
+        a=u*math.tau; r=.034*hs
+        base=knot_c+Vector((0,0,-.040*hs))
+        return base+Vector((math.cos(a)*r,math.sin(a)*r,.010*hs*math.sin(v*math.tau)))
+    new_mesh_object('Hair_Topknot_Band',surface(top_band,22,8,True,True),'Jewelry',top)
     # Hair pieces ride the Head pivot like the accepted styles; keep hide flags clear for export.
     for o in D.objects:
         if o.name.startswith(NEW_PREFIXES):o.hide_render=False;o.hide_viewport=False;o.hide_set(False)

@@ -3,7 +3,7 @@ class_name LifeActor
 ## Articulated original character. The parent world owns all navigation/movement.
 
 const JOINT_NAMES: Array[String] = ["Head", "Arm_L", "Arm_R", "Forearm_L", "Forearm_R", "Leg_L", "Leg_R", "Shin_L", "Shin_R"]
-const HAIR_NAMES: Array[String] = ["Hair_Crop", "Hair_Bob", "Hair_Curls", "Hair_Pony", "Hair_Long", "Hair_Buzz", "Hair_Waves", "Hair_Bun"]
+const HAIR_NAMES: Array[String] = ["Hair_Crop", "Hair_Bob", "Hair_Curls", "Hair_Pony", "Hair_Long", "Hair_Buzz", "Hair_Waves", "Hair_Bun", "Hair_Braids", "Hair_Topknot"]
 const OUTFIT_NAMES: Array[String] = ["Outfit_Casual", "Outfit_Jacket", "Outfit_Cardigan", "Outfit_Tee", "Outfit_Hoodie"]
 const BOTTOM_NAMES: Array[String] = ["Trousers", "Shorts"]
 const LOOK_OUTFITS: Dictionary = {
@@ -330,6 +330,7 @@ func configure(new_profile: Dictionary) -> void:
 	for key: String in IDENTITY_KEYS:
 		var value: Variant = profile.get(key, 0.0)
 		set_face_feature(key, float(value) if value is float or value is int else 0.0)
+	_apply_face_accessories()
 	set_outfit(clampi(int(profile.get("outfit",0)),0,OUTFIT_NAMES.size()-1))
 	set_bottom(clampi(int(profile.get("bottom",0)),0,BOTTOM_NAMES.size()-1))
 	_recolor(_model, {})
@@ -445,15 +446,41 @@ func authored_wardrobe() -> Dictionary:
 
 func apply_wardrobe(look: Dictionary = {}) -> void:
 	if not look.is_empty():
-		for key: String in ["outfit", "bottom", "top_color", "bottom_color", "shoe_color", "outfit_category"]:
+		# Every key a wardrobe panel can show, not just the clothes: a hairstyle,
+		# a hair colour, an eye colour, makeup or jewelry is part of the look the
+		# panel previews, so each one has to reach the actor or a preview would
+		# silently do nothing.
+		for key: String in ["outfit", "bottom", "top_color", "bottom_color", "shoe_color", "outfit_category",
+				"hair", "hair_color", "eye_color", "makeup_lips", "makeup_eyes",
+				"jewelry_ears", "jewelry_metal", "jewelry_neck"]:
 			if look.has(key):
 				profile[key] = look[key]
 	set_outfit(int(profile.get("outfit", 0)))
 	set_bottom(int(profile.get("bottom", 0)))
+	set_hair(int(profile.get("hair", 0)))
 	if _model != null:
 		_recolor(_model, {})
 		_apply_spirit(_model)
+		_apply_face_accessories()
 		_apply_look_layers()
+
+
+## Show one authored hairstyle and hide the rest. The wardrobe panel and the
+## creator both go through here, so a style chosen in either place is the same one.
+func set_hair(index: int) -> void:
+	if _model == null:
+		return
+	var wanted: int = clampi(index, 0, HAIR_NAMES.size() - 1)
+	if _model.find_child(HAIR_NAMES[wanted], true, false) == null:
+		wanted = authored_hair_styles().front()
+	profile["hair"] = wanted
+	for i: int in range(HAIR_NAMES.size()):
+		var group: Node3D = _model.find_child(HAIR_NAMES[i], true, false) as Node3D
+		if group != null:
+			group.visible = i == wanted
+			if HAIR_NAMES[i] == "Hair_Bob":
+				_hair_bob = group
+				_hair_bob_rest_scale = group.scale
 
 func set_outfit(index: int) -> void:
 	profile["outfit"] = clampi(index,0,OUTFIT_NAMES.size()-1)
@@ -622,6 +649,11 @@ func _recolor(node: Node, material_cache: Dictionary) -> void:
 					"Top_seam": material.albedo_color = top.darkened(0.20)
 					"Bottom": material.albedo_color = bottom
 					"Bottom_seam": material.albedo_color = bottom.darkened(0.19)
+					# Makeup: the authored lip and lid shells are tinted from the
+					# saved look, so a colour choice is visible on the face.
+					"Makeup_Lips": material.albedo_color = _makeup_color("makeup_lips")
+					"Makeup_Lids", "Makeup_Cheek": material.albedo_color = _makeup_color("makeup_eyes")
+					"Jewelry", "Jewelry_Stud", "Jewelry_Neck": material.albedo_color = _jewelry_color()
 					"Eyes", "Eyes_Iris_Surface": material.albedo_color = _profile_color("eye_color", "547365")
 					"Eyes_edge": material.albedo_color = _profile_color("eye_color", "547365").darkened(0.40)
 					"Shoes": material.albedo_color = _profile_color("shoe_color", "e9e4d9")
@@ -629,6 +661,46 @@ func _recolor(node: Node, material_cache: Dictionary) -> void:
 				mesh_node.set_surface_override_material(surface_index, material)
 	for child: Node in node.get_children():
 		_recolor(child, material_cache)
+
+
+## A makeup surface's tint from the saved look. An unworn look is hidden rather
+## than left at the authored placeholder, so "no makeup" really means none.
+func _makeup_color(key: String) -> Color:
+	var value: String = LifeCharacterIdentity.makeup_value(profile, key)
+	if value == LifeCharacterIdentity.MAKEUP_NONE:
+		return Color(1, 1, 1, 0)
+	return Color.from_string(value, Color("a8564f"))
+
+
+func _jewelry_color() -> Color:
+	if not wears_jewelry():
+		return Color(1, 1, 1, 0)
+	return Color.from_string(LifeCharacterIdentity.jewelry_metal(profile), Color("d8b45a"))
+
+
+## Whether this look wears any jewelry at all. Men's jewelry is the same
+## authored surfaces, so a male Lifelet can wear a stud or a chain exactly as
+## anyone else can: the only thing that differs is which styles are offered.
+func wears_jewelry() -> bool:
+	return str(profile.get("jewelry_ears", LifeCharacterIdentity.MAKEUP_NONE)) != LifeCharacterIdentity.MAKEUP_NONE or bool(profile.get("jewelry_neck", false))
+
+
+## Show only the face accessories this look actually wears. The authored makeup
+## and jewelry geometry is always present on the model, so an unworn look hides
+## it instead of leaving a transparent shell sitting over the face.
+func _apply_face_accessories() -> void:
+	if _model == null:
+		return
+	var lips_on: bool = LifeCharacterIdentity.makeup_value(profile, "makeup_lips") != LifeCharacterIdentity.MAKEUP_NONE
+	var eyes_on: bool = LifeCharacterIdentity.makeup_value(profile, "makeup_eyes") != LifeCharacterIdentity.MAKEUP_NONE
+	var ears_on: bool = str(profile.get("jewelry_ears", LifeCharacterIdentity.MAKEUP_NONE)) != LifeCharacterIdentity.MAKEUP_NONE
+	var neck_on: bool = bool(profile.get("jewelry_neck", false))
+	for node: Node in _model.find_children("Makeup_*", "MeshInstance3D", true, false):
+		var group: String = str(node.name).trim_prefix("Makeup_").split("_")[0].split(".")[0]
+		node.visible = lips_on if group == "Lips" else eyes_on
+	for node: Node in _model.find_children("Jewelry*", "MeshInstance3D", true, false):
+		var is_neck: bool = str(node.name).begins_with("Jewelry_Neck")
+		node.visible = neck_on if is_neck else ears_on
 
 
 func _apply_spirit(node: Node) -> void:

@@ -119,18 +119,18 @@ func action_availability(sim:LifeSim,id:String,target:String) -> String:
 		if batch.is_empty() or int(batch.remaining)<=0 or not str(batch.owner).is_empty():return "That serving dish is empty or being carried."
 		if app.world.closest_item("sink",Vector3.ZERO).is_empty():return "Place a sink to clear the dish."
 	if id=="bin_meal":
-		# Spoiled food goes in the bin. A plate or serving dish left out may be
-		# thrown away once it has spoiled; fresh food is stored or eaten instead.
+		# Anything left out can be tipped in the bin. Spoiled food is refused by
+		# nothing else, and a fresh plate or dish may still be thrown away on
+		# purpose — the household may simply not want to keep it.
 		if app.world.closest_item("rubbish_bin",Vector3.ZERO).is_empty():return "Place a rubbish bin to throw food away."
 		var bin_plate:Dictionary=food().portion(target)
 		if not bin_plate.is_empty():
 			if not str(bin_plate.owner).is_empty():return "That plate is being used."
-			if now()<float(bin_plate.expires):return "This food is still fresh. Eat it or put it away."
 			if str(bin_plate.storage) not in ["surface","table"]:return "That serving is not sitting out."
 			return ""
 		var bin_batch:Dictionary=food().batch(target)
 		if bin_batch.is_empty() or int(bin_batch.remaining)<=0 or not str(bin_batch.owner).is_empty():return "That serving dish is empty or being carried."
-		if now()<float(bin_batch.expires):return "This food is still fresh. Eat it or put it away."
+		if str(bin_batch.storage)!="surface":return "That dish is not sitting out."
 		return ""
 	if id=="clean_plate":
 		var plate:Dictionary=food().portion(target)
@@ -269,12 +269,12 @@ func before_begin(sim:LifeSim,action:Dictionary) -> bool:
 	if action.id=="bin_meal" and action.get("meal_stage")=="pickup":
 		var bin_plate:Dictionary=food().portion(str(action.meal_source))
 		if not bin_plate.is_empty():
-			# A spoiled serving left out: the carrier picks the plate up, walks it
-			# to the bin, and it disappears with the dish.
-			if not str(bin_plate.owner).is_empty() or now()<float(bin_plate.expires) or str(bin_plate.storage) not in ["surface","table"] or not food().take_portion(str(bin_plate.id),person,now()):_stop(sim,"That food is no longer available.");return false
+			# Food left out is carried to the bin and tipped away. A spoiled serving
+			# must go; a fresh one is the household's own choice to throw out.
+			if not str(bin_plate.owner).is_empty() or str(bin_plate.storage) not in ["surface","table"] or not food().take_portion(str(bin_plate.id),person,now()):_stop(sim,"That food is no longer available.");return false
 			action.meal_stage="bin";sync_due=true;sim._emit_action_started(action);return false
 		var bin_batch:Dictionary=food().batch(str(action.meal_source))
-		if bin_batch.is_empty() or int(bin_batch.remaining)<=0 or not str(bin_batch.owner).is_empty() or now()<float(bin_batch.expires) or not food().set_batch_location(str(bin_batch.id),"carried","",actor(person).position,now(),person):_stop(sim,"That dish is no longer available.");return false
+		if bin_batch.is_empty() or int(bin_batch.remaining)<=0 or not str(bin_batch.owner).is_empty() or str(bin_batch.storage)!="surface" or not food().set_batch_location(str(bin_batch.id),"carried","",actor(person).position,now(),person):_stop(sim,"That dish is no longer available.");return false
 		action.meal_stage="bin";_reconcile_guest_offer();sim._emit_action_started(action);return false
 	if action.id=="clean_plate" and action.get("meal_stage")=="pickup":
 		var plate:Dictionary=food().portion(str(action.meal_source))
@@ -325,16 +325,26 @@ func clear_surface(host_id:String) -> int:
 	# Carry the used plates to the sink and wash them there; a finished serving
 	# dish goes with them to the bin. The sink has no authored food surface, so
 	# clearing completes the wash rather than shelving plates on the basin.
-	var gathered:int=0
+	#
+	# A *portion* carries a "batch" key naming the dish it came from, so that key
+	# is how a plate is told apart from a serving dish — not a sign that this
+	# record is the dish itself. Treating a plate as a dish ran discard_batch on
+	# the plate's own id, which matched no batch, so gathering a table of used
+	# plates did nothing at all.
+	var plates:int=0
+	var dishes:int=0
 	for value:Dictionary in _dirty_on(host_id):
 		if value.has("batch"):
+			food().finish_portion(str(value.id))
+			food().clean_portion(str(value.id),"")
+			plates+=1
+		else:
 			food().discard_batch(str(value.id))
-			continue
-		food().finish_portion(str(value.id))
-		food().clean_portion(str(value.id),"")
-		gathered+=1
+			dishes+=1
 	sync_due=true
-	return gathered
+	# The caller reports the plates it gathered; an empty dish rides along with
+	# them, so a table that held only a finished dish still counts as cleared.
+	return plates if plates>0 else dishes
 
 func _footprint(value:Dictionary) -> Vector2:
 	return LifeMeals.PLATE_HALF_SIZE if value.has("batch") else LifeMeals.PLATTER_HALF_SIZE
@@ -769,16 +779,19 @@ func finished(sim:LifeSim,action:Dictionary) -> void:
 		food().set_batch_location(str(action.meal_source),"surface","",actor(person).position,now())
 		food().discard_batch(str(action.meal_source))
 	elif action.id=="bin_meal":
-		# Spoiled food tips into the bin: a carried plate is washed away, a
+		# Food left out tips into the bin: a carried plate is washed away, a
 		# carried dish is discarded, and the bin takes one more unit of rubbish.
+		# Whether it had spoiled or was thrown out fresh is reported to the player.
 		var binned_plate:Dictionary=food().portion(str(action.meal_source))
+		var was_fresh:bool=not binned_plate.is_empty() and now()<float(binned_plate.expires)
 		if not binned_plate.is_empty():
 			food().clean_portion(str(binned_plate.id),person)
 		elif not food().batch(str(action.meal_source)).is_empty():
+			was_fresh=now()<float(food().batch(str(action.meal_source)).expires)
 			food().set_batch_location(str(action.meal_source),"surface","",actor(person).position,now())
 			food().discard_batch(str(action.meal_source))
 		if is_instance_valid(app.get("household_flow")):app.household_flow.add_rubbish(1)
-		sim._emit_notice("Spoiled food goes in the bin. Best not to leave it out next time.")
+		sim._emit_notice("The food goes in the bin." if was_fresh else "Spoiled food goes in the bin. Best not to leave it out next time.")
 	elif action.id=="clean_plate":food().clean_portion(str(action.meal_source),person)
 	elif action.id=="put_in_fridge":
 		var fridge:Dictionary=item(str(action.target_id))
@@ -790,7 +803,7 @@ func finished(sim:LifeSim,action:Dictionary) -> void:
 	elif action.id=="clear_table":
 		var cleared:int=clear_surface(str(action.get("table_id",str(action.target_id))))
 		if cleared>0:
-			sim._emit_notice("%d used %s gathered for washing." % [cleared,"plate" if cleared==1 else "plates"])
+			sim._emit_notice("%d %s cleared from the table." % [cleared,"item" if cleared==1 else "items"])
 			if is_instance_valid(app.get("household_flow")):app.household_flow.add_rubbish(1)
 	sync_due=true
 
@@ -837,19 +850,63 @@ func release_stair_custody(person:String,id:String) -> bool:
 func call_to_meal(target:String) -> int:
 	var count:int=0
 	for member:Dictionary in app.household.members:
-		var sim:LifeSim=member.sim
-		if not sim.action_queue.is_empty() or float(sim.needs.hunger)>85 or not is_instance_valid(actor(str(member.id))) or not actor(str(member.id)).visible:continue
-		if float(sim.needs.energy)<12 or float(sim.needs.bladder)<12:continue
-		if sim.queue_action("eat_meal",target,Vector3.ZERO):count+=1
+		if _already_eating(str(member.id)) or not _would_accept_food(member.sim):continue
+		if not is_instance_valid(actor(str(member.id))) or not actor(str(member.id)).visible:continue
+		if member.sim.queue_action("eat_meal",target,Vector3.ZERO):count+=1
 	var visit:LifeHomeVisit=_home_visit()
 	if visit!=null and visit.meal.offer(target):count+=1
 	return count
+
+## Every household Lifelet who could be asked whether they want food. The player
+## chooses from this list rather than the whole household, so an invitation is a
+## real decision: each one is offered the serving by name and either accepts or
+## says they are not hungry. A Lifelet already busy keeps their own plans.
+func food_invitees() -> Array:
+	var result:Array=[]
+	for member:Dictionary in app.household.members:
+		var sim:LifeSim=member.sim
+		if sim.is_away() or not _would_accept_food(sim):continue
+		result.append({"id":str(member.id),"name":str(sim.character.get("name","Lifelet")),"sim":sim})
+	return result
+
+## Whether this serving is worth offering somebody: a real dish with servings
+## left, or a plated serving sitting out uneaten.
+func offerable_food(target:String) -> bool:
+	var batch:Dictionary=food().batch(target)
+	if not batch.is_empty():return int(batch.remaining)>0 and now()<float(batch.expires)
+	var plate:Dictionary=food().portion(target)
+	return not plate.is_empty() and str(plate.owner).is_empty() and float(plate.progress)<1.0 and now()<float(plate.expires)
+
+func _already_eating(person:String) -> bool:
+	var current:Dictionary=activity_for(person)
+	return str(current.get("id",""))=="eat_meal"
+
+func _would_accept_food(sim:LifeSim) -> bool:
+	# Asked, not told: a Lifelet with no appetite, no energy or a busy queue says
+	# no, and the dish stays where it is for somebody else.
+	if not sim.action_queue.is_empty():return false
+	return float(sim.needs.hunger)<=85.0 and float(sim.needs.energy)>=12.0 and float(sim.needs.bladder)>=12.0
+
+## Ask one household Lifelet whether they want a serving of this dish.
+func ask_to_share(person:String,target:String) -> String:
+	var sim:LifeSim=app.household.member_sim(person)
+	if sim==null:return "That Lifelet is not part of this household."
+	if not offerable_food(target):return "There is nothing left to offer from that dish."
+	var current:Dictionary=activity_for(person)
+	if str(current.get("id",""))=="eat_meal":return str(sim.character.get("name","They"))+" is already eating."
+	if not sim.action_queue.is_empty():return str(sim.character.get("name","They"))+" is busy with something else."
+	if float(sim.needs.hunger)>85.0:return str(sim.character.get("name","They"))+" is not hungry right now."
+	if float(sim.needs.energy)<12.0:return str(sim.character.get("name","They"))+" is too tired to eat."
+	if float(sim.needs.bladder)<12.0:return str(sim.character.get("name","They"))+" needs the bathroom first."
+	if not sim.queue_action("eat_meal",target,Vector3.ZERO):return str(sim.character.get("name","They"))+" could not take a serving."
+	sync_due=true
+	return str(sim.character.get("name","They"))+" said yes and is on their way."
 
 func _mesh_view(value:Dictionary) -> Node3D:
 	var recipe:String=str(food().batch(str(value.batch)).recipe) if value.has("batch") else str(value.recipe)
 	var scene:PackedScene=load(LifeMeals.model_path(recipe,value.has("batch")))
 	var root:Node3D=scene.instantiate()
-	var body:StaticBody3D=StaticBody3D.new();body.name="FoodPicking";body.collision_layer=2;body.set_meta("item_id",str(value.id));root.add_child(body)
+	var body:StaticBody3D=StaticBody3D.new();body.name="FoodPicking";body.collision_layer=LifeWorld.PICK_GROUND|LifeWorld.PICK_SURFACE;body.set_meta("item_id",str(value.id));root.add_child(body)
 	var shape:CollisionShape3D=CollisionShape3D.new();var bounds:BoxShape3D=BoxShape3D.new()
 	bounds.size=Vector3(.3,.10,.3) if value.has("batch") else Vector3(.5,.12,.335)
 	shape.shape=bounds;shape.position.y=.04;body.add_child(shape)
@@ -936,7 +993,7 @@ func sync_world(reconcile:bool=true) -> void:
 		var entry:Dictionary=item(key)
 		if level>=0:entry["level"]=level
 		else:entry.erase("level")
-		body.collision_layer=(LifeWorld.PICK_GROUND if level==0 else LifeWorld.PICK_UPPER) if level>=0 and view.visible and str(value.storage) not in ["carried","table"] else 0
+		body.collision_layer=((LifeWorld.PICK_GROUND if level==0 else LifeWorld.PICK_UPPER)|LifeWorld.PICK_SURFACE) if level>=0 and view.visible and str(value.storage) not in ["carried","table"] else 0
 		var food_view:Node3D=view.find_child("Food",true,false)
 		food_view.visible=not value.has("batch") or float(value.progress)<1.0
 		if value.has("batch"):food_view.scale=Vector3(1.0,maxf(.05,1.0-float(value.progress)*.85),1.0)

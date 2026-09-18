@@ -12,7 +12,15 @@ const STAIR_STEPS:int=15
 const GUARD_EDGE:float=.68
 const GUARD_HALF:float=.043
 const EPS:float=.000001
-const LOT:=Rect2(-9,-7,18,16)
+## The navigable lot: the house plus its garden. One constant, so building
+## validation, floor support, the navigation graph and the camera pan all agree
+## on how far the ground reaches. The garden is deliberately generous — a kennel,
+## a garden bed and room to walk between them — and it is not saved with a
+## household, so enlarging it here grows the garden of current saves and future
+## ones alike the next time their world is built.
+const LOT:=Rect2(-12,-9,24,18)
+## Half a navigation cell, so a derived grid always contains the whole lot.
+const LOT_MARGIN:float=.25
 const GROUPS:Array[String]=["walls","floors","stairs","openings","roofs"]
 const MAX_RECORDS:int=512
 
@@ -29,6 +37,12 @@ static func identifier(value:Variant) -> bool:
 	return true
 
 static func level_y(level:int) -> float:return GROUND_Y+RISE*level
+## The whole lot in navigation cells, derived from LOT so a larger garden is
+## never half-covered by the graph, the compatibility grid or a pan clamp.
+static func cell_range() -> Rect2i:
+	var low:=Vector2i(floori(LOT.position.x/CELL)-1,floori(LOT.position.y/CELL)-1)
+	var high:=Vector2i(ceili(LOT.end.x/CELL)+1,ceili(LOT.end.y/CELL)+1)
+	return Rect2i(low,high-low)
 static func rect(record:Dictionary) -> Rect2:return Rect2(float(record.x)-float(record.w)/2,float(record.z)-float(record.d)/2,float(record.w),float(record.d))
 static func _error(message:String) -> Dictionary:return {"ok":false,"error":message}
 static func fingerprint(state:Dictionary) -> String:return JSON.stringify(state).sha256_text()

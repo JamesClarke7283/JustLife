@@ -143,6 +143,11 @@ var meal_flow:LifeMealFlow
 var household_flow:LifeHouseholdFlow
 var idle_space:RefCounted
 var guest_status_card:Control
+## The doorstep card: somebody has rung the bell and is waiting outside.
+var bell_status_card:Control
+var bell_status_text:Label
+var bell_let_in_button:Button
+var bell_turn_away_button:Button
 var guest_status_text:Label
 var guest_welcome_button:Button
 var residents:LifeResidents
@@ -524,8 +529,8 @@ func draw_creator() -> void:
 	paragraph(asp_desc[profile.aspiration],Vector2(60,676),Vector2(275,36),13)
 	# The character is the focal point, with all styling choices on one side.
 	card(Vector2(1080,126),Vector2(322,614),Color("f9faf3"))
-	for i in range(3):
-		var tab_name:String=["Look","Face","Wardrobe"][i]
+	for i in range(4):
+		var tab_name:String=["Look","Face","Wardrobe","Style"][i]
 		var tab_button=button(tab_name,Vector2(1100+i*97,144),Vector2(89,40),func():set_creator_tab(tab_name),creator_tab==tab_name)
 		compact_button(tab_button);tab_button.size=Vector2(89,40)
 	if creator_tab=="Look":
@@ -549,8 +554,8 @@ func draw_creator() -> void:
 		# two rows inside the card instead of running off its edge.
 		swatches(preload("res://scripts/character_identity.gd").SKIN_TONES,"skin_color",Vector2(1100,288),26,6)
 		small_caps("Hairstyle",Vector2(1102,358),Vector2(180,20))
-		var hair_names:Array=["Crop","Bob","Curls","Pony","Long","Buzz","Waves","Bun"]
-		var hair_tips:Array=["A relaxed swept crop","A softly sculpted bob","Natural rounded curls","A swept-back ponytail","Long layered lengths","A close buzz cut","Loose shoulder-length waves","A sleek twisted updo"]
+		var hair_names:Array=["Crop","Bob","Curls","Pony","Long","Buzz","Waves","Bun","Braids","Topknot"]
+		var hair_tips:Array=["A relaxed swept crop","A softly sculpted bob","Natural rounded curls","A swept-back ponytail","Long layered lengths","A close buzz cut","Loose shoulder-length waves","A sleek twisted updo","Two front plaits with ties","A high gathered topknot"]
 		# Only styles this stage's model authors are offered, so a choice is
 		# never silently replaced when the Lifelet is created.
 		var offered_hair:Array=range(hair_names.size())
@@ -590,6 +595,27 @@ func draw_creator() -> void:
 		height_slider.value_changed.connect(set_height_scale)
 		small_caps("Shoes",Vector2(1102,684),Vector2(180,20))
 		swatches(["e9e4d9","3b302c","573c37","39444f","a26d56","292f32"],"shoe_color",Vector2(1100,702),26,6)
+	elif creator_tab=="Style":
+		text_label("Makeup and jewelry",Vector2(1100,207),Vector2(287,37),25,P.INK,true)
+		var limited:bool=LifeCharacterIdentity.is_male(profile)
+		paragraph("Try anything on and see it on your Lifelet straight away. %s" % ("A limited men's set is offered." if limited else "The full set is offered; men wear jewelry too."),Vector2(1102,250),Vector2(274,52),14)
+		small_caps("Lip colour",Vector2(1102,314))
+		swatches(LifeCharacterIdentity.makeup_lip_colors(profile),"makeup_lips",Vector2(1100,336),26,7)
+		button("No lip colour",Vector2(1100,398),Vector2(275,32),func():profile.makeup_lips=LifeCharacterIdentity.MAKEUP_NONE;refresh_preview())
+		small_caps("Eye look",Vector2(1102,444))
+		swatches(LifeCharacterIdentity.makeup_eye_colors(profile),"makeup_eyes",Vector2(1100,466),26,7)
+		button("No eye look",Vector2(1100,528),Vector2(275,32),func():profile.makeup_eyes=LifeCharacterIdentity.MAKEUP_NONE;refresh_preview())
+		small_caps("Earrings",Vector2(1102,574))
+		var ear_styles:Array=["none","stud","hoop","chain"]
+		var ear_labels:Array=["None","Stud","Hoop","Chain"]
+		for i:int in range(ear_styles.size()):
+			var style:String=str(ear_styles[i])
+			var b=button(str(ear_labels[i]),Vector2(1100+i*70,596),Vector2(64,30),func():profile.jewelry_ears=style;refresh_preview(),str(profile.get("jewelry_ears","none"))==style)
+			compact_button(b);b.size=Vector2(64,30)
+		small_caps("Jewelry metal",Vector2(1102,636))
+		swatches(LifeCharacterIdentity.JEWELRY_METALS,"jewelry_metal",Vector2(1100,658),26,7)
+		var neck=button("Necklace: on" if bool(profile.get("jewelry_neck",false)) else "Necklace: off",Vector2(1100,722),Vector2(275,34),func():profile.jewelry_neck=not bool(profile.get("jewelry_neck",false));refresh_preview())
+		neck.tooltip_text="A chain at the throat. Anyone may wear one."
 	elif creator_tab=="Face":
 		text_label("A face of your own",Vector2(1100,207),Vector2(287,37),25,P.INK,true)
 		paragraph("Shape their features. Turn your Lifelet to see every angle.",Vector2(1102,264),Vector2(274,52),15)
@@ -1173,7 +1199,7 @@ func spawn_pet(id:String,pet:Dictionary,spawn:Vector3,destination:Vector3) -> Li
 ## clicking it opens its card through the ordinary clicked-object path.
 func _pet_pick_body(actor:LifePetActor,id:String) -> void:
 	var body:=StaticBody3D.new()
-	body.collision_layer=2
+	body.collision_layer=LifeWorld.PICK_GROUND|LifeWorld.PICK_UPPER
 	body.set_meta("item_id",id)
 	actor.add_child(body)
 	var shape:=CollisionShape3D.new()
@@ -1183,6 +1209,7 @@ func _pet_pick_body(actor:LifePetActor,id:String) -> void:
 	shape.shape=capsule
 	shape.position.y=capsule.height*.5
 	body.add_child(shape)
+	world.pick_extras[id]={"id":id,"kind":"pet","label":str(actor.display_name),"node":actor,"size":Vector2(.6,.6)}
 
 ## Where a pet settles in the home. It prefers a clear tile beside the
 ## household's food and water bowl, then the nearest clear floor tile to a few
@@ -1325,7 +1352,7 @@ func refresh_pet_layers() -> void:
 		if not is_instance_valid(actor):continue
 		for child:Node in actor.get_children():
 			if child is CollisionObject3D:
-				child.collision_layer=2 if world.point_level(actor.position)!=1 else 4
+				child.collision_layer=LifeWorld.PICK_UPPER if world.point_level(actor.position)==1 else LifeWorld.PICK_GROUND
 
 ## A pet card: what it is, what it is wearing, and the one thing to do with it.
 func show_pet_card(id:String) -> void:
@@ -1411,8 +1438,8 @@ func draw_live() -> void:
 			floor_button.tooltip_text="View ground floor (Page Down)" if level==0 else ("View upper floor (Page Up)" if not floor_button.disabled else "Build an upper floor to view it (Page Up)")
 			live_floor_buttons[level]=floor_button
 	# Camera affordances remain visible above the household controls.
-	icon_button("zoom_out","Zoom out (mouse wheel)",Vector2(1359,530),Vector2(46,42),func():world.camera.size=minf(world.camera.size+1.5,30)).name="CameraZoomOut"
-	icon_button("zoom_in","Zoom in (mouse wheel)",Vector2(1359,481),Vector2(46,42),func():world.camera.size=maxf(world.camera.size-1.5,7)).name="CameraZoomIn"
+	icon_button("zoom_out","Zoom out (mouse wheel)",Vector2(1359,530),Vector2(46,42),func():world.camera.size=minf(world.camera.size+LifeWorld.CAMERA_BUTTON_ZOOM_STEP,LifeWorld.CAMERA_MAX_ZOOM)).name="CameraZoomOut"
+	icon_button("zoom_in","Zoom in (mouse wheel)",Vector2(1359,481),Vector2(46,42),func():world.camera.size=maxf(world.camera.size-LifeWorld.CAMERA_BUTTON_ZOOM_STEP,LifeWorld.CAMERA_MIN_ZOOM)).name="CameraZoomIn"
 	icon_button("rotate_left","Rotate camera left (Q)",Vector2(1306,530),Vector2(46,42),func():world.camera_angle-=PI/4;world.update_camera()).name="CameraRotateLeft"
 	icon_button("rotate_right","Rotate camera right (E)",Vector2(1306,481),Vector2(46,42),func():world.camera_angle+=PI/4;world.update_camera()).name="CameraRotateRight"
 	button("Walls",Vector2(1306,585),Vector2(99,38),func():world.set_cutaway(not world.cutaway))
@@ -2359,6 +2386,10 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 		if not item.has(key):item[key]=""
 	var actions:Array=sim.get_actions_for(str(item.kind),str(item.id))
 	if str(item.kind)=="meal":actions.append({"id":"call_to_meal","label":"Call everyone to eat","cost":0,"duration":0,"available":true,"description":"Invite available hungry household members and your welcomed guest. Busy Lifelets keep their plans."})
+	# A served dish or a plated serving can be offered to somebody by name, so the
+	# household can ask who actually wants food instead of only calling everyone.
+	if (str(item.kind)=="meal" or str(item.kind)=="plate") and meal_flow.offerable_food(str(item.id)):
+		actions.append({"id":"ask_who_wants_food","label":"Ask who wants food…","cost":0,"duration":0,"available":true,"description":"Ask each household Lifelet whether they want a serving. Anyone not hungry says no."})
 	# A beat already in progress offers its own stop, so the invitation in its
 	# notice has a control the player can actually press.
 	for running:Variant in household.cooperations:
@@ -2408,6 +2439,10 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 			elif str(a.id)=="switch_light":switch_lamp(item);close_overlay()
 			elif str(a.id)=="call_to_meal":
 				var joined:int=meal_flow.call_to_meal(str(item.id));close_overlay();show_notice("%d Lifelets are coming to eat." % joined)
+			elif str(a.id)=="ask_who_wants_food":show_food_offers(str(item.id))
+			elif str(a.id)=="change_in_wardrobe" or str(a.id)=="change_in_mirror":show_wardrobe_panel(str(item.id))
+			elif str(a.id)=="do_makeup":show_wardrobe_panel(str(item.id),"makeup")
+			elif str(a.id)=="change_jewelry":show_wardrobe_panel(str(item.id),"jewelry")
 			elif str(a.id)=="supported_homework":show_homework_helpers(item)
 			elif str(a.id)==LifeBabyPlan.ACTION_ID:try_for_baby(item);close_overlay()
 			elif str(a.id)=="stop_try_for_baby":
@@ -2443,9 +2478,223 @@ func show_homework_helpers(item:Dictionary) -> void:
 	paragraph("The adult builds Parenting skill. The learner gains extra Logic, and both grow closer. Canceling ends the activity for both.",Vector2(374,top+list_height+243),Vector2(680,47),13,P.MUTED,overlay)
 	button("Back to life",Vector2(820,top+list_height+292),Vector2(246,34),close_overlay,false,overlay)
 
+## Ask the household, one Lifelet at a time, whether they want a serving of this
+## dish. Each row is a real invitation: the answer is spoken, and a Lifelet who
+## is full, tired or busy declines instead of being signed up for a meal.
+func show_food_offers(target_id:String) -> void:
+	_begin_pause_overlay()
+	var item:Dictionary=_find_item(target_id)
+	var label:String="food"
+	var servings:int=0
+	var batch:Dictionary=household.meals.batch(target_id)
+	if not batch.is_empty():
+		label=str(LifeMeals.RECIPES[str(batch.recipe)].label).to_lower()
+		servings=int(batch.remaining)
+	else:
+		var plate:Dictionary=household.meals.portion(target_id)
+		if not plate.is_empty():
+			var dish:Dictionary=household.meals.batch(str(plate.batch))
+			label=("a serving of "+str(LifeMeals.RECIPES[str(dish.recipe)].label).to_lower()) if not dish.is_empty() else "a serving"
+			servings=1
+	var people:Array=meal_flow.food_invitees()
+	var row_count:int=maxi(1,people.size())
+	var list_height:float=clampf(row_count*76.0-10.0,66.0,320.0)
+	var panel_height:float=336.0+list_height
+	var top:float=(900.0-panel_height)*.5
+	var shade=ColorRect.new();shade.color=Color(.08,.17,.15,.28);rect(shade,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
+	card(Vector2(338,top),Vector2(764,panel_height),P.WHITE,24,overlay)
+	small_caps("Food is better shared",Vector2(373,top+22),Vector2(670,23),overlay)
+	text_label("Anyone want some?",Vector2(370,top+60),Vector2(686,57),36,P.INK,true,overlay)
+	paragraph(("There are %d servings of %s left. " % [servings,label]) if servings>1 else ("There is %s here. " % label)+"Ask each Lifelet in turn — someone who is full, tired or busy will say no, and the food stays for later.",Vector2(374,top+132),Vector2(686,77),16,P.MUTED,overlay)
+	var scroll=ScrollContainer.new();scroll.name="FoodOffers";rect(scroll,Vector2(371,top+227),Vector2(692,list_height),overlay)
+	var column=VBoxContainer.new();column.add_theme_constant_override("separation",10);scroll.add_child(column)
+	for person:Dictionary in people:
+		var row=Control.new();row.custom_name="FoodOffer_"+str(person.id);row.custom_minimum_size=Vector2(670,66);column.add_child(row)
+		card(Vector2.ZERO,Vector2(670,66),Color("f3f4ed"),12,row)
+		var member_sim:LifeSim=person.sim
+		text_label(str(person.name),Vector2(17,8),Vector2(425,27),20,P.INK,true,row)
+		paragraph("Hunger %d · %s" % [int(member_sim.needs.hunger),str(member_sim.get_mood().label)],Vector2(17,36),Vector2(425,26),12,P.MUTED,row)
+		var offer:Button=button("Offer a serving",Vector2(464,12),Vector2(189,43),_offer_food.bind(str(person.id),target_id),true,row)
+		offer.name="FoodOfferButton_"+str(person.id)
+	if people.is_empty():paragraph("Everyone is already eating, or busy with something else. Try again once they are free.",Vector2(378,top+242),Vector2(669,75),17,P.MUTED,overlay)
+	button("Back to life",Vector2(820,top+list_height+288),Vector2(246,34),close_overlay,false,overlay)
+
+func _offer_food(person_id:String,target_id:String) -> void:
+	show_notice(meal_flow.ask_to_share(person_id,target_id))
+	refresh_hud()
+	show_food_offers(target_id)
+
+## The wardrobe, at a wardrobe, a full-length mirror or a dressing table. Every
+## option is shown on the Lifelet standing in front of it before anything is
+## bought, and each row prices itself: trying on is free, keeping it costs the
+## row's price. Buying a look saves it to that outfit category, so it is the
+## look the Lifelet wears from then on.
+func show_wardrobe_panel(furniture_id: String, tab: String = "clothes") -> void:
+	_begin_pause_overlay()
+	wardrobe_tab = tab
+	var person: LifeSim = sim
+	var look: Dictionary = person.character.duplicate(true)
+	# The panel previews on the real Lifelet, so what is shown is what is worn.
+	world.set_actor_preview(bound_member_id, look)
+	var shade=ColorRect.new();shade.color=Color(.08,.17,.15,.28);rect(shade,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
+	card(Vector2(300,86),Vector2(840,742),P.WHITE,24,overlay)
+	small_caps("A change of look",Vector2(336,106),Vector2(420,23),overlay)
+	text_label("Wardrobe",Vector2(332,144),Vector2(500,57),38,P.INK,true,overlay)
+	var tabs:Array=["clothes","hair","makeup","jewelry"]
+	var tab_labels:Array=["Clothes","Hair","Makeup","Jewelry"]
+	for index:int in range(tabs.size()):
+		var chosen:String=str(tabs[index])
+		var b:Button=button(tab_labels[index],Vector2(336+index*124,214),Vector2(116,36),func():show_wardrobe_panel(furniture_id,chosen),chosen==wardrobe_tab,overlay)
+		b.name="WardrobeTab_"+chosen
+	# What the household can afford, and what this Lifelet may wear.
+	var can_afford:bool=true
+	paragraph("Shown on %s now. Trying a look on is free; saving it to the wardrobe costs the price beside it." % str(person.character.get("name","your Lifelet")),Vector2(336,262),Vector2(760,40),15,P.MUTED,overlay)
+	var scroll=ScrollContainer.new();scroll.name="WardrobeOptions";rect(scroll,Vector2(334,308),Vector2(768,398),overlay)
+	var column=VBoxContainer.new();column.add_theme_constant_override("separation",8);scroll.add_child(column)
+	if wardrobe_tab=="clothes":
+		_wardrobe_clothes(column,look,furniture_id)
+	elif wardrobe_tab=="hair":
+		_wardrobe_hair(column,look,furniture_id)
+	elif wardrobe_tab=="makeup":
+		_wardrobe_makeup(column,look,furniture_id)
+	else:
+		_wardrobe_jewelry(column,look,furniture_id)
+	button("Back to life",Vector2(336,724),Vector2(240,40),func():
+		world.clear_actor_preview(bound_member_id)
+		close_overlay(),true,overlay)
+	button("Buy this look  ·  §%d" % WARDROBE_LOOK_PRICE,Vector2(856,724),Vector2(244,40),func():buy_wardrobe_look(furniture_id),false,overlay).name="WardrobeBuy"
+
+var wardrobe_tab: String = "clothes"
+## What one saved look costs. A whole outfit, a makeup set or a jewelry set is a
+## wardrobe purchase rather than a per-swatch charge, so a Lifelet can be
+## restyled for a sensible price instead of paying for every colour.
+const WARDROBE_LOOK_PRICE: int = 60
+
+## One buyable row: shows the option, previews it on the Lifelet when pressed,
+## and states its price. `apply` is given the working look to mutate.
+func _wardrobe_row(column: VBoxContainer, label: String, detail: String, price: int, chosen: bool, apply: Callable) -> void:
+	var row=Control.new();row.custom_minimum_size=Vector2(744,56);column.add_child(row)
+	card(Vector2.ZERO,Vector2(744,56),Color("f3f4ed") if not chosen else Color("e4efe9"),12,row)
+	text_label(label,Vector2(16,7),Vector2(470,25),19,P.INK,true,row)
+	paragraph(detail,Vector2(16,31),Vector2(470,22),12,P.MUTED,row)
+	text_label("free to try" if price<=0 else "§%d" % price,Vector2(500,16),Vector2(120,24),15,P.TEAL if price>0 else P.MUTED,false,row)
+	var try_on:Button=button("Try on",Vector2(628,10),Vector2(104,36),apply,false,row)
+	try_on.tooltip_text="Show this on your Lifelet before you buy it."
+
+func _wardrobe_clothes(column: VBoxContainer, look: Dictionary, furniture_id: String) -> void:
+	# Every top this model authors, in this outfit category's own palette, plus
+	# the bottoms and shoes, so the panel offers the whole everyday wardrobe.
+	var wardrobe: Dictionary = player.authored_wardrobe()
+	var names: Array = LifeCharacterIdentity.get_category_tops(str(look.get("outfit_category","everyday")))
+	var palettes: Dictionary = LifeCharacterIdentity.get_category_palettes(str(look.get("outfit_category","everyday")))
+	for index: Variant in wardrobe.get("outfits", [0]):
+		var i:int=int(index)
+		var label:String=str(names[i]) if i<names.size() else "Outfit %d" % (i+1)
+		_wardrobe_row(column,label,"A saved top for this outfit type.",WARDROBE_LOOK_PRICE,int(look.get("outfit",0))==i,func():
+			look["outfit"]=i
+			world.set_actor_preview(bound_member_id,look))
+	for index: Variant in wardrobe.get("bottoms", [0]):
+		var i:int=int(index)
+		_wardrobe_row(column,"Trousers" if i==0 else "Shorts","A saved lower half for this outfit type.",WARDROBE_LOOK_PRICE,int(look.get("bottom",0))==i,func():
+			look["bottom"]=i
+			world.set_actor_preview(bound_member_id,look))
+	var top_colors:Array=palettes.get("top",[])
+	for colour:Variant in top_colors:
+		var hex:String=str(colour)
+		_wardrobe_row(column,"Top colour  "+hex.to_upper(),"Recolours the top you are wearing.",0,str(look.get("top_color",""))==hex,func():
+			look["top_color"]=hex
+			world.set_actor_preview(bound_member_id,look))
+	for colour:Variant in palettes.get("shoes",[]):
+		var hex:String=str(colour)
+		_wardrobe_row(column,"Shoes  "+hex.to_upper(),"Recolours your shoes.",0,str(look.get("shoe_color",""))==hex,func():
+			look["shoe_color"]=hex
+			world.set_actor_preview(bound_member_id,look))
+
+## Every hairstyle this Lifelet's own model authors, each shown on them before it
+## is kept, with the hair colours underneath it.
+func _wardrobe_hair(column: VBoxContainer, look: Dictionary, furniture_id: String) -> void:
+	var styles: Array = player.authored_hair_styles()
+	paragraph("Ten styles are authored, and the panel offers the ones this Lifelet's own model carries. Anything you try is shown on them straight away.",Vector2.ZERO,Vector2(744,26),12,P.MUTED,column)
+	for index: Variant in styles:
+		var i: int = int(index)
+		var label: String = LifeActor.HAIR_NAMES[i].trim_prefix("Hair_")
+		_wardrobe_row(column,"Hair · "+label,"A different cut for this Lifelet.",WARDROBE_LOOK_PRICE,int(look.get("hair",0))==i,func():
+			look["hair"]=i
+			world.set_actor_preview(bound_member_id,look))
+	var colours: Array = LifeCharacterIdentity.HAIR_COLORS.duplicate()
+	if str(look.get("age_stage",""))=="elder":colours.append_array(LifeCharacterIdentity.ELDER_HAIR_COLORS)
+	for colour: Variant in colours:
+		var hex: String = str(colour)
+		_wardrobe_row(column,"Hair colour  "+hex.to_upper(),"Recolours the hair you are wearing.",0,str(look.get("hair_color",""))==hex,func():
+			look["hair_color"]=hex
+			world.set_actor_preview(bound_member_id,look))
+	var eyes: Array = LifeCharacterIdentity.EYE_COLORS
+	for colour: Variant in eyes:
+		var hex: String = str(colour)
+		_wardrobe_row(column,"Eye colour  "+hex.to_upper(),"Recolours the eyes.",0,str(look.get("eye_color",""))==hex,func():
+			look["eye_color"]=hex
+			world.set_actor_preview(bound_member_id,look))
+
+
+func _wardrobe_makeup(column: VBoxContainer, look: Dictionary, furniture_id: String) -> void:
+	var limited:bool=LifeCharacterIdentity.is_male(look)
+	paragraph("Every option here is shown on your Lifelet first. %s" % ("A limited men's set is offered." if limited else "The full set is offered."),Vector2.ZERO,Vector2(744,22),12,P.MUTED,column)
+	for colour:Variant in LifeCharacterIdentity.makeup_lip_colors(look):
+		var hex:String=str(colour)
+		_wardrobe_row(column,"Lip colour  "+hex.to_upper(),"A lip tint from %s set." % ("the limited men's" if limited else "the full"),WARDROBE_LOOK_PRICE,LifeCharacterIdentity.makeup_value(look,"makeup_lips")==hex,func():
+			look["makeup_lips"]=hex
+			world.set_actor_preview(bound_member_id,look))
+	_wardrobe_row(column,"No lip colour","Wear a bare lip.",0,LifeCharacterIdentity.makeup_value(look,"makeup_lips")==LifeCharacterIdentity.MAKEUP_NONE,func():
+		look["makeup_lips"]=LifeCharacterIdentity.MAKEUP_NONE
+		world.set_actor_preview(bound_member_id,look))
+	for colour:Variant in LifeCharacterIdentity.makeup_eye_colors(look):
+		var hex:String=str(colour)
+		_wardrobe_row(column,"Eye look  "+hex.to_upper(),"A lid and cheek tint.",WARDROBE_LOOK_PRICE,LifeCharacterIdentity.makeup_value(look,"makeup_eyes")==hex,func():
+			look["makeup_eyes"]=hex
+			world.set_actor_preview(bound_member_id,look))
+	_wardrobe_row(column,"No eye look","Wear a bare eye.",0,LifeCharacterIdentity.makeup_value(look,"makeup_eyes")==LifeCharacterIdentity.MAKEUP_NONE,func():
+		look["makeup_eyes"]=LifeCharacterIdentity.MAKEUP_NONE
+		world.set_actor_preview(bound_member_id,look))
+
+func _wardrobe_jewelry(column: VBoxContainer, look: Dictionary, furniture_id: String) -> void:
+	# Men's jewelry is the same authored surfaces: a male Lifelet may wear any of
+	# these, so the set offered is not split by gender.
+	for option:Variant in ["none","stud","hoop","chain"]:
+		var style:String=str(option)
+		var labels:Dictionary={"none":"No earrings","stud":"A simple stud","hoop":"A small hoop","chain":"Ear chain"}
+		_wardrobe_row(column,str(labels[style]),"Worn on both ears.",WARDROBE_LOOK_PRICE if style!="none" else 0,str(look.get("jewelry_ears","none"))==style,func():
+			look["jewelry_ears"]=style
+			world.set_actor_preview(bound_member_id,look))
+	_wardrobe_row(column,"A necklace" if not bool(look.get("jewelry_neck",false)) else "No necklace","A chain at the throat.",WARDROBE_LOOK_PRICE,bool(look.get("jewelry_neck",false)),func():
+		look["jewelry_neck"]=not bool(look.get("jewelry_neck",false))
+		world.set_actor_preview(bound_member_id,look))
+	for metal:Variant in LifeCharacterIdentity.JEWELRY_METALS:
+		var hex:String=str(metal)
+		_wardrobe_row(column,"Metal  "+hex.to_upper(),"Recolours every piece you are wearing.",0,LifeCharacterIdentity.jewelry_metal(look)==hex,func():
+			look["jewelry_metal"]=hex
+			world.set_actor_preview(bound_member_id,look))
+
+## Keep the look currently on the Lifelet. The wardrobe charges one look price,
+## and the saved outfit category then wears it.
+func buy_wardrobe_look(furniture_id: String) -> void:
+	var look:Dictionary=world.actor_preview(bound_member_id)
+	if look.is_empty():show_notice("Nothing is being shown on your Lifelet.");return
+	if household.funds<WARDROBE_LOOK_PRICE:
+		show_notice("You need §%d to save this look." % WARDROBE_LOOK_PRICE);return
+	household.set_funds(household.funds-WARDROBE_LOOK_PRICE)
+	var target:LifeSim=sim
+	for key:String in ["outfit","bottom","top_color","bottom_color","shoe_color","outfit_category","hair","hair_color","eye_color","makeup_lips","makeup_eyes","jewelry_ears","jewelry_metal","jewelry_neck"]:
+		if look.has(key):target.character[key]=look[key]
+	LifeCharacterIdentity.store_current(target.character)
+	world.clear_actor_preview(bound_member_id)
+	player.apply_wardrobe(target.character)
+	close_overlay()
+	refresh_hud()
+	show_notice("The look is yours. −§%d" % WARDROBE_LOOK_PRICE)
+
+
 func _supported_homework_plan(item:Dictionary,helper_id:String) -> Dictionary:
 	if not world.actors.has(bound_member_id) or not world.actors.has(helper_id):return {"ok":false,"error":"Both Lifelets must be here to learn together."}
-	if not _activity_available({"target_id":str(item.id)}):return {"ok":false,"error":"The desk or its chair is being used. Try again when it is free."}
 	return world.supported_homework_plan(item,world.actors[bound_member_id].position,world.actors[helper_id].position)
 
 func _queue_supported_homework(furniture_id:String,helper_id:String) -> void:
@@ -2947,7 +3196,19 @@ func _cancel_blocked_action(generation:int,action:Dictionary,member_id:String=""
 
 func on_action_finished(action:Dictionary) -> void:
 	if is_instance_valid(player):
-		player.speech({"arrive_home":"This feels like a new beginning.","school_day":"Learned something new today.","career_day":"Home after a busy day.","cook":"Ready to serve.","serve_meal":"Come and get it!","eat_meal":"That was lovely.","store_meal":"Something for later.","clean_plate":"All clean.","read":"One more chapter…","paint":"Made something lovely.","friendly":"Good to talk with you!","joke":"Ha!","deep_talk":"I understand.","hug":"That hug was just right.","share_interests":"We have so much in common!","water":"Looking greener.","work":"All done!","homework":"Ready for tomorrow.","help_homework":"We worked it out."}.get(action.id,"That feels better."))
+		player.speech({"arrive_home":"This feels like a new beginning.","school_day":"Learned something new today.","career_day":"Home after a busy day.","cook":"Ready to serve.","serve_meal":"Come and get it!","eat_meal":"That was lovely.","store_meal":"Something for later.","clean_plate":"All clean.","read":"One more chapter…","paint":"Made something lovely.","friendly":"Good to talk with you!","joke":"Ha!","deep_talk":"I understand.","hug":"That hug was just right.","share_interests":"We have so much in common!","water":"Looking greener.","work":"All done!","homework":"Ready for tomorrow.","help_homework":"We worked it out.","talk_to_myself":"Yes — I can do this."}.get(action.id,"That feels better."))
+	# A mirror or dressing-table beat opens its own panel once the Lifelet has
+	# walked there and finished, so the click leads somewhere rather than only
+	# granting a moodlet.
+	var panel:Variant=action.get("open_wardrobe_panel",null)
+	if panel!=null and str(action.get("target_id",""))!="":
+		# The request is either `true` (a mirror's own talk, opening the wardrobe)
+		# or the id of the dressing-table interaction that asked for a tab. It is
+		# a String in the second case, so it is never compared against a bool.
+		var kind:String="clothes"
+		if panel is String:
+			kind="makeup" if str(panel)=="do_makeup" else ("jewelry" if str(panel)=="change_jewelry" else "clothes")
+		show_wardrobe_panel(str(action.target_id),kind)
 	refresh_hud()
 
 func show_notice(message:String) -> void:
@@ -3031,17 +3292,37 @@ func show_careers() -> void:
 	small_caps("Find your direction",Vector2(478,155),Vector2(480,25),overlay)
 	text_label("A new chapter at work.",Vector2(476,194),Vector2(484,57),33,P.INK,true,overlay)
 	paragraph("Choose a path that fits your Lifelet. A career change starts at its first rank; your learned skills stay with you.",Vector2(479,261),Vector2(479,54),14,P.MUTED,overlay)
+	# Eight tracks now share this card, so the rows are packed tighter than the
+	# six-track original. Each row keeps its own button plus one detail line.
 	var index:int=0
 	for track_id:String in LifeSim.CAREER_TRACKS:
 		var track:Dictionary=LifeSim.CAREER_TRACKS[track_id]
-		var y:float=320+index*78
+		var y:float=314+index*57
 		var current:bool=str(sim.career.get("track","studio"))==track_id
-		button(str(track.label)+( " · Current" if current else ""),Vector2(478,y),Vector2(484,43),func():_select_career(track_id),current,overlay)
-		text_label("%s · §%d / shift · %s skill" % [track.titles[0],track.base_salary,str(track.skill).capitalize()],Vector2(484,y+47),Vector2(474,28),12,P.MUTED,false,overlay)
+		# One gate for every track: an entry fee or a skill demand is reported by
+		# the simulation itself, so the greyed-out button and a refused click say
+		# exactly the same thing.
+		var reason:String=sim.career_entry_error(track_id)
+		var entry:Dictionary=track.get("entry",{})
+		var entry_note:String=""
+		if int(entry.get("cost",0))>0:entry_note+=" · §%d course" % int(entry.cost)
+		if int(entry.get("level",0))>0:entry_note+=" · %s level %d" % [str(entry.skill).capitalize(),int(entry.level)]
+		var row:Button=button(str(track.label)+( " · Current" if current else ""),Vector2(478,y),Vector2(484,36),func():_select_career(track_id),current,overlay)
+		row.name="Career_"+track_id
+		row.disabled=not reason.is_empty()
+		row.tooltip_text=reason if not reason.is_empty() else "%s. §%d per shift." % [str(track.titles[0]),int(track.base_salary)]
+		text_label("%s · §%d / shift · %s skill%s" % [track.titles[0],track.base_salary,str(track.skill).capitalize(),entry_note],Vector2(484,y+38),Vector2(474,18),11,P.MUTED,false,overlay)
 		index+=1
-	button("Back to life",Vector2(478,791),Vector2(484,43),close_overlay,false,overlay)
+	button("Back to life",Vector2(478,780),Vector2(484,43),close_overlay,false,overlay)
 
 func _select_career(track_id:String) -> void:
+	# A disabled button cannot be pressed, but a caller that reaches here another
+	# way hears the same reason the simulation would give.
+	var reason:String=sim.career_entry_error(track_id)
+	if not reason.is_empty():
+		show_notice(reason)
+		show_careers()
+		return
 	if sim.choose_career(track_id):
 		close_overlay()
 		draw_live()
@@ -3210,10 +3491,10 @@ func _restore_world_state(value:Variant) -> void:
 	player.position=position
 	player.rotation.y=_saved_number(state.get("player_rotation"),0.0,-1000.0,1000.0)
 	var target:Vector3=_saved_vector(state.get("camera"),world.camera_target)
-	world.camera_target=Vector3(clampf(target.x,-16,16),clampf(target.y,-2,5),clampf(target.z,-12,12))
+	world.camera_target=Vector3(clampf(target.x,LifeBuildingState.LOT.position.x+3,LifeBuildingState.LOT.end.x-3),clampf(target.y,-2,5),clampf(target.z,LifeBuildingState.LOT.position.y+3,LifeBuildingState.LOT.end.y-3))
 	world.camera_angle=_saved_number(state.get("angle"),world.camera_angle,-1000.0,1000.0)
-	world.camera_elevation=_saved_number(state.get("elevation"),world.camera_elevation,.35,1.30)
-	world.camera.size=_saved_number(state.get("zoom"),world.camera.size,6.0,31.0)
+	world.camera_elevation=_saved_number(state.get("elevation"),world.camera_elevation,LifeWorld.CAMERA_MIN_PITCH,LifeWorld.CAMERA_MAX_PITCH)
+	world.camera.size=_saved_number(state.get("zoom"),world.camera.size,LifeWorld.CAMERA_MIN_ZOOM,LifeWorld.CAMERA_MAX_ZOOM)
 	selected_lot=int(_saved_number(state.get("lot"),float(selected_lot),0.0,2.0))
 	var saved_floor:Variant=state.get("floor",floor_color)
 	if world.construction.building_state.is_empty():
@@ -3673,7 +3954,10 @@ func _process(delta:float) -> void:
 				if bool(shared.get("ready",false)) and str(shared.get("role",""))=="learner":action_id="homework_wait"
 			meal_flow.present_actor(bound_member_id)
 			_update_activity_facing(delta,action,action_id)
-			if LifeCharacterIdentity.wardrobe_fields(player.profile)!=LifeCharacterIdentity.wardrobe_fields(sim.character):
+			# A wardrobe preview is the player's own working look. The ordinary
+			# sync would overwrite it with the saved one on the next frame, so the
+			# preview owns the actor until the panel is closed.
+			if not player.has_meta("preview_profile") and LifeCharacterIdentity.wardrobe_fields(player.profile)!=LifeCharacterIdentity.wardrobe_fields(sim.character):
 				player.apply_wardrobe(sim.character)
 				if member.id==selected_id and not overlay_open:portrait_stale=true
 			# A mother's bump grows with the household pregnancy clock.
@@ -3705,8 +3989,8 @@ func _process(delta:float) -> void:
 		if pan.length()>0:
 			var side=Vector3(cos(world.camera_angle),0,-sin(world.camera_angle))
 			var forward=Vector3(sin(world.camera_angle),0,cos(world.camera_angle))
-			world.camera_target+=(side*pan.x+forward*pan.y)*delta*7
-			world.camera_target.x=clampf(world.camera_target.x,-16,16);world.camera_target.z=clampf(world.camera_target.z,-12,12)
+			world.camera_target+=(side*pan.x+forward*pan.y)*delta*LifeWorld.CAMERA_PAN_SPEED
+			world.camera_target.x=clampf(world.camera_target.x,LifeBuildingState.LOT.position.x+3,LifeBuildingState.LOT.end.x-3);world.camera_target.z=clampf(world.camera_target.z,LifeBuildingState.LOT.position.y+3,LifeBuildingState.LOT.end.y-3)
 			world.update_camera()
 
 func _advance_movement(delta:float) -> bool:
@@ -4049,8 +4333,8 @@ func _unhandled_input(event:InputEvent) -> void:
 		if mode=="creator" and event.button_index==MOUSE_BUTTON_LEFT:
 			creator_drag=event.pressed;last_mouse=event.position
 		if mode in ["live","build"]:
-			if event.button_index==MOUSE_BUTTON_WHEEL_UP:world.camera.size=maxf(world.camera.size-1,6)
-			if event.button_index==MOUSE_BUTTON_WHEEL_DOWN:world.camera.size=minf(world.camera.size+1,31)
+			if event.button_index==MOUSE_BUTTON_WHEEL_UP:world.camera.size=maxf(world.camera.size-LifeWorld.CAMERA_WHEEL_STEP,LifeWorld.CAMERA_MIN_ZOOM)
+			if event.button_index==MOUSE_BUTTON_WHEEL_DOWN:world.camera.size=minf(world.camera.size+LifeWorld.CAMERA_WHEEL_STEP,LifeWorld.CAMERA_MAX_ZOOM)
 			if event.button_index==MOUSE_BUTTON_LEFT and event.pressed:world.pick(event.position)
 	if event is InputEventMouseMotion:
 		if mode=="creator" and creator_drag:
@@ -4059,8 +4343,8 @@ func _unhandled_input(event:InputEvent) -> void:
 			if not (event.button_mask & MOUSE_BUTTON_MASK_RIGHT):
 				camera_drag=false
 				return
-			world.camera_angle-=event.relative.x*.008
-			world.camera_elevation=clampf(world.camera_elevation+event.relative.y*.004,.35,1.30)
+			world.camera_angle-=event.relative.x*LifeWorld.CAMERA_ORBIT_PER_PIXEL
+			world.camera_elevation=clampf(world.camera_elevation+event.relative.y*LifeWorld.CAMERA_PITCH_PER_PIXEL,LifeWorld.CAMERA_MIN_PITCH,LifeWorld.CAMERA_MAX_PITCH)
 			world.update_camera()
 
 func _has_placement_tool() -> bool:
@@ -4186,6 +4470,9 @@ func _tick_resident_contacts()->void:
 	var minute:int=int(sim.minutes)
 	if minute==_contact_minute:return
 	_contact_minute=minute
+	# A neighbor who reaches the front path rings the doorbell instead of walking
+	# in. The household answers: let them in, or ask them to leave.
+	residents.home_visit.consider_ring()
 	var positions:Dictionary={}
 	for member:Dictionary in household.members:
 		var member_sim:LifeSim=member.sim
@@ -5079,6 +5366,12 @@ func invite_neighbor(id:String)->void:
 
 func _refresh_guest_status()->void:
 	if not is_instance_valid(ui) or not residents:return
+	if not residents.home_visit.ringing():
+		if is_instance_valid(bell_status_card):bell_status_card.queue_free()
+		bell_status_card=null
+	if residents.home_visit.ringing():
+		_refresh_bell_status()
+		return
 	if mode!="live" or not residents.home_visit.active():
 		if is_instance_valid(guest_status_card):guest_status_card.queue_free()
 		guest_status_card=null;return
@@ -5111,6 +5404,39 @@ func _refresh_guest_status()->void:
 	goodbye_button.position.x=192 if phase=="waiting" else 14
 	goodbye_button.size.x=168 if phase=="waiting" else 346
 	goodbye_button.disabled=phase=="leaving"
+
+## The doorbell card: who rang, how long they will wait, and the household's two
+## answers. Turning them away is always available; letting them in is refused
+## with its reason when the visit cannot start.
+func _refresh_bell_status()->void:
+	var visit:LifeHomeVisit=residents.home_visit
+	if not is_instance_valid(bell_status_card):
+		bell_status_card=card(Vector2(1038,206),Vector2(374,148),P.WHITE,16)
+		bell_status_card.name="DoorbellStatus"
+		bell_status_text=text_label("",Vector2(14,10),Vector2(346,54),15,P.INK,true,bell_status_card)
+		bell_status_text.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+		var let_in:Button=button("Let them in",Vector2(14,74),Vector2(166,34),func():answer_doorbell("let_in"),true,bell_status_card)
+		let_in.name="DoorbellLetIn"
+		bell_let_in_button=let_in
+		var away:Button=button("Ask them to leave",Vector2(192,74),Vector2(168,34),func():answer_doorbell("turn_away"),false,bell_status_card)
+		away.name="DoorbellTurnAway"
+		bell_turn_away_button=away
+	var bell:Dictionary=visit.bell
+	if bell.is_empty():return
+	var guest:String=str(bell.guest)
+	var waited:int=maxi(0,ceili(float(bell.rang_at)+LifeHomeVisit.RING_WAIT_MINUTES-visit._bell_now()))
+	bell_status_text.text="%s · At the door\nWaiting %d game min" % [str(LifeResidents.PEOPLE[guest].name),waited]
+	var let_in_reason:String=visit.requirement(guest)
+	bell_let_in_button.disabled=not let_in_reason.is_empty()
+	bell_let_in_button.tooltip_text=let_in_reason if not let_in_reason.is_empty() else "Welcome them inside the way you would an invited guest."
+	bell_turn_away_button.disabled=false
+
+func answer_doorbell(choice:String) -> void:
+	var visit:LifeHomeVisit=residents.home_visit
+	if choice=="let_in":visit.let_in()
+	else:visit.turn_away()
+	_refresh_guest_status()
+	refresh_hud()
 
 func _cancel_guest_conversations(guest:String,retained:Dictionary) -> void:
 	_store_motion()

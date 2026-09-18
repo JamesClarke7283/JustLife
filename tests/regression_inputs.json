@@ -380,6 +380,7 @@
   "scripts/world.gd",
   "scripts/world.gd.uid",
   "tests/test_household_extras.gd",
-  "tests/test_hygiene_putaway.gd"
+  "tests/test_hygiene_putaway.gd",
+  "scripts/logger.gd"
  ]
 }

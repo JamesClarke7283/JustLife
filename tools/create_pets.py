@@ -22,8 +22,8 @@ def mat(name, hexcolor, rough=.65, metal=0, emit=0.0):
         p.inputs['Emission Color'].default_value=m.diffuse_color; p.inputs['Emission Strength'].default_value=emit
     M[name]=m; return m
 # The six pet materials are replaced by name at runtime, so these are placeholders.
-for n,h in [('Fur','C9A87C'),('Fur_Mark','F4ECE0'),('Nose','C98A8A'),('Eyes','41594B'),('Paw_Pads','C99A9A'),('Collar','BE5A4B'),('Wood','8A6238'),('Ceramic','E6E0D2'),('Fabric','9AA7BE'),('Accent','C97C4E'),('Water','7FB6C6')]: mat(n,h)
-for n,r,m in [('Ceramic',.30,0),('Nose',.45,0),('Eyes',.22,0),('Water',.12,0),('Collar',.55,0),('Paw_Pads',.55,0)]:
+for n,h in [('Fur','C9A87C'),('Fur_Mark','F4ECE0'),('Nose','C98A8A'),('Eyes','41594B'),('Paw_Pads','C99A9A'),('Collar','BE5A4B'),('Wood','8A6238'),('Ceramic','E6E0D2'),('Fabric','9AA7BE'),('Accent','C97C4E'),('Water','7FB6C6'),('Paint','7FA8C6'),('Paint_Mark','F4F1E6'),('Leash','6E7C8A')]: mat(n,h)
+for n,r,m in [('Ceramic',.30,0),('Nose',.45,0),('Eyes',.22,0),('Water',.12,0),('Collar',.55,0),('Paw_Pads',.55,0),('Leash',.60,0)]:
     M[n].node_tree.nodes.get('Principled BSDF').inputs['Roughness'].default_value=r
 active=[]
 def xyz(p): return (p[0],-p[2],p[1])
@@ -50,9 +50,11 @@ def cyl(n,p,r,h,m,top=None,axis='Y',bevel=.012):
 def rod(n,a,b,r,m):
     av,bv=Vector(xyz(a)),Vector(xyz(b)); d=bv-av
     bpy.ops.mesh.primitive_cylinder_add(vertices=12,radius=r,depth=d.length,location=(av+bv)/2); o=bpy.context.object; o.rotation_euler=d.to_track_quat('Z','Y').to_euler(); return finish(o,n,m)
-def torus(n,p,major,minor,m,axis='Y'):
+def torus(n,p,major,minor,m,axis='Y',bevel=0):
     bpy.ops.mesh.primitive_torus_add(major_segments=36,minor_segments=10,major_radius=major,minor_radius=minor,location=xyz(p)); o=bpy.context.object
     if axis=='Z':o.rotation_euler=(math.pi/2,0,0)
+    if bevel:
+        mod=o.modifiers.new('Rounded rim','BEVEL'); mod.width=bevel; mod.segments=3
     for f in o.data.polygons:f.use_smooth=True
     return finish(o,n,m)
 def prism(n,p,s,m):
@@ -123,6 +125,14 @@ def pet_cat():
         leg(n,(x,hip,z),(x,0,z),.028,(.033,.023,.036))
     tail('Tail',[(0,.230,-.245),(0,.295,-.295),(0,.335,-.352),(0,.345,-.430),(0,.338,-.500)],[.019,.016,.013,.011,.009],(0,.230,-.245))
     torus('Collar',(0,.245,.190),.058,.010,'Collar',axis='Z')
+    # A leash clip on the collar, so the collar a player recolours also reads as
+    # the thing a leash attaches to.
+    ell('Collar tag',(0,.196,.246),(.012,.012,.010),'Collar',10,8)
+    # A short trailing leash loop, so a leash colour is something a player can
+    # actually see on the pet.
+    torus('Leash',(0,.170,.300),.055,.008,'Leash',axis='X',bevel=.004)
+
+
 def pet_dog():
     # A sturdier dog: 0.50 m shoulder, heavier chest than the cat, long muzzle,
     # folded floppy ears and a sweeping tail.
@@ -146,6 +156,8 @@ def pet_dog():
         leg(n,(x,hip,z),(x,0,z),.045,(.050,.030,.058))
     tail('Tail',[(0,.430,-.300),(0,.425,-.372),(0,.400,-.436),(0,.372,-.492),(0,.362,-.548)],[.030,.025,.021,.018,.015],(0,.430,-.300))
     torus('Collar',(0,.410,.275),.096,.013,'Collar',axis='Z')
+    ell('Collar tag',(0,.330,.345),(.018,.018,.014),'Collar',10,8)
+    torus('Leash',(0,.285,.430),.085,.011,'Leash',axis='X',bevel=.005)
 
 # ---------------------------------------------------------------- Accessories
 def pet_bowl():
@@ -201,6 +213,88 @@ def kennel():
     cyl('Kennel dish',(-.330,.065,-.350),.050,.035,'Ceramic',bevel=.006)
 
 catalog={'pet_cat':pet_cat,'pet_dog':pet_dog,'pet_bowl':pet_bowl,'cat_tree':cat_tree,'kennel':kennel}
+def pet_bed_cat():
+    # An indoor cat bed: a low oval basket with a raised rim and a cushion, so a
+    # cat has its own place to curl up inside the house. 0.62 x 0.52 m.
+    ell('Cat bed base',(0,.055,0),(.310,.055,.260),'Wood',24,14)
+    ell('Cat bed cushion',(0,.098,0),(.278,.048,.228),'Fabric',24,14)
+    ell('Cat bed bolster',(0,.128,0),(.300,.062,.250),'Fabric',24,14)
+    ell('Cat bed hollow',(0,.150,0),(.230,.050,.180),'Accent',24,14)
+    for i in range(8):
+        a=i*math.tau/8.0
+        ell('Cat bed tuft',(math.sin(a)*.235,.150,math.cos(a)*.190),(.022,.030,.022),'Accent',10,8)
+def pet_bed_dog():
+    # An indoor dog bed: the same idea, wider and with a higher back so a dog can
+    # lean against it. 0.92 x 0.68 m.
+    ell('Dog bed base',(0,.060,0),(.460,.060,.340),'Wood',24,14)
+    ell('Dog bed cushion',(0,.108,0),(.420,.056,.300),'Fabric',24,14)
+    ell('Dog bed bolster',(0,.150,0),(.446,.075,.326),'Fabric',24,14)
+    ell('Dog bed hollow',(0,.178,0),(.352,.060,.236),'Accent',24,14)
+    box('Dog bed back',(0,.215,-.290),(.720,.200,.090),'Fabric',.030)
+    for i in range(10):
+        a=i*math.tau/10.0
+        ell('Dog bed tuft',(math.sin(a)*.370,.178,math.cos(a)*.268),(.026,.034,.026),'Accent',10,8)
+def pet_toy_cat():
+    # A cat toy: a fabric mouse on a cord with a little bell, 0.18 m.
+    ell('Cat toy body',(0,.055,0),(.070,.045,.048),'Fabric',16,10)
+    ell('Cat toy ear',(-.026,.096,.010),(.020,.026,.008),'Fabric',10,8)
+    ell('Cat toy ear',(.026,.096,.010),(.020,.026,.008),'Fabric',10,8)
+    rod('Cat toy cord',(0,.075,-.055),(0,.130,-.115),.004,'Accent')
+    ell('Cat toy bell',(0,.132,-.126),(.020,.020,.020),'Accent',12,8)
+    rod('Cat toy tail',(.030,.050,-.040),(.085,.038,-.090),.004,'Accent')
+def pet_toy_dog():
+    # A dog toy: a knotted rope bone with two solid ends, 0.26 m.
+    cyl('Dog toy shaft',(0,.055,0),.022,.150,'Accent',axis='Z',bevel=.008)
+    for z in (-.088,.088):
+        ell('Dog toy knob',(0,.055,z),(.062,.052,.048),'Accent',16,10)
+    for z in (-.045,.045):
+        torus('Dog toy knot',(0,.055,z),.030,.012,'Fabric',axis='Z')
+def cat_toy_box():
+    # A low open box of six cat toys, painted with a cat paw print on the front.
+    box('Box floor',(0,.021,0),(.560,.042,.400),'Wood',.012)
+    box('Box front',(0,.185,.190),(.560,.330,.030),'Paint',.010)
+    box('Box back',(0,.185,-.190),(.560,.330,.030),'Paint',.010)
+    box('Box left',(-.265,.185,0),(.030,.330,.400),'Paint',.010)
+    box('Box right',(.265,.185,0),(.030,.330,.400),'Paint',.010)
+    # The cat paw print: one large pad and four toe beans, proud of the front face.
+    ell('Paw pad',(0,.170,.213),(.075,.052,.014),'Paint_Mark',18,12)
+    for i in range(4):
+        a=math.pi*(.18+.24*i)
+        ell('Paw toe',(math.cos(a)*.098,.196+(i%2)*.004,.213),(.026,.028,.012),'Paint_Mark',12,8)
+    _six_toys('cat',.560,.400)
+def dog_toy_box():
+    # The same box for a dog's six toys, painted with a dog paw print: a broader
+    # pad with taller, blunter toes so the two boxes read apart at a glance.
+    box('Box floor',(0,.021,0),(.560,.042,.400),'Wood',.012)
+    box('Box front',(0,.185,.190),(.560,.330,.030),'Paint',.010)
+    box('Box back',(0,.185,-.190),(.560,.330,.030),'Paint',.010)
+    box('Box left',(-.265,.185,0),(.030,.330,.400),'Paint',.010)
+    box('Box right',(.265,.185,0),(.030,.330,.400),'Paint',.010)
+    ell('Paw pad',(0,.168,.213),(.088,.058,.014),'Paint_Mark',18,12)
+    for i in range(4):
+        a=math.pi*(.16+.24*i)
+        ell('Paw toe',(math.cos(a)*.108,.200+(i%2)*.004,.216),(.032,.036,.014),'Paint_Mark',12,8)
+    _six_toys('dog',.560,.400)
+def _six_toys(kind, width, depth):
+    # Six toys sitting in the box, three across and two deep, so a full box
+    # reads as a full box from any angle.
+    for row in range(2):
+        for col in range(3):
+            x=-.170+col*.170
+            z=-.100+row*.200
+            if kind=='cat':
+                ell('Toy pelt',(x,.105,z),(.048,.030,.034),'Accent',12,8)
+                ell('Toy pelt ear',(x-.018,.132,z),(.014,.018,.006),'Fabric',10,6)
+                ell('Toy pelt ear',(x+.018,.132,z),(.014,.018,.006),'Fabric',10,6)
+                torus('Toy feather',(x,.160,z),.020,.005,'Fabric')
+            else:
+                cyl('Toy bone',(x,.100,z),.016,.100,'Accent',axis='X',bevel=.006)
+                for dx in (-.058,.058):
+                    ell('Toy bone knob',(x+dx,.100,z),(.036,.032,.030),'Accent',12,8)
+catalog={'pet_cat':pet_cat,'pet_dog':pet_dog,'pet_bowl':pet_bowl,'cat_tree':cat_tree,'kennel':kennel,
+         'pet_bed_cat':pet_bed_cat,'pet_bed_dog':pet_bed_dog,
+         'pet_toy_cat':pet_toy_cat,'pet_toy_dog':pet_toy_dog,
+         'cat_toy_box':cat_toy_box,'dog_toy_box':dog_toy_box}
 def gpt(w): return (w.x,w.z,-w.y)
 def gverts(o):
     # Vertices of the evaluated mesh, so the figures match what export_apply writes.

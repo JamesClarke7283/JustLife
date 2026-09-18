@@ -48,6 +48,37 @@ const PALETTES: Array = [
 # Saved looks, one per outfit type. Everyday is the generated daily wear; the
 # others start from distinct silhouettes and palettes so a wardrobe change is
 # visible. Original clothing, not a copy of another game's items.
+## Makeup. The authored Makeup_Lips and Makeup_Lids surfaces are tinted at
+## runtime, so a look is a colour rather than a mesh. Girls get the whole set;
+## boys get the plainer lip tints and a clear option, which is the limited
+## makeup set a male Lifelet may wear.
+const MAKEUP_LIP_COLORS: Array[String] = [
+	"a8564f", "b5453f", "c2554f", "8f3f3c", "7a2f34",
+	"d4706a", "c98a86", "b06a70", "8d4a55", "6f3a44",
+]
+const MAKEUP_EYE_COLORS: Array[String] = [
+	"4a3b46", "6b4a5e", "8a5a6e", "3f4a5e", "5e6b8a",
+	"2f3a44", "7a5a4a", "4a5e52", "6b3a4a", "8a7a6b",
+]
+## Men's lip tints: cooler, lower-saturation tints rather than the fuller set.
+const MEN_MAKEUP_LIP_COLORS: Array[String] = [
+	"8f5a55", "7a4a48", "9c6660", "6b403f",
+]
+const MEN_MAKEUP_EYE_COLORS: Array[String] = [
+	"4a4a52", "5e5560", "3f444a",
+]
+## Jewelry. A stud or a hoop on each ear, plus a chain at the throat. The
+## authored Jewelry_Stud pair already rides the head, so an earring is a tint
+## of that surface; a necklace adds a chain the model has never carried.
+const JEWELRY_METALS: Array[String] = [
+	"d8b45a", "c9c3b6", "d7d2c4", "b08d3f", "e6cf94",
+	"8f8a7d", "a86a6a", "6e8a9c", "3f4448", "e8e2d2",
+]
+## A plain lip and a bare eye are real choices, so each set leads with "none".
+const MAKEUP_NONE: String = "none"
+## Which makeup a male Lifelet is offered: the limited set, keyed by the same
+## names the full set uses.
+const MEN_ALLOWED_MAKEUP: Array[String] = ["none", "lips", "eyes"]
 const OUTFIT_CATEGORIES: Array[String] = ["everyday", "formal", "athletic", "sleep", "party"]
 const OUTFIT_CATEGORY_LABELS: Dictionary = {
 	"everyday": "Everyday", "formal": "Formal", "athletic": "Athletic", "sleep": "Sleep", "party": "Party"
@@ -189,7 +220,7 @@ static func _appearance(rng: RandomNumberGenerator, template: Dictionary, stage:
 	look["body_scale"] = snappedf(clampf(float(build[0]) + rng.randf_range(-.015, .015), .85, 1.15), .01)
 	look["height_scale"] = snappedf(clampf(float(build[1]) + rng.randf_range(-.009, .009), .93, 1.08), .01)
 	var baby: bool = stage == "baby"
-	var allowed_hair: Array = [0, 1, 2] if baby else [0, 1, 2, 3, 4, 5, 6, 7]
+	var allowed_hair: Array = [0, 1, 2] if baby else [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 	look["hair"] = _choose_style(rng, styling.get("hair", allowed_hair), allowed_hair)
 	look["outfit"] = _choose_style(rng, styling.get("outfits", [0, 1, 2, 3, 4]), [0] if baby else [0, 1, 2, 3, 4])
 	look["bottom"] = _choose_style(rng, styling.get("bottoms", [0, 1]), [0] if baby else [0, 1])
@@ -203,6 +234,29 @@ static func _appearance(rng: RandomNumberGenerator, template: Dictionary, stage:
 	look["shoe_color"] = palette[2]
 	return look
 
+## Makeup and jewelry read off a look with the right default for its gender.
+## A male Lifelet's lip and eye looks come from the limited men's set, so a menu
+## built from these helpers can never offer him a colour he may not wear.
+static func makeup_lip_colors(look: Dictionary) -> Array:
+	return MEN_MAKEUP_LIP_COLORS if is_male(look) else MAKEUP_LIP_COLORS
+
+static func makeup_eye_colors(look: Dictionary) -> Array:
+	return MEN_MAKEUP_EYE_COLORS if is_male(look) else MAKEUP_EYE_COLORS
+
+static func is_male(look: Dictionary) -> bool:
+	return int(look.get("frame", 0)) == 1 or str(look.get("gender", "female")).to_lower() == "male"
+
+static func makeup_value(look: Dictionary, key: String) -> String:
+	var value: String = str(look.get(key, MAKEUP_NONE)).trim_prefix("#").to_lower()
+	if value == MAKEUP_NONE or value == "":
+		return MAKEUP_NONE
+	var palette: Array = makeup_lip_colors(look) if key == "makeup_lips" else makeup_eye_colors(look)
+	return value if palette.has(value) else MAKEUP_NONE
+
+static func jewelry_metal(look: Dictionary) -> String:
+	var value: String = str(look.get("jewelry_metal", JEWELRY_METALS[0])).trim_prefix("#").to_lower()
+	return value if JEWELRY_METALS.has(value) else JEWELRY_METALS[0]
+
 static func wardrobe_fields(look: Dictionary) -> Dictionary:
 	return {
 		"outfit": int(look.get("outfit", 0)),
@@ -211,6 +265,14 @@ static func wardrobe_fields(look: Dictionary) -> Dictionary:
 		"bottom_color": str(look.get("bottom_color", "eadfc9")),
 		"shoe_color": str(look.get("shoe_color", "e9e4d9")),
 		"outfit_category": normalize_category(look.get("outfit_category", "everyday")),
+		"hair": int(look.get("hair", 0)),
+		"hair_color": str(look.get("hair_color", "54382a")),
+		"eye_color": str(look.get("eye_color", "547365")),
+		"makeup_lips": makeup_value(look, "makeup_lips"),
+		"makeup_eyes": makeup_value(look, "makeup_eyes"),
+		"jewelry_ears": str(look.get("jewelry_ears", MAKEUP_NONE)),
+		"jewelry_metal": str(look.get("jewelry_metal", JEWELRY_METALS[0])),
+		"jewelry_neck": bool(look.get("jewelry_neck", false)),
 	}
 
 static func normalize_category(value: Variant) -> String:
@@ -299,6 +361,11 @@ static func _valid_slot(value: Variant, stage: String) -> bool:
 	for key: String in ["outfit", "bottom", "top_color", "bottom_color", "shoe_color"]:
 		if not slot.has(key):
 			return false
+	for key: String in ["makeup_lips", "makeup_eyes", "jewelry_ears", "jewelry_metal"]:
+		if slot.has(key) and not str(slot[key]) is String:
+			return false
+	if slot.has("jewelry_neck") and not slot.jewelry_neck is bool:
+		return false
 	var baby: bool = stage == "baby"
 	if baby and (int(slot.outfit) != 0 or int(slot.bottom) != 0):
 		return false

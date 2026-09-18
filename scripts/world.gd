@@ -11,12 +11,34 @@ const VIEW_ACTOR_GROUND:int=16
 const VIEW_ACTOR_UPPER:int=32
 const PICK_GROUND:int=2
 const PICK_UPPER:int=4
+## A second, always-on pick bit for the things that rest *on* furniture or lie
+## under it: plates, serving dishes and wet patches. A furnishing's collision box
+## is a plain volume from the floor to its full authored height, and that volume
+## is taller than the surface it offers (the dining table is 1.0 m tall, so its
+## box reaches 1.16 m while its tabletop sits at 0.847 m). Anything set down on
+## that table therefore lies *inside* the table's own box, and a single ray always
+## reached the table first: plates could never be clicked, so they could not be
+## taken, cleared or put in the fridge. These picks are resolved first, on their
+## own ray, so food and spills stay reachable wherever they are put down.
+const PICK_SURFACE:int=64
 
 signal object_clicked(info: Dictionary, screen_position: Vector2)
 signal ground_clicked(world_position: Vector3)
 signal placement_requested(kind: String, world_position: Vector3, angle: float)
 signal construction_requested(data: Dictionary)
 
+## Camera limits, in one place so the wheel, the HUD buttons, the drag handlers
+## and the save round-trip cannot drift apart. Closer zoom and a wider pitch let
+## a player look into a room and around it; the orbit scales are per mouse pixel.
+const CAMERA_MIN_ZOOM: float = 3.5
+const CAMERA_MAX_ZOOM: float = 40.0
+const CAMERA_MIN_PITCH: float = .18
+const CAMERA_MAX_PITCH: float = 1.42
+const CAMERA_ORBIT_PER_PIXEL: float = .014
+const CAMERA_PITCH_PER_PIXEL: float = .008
+const CAMERA_WHEEL_STEP: float = .8
+const CAMERA_BUTTON_ZOOM_STEP: float = 1.5
+const CAMERA_PAN_SPEED: float = 10.0
 var camera: Camera3D
 var sun: DirectionalLight3D
 var environment: Environment
@@ -59,6 +81,11 @@ var indoor_lights_lit:bool=true
 var _desk_boosters:Dictionary={}
 var oven_presentations:Dictionary={}
 var oven_food_views:Dictionary={}
+## Picks the world does not own. Pets live in the controller's own registry
+## rather than in `items` (a furnishing record would be saved as furniture), so
+## the controller registers each picked body here and a click on one opens that
+## pet's own card instead of falling through to a walk on the ground.
+var pick_extras:Dictionary={}
 
 func _ready() -> void:
 	rng.seed = 91517
@@ -332,7 +359,9 @@ func validate_home_layout(layout:Variant) -> String:
 		if level==1 and canonical.is_empty():return "Upper furniture needs a validated two-level building."
 		if canonical.is_empty():continue # Preserve old ground layout migration behavior.
 		var area:Rect2=furnishing_rect(entry)
-		if not Building.footprint_supported(canonical,level,area):return "A furnishing crosses unsupported floor or a stair opening."
+		# Level 0 may stand on the lot itself, so a kennel or garden bed belongs
+		# in the garden; an upper furnishing still needs real slab beneath it.
+		if not Building.footprint_supported(canonical,level,area,level==0):return "A furnishing crosses unsupported floor or a stair opening."
 		if not LifeCatalog.passable(str(entry.kind)) and Building.blocked_rect(canonical,level,area):return "A furnishing intersects a wall or stair run."
 		if not canonical.roofs.is_empty():
 			var roof_error:String=RoofRules.obstruction(canonical,furnishing_volume(entry))
@@ -637,7 +666,7 @@ func rebuild_navigation() -> void:
 	# Even a rejected rebuild can replace the compatibility grid.
 	_target_approaches.clear()
 	# Compatibility grid stays ground-only until main/food callers are migrated.
-	navigation.region=Rect2i(-36,-28,73,75)
+	navigation.region=Building.cell_range()
 	navigation.cell_size=Vector2(.25,.25)
 	navigation.diagonal_mode=AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
 	navigation.update()
@@ -667,8 +696,9 @@ func rebuild_navigation() -> void:
 
 func nearest_free(p:Vector3) -> Vector2i:
 	var cell=Vector2i(roundi(p.x*4),roundi(p.z*4))
-	cell.x=clampi(cell.x,-36,36)
-	cell.y=clampi(cell.y,-28,36)
+	var bounds:Rect2i=Building.cell_range()
+	cell.x=clampi(cell.x,bounds.position.x,bounds.end.x-1)
+	cell.y=clampi(cell.y,bounds.position.y,bounds.end.y-1)
 	if not navigation.is_point_solid(cell):return cell
 	for radius in range(1,14):
 		for x in range(-radius,radius+1):
@@ -741,13 +771,15 @@ func lot_return_position(member_index:int=0) -> Vector3:
 func outdoor_cell(cell:Vector2i) -> bool:
 	# A garden room's interior is free floor, but a lot exit or return spot
 	# must stay in the open so departures never walk into somebody's bedroom.
+	if not navigation.region.has_point(cell):return false
 	if navigation.is_point_solid(cell):return false
 	return not construction.floor_contains(Vector2(cell.x*.25,cell.y*.25),0)
 
 func nearest_outdoor(p:Vector3) -> Vector2i:
 	var cell=Vector2i(roundi(p.x*4),roundi(p.z*4))
-	cell.x=clampi(cell.x,-36,36)
-	cell.y=clampi(cell.y,-28,36)
+	var bounds:Rect2i=Building.cell_range()
+	cell.x=clampi(cell.x,bounds.position.x,bounds.end.x-1)
+	cell.y=clampi(cell.y,bounds.position.y,bounds.end.y-1)
 	if outdoor_cell(cell):return cell
 	for radius in range(1,14):
 		for x in range(-radius,radius+1):
@@ -756,6 +788,31 @@ func nearest_outdoor(p:Vector3) -> Vector2i:
 				var c=cell+Vector2i(x,z)
 				if navigation.region.has_point(c) and outdoor_cell(c):return c
 	return nearest_free(p)
+
+## Show a candidate look on a real actor without committing it. The wardrobe
+## panel previews on the Lifelet standing in front of the mirror, so what the
+## player sees is exactly what they would keep. The actor's own profile is kept
+## so the preview can be dropped without a trace.
+func set_actor_preview(id:String,look:Dictionary) -> void:
+	var actor:LifeActor=actors.get(id)
+	if not is_instance_valid(actor):return
+	if not actor.has_meta("preview_profile"):
+		actor.set_meta("preview_profile",actor.profile.duplicate(true))
+	actor.apply_wardrobe(look)
+
+
+func actor_preview(id:String) -> Dictionary:
+	var actor:LifeActor=actors.get(id)
+	return actor.profile.duplicate(true) if is_instance_valid(actor) else {}
+
+
+func clear_actor_preview(id:String) -> void:
+	var actor:LifeActor=actors.get(id)
+	if not is_instance_valid(actor) or not actor.has_meta("preview_profile"):return
+	var saved:Variant=actor.get_meta("preview_profile")
+	actor.remove_meta("preview_profile")
+	if saved is Dictionary:actor.apply_wardrobe(saved)
+
 
 func set_actor_away(id:String,away:bool,unavailable:bool) -> bool:
 	var actor:LifeActor=actors.get(id)
@@ -828,6 +885,14 @@ func begin_construction(tool:String) -> void:
 	clear_placement()
 	construction.begin(tool)
 
+## The ground a furnishing may stand on: the lot itself at ground level, and a
+## real slab upstairs. The garden is part of the lot, so a kennel, a garden bed
+## or a bench all stand outside as readily as a chair stands inside a room.
+func grounds(point:Vector2,level:int) -> bool:
+	if construction.floor_contains(point,level):return true
+	if level!=0:return false
+	return Building.LOT.has_point(point)
+
 func can_place(kind:String,p:Vector3,angle:float) -> bool:
 	if not LifeCatalog.ITEMS.has(kind) or not p.is_finite():return false
 	var level:int=point_level(p)
@@ -842,11 +907,13 @@ func can_place(kind:String,p:Vector3,angle:float) -> bool:
 		var forward:Vector3=Basis(Vector3.UP,deg_to_rad(angle))*Vector3(0,0,1)
 		rect.position+=Vector2(forward.x,forward.z)*(depth*.5+.04)
 	if not construction.building_state.is_empty():
-		if not Building.footprint_supported(construction.building_state,level,rect):return false
+		# Level 0 stands on the lot itself, so the garden counts as ground. An
+		# upper furnishing still needs real slab beneath it.
+		if not Building.footprint_supported(construction.building_state,level,rect,level==0):return false
 		if Building.blocked_rect(construction.building_state,level,rect):return false
 		if not construction.building_state.roofs.is_empty() and not RoofRules.obstruction(construction.building_state,furnishing_volume({"kind":kind,"x":p.x,"z":p.z,"rotation":angle,"level":level})).is_empty():return false
 	for corner in [rect.position,rect.end,Vector2(rect.position.x,rect.end.y),Vector2(rect.end.x,rect.position.y)]:
-		if not construction.floor_contains(corner,level):return false
+		if not grounds(corner,level):return false
 	if kind in LifeCatalog.WALL_MOUNTED and not wall_behind(kind,p,angle):return false
 	if LifeCatalog.passable(kind):return true
 	# Interior walls and doorways stay usable.
@@ -947,7 +1014,13 @@ func pick(screen:Vector2) -> void:
 	var origin=camera.project_ray_origin(screen)
 	refresh_actor_layers()
 	var ray=PhysicsRayQueryParameters3D.create(origin,origin+camera.project_ray_normal(screen)*150,PICK_GROUND if view_level==0 else PICK_UPPER)
-	var hit=get_world_3d().direct_space_state.intersect_ray(ray)
+	# Food resting on a surface and wet patches lying under it are picked first,
+	# on their own ray. See PICK_SURFACE: the furniture they sit on is a taller
+	# box than the surface it offers, so a single ray reached the furniture every
+	# time and the plate on the table could never be clicked.
+	var surface:=PhysicsRayQueryParameters3D.create(origin,origin+camera.project_ray_normal(screen)*150,PICK_SURFACE)
+	var hit=get_world_3d().direct_space_state.intersect_ray(surface)
+	if hit.is_empty():hit=get_world_3d().direct_space_state.intersect_ray(ray)
 	if not hit.is_empty():
 		var id:String=str(hit.collider.get_meta("item_id",""))
 		for item in items:
@@ -955,6 +1028,7 @@ func pick(screen:Vector2) -> void:
 		var light:Dictionary=room_light_record(id)
 		if not light.is_empty():object_clicked.emit(light,screen);return
 		if actors.has(id) and not bool(actors[id].get_meta("away",false)):object_clicked.emit({"id":id,"kind":"neighbor","label":actors[id].get_meta("display_name"),"node":actors[id],"size":Vector2(.6,.6)},screen);return
+		if pick_extras.has(id):object_clicked.emit((pick_extras[id] as Dictionary).duplicate(),screen);return
 	ground_clicked.emit(floor_point(screen))
 
 func update_camera() -> void:
