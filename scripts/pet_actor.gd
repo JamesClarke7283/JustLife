@@ -38,7 +38,10 @@ var _tail: Node3D
 var _legs: Array[Node3D] = []
 var _ring: MeshInstance3D
 var _speech: Label3D
-var _materials: Array[ShaderMaterial] = []
+## The actor's own surface materials, cached so a redraw can drop them. Both the
+## coat shader and the collar/leash tints are kept, so the array is typed to their
+## common Material base rather than to ShaderMaterial alone.
+var _materials: Array[Material] = []
 var _configured: bool = false
 var _time: float = 0.0
 var _phase: float = 0.0

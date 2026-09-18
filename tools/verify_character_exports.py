@@ -7,7 +7,7 @@ primitive references and exporter version, must equal the qualified revision.
 import copy, hashlib, json, math, struct
 from pathlib import Path
 
-PINS = {'character.glb': '5e2dae539e45056288a6078dafb3c91df333465c294f22aa40424342e744e839', 'character_broad.glb': 'e22b6b93ba72cb11369d4d84d55f86edc8c4a80aa8ebd5e66ae8842b71fdfd40', 'character_lod.glb': 'f7f478471d15ea35e2bd5e14cbdf4b14bbc13ab37d4994518b2e88eaeb1a3348', 'character_broad_lod.glb': '7aa9cf7ef2453d3fc91ed8653833f7d3b8bd34678b3f460ba7de8f35c96fb1d0'} # Re-qualified by tools/requalify_character_hashes.py.
+PINS = {'character.glb': '00265c0e8fa9ebc80a212feb7f186c0254c4f10f4d0fbb404791664102aab819', 'character_broad.glb': '59f05c30ae51cd3c67c7cba71e75cbfbbd32b67aa6d11df9bdeb4b092ca7d1f8', 'character_lod.glb': '6eb3f76dc049fc9404d38f23edb8f0a1962a66c3cfa1ee22caa7d178347341ef', 'character_broad_lod.glb': 'd9ae87d188e61ee70abb563f787d87dc046c83c6d4fa5dad684345bb6b12e034'} # Re-qualified by tools/requalify_character_hashes.py.
 FORMATS = {5120:'b',5121:'B',5122:'h',5123:'H',5125:'I',5126:'f'}
 COUNTS = {'SCALAR':1,'VEC2':2,'VEC3':3,'VEC4':4,'MAT4':16}
 

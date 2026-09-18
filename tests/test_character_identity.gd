@@ -3,6 +3,7 @@ extends SceneTree
 ## changing the caller's profile, personality or the simulation random stream.
 
 const Identity = preload("res://scripts/character_identity.gd")
+const LifeActor = preload("res://scripts/actor.gd")
 const APPEARANCE_KEYS: Array[String] = ["name", "frame", "hair", "outfit", "bottom", "face_round", "jaw_strong", "nose_wide", "eye_spacing", "nose_length", "lip_fullness", "brow_arch", "chin_length", "face_length", "mouth_width", "nose_bridge", "body_scale", "height_scale", "skin_color", "hair_color", "eye_color", "top_color", "bottom_color", "shoe_color"]
 var checks: int = 0
 var failures: int = 0
@@ -27,7 +28,9 @@ func valid_appearance(person: Dictionary) -> bool:
 		if float(person[key]) < (-1.0 if key in Identity.SIGNED_FACE_KEYS else 0.0) or float(person[key]) > 1.0: return false
 	if float(person.body_scale) < .85 or float(person.body_scale) > 1.15: return false
 	if float(person.height_scale) < .93 or float(person.height_scale) > 1.08: return false
-	if int(person.frame) not in [0, 1] or int(person.hair) not in range(8): return false
+	# The bound follows the authored style list, so adding a style does not need
+	# this predicate edited; a style beyond it is what would actually be invalid.
+	if int(person.frame) not in [0, 1] or int(person.hair) not in range(LifeActor.HAIR_NAMES.size()): return false
 	if int(person.outfit) not in range(5) or int(person.bottom) not in [0, 1]: return false
 	for key: String in ["skin_color", "hair_color", "eye_color", "top_color", "bottom_color", "shoe_color"]:
 		if not LifeBabyPlan._color(person[key]): return false
