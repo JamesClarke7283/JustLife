@@ -34,7 +34,7 @@ func _run()->void:
 	var rebased_revision:int=app.world.construction.building_state.revision
 	check(app.world.construction.stair_nodes.is_empty() and app.build_undo.size()==2 and app.sim.funds==initial-1005,"Actual main undo B restores its own charge first.")
 	app.undo_build();await frames()
-	check(app.world.items.is_empty() and app.sim.funds==initial-960,"Actual main furnishing undo removes only its plant and restores§45.")
+	check(app.world.items.is_empty() and app.sim.funds==initial-960,"Actual main furnishing undo removes only its plant and restoresℒ45.")
 	check(int(app.world.construction.building_state.revision)>=rebased_revision,"Furnishing undo never rewinds the current structural revision.")
 	app.undo_build();await frames()
 	check(app.build_undo.is_empty() and app.world.construction.building_state.floors.size()==1 and app.sim.funds==initial,"Actual main can still undo A after the intervening furnishing undo.")

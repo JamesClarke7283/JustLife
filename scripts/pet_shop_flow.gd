@@ -26,7 +26,7 @@ func _panel(title: String, subtitle: String) -> void:
 	app._begin_pause_overlay()
 	app.menus.shade()
 	# Tall enough for the coat rows and the collar and leash rows beneath them.
-	app.card(Vector2(265, 92), Vector2(910, 720), P.WHITE, 24, app.overlay)
+	app.card(Vector2(265, 84), Vector2(910, 762), P.WHITE, 24, app.overlay)
 	app.small_caps("Phone · Juniper Pet Shop", Vector2(300, 114), Vector2(780, 26), app.overlay)
 	app.text_label(title, Vector2(298, 155), Vector2(805, 57), 38, P.INK, true, app.overlay)
 	app.paragraph(subtitle, Vector2(302, 223), Vector2(822, 62), 18, P.MUTED, app.overlay)
@@ -51,7 +51,7 @@ func show_shop() -> void:
 	choose.name = "PetShopAdopt"
 	choose.disabled = not reason.is_empty()
 	choose.tooltip_text = reason
-	app.paragraph("Choose the species, the sex, and a coat built from two natural colours. A cat costs §%d and a dog §%d." % [LifePets.price_for("cat"), LifePets.price_for("dog")], Vector2(307, 433), Vector2(806, 44), 16, P.INK, app.overlay)
+	app.paragraph("Choose the species, the sex, and a coat built from two natural colours. A cat costs ℒ%d and a dog ℒ%d." % [LifePets.price_for("cat"), LifePets.price_for("dog")], Vector2(307, 433), Vector2(806, 44), 16, P.INK, app.overlay)
 	if not pets.is_empty():
 		show_household_pets(pets, Vector2(302, 482))
 		show_accessories(Vector2(302, 560))
@@ -73,7 +73,7 @@ func show_accessories(at: Vector2) -> void:
 		var kind: String = str(kinds[index])
 		var price: int = int(LifeCatalog.ITEMS[kind].price)
 		var reason: String = app.household.accessory_availability(kind)
-		var button: Button = app.button("%s  ·  §%d" % [LifePets.ACCESSORY_LABELS[kind], price], at + Vector2(index * 268, 30), Vector2(258, 44), func(): buy_accessory(kind), false, app.overlay)
+		var button: Button = app.button("%s  ·  ℒ%d" % [LifePets.ACCESSORY_LABELS[kind], price], at + Vector2(index * 268, 30), Vector2(258, 44), func(): buy_accessory(kind), false, app.overlay)
 		button.name = "PetAccessory_" + kind
 		button.disabled = app.mode != "live" or not reason.is_empty()
 		button.tooltip_text = reason if not reason.is_empty() else "Places the %s through the ordinary furnishing placement." % str(LifePets.ACCESSORY_LABELS[kind]).to_lower()
@@ -111,7 +111,7 @@ func draw_picker() -> void:
 	app.small_caps("Species", Vector2(302, 296), Vector2(388, 23), app.overlay)
 	for index: int in range(LifePets.SPECIES.size()):
 		var option: String = LifePets.SPECIES[index]
-		var label_text: String = "%s  ·  §%d" % [LifePets.species_label(option), LifePets.price_for(option)]
+		var label_text: String = "%s  ·  ℒ%d" % [LifePets.species_label(option), LifePets.price_for(option)]
 		var reason: String = app.household.pet_availability(option)
 		var button: Button = app.button(label_text, Vector2(302 + index * 200, 324), Vector2(190, 44), func(): set_species(option), option == species, app.overlay)
 		button.name = "PetSpecies_" + option
@@ -129,50 +129,54 @@ func draw_picker() -> void:
 	edit.placeholder_text = "Your pet's name"
 	app.rect(edit, Vector2(506, 406), Vector2(184, 38), app.overlay)
 	edit.text_changed.connect(func(value: String): draft.name = value)
-	app.small_caps("Base coat", Vector2(302, 456), Vector2(388, 23), app.overlay)
-	_swatch_row("coat_color", Vector2(302, 476))
-	app.small_caps("Second colour", Vector2(302, 554), Vector2(388, 23), app.overlay)
-	_swatch_row("mark_color", Vector2(302, 574))
+	app.small_caps("Base coat", Vector2(302, 452), Vector2(388, 23), app.overlay)
+	_swatch_row("coat_color", Vector2(302, 472))
+	app.small_caps("Second colour", Vector2(302, 560), Vector2(388, 23), app.overlay)
+	_swatch_row("mark_color", Vector2(302, 580))
 	# Collar and leash colours: the two accessories a pet actually wears, so a
 	# household with two cats can tell them apart without opening a card.
-	app.small_caps("Collar colour", Vector2(302, 652), Vector2(388, 23), app.overlay)
-	_accessory_row("collar_color", LifePets.COLLAR_COLORS, Vector2(302, 672), 18, 31, 4)
-	app.small_caps("Live preview", Vector2(302, 736), Vector2(388, 23), app.overlay)
-	app.card(Vector2(302, 758), Vector2(388, 46), P.PALE, 14, app.overlay)
+	app.small_caps("Collar colour", Vector2(302, 664), Vector2(388, 23), app.overlay)
+	_accessory_row("collar_color", LifePets.COLLAR_COLORS, Vector2(302, 684), 10, 34, 4)
+	# The preview is the animal at a size a player can actually judge a coat by.
+	# A 42 px strip could show the colour but not the markings, the coat length or
+	# the shape the species gives it, so the picker shows the pet large and lets
+	# it keep the whole right-hand column while the coat rows sit beneath it.
+	app.small_caps("Live preview", Vector2(726, 296), Vector2(412, 23), app.overlay)
+	app.card(Vector2(726, 318), Vector2(412, 150), P.PALE, 14, app.overlay)
 	var holder := Control.new()
 	holder.name = "PetPreviewHolder"
-	app.rect(holder, Vector2(392, 760), Vector2(208, 42), app.overlay)
-	app.pet_thumbnail(Vector2.ZERO, Vector2(208, 42), draft, holder)
-	app.small_caps("Coat length", Vector2(726, 296), Vector2(412, 23), app.overlay)
+	app.rect(holder, Vector2(730, 322), Vector2(404, 142), app.overlay)
+	app.pet_thumbnail(Vector2.ZERO, Vector2(404, 142), draft, holder)
+	app.small_caps("Coat length", Vector2(726, 484), Vector2(412, 23), app.overlay)
 	for index: int in range(LifePets.COAT_LENGTHS.size()):
 		var option: String = LifePets.COAT_LENGTHS[index]
-		var button: Button = app.button(LifePets.COAT_LENGTH_LABELS[option], Vector2(726 + index * 94, 324), Vector2(86, 36), func(): draft.coat_length = option; draw_picker(), option == str(draft.coat_length), app.overlay)
+		var button: Button = app.button(LifePets.COAT_LENGTH_LABELS[option], Vector2(726 + index * 94, 510), Vector2(86, 36), func(): draft.coat_length = option; draw_picker(), option == str(draft.coat_length), app.overlay)
 		button.name = "PetCoatLength_" + option
-	app.small_caps("Markings", Vector2(726, 374), Vector2(412, 23), app.overlay)
+	app.small_caps("Markings", Vector2(726, 560), Vector2(412, 23), app.overlay)
 	for index: int in range(LifePets.MARKINGS.size()):
 		var option: String = LifePets.MARKINGS[index]
-		var button: Button = app.button(LifePets.MARKING_LABELS[option], Vector2(726 + (index % 3) * 94, 400 + (index / 3) * 40), Vector2(86, 36), func(): draft.marking = option; draw_picker(), option == str(draft.marking), app.overlay)
+		var button: Button = app.button(LifePets.MARKING_LABELS[option], Vector2(726 + (index % 3) * 94, 586 + (index / 3) * 40), Vector2(86, 36), func(): draft.marking = option; draw_picker(), option == str(draft.marking), app.overlay)
 		button.name = "PetMarking_" + option
-	app.small_caps("Mixed gradient", Vector2(726, 488), Vector2(412, 23), app.overlay)
+	app.small_caps("Mixed gradient", Vector2(726, 674), Vector2(412, 23), app.overlay)
 	var slider := HSlider.new()
 	slider.name = "PetGradient"
 	slider.min_value = 0.0
 	slider.max_value = 1.0
 	slider.step = 0.01
 	slider.value = float(draft.gradient)
-	app.rect(slider, Vector2(729, 516), Vector2(300, 28), app.overlay)
+	app.rect(slider, Vector2(729, 702), Vector2(300, 28), app.overlay)
 	slider.value_changed.connect(func(value: float):
 		draft.gradient = value
 		app.preview_pet(draft))
-	app.text_label("Solid", Vector2(726, 545), Vector2(150, 23), 12, P.MUTED, false, app.overlay)
-	var right: Label = app.text_label("Fully mixed", Vector2(900, 545), Vector2(160, 23), 12, P.MUTED, false, app.overlay)
+	app.text_label("Solid", Vector2(726, 731), Vector2(150, 23), 12, P.MUTED, false, app.overlay)
+	var right: Label = app.text_label("Fully mixed", Vector2(900, 731), Vector2(160, 23), 12, P.MUTED, false, app.overlay)
 	right.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	app.small_caps("Leash colour", Vector2(726, 578), Vector2(412, 23), app.overlay)
-	_accessory_row("leash_color", LifePets.LEASH_COLORS, Vector2(726, 598), 18, 31, 4)
-	app.button("Surprise me", Vector2(726, 684), Vector2(190, 40), surprise_pet, false, app.overlay)
-	app.button("Back to shop", Vector2(926, 684), Vector2(212, 40), show_shop, false, app.overlay)
+	app.small_caps("Leash colour", Vector2(302, 768), Vector2(388, 23), app.overlay)
+	_accessory_row("leash_color", LifePets.LEASH_COLORS, Vector2(302, 788), 10, 34, 4)
+	app.button("Surprise me", Vector2(302, 838), Vector2(188, 42), surprise_pet, false, app.overlay).name = "PetSurprise"
+	app.button("Back to shop", Vector2(500, 838), Vector2(188, 42), show_shop, false, app.overlay).name = "PetBackToShop"
 	var reason: String = app.household.pet_availability(str(draft.species))
-	var confirm: Button = app.button("Take %s home  ·  §%d" % [str(draft.name).strip_edges(), LifePets.price_for(str(draft.species))], Vector2(726, 738), Vector2(412, 44), confirm_pet, true, app.overlay)
+	var confirm: Button = app.button("Take %s home  ·  ℒ%d" % [str(draft.name).strip_edges(), LifePets.price_for(str(draft.species))], Vector2(698, 838), Vector2(440, 42), confirm_pet, true, app.overlay)
 	confirm.name = "PetShopConfirm"
 	confirm.disabled = not reason.is_empty()
 	confirm.tooltip_text = reason
@@ -186,9 +190,9 @@ func _swatch_row(key: String, at: Vector2) -> void:
 	var chosen: String = str(draft.get(key, ""))
 	for index: int in range(LifePets.COAT_COLORS.size()):
 		var colour: String = LifePets.COAT_COLORS[index]
-		var column: int = index % 9
-		var row: int = index / 9
-		var swatch: Button = app.button("", at + Vector2(column * 40, row * 40), Vector2(34, 34), func(): draft[key] = colour; draw_picker(), false, app.overlay)
+		var column: int = index % 10
+		var row: int = index / 10
+		var swatch: Button = app.button("", at + Vector2(column * 38, row * 38), Vector2(34, 34), func(): draft[key] = colour; draw_picker(), false, app.overlay)
 		swatch.name = "PetSwatch_%s_%d" % [key, index]
 		swatch.custom_minimum_size = Vector2.ZERO
 		# The shared panel style sets 18 px content margins, which would force a
@@ -277,7 +281,7 @@ func confirm_pet() -> void:
 	if bool(result.ok):
 		if not bool(result.get("duplicate", false)):
 			app.spawn_pet(str(result.pet.id), result.pet, spawn, destination)
-			app.show_notice("%s the %s has come home. −§%d" % [str(result.pet.name), LifePets.species_label(str(result.pet.species)).to_lower(), int(result.pet.fee)])
+			app.show_notice("%s the %s has come home. −ℒ%d" % [str(result.pet.name), LifePets.species_label(str(result.pet.species)).to_lower(), int(result.pet.fee)])
 		else:
 			app.show_notice("%s is already part of the household." % str(result.pet.name))
 		request.clear()

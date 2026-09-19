@@ -4,7 +4,19 @@ class_name LifeRoofRules
 ## No Nodes, renderer, clock or wallet access. Attics/junctions are not implied.
 const EAVE:float=.28
 const SHELL:float=.10
-const LOT:=Rect2(-9,-7,18,16)
+## The navigable lot: the house plus its garden. This is the single source of
+## truth for how far the ground reaches — `LifeBuildingState.LOT` aliases it,
+## and the navigation region, the compatibility grid and the pan clamp are all
+## derived from it — so every geometric rule bounds against the same,
+## deliberately generous garden. It is derived rather than saved, so enlarging it
+## here grows the garden of current saves and future ones alike.
+##
+## The house sits at x -6..6, z -5..5 and the front sidewalk stays at z 8.5, so
+## the lot is anchored there and grows outward: 12 m of garden beside the house
+## and 9 m behind it, which is where a pool, a court and a garage can all stand
+## together with room to walk between them. The front edge is left where it is so
+## the street, the doorstep and every walk to the lot exit stay put.
+const LOT:=Rect2(-18,-12,36,21)
 static func parameters(record:Dictionary)->Dictionary:
 	var span:float=float(record.w) if int(record.rotation)==0 else float(record.d)
 	var length:float=float(record.d) if int(record.rotation)==0 else float(record.w)

@@ -50,6 +50,23 @@ func _init(owner_app: Node = null) -> void:
 	app = owner_app
 
 
+# ---------------------------------------------------------------- ownership
+
+## Whether the household owns a placed bicycle helmet. Riding is refused without
+## one, so this is the rule rather than a suggestion.
+func owns_helmet() -> bool:
+	return not helmet_ids().is_empty()
+
+## The identities of every placed helmet, so one is enough however many are
+## bought and a sold helmet no longer permits a ride.
+func helmet_ids() -> Array[String]:
+	var out: Array[String] = []
+	if app == null or not is_instance_valid(app.world): return out
+	for item: Dictionary in app.world.items:
+		if str(item.get("kind", "")) == "helmet": out.append(str(item.id))
+	return out
+
+
 # ---------------------------------------------------------------- persistence
 
 func get_state() -> Dictionary:

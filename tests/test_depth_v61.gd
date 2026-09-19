@@ -68,7 +68,7 @@ func _run() -> void:
 	var bladder_before_quick: float = quick.needs.bladder
 	quick.satisfaction = 400
 	check(quick.buy_reward("steel_bladder"), "An affordable permanent perk can be bought.")
-	check(quick.satisfaction == 150, "Buying a §250 perk removes exactly 250 satisfaction (got %d)." % quick.satisfaction)
+	check(quick.satisfaction == 150, "Buying a ℒ250 perk removes exactly 250 satisfaction (got %d)." % quick.satisfaction)
 	check(quick.purchased_perks == ["steel_bladder"], "The permanent perk is recorded in purchased_perks.")
 	var owned_entry: Dictionary = {}
 	for reward: Dictionary in quick.available_rewards():
@@ -86,7 +86,7 @@ func _run() -> void:
 	# A second permanent perk really moves the multiplier it names.
 	var connected: LifeSim = _trait_sim("")
 	connected.satisfaction = 600
-	check(connected.buy_reward("connections"), "A §450 career perk can be bought.")
+	check(connected.buy_reward("connections"), "A ℒ450 career perk can be bought.")
 	check(absf(connected._career_performance_gain(20.0) - 25.0) < 0.0001, "Connections lifts every performance gain by 25%% (got %.2f)." % connected._career_performance_gain(20.0))
 	connected.free()
 
@@ -96,7 +96,7 @@ func _run() -> void:
 	var perks_before: int = sim.purchased_perks.size()
 	check(sim.buy_reward("instant_meal"), "An affordable one-use potion can be bought.")
 	check(absf(float(sim.needs.hunger) - 100.0) < 0.001, "Instant Meal restores hunger completely (now %.0f)." % sim.needs.hunger)
-	check(sim.satisfaction == 180, "The potion removed exactly its §120 price (got %d)." % sim.satisfaction)
+	check(sim.satisfaction == 180, "The potion removed exactly its ℒ120 price (got %d)." % sim.satisfaction)
 	check(sim.purchased_perks.size() == perks_before, "A one-use potion is not recorded as a permanent perk.")
 
 	# The mood potion grants the very mood the emotion gates read.
@@ -156,8 +156,8 @@ func _run() -> void:
 	masterpiece.elapsed = float(masterpiece.duration)
 	sim._finish_front()
 	var masterpiece_sale: int = sim.funds - funds_before
-	check(masterpiece_sale == 285, "The Inspired masterpiece sells for its promised §285 (got §%d)." % masterpiece_sale)
-	check(masterpiece_sale > int((55 + 35) * 1.25), "The masterpiece pays substantially more than an ordinary Inspired canvas (§%d)." % int((55 + 35) * 1.25))
+	check(masterpiece_sale == 285, "The Inspired masterpiece sells for its promised ℒ285 (got ℒ%d)." % masterpiece_sale)
+	check(masterpiece_sale > int((55 + 35) * 1.25), "The masterpiece pays substantially more than an ordinary Inspired canvas (ℒ%d)." % int((55 + 35) * 1.25))
 	var master_memory: bool = false
 	for entry: Dictionary in sim.moodlets:
 		if str(entry.label) == "A real masterpiece": master_memory = true

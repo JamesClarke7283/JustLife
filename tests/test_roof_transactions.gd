@@ -40,7 +40,7 @@ func _run()->void:
 	var queue:Array=app.sim.action_queue.duplicate(true);var needs:Dictionary=app.sim.needs.duplicate(true);var minutes:float=app.sim.minutes;var funds:int=app.sim.funds
 	var tx=Transactions.new(app);var add:Dictionary={"op":"add","collection":"roofs","record":record()}
 	var quote:Dictionary=tx.prepare(add)
-	check(bool(quote.ok) and int(quote.cost)==1440 and app.sim.funds==funds and app.world.construction.snapshot()==state,"Detached roof preview costs exactly§1440 and changes no live geometry or funds.")
+	check(bool(quote.ok) and int(quote.cost)==1440 and app.sim.funds==funds and app.world.construction.snapshot()==state,"Detached roof preview costs exactlyℒ1440 and changes no live geometry or funds.")
 	if not bool(quote.ok):print(quote);_finish(app);return
 	var tampered:Dictionary=quote.duplicate(true);tampered.cost=0;tampered.funds_after=funds
 	check(not bool(tx.commit(tampered).ok) and app.sim.funds==funds,"A forged free-roof confirmation rejects without a charge.")
@@ -57,7 +57,7 @@ func _run()->void:
 	check(not bool(tx.commit(edit_quote).ok) and app.sim.funds==funds-1440 and app.world.construction.building_state.roofs[0]==old,"A body entering the new roof headroom after preview blocks replacement before refund.")
 	actor.position=Vector3(-.7,.16,3)
 	var replaced:Dictionary=tx.commit(edit_quote)
-	check(bool(replaced.ok) and app.sim.funds==funds-432,"Clear replacement refunds exactly§1008 once.")
+	check(bool(replaced.ok) and app.sim.funds==funds-432,"Clear replacement refunds exactlyℒ1008 once.")
 	if not bool(replaced.ok):print(replaced);_finish(app);return
 	var smaller:Dictionary=app.world.construction.building_state.roofs[0].duplicate(true)
 	check(str(smaller.id)==id and int(smaller.rotation)==90 and float(smaller.pitch)==.75 and str(smaller.material)=="56606b" and app.world.construction.roof_nodes.size()==1,"Replacement preserves identity while reconstructing changed dimensions, yaw, pitch and material.")

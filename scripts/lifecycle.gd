@@ -3,6 +3,25 @@ class_name LifeLifecycle
 ## Progress is a fraction of a stage, so changing lifespan preserves age.
 
 const STAGES: Array[String] = ["baby", "child", "teen", "young_adult", "adult", "elder"]
+
+
+## Whether one life stage is the same rank or older than another. Every age gate
+## reads this, so a stage added to the roster cannot silently lock a whole age out
+## of a feature that names an older one.
+static func at_least(stage: String, minimum: String) -> bool:
+	var have: int = STAGES.find(stage)
+	var need: int = STAGES.find(minimum)
+	if have < 0 or need < 0: return false
+	return have >= need
+
+
+## Whether one life stage is older than another, strictly. An upper age bound
+## reads this so that "for children and teenagers" includes teenagers.
+static func above(stage: String, ceiling: String) -> bool:
+	var have: int = STAGES.find(stage)
+	var top: int = STAGES.find(ceiling)
+	if have < 0 or top < 0: return false
+	return have > top
 const LABELS: Dictionary = {"baby":"Baby", "child":"Child", "teen":"Teen", "young_adult":"Young adult", "adult":"Adult", "elder":"Elder", "unknown":"Age unspecified"}
 const NORMAL_DAYS: Dictionary = {"baby":7, "child":14, "teen":21, "young_adult":28, "adult":42, "elder":28}
 const SPANS: Dictionary = {"short":0.5, "normal":1.0, "long":4.0}

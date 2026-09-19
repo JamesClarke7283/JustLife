@@ -39,7 +39,7 @@ func show_phone() -> void:
 	app.paragraph("See everyone's school, work and upcoming birthdays.",Vector2(307,388),Vector2(806,26),15,P.MUTED,app.overlay)
 	var adopt:Button=app.button("Adopt a child",Vector2(302,426),Vector2(820,40),show_candidates,false,app.overlay)
 	adopt.name="PhoneAdoptChild";adopt.disabled=not reason.is_empty();adopt.tooltip_text=reason
-	app.paragraph("Welcome a school-age Lifelet into your family. Choose one or two adult guardians. Adoption costs §1,000.",Vector2(307,468),Vector2(806,38),15,P.INK,app.overlay)
+	app.paragraph("Welcome a school-age Lifelet into your family. Choose one or two adult guardians. Adoption costs ℒ1,000.",Vector2(307,468),Vector2(806,38),15,P.INK,app.overlay)
 	var pet_reason:String=app.household.pet_shop_availability()
 	var pets:Button=app.button("Juniper Pet Shop",Vector2(302,508),Vector2(820,40),show_pets,false,app.overlay)
 	pets.name="PhonePetShop";pets.disabled=not pet_reason.is_empty();pets.tooltip_text=pet_reason
@@ -49,20 +49,20 @@ func show_phone() -> void:
 	var policy:Dictionary=app.household.insurance()
 	var insured:bool=not policy.is_empty()
 	var home_policy:Dictionary=LifeSim.INSURANCE_POLICIES.home
-	var coverage:Button=app.button(("Home insurance · insured" if insured else "Buy home insurance · §%d" % int(home_policy.premium)),Vector2(302,588),Vector2(820,40),show_insurance,false,app.overlay)
+	var coverage:Button=app.button(("Home insurance · insured" if insured else "Buy home insurance · ℒ%d" % int(home_policy.premium)),Vector2(302,588),Vector2(820,40),show_insurance,false,app.overlay)
 	coverage.name="PhoneInsurance"
-	coverage.tooltip_text=("Cover is in force: a break-in is paid back in full." if insured else "Pay §%d now and any break-in is reimbursed in full from the phone. Buy it before the burglar comes." % int(home_policy.premium))
-	app.paragraph("A burglar can take up to §%d in one night. Cover pays it all back." % LifeSim.ROBBERY_LOSS,Vector2(307,630),Vector2(806,30),15,P.INK,app.overlay)
+	coverage.tooltip_text=("Cover is in force: a break-in is paid back in full." if insured else "Pay ℒ%d now and any break-in is reimbursed in full from the phone. Buy it before the burglar comes." % int(home_policy.premium))
+	app.paragraph("A burglar can take up to ℒ%d in one night. Cover pays it all back." % LifeSim.ROBBERY_LOSS,Vector2(307,630),Vector2(806,30),15,P.INK,app.overlay)
 	var bill:Dictionary=sim_bill()
 	var bill_label:String="Household bills"
 	if bill.is_empty():
 		bill_label="Household bills · nothing due"
 	else:
-		bill_label="Household bills · §%d due%s" % [int(bill.amount)+int(bill.get("late_fee",0)), " (overdue)" if bool(bill.overdue) else ""]
+		bill_label="Household bills · ℒ%d due%s" % [int(bill.amount)+int(bill.get("late_fee",0)), " (overdue)" if bool(bill.overdue) else ""]
 	var bills:Button=app.button(bill_label,Vector2(302,666),Vector2(820,40),show_bills,false,app.overlay)
 	bills.name="PhoneBills"
 	if bill.is_empty():
-		bills.tooltip_text="The next bill is for what the home is worth: about §%d." % LifeSim.bill_amount_for(owner.home_value())
+		bills.tooltip_text="The next bill is for what the home is worth: about ℒ%d." % LifeSim.bill_amount_for(owner.home_value())
 	elif bool(bill.overdue):
 		bills.tooltip_text="The utilities are cut until this bill is paid."
 	else:
@@ -86,9 +86,9 @@ func show_insurance() -> void:
 	var policy:Dictionary=app.household.insurance()
 	if not policy.is_empty():
 		app.text_label("Insured · "+str(policy.label),Vector2(302,354),Vector2(820,50),34,P.INK,true,app.overlay)
-		app.paragraph("The household paid §%d for this cover. A break-in is reimbursed in full while it is in force; nothing is refunded if you cancel." % int(policy.premium),Vector2(307,420),Vector2(806,72),18,P.MUTED,app.overlay)
+		app.paragraph("The household paid ℒ%d for this cover. A break-in is reimbursed in full while it is in force; nothing is refunded if you cancel." % int(policy.premium),Vector2(307,420),Vector2(806,72),18,P.MUTED,app.overlay)
 		app.card(Vector2(302,500),Vector2(820,110),P.PALE,15,app.overlay)
-		app.text_label("A burglar takes up to §%d" % LifeSim.ROBBERY_LOSS,Vector2(326,516),Vector2(780,34),22,P.INK,true,app.overlay)
+		app.text_label("A burglar takes up to ℒ%d" % LifeSim.ROBBERY_LOSS,Vector2(326,516),Vector2(780,34),22,P.INK,true,app.overlay)
 		app.paragraph("With this policy the same loss is paid back the moment it happens, so the household ends the night exactly as it started.",Vector2(328,552),Vector2(768,52),16,P.MUTED,app.overlay)
 		var cancel:Button=app.button("Cancel insurance",Vector2(302,646),Vector2(820,47),cancel_insurance,false,app.overlay)
 		cancel.name="PhoneCancelInsurance"
@@ -96,16 +96,16 @@ func show_insurance() -> void:
 		app.button("Back to phone",Vector2(302,703),Vector2(820,47),show_phone,false,app.overlay)
 		return
 	var home_policy:Dictionary=LifeSim.INSURANCE_POLICIES.home
-	app.text_label("§%d · one premium" % int(home_policy.premium),Vector2(302,354),Vector2(820,50),34,P.INK,true,app.overlay)
+	app.text_label("ℒ%d · one premium" % int(home_policy.premium),Vector2(302,354),Vector2(820,50),34,P.INK,true,app.overlay)
 	app.paragraph("Pay once and the home is insured: any break-in during cover is paid back in full from the household purse.",Vector2(307,420),Vector2(806,72),18,P.MUTED,app.overlay)
 	app.card(Vector2(302,500),Vector2(820,110),P.PALE,15,app.overlay)
-	app.text_label("A burglar takes up to §%d" % LifeSim.ROBBERY_LOSS,Vector2(326,516),Vector2(780,34),22,P.INK,true,app.overlay)
-	app.paragraph("Break-ins happen every few nights. The household has §%s in the purse right now." % app.commas(app.household.funds),Vector2(328,552),Vector2(768,52),16,P.MUTED,app.overlay)
-	var buy:Button=app.button("Buy insurance · §%d" % int(home_policy.premium),Vector2(302,646),Vector2(820,47),buy_insurance,true,app.overlay)
+	app.text_label("A burglar takes up to ℒ%d" % LifeSim.ROBBERY_LOSS,Vector2(326,516),Vector2(780,34),22,P.INK,true,app.overlay)
+	app.paragraph("Break-ins happen every few nights. The household has ℒ%s in the purse right now." % app.commas(app.household.funds),Vector2(328,552),Vector2(768,52),16,P.MUTED,app.overlay)
+	var buy:Button=app.button("Buy insurance · ℒ%d" % int(home_policy.premium),Vector2(302,646),Vector2(820,47),buy_insurance,true,app.overlay)
 	buy.name="PhoneBuyInsurance"
 	var shortfall:int=int(home_policy.premium)-app.household.funds
 	buy.disabled=shortfall>0
-	buy.tooltip_text=("The household needs §%d more." % shortfall) if shortfall>0 else "Cover begins immediately and lasts until you cancel it."
+	buy.tooltip_text=("The household needs ℒ%d more." % shortfall) if shortfall>0 else "Cover begins immediately and lasts until you cancel it."
 	app.button("Back to phone",Vector2(302,703),Vector2(820,47),show_phone,false,app.overlay)
 
 
@@ -135,26 +135,26 @@ func show_bills() -> void:
 	var bill:Dictionary=app.household.bill()
 	if bill.is_empty():
 		app.text_label("Nothing is due.",Vector2(302,354),Vector2(820,50),34,P.INK,true,app.overlay)
-		app.paragraph("A bill arrives every %d days. The home is worth §%s, so the next one will be about §%d." % [LifeSim.BILL_PERIOD_DAYS, app.commas(owner.home_value()), LifeSim.bill_amount_for(owner.home_value())],Vector2(307,420),Vector2(806,72),18,P.MUTED,app.overlay)
+		app.paragraph("A bill arrives every %d days. The home is worth ℒ%s, so the next one will be about ℒ%d." % [LifeSim.BILL_PERIOD_DAYS, app.commas(owner.home_value()), LifeSim.bill_amount_for(owner.home_value())],Vector2(307,420),Vector2(806,72),18,P.MUTED,app.overlay)
 		app.button("Back to phone",Vector2(302,675),Vector2(820,47),show_phone,false,app.overlay)
 		return
 	var owed:int=app.household.bill_total_due()
 	var overdue:bool=app.household.utilities_cut() or app.household.day>int(bill.due_day)
 	app.card(Vector2(302,352),Vector2(820,180),P.PALE,15,app.overlay)
-	app.text_label("§%d" % owed,Vector2(326,368),Vector2(400,60),44,P.INK,true,app.overlay)
-	app.text_label("Home value §%s" % app.commas(owner.home_value()),Vector2(330,432),Vector2(380,30),17,P.MUTED,false,app.overlay)
+	app.text_label("ℒ%d" % owed,Vector2(326,368),Vector2(400,60),44,P.INK,true,app.overlay)
+	app.text_label("Home value ℒ%s" % app.commas(owner.home_value()),Vector2(330,432),Vector2(380,30),17,P.MUTED,false,app.overlay)
 	app.text_label("Issued day %d  ·  due day %d" % [int(bill.issued_day),int(bill.due_day)],Vector2(330,462),Vector2(500,26),16,P.MUTED,false,app.overlay)
 	if int(bill.get("late_fee",0))>0:
-		app.text_label("Includes a §%d late fee" % int(bill.late_fee),Vector2(330,490),Vector2(500,26),16,P.CORAL,false,app.overlay)
+		app.text_label("Includes a ℒ%d late fee" % int(bill.late_fee),Vector2(330,490),Vector2(500,26),16,P.CORAL,false,app.overlay)
 	if overdue:
 		app.text_label("Utilities cut",Vector2(700,380),Vector2(400,40),26,P.CORAL,true,app.overlay)
 		app.paragraph("Cooking, hot water and anything electrical are unavailable until this is paid.",Vector2(700,424),Vector2(410,60),15,P.MUTED,app.overlay)
-	var pay:Button=app.button("Pay §%d" % owed,Vector2(302,556),Vector2(400,52),func():pay_bill(),true,app.overlay)
+	var pay:Button=app.button("Pay ℒ%d" % owed,Vector2(302,556),Vector2(400,52),func():pay_bill(),true,app.overlay)
 	pay.name="PhonePayBill"
 	pay.disabled=app.household.funds<owed
-	pay.tooltip_text=("The household has §%s." % app.commas(app.household.funds)) if app.household.funds<owed else "Settle the bill and restore the utilities."
-	app.paragraph("Funds §%s" % app.commas(app.household.funds),Vector2(718,566),Vector2(400,34),20,P.INK,app.overlay)
-	app.paragraph("The household has paid §%s in bills so far, %d of them late." % [app.commas(owner.bills_paid_total), owner.bills_late],Vector2(307,628),Vector2(806,40),15,P.MUTED,app.overlay)
+	pay.tooltip_text=("The household has ℒ%s." % app.commas(app.household.funds)) if app.household.funds<owed else "Settle the bill and restore the utilities."
+	app.paragraph("Funds ℒ%s" % app.commas(app.household.funds),Vector2(718,566),Vector2(400,34),20,P.INK,app.overlay)
+	app.paragraph("The household has paid ℒ%s in bills so far, %d of them late." % [app.commas(owner.bills_paid_total), owner.bills_late],Vector2(307,628),Vector2(806,40),15,P.MUTED,app.overlay)
 	app.button("Back to phone",Vector2(302,675),Vector2(820,47),show_phone,false,app.overlay)
 
 ## Pay the outstanding bill and report exactly what happened.
@@ -203,11 +203,11 @@ func show_review(index:int,second:String="") -> void:
 		if str(member.id)==second:select.select(select.item_count-1)
 	app.rect(select,Vector2(516,486),Vector2(583,42),app.overlay)
 	select.item_selected.connect(func(selected:int):show_review(index,str(select.get_item_metadata(selected))))
-	app.paragraph("§1,000 once · %d of 8 household places\nClasses begin after a day to settle in. Your child will walk home from the street and can then be controlled like any Lifelet." % (app.household.members.size()+1),Vector2(307,553),Vector2(806,77),18,P.INK,app.overlay)
+	app.paragraph("ℒ1,000 once · %d of 8 household places\nClasses begin after a day to settle in. Your child will walk home from the street and can then be controlled like any Lifelet." % (app.household.members.size()+1),Vector2(307,553),Vector2(806,77),18,P.INK,app.overlay)
 	var reason:String=str(prepared.get("error",context_error()))
 	if not reason.is_empty():app.paragraph(reason,Vector2(307,626),Vector2(804,40),14,P.TEAL,app.overlay)
 	app.button("Cancel adoption",Vector2(302,675),Vector2(392,47),show_candidates,false,app.overlay)
-	var confirm:Button=app.button("Confirm adoption · §1,000",Vector2(710,675),Vector2(412,47),confirm_adoption,true,app.overlay)
+	var confirm:Button=app.button("Confirm adoption · ℒ1,000",Vector2(710,675),Vector2(412,47),confirm_adoption,true,app.overlay)
 	confirm.name="AdoptionConfirm";confirm.disabled=not reason.is_empty();confirm.tooltip_text=reason
 
 func _clear_body(at:Vector3,person:String="") -> bool:

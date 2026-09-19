@@ -125,20 +125,20 @@ func _career_tracks() -> void:
 	check(LifeSim.CAREER_TRACKS.has("criminal"), "CAREER_TRACKS offers a Criminal track.")
 	var criminal: Dictionary = LifeSim.CAREER_TRACKS.criminal
 	check(str(criminal.label) == "Criminal", "The criminal track is labelled Criminal.")
-	check(int(criminal.base_salary) == 1000, "The criminal track pays §1000 a day.")
+	check(int(criminal.base_salary) == 1000, "The criminal track pays ℒ1000 a day.")
 	check(str(criminal.skill) == "charisma", "The criminal track grows Charisma.")
 	check(int(criminal.get("entry", {}).get("cost", 0)) == 0, "The criminal track charges no entry fee.")
 	check(int(criminal.get("entry", {}).get("level", 0)) == 0, "The criminal track demands no skill level.")
 
 	check(LifeSim.CAREER_TRACKS.has("technical"), "CAREER_TRACKS offers a Technical track.")
 	var technical: Dictionary = LifeSim.CAREER_TRACKS.technical
-	check(int(technical.get("entry", {}).get("cost", 0)) == 900, "The technical track costs §900 to enter.")
+	check(int(technical.get("entry", {}).get("cost", 0)) == 900, "The technical track costs ℒ900 to enter.")
 	check(str(technical.get("entry", {}).get("skill", "")) == "logic" and int(technical.get("entry", {}).get("level", 0)) == 8,
 		"The technical track requires Logic level 8 to enter.")
 	check(int(technical.base_salary) > 0, "The technical track pays a real salary once joined.")
 
 
-## A criminal shift pays its promised §1000 through the ordinary queue, and the
+## A criminal shift pays its promised ℒ1000 through the ordinary queue, and the
 ## door is open to anyone — no skill, no fee.
 func _criminal_shift() -> void:
 	var sim: LifeSim = worker()
@@ -150,15 +150,15 @@ func _criminal_shift() -> void:
 	check(sim.queue_action("career_day", "lot_exit", Vector3(0, .16, 8.5)), "A weekday shift queues against the neighborhood exit.")
 	sim.begin_current_action()
 	check(sim.is_away() and str(sim.away_state.activity) == "career", "Reaching the exit starts a real work absence.")
-	check(sim.away_state.career_track == "criminal" and int(sim.away_state.salary) == 1000, "The absence carries the criminal track and its §1000 salary.")
+	check(sim.away_state.career_track == "criminal" and int(sim.away_state.salary) == 1000, "The absence carries the criminal track and its ℒ1000 salary.")
 	var before: int = sim.funds
 	advance(sim, 480.0)
-	check(sim.funds - before == 1000, "A worked criminal shift credits exactly §1000 (was %d, now %d)." % [before, sim.funds])
+	check(sim.funds - before == 1000, "A worked criminal shift credits exactly ℒ1000 (was %d, now %d)." % [before, sim.funds])
 	check(int(sim.career.worked_day) == 1 and str(sim.away_state.phase) == "returning", "The shift is paid once and marks the day complete.")
 	check(int(sim.skills.charisma.xp) > 0.0 or int(sim.skills.charisma.level) > 1, "Criminal work grows the track's own Charisma skill.")
 	sim.free()
 
-	# The same §1000 reaches the shared household purse, not just one Lifelet.
+	# The same ℒ1000 reaches the shared household purse, not just one Lifelet.
 	var home: LifeHousehold = LifeHousehold.new()
 	root.add_child(home)
 	home.new_household([{"name": "Rook Vance", "age_stage": "young_adult", "traits": []}])
@@ -180,12 +180,12 @@ func _criminal_shift() -> void:
 		home.tick(1.0)
 		if member.funds != purse:
 			break
-	check(home.funds - purse == 1000, "The criminal shift's §1000 lands on the shared household funds (§%d -> §%d)." % [purse, home.funds])
+	check(home.funds - purse == 1000, "The criminal shift's ℒ1000 lands on the shared household funds (ℒ%d -> ℒ%d)." % [purse, home.funds])
 	home.queue_free()
 
 
 ## The technical trade is refused with a reason below Logic 8 and accepted at 8,
-## and the §900 course fee is really taken.
+## and the ℒ900 course fee is really taken.
 func _technical_entry() -> void:
 	var sim: LifeSim = worker()
 	sim.funds = 2500
@@ -198,7 +198,7 @@ func _technical_entry() -> void:
 	check(sim.career_entry_error("technical").is_empty(), "Technical is available at Logic 8.")
 	var fee_before: int = sim.funds
 	check(sim.choose_career("technical") and str(sim.career.track) == "technical", "Technical can be joined at Logic 8.")
-	check(fee_before - sim.funds == 900, "Joining technical pays the §900 course fee (§%d -> §%d)." % [fee_before, sim.funds])
+	check(fee_before - sim.funds == 900, "Joining technical pays the ℒ900 course fee (ℒ%d -> ℒ%d)." % [fee_before, sim.funds])
 	# A purse that cannot cover the fee is refused before anything is charged.
 	var broke: LifeSim = worker()
 	broke.skills.logic.level = 8
@@ -228,7 +228,7 @@ func _insurance_and_robbery() -> void:
 	check(home.insurance().is_empty(), "A fresh household is uninsured.")
 	var bought: Dictionary = home.buy_insurance()
 	check(bool(bought.ok), "Home insurance can be bought from the household.")
-	check(home.funds == 4000 - int(LifeSim.INSURANCE_POLICIES.home.premium), "The premium is charged exactly once (§%d)." % home.funds)
+	check(home.funds == 4000 - int(LifeSim.INSURANCE_POLICIES.home.premium), "The premium is charged exactly once (ℒ%d)." % home.funds)
 	var policy: Dictionary = home.insurance()
 	check(policy.get("id", "") == "home" and int(policy.premium) == int(LifeSim.INSURANCE_POLICIES.home.premium),
 		"The household reports its policy and price.")
@@ -241,7 +241,7 @@ func _insurance_and_robbery() -> void:
 	# A robbery takes a real sum; insured, the same loss is paid straight back.
 	var insured_before: int = home.funds
 	var insured_robbery: Dictionary = home.robbery()
-	check(int(insured_robbery.get("stolen", 0)) == LifeSim.ROBBERY_LOSS, "A robbery takes the advertised §%d." % LifeSim.ROBBERY_LOSS)
+	check(int(insured_robbery.get("stolen", 0)) == LifeSim.ROBBERY_LOSS, "A robbery takes the advertised ℒ%d." % LifeSim.ROBBERY_LOSS)
 	check(int(insured_robbery.get("reimbursed", 0)) == LifeSim.ROBBERY_LOSS, "Insurance reimburses the whole loss.")
 	check(home.funds == insured_before, "An insured break-in leaves the purse exactly as it was.")
 
@@ -251,7 +251,7 @@ func _insurance_and_robbery() -> void:
 	var bare_robbery: Dictionary = home.robbery()
 	check(int(bare_robbery.get("reimbursed", 0)) == 0, "Without cover nothing is paid back.")
 	check(home.funds == exposed_before - LifeSim.ROBBERY_LOSS,
-		"An uninsured break-in really takes §%d (§%d -> §%d)." % [LifeSim.ROBBERY_LOSS, exposed_before, home.funds])
+		"An uninsured break-in really takes ℒ%d (ℒ%d -> ℒ%d)." % [LifeSim.ROBBERY_LOSS, exposed_before, home.funds])
 
 	# The nightly event fires on its own period from the household's clock, so a
 	# player who never calls robbery() is still robbed. Day 3 is a robbery night.
@@ -274,7 +274,7 @@ func _insurance_and_robbery() -> void:
 	home.tick(3.0 / LifeSim.GAME_MINUTES_PER_SECOND)
 	check(home.day == LifeSim.ROBBERY_PERIOD_DAYS, "The household's own clock reached the robbery night (day %d)." % home.day)
 	check(home.funds == night_before - LifeSim.ROBBERY_LOSS,
-		"A scheduled night really robs the household without anyone asking (§%d -> §%d)." % [night_before, home.funds])
+		"A scheduled night really robs the household without anyone asking (ℒ%d -> ℒ%d)." % [night_before, home.funds])
 	# A non-scheduled night leaves the purse alone.
 	home.day = LifeSim.ROBBERY_PERIOD_DAYS + 1
 	home.minutes = 1439.0

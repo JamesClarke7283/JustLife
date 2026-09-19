@@ -50,7 +50,7 @@ func _school_pose(label_text: String) -> void:
 func _birthday_details() -> void:
 	await press("My Lifelet")
 	await press("Celebrate a birthday")
-	await press("Celebrate · §30")
+	await press("Celebrate · ℒ30")
 	await press("▶")
 	for phase: Dictionary in _birthday_phases():
 		if not await wait_until(func()->bool:return active_is("birthday") and app.player._motion_action == "birthday" and app.player._action_time >= float(phase.time),str(phase.label),45):continue

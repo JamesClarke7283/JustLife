@@ -27,6 +27,10 @@ var restoring: bool = false
 var journeys: Dictionary = {}
 var physical_snapshot_provider:Callable=Callable()
 var extras_provider:Callable=Callable()
+## Where the household's post boxes stand. The controller owns the world's layout,
+## so it answers this; the household only asks whether there is anywhere to post
+## to, rather than reaching into the world itself.
+var post_box_provider:Callable=Callable()
 ## Reports what everything placed in the home is worth. Pulled when a bill is
 ## issued, so the amount always reflects the house the player has built.
 var home_value_provider:Callable=Callable()
@@ -34,6 +38,9 @@ var extras_restore_provider:Callable=Callable()
 var family_graph: Dictionary = LifeFamilyGraph.fresh()
 var adoptions: Dictionary = LifeAdoption.fresh()
 var pets: Dictionary = LifePets.fresh()
+## The household's post box. Letters and bills are filed here when the household
+## owns a post box; without one, bills arrive by notice exactly as before.
+var mail: Dictionary = LifeMail.fresh()
 var pregnancy: Dictionary = LifeBabyPlan.fresh()
 var _family_roles: Dictionary = {}
 var meals: LifeMeals = LifeMeals.new()
@@ -51,6 +58,7 @@ func new_household(profiles: Array) -> void:
 	journeys.clear()
 	adoptions=LifeAdoption.fresh()
 	pets=LifePets.fresh()
+	mail=LifeMail.fresh()
 	pregnancy=LifeBabyPlan.fresh()
 	meals.clear()
 	sanitation.clear()
@@ -109,10 +117,51 @@ func connect_member(id: String, sim: LifeSim) -> void:
 				var relationship:Dictionary=sim.relationships[str(action.target_id)].duplicate(true)
 				target.receive_social_result(id,str(sim.character.name),str(sim.character.life_stage),relationship,str(action.id),action.get("social_events",[]))
 				target.needs.social=minf(100,target.needs.social+16)
+			# Playing together in the garden is a shared moment: whoever else is
+			# at the same furnishing shares the fun and the friendship, which is
+			# what the swing, the sand pit and the garden swing are for.
+			if str(action.id) in [LifeOutdoorActs.ACTION_ID, LifeOutdoorActs.PUSH_ID]:
+				_credit_garden_company(id, action, sim)
 			_sync_social_context()
 			member_action_finished.emit(id,action))
 	sim.notice.connect(func(message:String):
 		if not restoring:notice.emit(message))
+
+## Share one garden activity with whoever else is standing at the same
+## furnishing: they gain the fun, and the two of them gain friendship with each
+## other. A push at the swings reaches the children on them, so the rule "an
+## adult pushes the children and it lifts their fun and friendship" is real.
+func _credit_garden_company(actor_id: String, action: Dictionary, actor: LifeSim) -> void:
+	var place: String = str(action.get("target_id", ""))
+	if place.is_empty(): return
+	var present: Array = []
+	for member: Dictionary in members:
+		if str(member.id) == actor_id: continue
+		var other: LifeSim = member.sim
+		var theirs: Dictionary = other.get_current_action()
+		if str(theirs.get("target_id", "")) != place: continue
+		present.append(member)
+	if present.is_empty(): return
+	var pushing: bool = str(action.id) == LifeOutdoorActs.PUSH_ID
+	for member: Dictionary in present:
+		var other: LifeSim = member.sim
+		other.needs["fun"] = minf(100.0, float(other.needs["fun"]) + LifeOutdoorActs.PUSH_CHILD_FUN)
+		other.needs["social"] = minf(100.0, float(other.needs["social"]) + LifeOutdoorActs.PUSH_CHILD_SOCIAL)
+		# Both directions of the friendship: the actor gains, and so does the one
+		# who was actually there.
+		for pair: Array in [[actor, other], [other, actor]]:
+			var from_sim: LifeSim = pair[0]
+			var to_sim: LifeSim = pair[1]
+			var to_id: String = str(to_sim.cooperation_member_id)
+			if not from_sim.relationships.has(to_id): continue
+			var rel: Dictionary = from_sim.relationships[to_id]
+			# A push is the deeper moment; playing alongside is a smaller one.
+			var lift: float = 14.0 if pushing else 8.0
+			rel["friendship"] = clampf(float(rel.friendship) + lift, -100.0, 100.0)
+			from_sim.relationships[to_id] = rel
+		if pushing:
+			other.add_moodlet("Pushed on the swings", "Happy", "%s pushed you on the swings." % str(actor.character.name), 120, 2)
+
 
 func selected() -> LifeSim:
 	return null if members.is_empty() else members[selected_index].sim
@@ -221,6 +270,11 @@ func tick(delta: float) -> void:
 	# and a save/load all agree about when the baby is due.
 	pregnancy_tick()
 	_caregiving_tick()
+	# A pet's own day runs on the same clock, so a paused household freezes its
+	# pets' needs exactly as it freezes its Lifelets.
+	# The clock wraps at midnight, so a tick that crosses a day boundary owes the
+	# pets the rest of the old day as well as the new one.
+	_tick_pet_care(float(minutes) - start_minutes + float(day - start_day) * 1440.0)
 	_sync_wallet()
 	if paired:
 		_reconcile_cooperations()
@@ -294,7 +348,7 @@ func get_state(world_data: Array = []) -> Dictionary:
 	adopt_selected_changes()
 	var states:Array=[]
 	for member in members:states.append({"id":member.id,"state":member.sim.get_state()})
-	var result:Dictionary={"household_version":2 if not journeys.is_empty() else 1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"pets":pets.duplicate(true),"pregnancy":pregnancy.duplicate(true),"birth_serial":birth_serial,"memorials":memorials.duplicate(true),"heirlooms":heirlooms.duplicate(true),"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state(),"sanitation":sanitation.get_state(),"extras":extras_provider.call() if extras_provider.is_valid() else {}}
+	var result:Dictionary={"household_version":2 if not journeys.is_empty() else 1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"pets":pets.duplicate(true),"mail":mail.duplicate(true),"pregnancy":pregnancy.duplicate(true),"birth_serial":birth_serial,"memorials":memorials.duplicate(true),"heirlooms":heirlooms.duplicate(true),"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state(),"sanitation":sanitation.get_state(),"extras":extras_provider.call() if extras_provider.is_valid() else {}}
 	if not journeys.is_empty():result.journeys=journeys.duplicate(true)
 	if physical_snapshot_provider.is_valid():
 		var physical:Dictionary=physical_snapshot_provider.call()
@@ -479,6 +533,10 @@ func restore_state(data: Dictionary) -> Dictionary:
 	if not pet_error_text.is_empty():
 		for candidate:Dictionary in candidates:candidate.sim.free()
 		return {"ok":false,"error":pet_error_text}
+	var mail_error:String=LifeMail.validate(data.get("mail",null))
+	if not mail_error.is_empty():
+		for candidate:Dictionary in candidates:candidate.sim.free()
+		return {"ok":false,"error":mail_error}
 	var pregnancy_data:Variant=data.get("pregnancy",null)
 	var pregnancy_error:String=LifeBabyPlan.validate(pregnancy_data,data)
 	if pregnancy_error.is_empty():pregnancy_error=LifeBabyPlan.validate_pending(pregnancy_data,data,pregnancy_data if pregnancy_data is Dictionary else {})
@@ -537,6 +595,13 @@ func restore_state(data: Dictionary) -> Dictionary:
 				candidates[index].sim.action_queue[action_index].phase=data.members[index].state.action_queue[action_index].phase
 	adoptions=data.get("adoptions",LifeAdoption.fresh()).duplicate(true)
 	pets=LifePets.fresh() if not data.get("pets") is Dictionary else (data.get("pets") as Dictionary).duplicate(true)
+	# A household saved before it had a post box loads with an empty one rather
+	# than losing mail it never had.
+	mail=LifeMail.fresh() if not data.get("mail") is Dictionary else (data.get("mail") as Dictionary).duplicate(true)
+	# A pet saved before pets had a condition loads with a fresh one rather than
+	# being left without needs for the rest of the save's life.
+	for pet:Dictionary in pets.get("pets",[]):
+		if not pet.get("care") is Dictionary:pet["care"]=LifePetCare.fresh()
 	pregnancy=LifeBabyPlan.fresh() if pregnancy_data==null else (pregnancy_data as Dictionary).duplicate(true)
 	birth_serial=int(data.get("birth_serial",1))
 	meals.restore(meal_data)
@@ -697,10 +762,10 @@ func _record_passing(member_id: String) -> void:
 			continue
 		member.sim.add_moodlet("In mourning","Sad","Someone beloved has passed.",960,2)
 		member.sim.trigger_fear("fear_of_loss")
-		member.sim.remember("A farewell","%s left a keepsake and §%d for the household." % [str(who.character.name), ESTATE_GIFT])
+		member.sim.remember("A farewell","%s left a keepsake and ℒ%d for the household." % [str(who.character.name), ESTATE_GIFT])
 	member_passed.emit(member_id)
 	member_passed_away.emit(member_id, str(who.character.name), "memorial", ESTATE_GIFT)
-	notice.emit("%s left a keepsake and §%d. Their story stays in the family." % [str(who.character.name), ESTATE_GIFT])
+	notice.emit("%s left a keepsake and ℒ%d. Their story stays in the family." % [str(who.character.name), ESTATE_GIFT])
 
 func _validate_memorials(raw: Variant, ids: Array) -> String:
 	if raw == null:
@@ -1495,7 +1560,7 @@ func _target(id: String) -> Dictionary:
 func pet_availability(species: String) -> String:
 	if not LifePets.SPECIES.has(species):return "Choose a cat or a dog."
 	if pets.get("pets",[]).size()>=LifePets.MAX_PETS:return "Your household already has %d pets." % LifePets.MAX_PETS
-	if selected().funds<LifePets.price_for(species):return "A %s costs §%d. Your household needs more funds." % [LifePets.species_label(species).to_lower(),LifePets.price_for(species)]
+	if selected().funds<LifePets.price_for(species):return "A %s costs ℒ%d. Your household needs more funds." % [LifePets.species_label(species).to_lower(),LifePets.price_for(species)]
 	return ""
 
 ## The shop entry point is offered while either species can be adopted. The
@@ -1539,18 +1604,176 @@ func commit_pet(request:Dictionary,spawn:Vector3) -> Dictionary:
 	set_funds(funds-LifePets.price_for(str(record.species)))
 	return {"ok":true,"duplicate":false,"pet":record.duplicate(true),"spawn":spawn}
 
+## ---------------------------------------------------------- pet care
+
+## Advance every pet's own needs by a span of game minutes. A pet whose record
+## predates the condition block gains a fresh one rather than being skipped, so
+## an older save's animals start living on load.
+func _tick_pet_care(minutes: float) -> void:
+	if minutes <= 0.0: return
+	for pet: Dictionary in pets.get("pets", []):
+		if not pet.get("care") is Dictionary:
+			pet["care"] = LifePetCare.fresh()
+		LifePetCare.tick(pet.care, minutes)
+
+## One pet's condition record, created on first use so a caller never has to
+## check whether an older save carried one.
+func pet_care(id: String) -> Dictionary:
+	var pet: Dictionary = pet_record(id)
+	if pet.is_empty(): return {}
+	if not pet.get("care") is Dictionary:
+		pet["care"] = LifePetCare.fresh()
+	return pet.care
+
+func pet_record(id: String) -> Dictionary:
+	for pet: Dictionary in pets.get("pets", []):
+		if str(pet.id) == id: return pet
+	return {}
+
+## What one Lifelet may do with one pet, in the order the card shows them. The
+## list is filtered by the actor's own life stage and availability, so the
+## offered options and a refused call agree.
+func pet_actions(pet_id: String, member_id: String) -> Array:
+	var pet: Dictionary = pet_record(pet_id)
+	if pet.is_empty(): return []
+	var sim: LifeSim = member_sim(member_id)
+	if sim == null: return []
+	var away: bool = sim.is_away()
+	var out: Array = []
+	for interaction: Dictionary in LifePetCare.INTERACTIONS:
+		var reason: String = LifePetCare.interaction_error(str(interaction.id), str(sim.character.age_stage), away)
+		out.append({
+			"id": str(interaction.id),
+			"label": str(interaction.label),
+			"duration": float(interaction.duration),
+			"available": reason.is_empty(),
+			"unavailable_reason": reason,
+			"description": _pet_action_description(str(interaction.id), pet),
+		})
+	return out
+
+## What one interaction does, said in terms of what the player will actually
+## see: which need it lifts, which trick it may teach, and what the actor learns.
+func _pet_action_description(id: String, pet: Dictionary) -> String:
+	var entry: Dictionary = LifePetCare.interaction(id)
+	if entry.is_empty(): return ""
+	var care: Dictionary = pet.get("care", LifePetCare.fresh())
+	var parts: Array[String] = []
+	if id == "pet_feed": parts.append("Fill the bowl and let %s eat their fill." % str(pet.get("name", "your pet")))
+	if id == "pet_pet": parts.append("A quiet fuss. %s warms to you." % str(pet.get("name", "your pet")).capitalize())
+	if id == "pet_play": parts.append("Play until you are both out of breath. Builds Agility.")
+	if id == "pet_teach_trick":
+		var next: Dictionary = LifePetCare.next_trick(care)
+		parts.append("Teach the next trick: %s." % str(next.get("label", "something new")) if not next.is_empty() else "%s already knows every trick you can teach." % str(pet.get("name", "your pet")).capitalize())
+	if id == "pet_train": parts.append("Patient repetition. Builds Obedience and your own Parenting.")
+	var teaches: String = str(entry.get("teaches", ""))
+	if not teaches.is_empty(): parts.append("You build %s too." % teaches.capitalize())
+	return " ".join(parts)
+
+## Do one interaction, on the household's side of the ledger: the pet's needs and
+## skill move, its bond with this person deepens, and the person's own skill
+## grows by what the interaction teaches. Returns what changed.
+func do_pet_interaction(pet_id: String, member_id: String, interaction_id: String) -> Dictionary:
+	var pet: Dictionary = pet_record(pet_id)
+	if pet.is_empty(): return {"ok": false, "error": "That pet is no longer here."}
+	var sim: LifeSim = member_sim(member_id)
+	if sim == null: return {"ok": false, "error": "That Lifelet is no longer here."}
+	var reason: String = LifePetCare.interaction_error(interaction_id, str(sim.character.age_stage), sim.is_away())
+	if not reason.is_empty(): return {"ok": false, "error": reason}
+	var care: Dictionary = pet_care(pet_id)
+	var result: Dictionary = LifePetCare.apply_interaction(care, interaction_id, member_id)
+	# The actor's own skill grows by what this interaction teaches, which is how
+	# a child teaching a trick also becomes more logical.
+	var teaches: String = str(result.get("teaches", ""))
+	var teach_xp: float = float(result.get("teach_xp", 0.0))
+	if not teaches.is_empty() and teach_xp > 0.0:
+		sim.gain_skill(teaches, teach_xp)
+	return {"ok": true, "pet": pet.duplicate(true), "care": care.duplicate(true), "result": result}
+
+## ---------------------------------------------------------------- post box
+
+## Whether the household owns a post box. Without one, bills arrive by notice
+## and are paid from the phone exactly as they always did; the box adds a place,
+## not a rule.
+func owns_post_box() -> bool:
+	return not _post_box_ids().is_empty()
+
+## The identities of every placed post box, so one is enough however many are
+## bought and a sold box stops delivering.
+func _post_box_ids() -> Array[String]:
+	var out: Array[String] = []
+	if not post_box_provider.is_valid(): return out
+	for id: Variant in post_box_provider.call():
+		out.append(str(id))
+	return out
+
+## File one letter in the box, if the household has one. Returns the letter that
+## was filed, or {} when there is nowhere to post it.
+func deliver_mail(value: Dictionary) -> Dictionary:
+	if not owns_post_box() or value.is_empty(): return {}
+	var serial: int = int(mail.get("next_serial", 1))
+	var filed: Dictionary = value.duplicate(true)
+	filed["id"] = "mail_%d" % serial
+	filed["serial"] = serial
+	var delivered: Dictionary = LifeMail.deliver(mail, filed)
+	notice.emit("The post has arrived: %s." % str(delivered.get("title", "a letter")))
+	return delivered
+
+
+## A letter for one of the household's own milestones. Written once per event,
+## so a reload never re-posts the same school place.
+func post_milestone(reason: String, who: String) -> Dictionary:
+	if not LifeMail.LETTERS.has(reason): return {}
+	for entry: Dictionary in mail.get("letters", []):
+		if str(entry.get("subject", "")) == who and str(entry.get("title", "")) == str(LifeMail.LETTERS[reason].title):
+			return {}
+	var serial: int = int(mail.get("next_serial", 1))
+	return deliver_mail(LifeMail.milestone(serial, reason, who, day))
+
+
+## Post the household's outstanding bill, so the box can show what is owed. One
+## bill is posted at a time; a reload of the same bill does not post a second.
+func post_bill() -> Dictionary:
+	if not owns_post_box(): return {}
+	var record: Dictionary = bill()
+	if record.is_empty(): return {}
+	for entry: Dictionary in mail.get("letters", []):
+		if LifeMail.is_bill(entry) and not bool(entry.get("read", false)):
+			return {}
+	return deliver_mail(LifeMail.bill_letter(int(mail.get("next_serial", 1)), int(record.amount) + int(record.get("late_fee", 0)), day, int(record.due_day)))
+
+## Read one letter, which is what settles a bill the box is holding.
+func read_mail(id: String) -> Dictionary:
+	var letter: Dictionary = {}
+	for entry: Dictionary in mail.get("letters", []):
+		if str(entry.id) == id: letter = entry
+	if letter.is_empty(): return {"ok": false, "error": "That letter is no longer in the box."}
+	if LifeMail.is_bill(letter) and not bool(letter.get("read", false)):
+		var settlement: Dictionary = pay_bill()
+		if not bool(settlement.ok): return {"ok": false, "error": str(settlement.get("error", settlement.get("reason", "The bill could not be paid.")))}
+		LifeMail.mark_read(mail, id)
+		return {"ok": true, "paid": int(settlement.paid), "letter": letter}
+	LifeMail.mark_read(mail, id)
+	return {"ok": true, "paid": 0, "letter": letter}
+
+## Whether the post box can deliver its own mail rather than the phone doing it.
+func mail_availability() -> String:
+	if not owns_post_box(): return "Place a post box in the garden and the post will be delivered there."
+	if mail.get("letters", []).is_empty(): return "Nothing has been posted yet."
+	return ""
+
 ## Buying a pet accessory is an ordinary furnishing purchase: the caller places
 ## it through the same build path, so support, doorway and reach checks apply.
 func accessory_availability(kind:String) -> String:
 	var reason:String=LifePets.accessory_kind_error(kind,pets.get("pets",[]))
 	if not reason.is_empty():return reason
 	if not LifeCatalog.ITEMS.has(kind):return "That accessory is not for sale."
-	if selected().funds<int(LifeCatalog.ITEMS[kind].price):return "That costs §%d. Your household needs more funds." % int(LifeCatalog.ITEMS[kind].price)
+	if selected().funds<int(LifeCatalog.ITEMS[kind].price):return "That costs ℒ%d. Your household needs more funds." % int(LifeCatalog.ITEMS[kind].price)
 	return ""
 
 func adoption_availability(guardians:Array) -> String:
 	if members.size()>=MAX_MEMBERS:return "Your household already has eight Lifelets."
-	if selected().funds<LifeAdoption.FEE:return "Adoption costs §1,000. Your household needs more funds."
+	if selected().funds<LifeAdoption.FEE:return "Adoption costs ℒ1,000. Your household needs more funds."
 	if guardians.is_empty() or guardians.size()>2:return "Choose one or two adult guardians."
 	var seen:Array=[]
 	for id:Variant in guardians:

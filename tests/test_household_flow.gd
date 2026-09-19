@@ -72,7 +72,7 @@ func run() -> void:
 	check(app.sim.action_queue.size()==1 and app.sim.action_queue[0].paid,"Resume retains the paid in-progress activity.")
 	check(app.household.funds==int(before.funds),"Household funds survive resume.")
 	# Exercise signal-driven deletion from a live overlay and queue.
-	app.show_interactions(item("fridge"),Vector2(700,400));press("Grab a snack   §4")
+	app.show_interactions(item("fridge"),Vector2(700,400));press("Grab a snack   ℒ4")
 	await process_frame
 	check(app.overlay.get_child_count()==0,"An interaction button closes its overlay safely.")
 	app.cancel_current_action()

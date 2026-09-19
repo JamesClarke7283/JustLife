@@ -127,7 +127,7 @@ func _grown_child() -> void:
 	var start_funds: int = app.sim.funds
 	var original_graph: Dictionary = app.household.family_graph.duplicate(true)
 	for stage: String in ["teen","young_adult","adult"]:
-		await press("My Lifelet");await press("Celebrate a birthday");await press("Celebrate · §30")
+		await press("My Lifelet");await press("Celebrate a birthday");await press("Celebrate · ℒ30")
 		await press("▶")
 		await wait_until(func()->bool:return active_is("birthday",.15),"routed birthday toward "+stage,40)
 		await wait_until(func()->bool:return app.sim.action_queue.is_empty(),"actual birthday completion into "+stage,25)

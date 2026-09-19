@@ -38,13 +38,13 @@ func _run()->void:
 	await _ground_click(Vector3(-6,3.16,-5))
 	await _ground_click(Vector3(6,3.16,5))
 	var state:Dictionary=app.world.construction.snapshot()
-	check(state.floors.size()==before.floors.size()+1 and app.household.funds==3060,"Public floor clicks purchase a supported full upper floor for §1440.")
+	check(state.floors.size()==before.floors.size()+1 and app.household.funds==3060,"Public floor clicks purchase a supported full upper floor for ℒ1440.")
 	if state.floors.size()==before.floors.size():await _finish();return
 	await screenshot("02_upper_floor")
 	await press("Ground");await press("Stairs")
 	await _ground_click(Vector3(-1.5,.16,-2.5))
 	state=app.world.construction.snapshot()
-	check(state.stairs.size()==1 and state.openings.size()==1 and app.household.funds==2410,"Public stair click buys the original stair, supported opening and guard for §650.")
+	check(state.stairs.size()==1 and state.openings.size()==1 and app.household.funds==2410,"Public stair click buys the original stair, supported opening and guard for ℒ650.")
 	check(app.world.construction.tool.is_empty() and app.world.construction.preview==null,"Successful stair purchase completes placement without an overlapping repeat-preview error.")
 	check(Building.validate(state).is_empty(),"Publicly purchased architecture validates without fixture injection.")
 	await screenshot("03_stairs")
@@ -63,7 +63,7 @@ func _upper_room_flow()->void:
 	for item:Dictionary in app.world.items:
 		if item.kind=="bookshelf" and app.world.item_level(item)==1:book_id=str(item.id)
 	await _purchase("Decor","A breath of green",Vector3(3.0,3.16,2.0))
-	check(not book_id.is_empty() and app.household.funds==2145,"Upper room furnishings retain the real floor and charge §220 plus §45.")
+	check(not book_id.is_empty() and app.household.funds==2145,"Upper room furnishings retain the real floor and charge ℒ220 plus ℒ45.")
 	await press("Live")
 	var item:Dictionary=app._find_item(book_id)
 	if item.is_empty():return

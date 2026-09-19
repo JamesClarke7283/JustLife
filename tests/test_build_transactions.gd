@@ -94,7 +94,7 @@ func _run()->void:
 	for wall:Dictionary in app.world.construction.building_state.walls:
 		if is_equal_approx(float(wall.x),3.0) and is_equal_approx(float(wall.z),-1.0):door_wall=wall
 	var door_quote:Dictionary=tx.prepare({"op":"structure","tool":"door","level":0,"id":str(door_wall.id),"center":-1.0})
-	check(bool(door_quote.ok) and int(door_quote.cost)==90,"Doorway preview replaces its wall with two validated portions for the original§90 fee.")
+	check(bool(door_quote.ok) and int(door_quote.cost)==90,"Doorway preview replaces its wall with two validated portions for the originalℒ90 fee.")
 	var door_purchase:Dictionary=tx.commit(door_quote)
 	check(bool(door_purchase.ok) and app.sim.funds==original_funds-530 and Building.find(app.world.construction.building_state,str(door_wall.id)).is_empty(),"Doorway consumes its exact old wall identity and charges once.")
 	check(not bool(tx.commit(door_quote).ok) and app.sim.funds==original_funds-530,"Repeated doorway confirmation cannot charge the removed wall again.")
@@ -119,7 +119,7 @@ func _run()->void:
 	var room_paint:Dictionary=tx.prepare({"op":"structure","tool":"paint","level":0,"id":str(room_wall.get("id","")),"material":room_colour,"scope":"room"})
 	var room_paint_purchase:Dictionary=tx.commit(room_paint)
 	var painted_count:int=app.world.construction.building_state.walls.filter(func(wall:Dictionary)->bool:return str(wall.material)==room_colour).size()
-	check(bool(room_paint_purchase.ok) and int(room_paint.get("cost",0))==48 and painted_count==4,"Whole-room paint repaints the four walls joined corner to corner for §%d (%d walls)." % [int(room_paint.get("cost",0)),painted_count])
+	check(bool(room_paint_purchase.ok) and int(room_paint.get("cost",0))==48 and painted_count==4,"Whole-room paint repaints the four walls joined corner to corner for ℒ%d (%d walls)." % [int(room_paint.get("cost",0)),painted_count])
 	check(str(app.world.construction.building_state.walls[0].material)==wall_before,"Whole-room paint leaves walls outside that room alone.")
 	check(not bool(tx.prepare({"op":"structure","tool":"paint","level":0,"id":str(room_wall.get("id","")),"material":room_colour,"scope":"room"}).ok),"Repainting a room in its current colour is refused.")
 	check(not bool(tx.prepare({"op":"structure","tool":"paint","level":0,"id":str(room_wall.get("id","")),"material":"8faf9f","scope":"house"}).ok),"An unknown paint scope is refused.")

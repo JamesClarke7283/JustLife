@@ -1,6 +1,10 @@
 extends RefCounted
 class_name LifeCatalog
 
+## Every garden game is offered at the same three garden sizes, so one list keeps
+## the family consistent and the catalogue readable.
+const GAMES_SIZES: Array[String] = ["small", "medium", "large"]
+
 const ITEMS = {
 	"bench": {"label":"Garden conversation bench", "category":"Comfort", "price":140, "size":Vector2(2,.72), "height":1.05, "color":"bb946c"},
 	"sofa": {"label":"Sunday sofa", "category":"Comfort", "price":620, "size":Vector2(2.6,1.0), "height":1.1, "color":"78a599"},
@@ -59,7 +63,142 @@ const ITEMS = {
 	"cat_toy_box": {"label":"Cat Toy Box", "category":"Pets", "price":50, "size":Vector2(.56,.40), "height":.35, "color":"7fa8c6"},
 	"dog_toy_box": {"label":"Dog Toy Box", "category":"Pets", "price":50, "size":Vector2(.56,.40), "height":.35, "color":"7fa8c6"},
 	"urn": {"label":"Ceramic memorial urn", "category":"Decor", "price":120, "size":Vector2(.3,.3), "height":.42, "color":"3e6b65"},
-	"tombstone": {"label":"Carved stone gravestone", "category":"Decor", "price":180, "size":Vector2(.56,.36), "height":.85, "color":"52555a"}
+	"tombstone": {"label":"Carved stone gravestone", "category":"Decor", "price":180, "size":Vector2(.56,.36), "height":.85, "color":"52555a"},
+
+	# ---------------------------------------------------------------- garden
+	# Every garden family below names its axes explicitly: `styles` are separate
+	# authored meshes, `tint` offers the shared ten-tone palette on the model's
+	# `Tint` surface, and `sizes` scale the authored mesh and price it apart.
+	# `size_prices` and `seats` therefore read per size rather than being fixed.
+	"post_box": {"label":"Garden post box", "category":"Garden", "price":45, "size":Vector2(.45,.45), "height":1.15, "color":"4a6b5c", "tint":true},
+	# A fence is sold by the square metre of panel face, so a taller or longer
+	# run costs proportionally more from the one rate rather than a second table.
+	"fence": {"label":"Garden fence", "category":"Garden", "rate_per_square_metre":10, "size":Vector2(2.0,.12), "height":1.2, "color":"c9c3a8", "tint":true,
+		"styles":["01","02","03","04","05","06","07","08","09","10"],
+		"sizes":["small","medium","large"]},
+	"garden_light": {"label":"Garden path light", "category":"Garden", "price":35, "size":Vector2(.22,.22), "height":.9, "color":"4a4f55", "tint":true,
+		"styles":["01","02","03","04","05","06","07","08","09","10"]},
+	"garden_light_wall": {"label":"Garden wall light", "category":"Garden", "price":30, "size":Vector2(.22,.30), "height":.42, "color":"4a4f55", "tint":true,
+		"styles":["01","02","03","04","05","06","07","08","09","10"]},
+	"garden_table": {"label":"Garden table & chairs", "category":"Garden", "price":50, "size":Vector2(2.0,2.0), "height":2.3, "color":"d7ae7e", "tint":true,
+		"sizes":["small","medium","large"], "size_prices":{"small":50,"medium":70,"large":90}, "seats":{"small":4,"medium":8,"large":10}},
+	"bbq": {"label":"Barbecue", "category":"Garden", "price":100, "size":Vector2(.9,.7), "height":1.05, "color":"52555a", "tint":true,
+		"styles":["round","barrel","brick"], "sizes":["small","medium","large"], "size_prices":{"small":100,"medium":300,"large":500}},
+	"hot_tub": {"label":"Hot tub", "category":"Pool", "price":300, "size":Vector2(1.8,1.7), "height":.85, "color":"8faf9f", "tint":true,
+		"styles":["round","square","oval"]},
+	"outdoor_tv": {"label":"Outdoor television", "category":"Outdoor", "price":100, "size":Vector2(1.4,.6), "height":1.5, "color":"4a4f55", "tint":true,
+		"styles":["classic","console","stand"], "sizes":["small","medium","large"], "size_prices":{"small":100,"medium":200,"large":300}},
+	"outdoor_swing": {"label":"Garden swing", "category":"Outdoor", "price":100, "size":Vector2(2.2,1.4), "height":2.1, "color":"d7ae7e", "tint":true,
+		"styles":["a","b","c"], "sizes":["small","medium","large"], "size_prices":{"small":100,"medium":400,"large":500},
+		"seats":{"small":4,"medium":5,"large":8}},
+	"tree_garden": {"label":"Garden tree", "category":"Garden", "price":100, "size":Vector2(1.8,1.8), "height":2.4, "color":"749752", "tint":true,
+		"styles":["a","b","c","d","e","f","g","h","i","j"], "sizes":["small","medium","large"], "size_prices":{"small":100,"medium":200,"large":1000}},
+	"shrub": {"label":"Garden shrub", "category":"Garden", "price":10, "size":Vector2(.8,.8), "height":.7, "color":"48794b", "tint":true,
+		"styles":["01","02","03","04","05","06","07","08","09","10","11","12","13","14","15","16","17","18","19","20"],
+		"sizes":["small","medium","large"], "size_prices":{"small":10,"medium":15,"large":30}},
+	"flowers": {"label":"Garden flowers", "category":"Garden", "price":10, "size":Vector2(.5,.5), "height":.45, "color":"d9a0a0", "tint":true,
+		"styles":["01","02","03","04","05","06","07","08","09","10","11","12","13","14","15","16","17","18","19","20"],
+		"sizes":["small","medium","large"], "size_prices":{"small":10,"medium":15,"large":30}},
+	"garden_ready": {"label":"Ready-made garden", "category":"Garden", "price":400, "size":Vector2(4.0,3.0), "height":2.2, "color":"6b7d5a", "tint":true,
+		"styles":["plain","tree","rocks","tree_rocks"], "sizes":["small","medium","large"],
+		"size_prices":{"small":400,"medium":900,"large":1800}},
+
+	# ------------------------------------------------------------------ pool
+	# The authored footprint is the small pool, and it fits the free ring the
+	# starter home leaves in the garden; a medium or large pool needs the wider
+	# ground a bigger garden or a cleared lot gives it.
+	"pool": {"label":"Swimming pool", "category":"Pool", "price":400, "size":Vector2(4.0,3.0), "height":.35, "color":"7fb8c6", "tint":true,
+		"styles":["classic","roman","lagoon"], "sizes":["small","medium","large"], "size_prices":{"small":400,"medium":600,"large":800}},
+	"pool_ladder": {"label":"Pool ladder", "category":"Pool", "price":20, "size":Vector2(.6,.6), "height":1.1, "color":"b9bec2", "tint":true},
+	"pool_slide": {"label":"Pool slide", "category":"Pool", "price":20, "size":Vector2(1.2,2.4), "height":1.6, "color":"c9a05a", "tint":true,
+		"styles":["curved","straight","spiral"]},
+	"pool_ring": {"label":"Rubber ring", "category":"Pool", "price":5, "size":Vector2(.9,.9), "height":.15, "color":"c97c4e", "tint":true},
+	"pool_noodle": {"label":"Swimming pool noodle float", "category":"Pool", "price":5, "size":Vector2(1.5,.16), "height":.16, "color":"d9a0a0", "tint":true},
+	"pool_light": {"label":"Pool light", "category":"Pool", "price":20, "size":Vector2(.24,.24), "height":.10, "color":"e6d8c5", "tint":true},
+
+	# ------------------------------------------------------------------ kids
+	"kids_swing": {"label":"Kids swing set", "category":"Kids", "price":100, "size":Vector2(2.6,1.6), "height":2.0, "color":"c9a05a", "tint":true,
+		"styles":["a","b","c"]},
+	"sand_pit": {"label":"Kids sand pit", "category":"Kids", "price":100, "size":Vector2(1.8,1.8), "height":.3, "color":"d7ae7e", "tint":true, "colors":["c9a05a","6f8fa8","d9a0a0","8faf9f","a8674f"],
+		"sizes":["small","medium","large"], "size_prices":{"small":100,"medium":300,"large":500},
+		"seats":{"small":2,"medium":3,"large":5}},
+	"kids_slide": {"label":"Kids slide", "category":"Kids", "price":100, "size":Vector2(.9,1.8), "height":1.2, "color":"c97c4e", "tint":true, "colors":["c97c4e","6f8fa8","c9a05a","d9a0a0","8faf9f"]},
+	"climbing_frame": {"label":"Kids climbing frame", "category":"Kids", "price":100, "size":Vector2(2.8,2.2), "height":2.2, "color":"c9a05a", "tint":true, "colors":["c9a05a","6f8fa8","c97c4e","8faf9f","7d6b93"],
+		"styles":["a","b","c","d"]},
+	# A bike is ridden: riding needs a helmet, and `ride_from` names the youngest
+	# life stage that may ride each one, so a child takes the small bike.
+	"bike_adult": {"label":"Adult bicycle", "category":"Vehicles", "price":120, "size":Vector2(1.7,.5), "height":1.1, "color":"4a6b5c", "tint":true,
+		"styles":["a","b","c","d"], "colors":["4a6b5c","6f8fa8","c9a05a","a8674f","4a4f55"], "ride_from":"teen"},
+	"bike_kids": {"label":"Kids bicycle", "category":"Kids", "price":60, "size":Vector2(1.1,.4), "height":.75, "color":"c97c4e", "tint":true,
+		"styles":["a","b","c","d"], "colors":["c97c4e","6f8fa8","c9a05a","d9a0a0","4a4f55"], "ride_from":"child", "ride_until":"teen"},
+	"helmet": {"label":"Bicycle helmet", "category":"Vehicles", "price":20, "size":Vector2(.26,.32), "height":.20, "color":"c9a05a", "tint":true,
+		"styles":["a","b","c"]},
+
+	# -------------------------------------------------------------- vehicles
+	"car": {"label":"Car", "category":"Vehicles", "price":200, "size":Vector2(4.2,1.8), "height":1.5, "color":"4a6b5c", "tint":true,
+		"styles":["saloon_a","saloon_b","hatchback","estate","coupe","van","minibus","suv","offroader","pickup"],
+		"sizes":["small","medium","large"], "size_prices":{"small":200,"medium":400,"large":1500},
+		"seats":{"small":5,"medium":8,"large":5}},
+	"garage": {"label":"Garage", "category":"Vehicles", "price":100, "size":Vector2(3.2,3.0), "height":2.4, "color":"8c5a4a", "tint":true,
+		"styles":["brick","timber","lean_to","double","carport"],
+		"sizes":["small","medium","large"], "size_prices":{"small":100,"medium":200,"large":500},
+		"seats":{"small":2,"medium":4,"large":8}},
+
+	# --------------------------------------------------------- garden games
+	# Fifty garden activities. Each is its own family with its own authored model
+	# and the shared ten-tone tint, and each offers the three garden sizes so a
+	# small yard and a large one can both hold the same game at their own scale.
+	# What each one teaches lives in LifeGardenGames, beside the action table.
+	"game_trampoline": {"label":"Trampoline", "category":"Kids", "price":180, "size":Vector2(1.5,1.5), "height":.6, "color":"4a4f55", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":180,"medium":320,"large":520}},
+	"game_hopscotch": {"label":"Hopscotch", "category":"Kids", "price":30, "size":Vector2(1.0,1.8), "height":.04, "color":"e6d8c5", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":30,"medium":55,"large":90}},
+	"game_hoop": {"label":"Garden hoop", "category":"Garden", "price":25, "size":Vector2(.7,.7), "height":1.1, "color":"c97c4e", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":25,"medium":45,"large":75}},
+	"game_skipping_rope": {"label":"Skipping rope", "category":"Kids", "price":12, "size":Vector2(.5,.5), "height":.12, "color":"c9a05a", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":12,"medium":22,"large":36}},
+	"game_dartboard": {"label":"Dartboard", "category":"Activities", "price":60, "size":Vector2(.6,.4), "height":1.5, "color":"c9c3a8", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":60,"medium":105,"large":170}},
+	"game_croquet": {"label":"Croquet set", "category":"Garden", "price":75, "size":Vector2(2.0,1.2), "height":.4, "color":"6b7d5a", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":75,"medium":130,"large":210}},
+	"game_ring_toss": {"label":"Ring toss", "category":"Garden", "price":30, "size":Vector2(.9,.9), "height":.5, "color":"8faf9f", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":30,"medium":55,"large":90}},
+	"game_mini_golf": {"label":"Mini golf", "category":"Garden", "price":90, "size":Vector2(1.8,.9), "height":.3, "color":"749752", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":90,"medium":160,"large":260}},
+	"game_bowling": {"label":"Garden bowling", "category":"Garden", "price":55, "size":Vector2(.8,1.4), "height":.4, "color":"d7ae7e", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":55,"medium":95,"large":155}},
+	"game_table_tennis": {"label":"Table tennis", "category":"Activities", "price":200, "size":Vector2(2.4,1.2), "height":.9, "color":"6f8fa8", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":200,"medium":350,"large":560}},
+	"game_badminton": {"label":"Badminton", "category":"Activities", "price":85, "size":Vector2(1.6,1.0), "height":1.6, "color":"8faf9f", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":85,"medium":150,"large":240}},
+	"game_football_goal": {"label":"Football goal", "category":"Activities", "price":95, "size":Vector2(2.0,.9), "height":1.4, "color":"c9c3a8", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":95,"medium":165,"large":265}},
+	"game_basketball": {"label":"Basketball hoop", "category":"Activities", "price":140, "size":Vector2(.9,.9), "height":2.4, "color":"4a4f55", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":140,"medium":245,"large":390}},
+	"game_bean_bags": {"label":"Bean bag toss", "category":"Garden", "price":40, "size":Vector2(.8,.8), "height":.5, "color":"a8674f", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":40,"medium":70,"large":115}},
+	"game_horseshoes": {"label":"Horseshoes", "category":"Garden", "price":45, "size":Vector2(1.2,1.0), "height":.4, "color":"7d6b93", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":45,"medium":80,"large":130}},
+	"game_boules": {"label":"Boules", "category":"Garden", "price":50, "size":Vector2(.8,.8), "height":.2, "color":"8faf9f", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":50,"medium":90,"large":145}},
+	"game_skittles": {"label":"Skittles", "category":"Garden", "price":40, "size":Vector2(1.0,.6), "height":.4, "color":"c9a05a", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":40,"medium":70,"large":115}},
+	"game_quotis": {"label":"Quoits", "category":"Garden", "price":35, "size":Vector2(.9,.9), "height":.4, "color":"d9a0a0", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":35,"medium":60,"large":100}},
+	"game_shuffleboard": {"label":"Shuffleboard", "category":"Activities", "price":110, "size":Vector2(2.2,.7), "height":.4, "color":"d7ae7e", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":110,"medium":190,"large":305}},
+	"game_connect_four": {"label":"Giant connect four", "category":"Garden", "price":80, "size":Vector2(.8,.6), "height":1.1, "color":"6f8fa8", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":80,"medium":140,"large":225}},
+	"game_giant_chess": {"label":"Giant chess", "category":"Garden", "price":150, "size":Vector2(1.8,1.8), "height":.5, "color":"c9c3a8", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":150,"medium":260,"large":420}},
+	"game_checkers": {"label":"Checkers", "category":"Garden", "price":45, "size":Vector2(.9,.9), "height":.5, "color":"52555a", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":45,"medium":80,"large":130}},
+	"game_dominoes": {"label":"Giant dominoes", "category":"Garden", "price":55, "size":Vector2(1.0,.7), "height":.3, "color":"e6d8c5", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":55,"medium":95,"large":155}},
+	"game_jenga": {"label":"Giant jenga", "category":"Garden", "price":65, "size":Vector2(.6,.6), "height":1.0, "color":"d7ae7e", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":65,"medium":115,"large":185}},
+	"game_twister": {"label":"Twister mat", "category":"Kids", "price":35, "size":Vector2(1.6,1.2), "height":.04, "color":"d9a0a0", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":35,"medium":60,"large":100}},
+	"game_obstacle_course": {"label":"Obstacle course", "category":"Activities", "price":220, "size":Vector2(2.6,2.0), "height":1.2, "color":"c97c4e", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":220,"medium":385,"large":620}},
+	"game_balance_beam": {"label":"Balance beam", "category":"Kids", "price":50, "size":Vector2(1.8,.4), "height":.4, "color":"6b7d5a", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":50,"medium":90,"large":145}},
+	"game_monkey_bars": {"label":"Monkey bars", "category":"Kids", "price":190, "size":Vector2(2.0,1.0), "height":1.9, "color":"8faf9f", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":190,"medium":330,"large":535}},
+	"game_parallel_bars": {"label":"Parallel bars", "category":"Activities", "price":160, "size":Vector2(.9,1.6), "height":1.2, "color":"4a4f55", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":160,"medium":280,"large":450}},
+	"game_pull_up_bar": {"label":"Pull-up bar", "category":"Activities", "price":120, "size":Vector2(.9,.9), "height":2.2, "color":"4a4f55", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":120,"medium":210,"large":335}},
+	"game_sandpit_toys": {"label":"Sandpit toys", "category":"Kids", "price":15, "size":Vector2(.7,.7), "height":.25, "color":"c9a05a", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":15,"medium":25,"large":45}},
+	"game_water_table": {"label":"Water play table", "category":"Kids", "price":70, "size":Vector2(1.0,.6), "height":.6, "color":"7fb8c6", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":70,"medium":120,"large":195}},
+	"game_mud_kitchen": {"label":"Mud kitchen", "category":"Kids", "price":85, "size":Vector2(1.1,.7), "height":.9, "color":"a8674f", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":85,"medium":150,"large":240}},
+	"game_bubble_station": {"label":"Bubble station", "category":"Kids", "price":40, "size":Vector2(.7,.7), "height":.8, "color":"7fb8c6", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":40,"medium":70,"large":115}},
+	"game_kite": {"label":"Kite", "category":"Kids", "price":20, "size":Vector2(.6,.6), "height":.5, "color":"d9a0a0", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":20,"medium":35,"large":60}},
+	"game_skate_ramp": {"label":"Skate ramp", "category":"Activities", "price":240, "size":Vector2(1.6,1.2), "height":.9, "color":"52555a", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":240,"medium":420,"large":680}},
+	"game_roller_skates": {"label":"Roller skates", "category":"Activities", "price":45, "size":Vector2(.6,.5), "height":.3, "color":"c97c4e", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":45,"medium":80,"large":130}},
+	"game_space_hopper": {"label":"Space hopper", "category":"Kids", "price":25, "size":Vector2(.6,.6), "height":.6, "color":"c9a05a", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":25,"medium":45,"large":75}},
+	"game_pogo_stick": {"label":"Pogo stick", "category":"Kids", "price":35, "size":Vector2(.5,.5), "height":1.1, "color":"4a4f55", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":35,"medium":60,"large":100}},
+	"game_hula_hoop": {"label":"Hula hoops", "category":"Kids", "price":20, "size":Vector2(.8,.8), "height":.9, "color":"7d6b93", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":20,"medium":35,"large":60}},
+	"game_stilts": {"label":"Stilts", "category":"Kids", "price":40, "size":Vector2(.6,.6), "height":1.2, "color":"d7ae7e", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":40,"medium":70,"large":115}},
+	"game_diy_den": {"label":"Den building set", "category":"Kids", "price":60, "size":Vector2(1.4,1.4), "height":1.2, "color":"8faf9f", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":60,"medium":105,"large":170}},
+	"game_playhouse": {"label":"Playhouse", "category":"Kids", "price":320, "size":Vector2(1.4,1.4), "height":1.6, "color":"c97c4e", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":320,"medium":560,"large":900}},
+	"game_wendy_house": {"label":"Wendy house", "category":"Kids", "price":260, "size":Vector2(1.2,1.2), "height":1.5, "color":"d7ae7e", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":260,"medium":455,"large":735}},
+	"game_climbing_net": {"label":"Climbing net", "category":"Kids", "price":130, "size":Vector2(1.6,.8), "height":1.6, "color":"6f8fa8", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":130,"medium":230,"large":370}},
+	"game_slackline": {"label":"Slackline", "category":"Activities", "price":70, "size":Vector2(2.2,.5), "height":.5, "color":"4a4f55", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":70,"medium":120,"large":195}},
+	"game_stilts_race": {"label":"Stilts race set", "category":"Kids", "price":45, "size":Vector2(.8,.6), "height":.5, "color":"a8674f", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":45,"medium":80,"large":130}},
+	"game_parachute": {"label":"Play parachute", "category":"Kids", "price":55, "size":Vector2(2.0,2.0), "height":.1, "color":"d9a0a0", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":55,"medium":95,"large":155}},
+	"game_beanbag_chairs": {"label":"Beanbag seats", "category":"Comfort", "price":90, "size":Vector2(.9,.9), "height":.7, "color":"7d6b93", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":90,"medium":160,"large":260}, "seats":{"small":1,"medium":2,"large":2}},
+	"game_hook_a_duck": {"label":"Hook a duck", "category":"Kids", "price":45, "size":Vector2(1.0,.7), "height":.9, "color":"7fb8c6", "tint":true, "sizes":GAMES_SIZES, "size_prices":{"small":45,"medium":80,"large":130}},
 }
 
 # Accessories for the household's pets. A cat tree is a cat's furnishing and a
@@ -67,7 +206,7 @@ const ITEMS = {
 const PET_ACCESSORIES: Array[String] = ["pet_bowl", "cat_tree", "kennel"]
 
 # The Build & buy filter row, in display order. Structure is the tool page.
-const CATEGORIES: Array[String] = ["All", "Comfort", "Kitchen", "Bathroom", "Activities", "Decor", "Pets", "Structure"]
+const CATEGORIES: Array[String] = ["All", "Comfort", "Kitchen", "Bathroom", "Activities", "Decor", "Pets", "Garden", "Pool", "Kids", "Outdoor", "Vehicles", "Structure"]
 
 # Instruments share one practice action; the authored model is the difference.
 const INSTRUMENTS: Array[String] = ["guitar", "violin"]

@@ -11,6 +11,13 @@ class_name LifePets
 const VERSION: int = 1
 const MAX_PETS: int = 6
 
+## A stored pet carries its identity and appearance, plus its own condition —
+## needs, learned tricks and the bond it has with each person it lives with.
+## `PET_FIELDS_LEGACY` is the count before a pet had a condition, so a save
+## written then still loads and simply gains a fresh one.
+const PET_FIELDS: int = 15
+const PET_FIELDS_LEGACY: int = 14
+
 ## Species. The keys are also the model file stems and the save values.
 const SPECIES: Array[String] = ["cat", "dog"]
 const SPECIES_LABELS: Dictionary = {"cat": "Cat", "dog": "Dog"}
@@ -235,6 +242,9 @@ static func record_from(review: Dictionary, id: String, day: int) -> Dictionary:
 		"leash_color": normalised_colour(review.get("leash_color", ""), DEFAULT_LEASH),
 		"day": day,
 		"fee": price_for(str(review.species)),
+		# A pet that has just come home starts content, fed and rested, and its
+		# own condition record travels with it from the first save.
+		"care": LifePetCare.fresh(),
 	}
 
 
@@ -244,7 +254,7 @@ static func pet_error(value: Variant, index: int, known: Dictionary) -> String:
 	if not value is Dictionary:
 		return "Save contains an invalid pet."
 	var pet: Dictionary = value
-	if pet.size() != 14:
+	if pet.size() != PET_FIELDS and pet.size() != PET_FIELDS_LEGACY:
 		return "Save contains a pet with unexpected fields."
 	var id: String = str(pet.get("id", ""))
 	if id.is_empty() or known.has(id):
@@ -272,6 +282,10 @@ static func pet_error(value: Variant, index: int, known: Dictionary) -> String:
 		return "Save contains an invalid pet purchase record."
 	if int(pet.fee) != price_for(str(pet.species)):
 		return "A saved pet price does not match the shop price."
+	if pet.size() == PET_FIELDS:
+		var care_error: String = LifePetCare.validate(pet.get("care", null), [])
+		if not care_error.is_empty():
+			return care_error
 	return ""
 
 

@@ -116,7 +116,7 @@ func _birthday_flow() -> void:
 	await press("My Lifelet")
 	await press("Celebrate a birthday")
 	var before_position: Vector3 = app.player.position
-	await press("Celebrate · §30")
+	await press("Celebrate · ℒ30")
 	check(not app.sim.action_queue.is_empty() and app.sim.get_current_action().id == "birthday", "Confirming the birthday queues its real activity.")
 	check(app.sim.character.age_stage == "young_adult" and app.sim.funds == old_funds, "Paused birthday is not an instant age change or charge.")
 	await press("▶")

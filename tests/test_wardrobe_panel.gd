@@ -117,7 +117,7 @@ func _run() -> void:
 	# Buying keeps it.
 	press_in(app.overlay, "Buy this look")
 	await frames(3)
-	check(app.household.funds == funds_before - app.WARDROBE_LOOK_PRICE, "Buying the look charges exactly §%d." % app.WARDROBE_LOOK_PRICE)
+	check(app.household.funds == funds_before - app.WARDROBE_LOOK_PRICE, "Buying the look charges exactly ℒ%d." % app.WARDROBE_LOOK_PRICE)
 	check(not app.overlay_open, "Buying the look closes the panel.")
 
 	# Makeup tab, with the limited men's set for a male Lifelet.

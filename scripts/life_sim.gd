@@ -65,7 +65,7 @@ const CAREER_TRACKS: Dictionary = {
 	# no fee, so the only career a fresh Lifelet can always start is this one.
 	"criminal":{"label":"Criminal","skill":"charisma","base_salary":1000,"titles":["Lookout","Runner","Fence","Fixer","Kingpin"],
 		"entry":{"cost":0,"skill":"","level":0}},
-	# A technical trade is bought, not walked into: the household pays the §900
+	# A technical trade is bought, not walked into: the household pays the ℒ900
 	# course fee and the Lifelet must already think in steps (Logic 8).
 	"technical":{"label":"Technical work","skill":"logic","base_salary":240,"titles":["Apprentice technician","Bench technician","Systems technician","Lead technician","Master technician"],
 		"entry":{"cost":900,"skill":"logic","level":8}}
@@ -171,10 +171,10 @@ const REWARDS: Dictionary = {
 const TRAIT_ACTIONS: Dictionary = {"sketch_for_fun":"Creative", "host_a_chat":"Outgoing", "morning_run":"Active", "deep_read":"Bookworm", "experiment_recipe":"Foodie", "deep_clean":"Neat"}
 # One opportunity per mood: only offered while that feeling is the strongest one.
 const EMOTION_ACTIONS: Dictionary = {"paint_masterpiece":"Inspired", "study_hard":"Focused", "playful_prank":"Playful", "push_through":"Energized", "bold_introduction":"Confident"}
-const AGE_GATED_ACTIONS: Array[String] = ["jog", "play_toys", "morning_run"]
+const AGE_GATED_ACTIONS: Array[String] = ["jog", "play_toys", "morning_run", LifeGardenGames.ACTION_ID]
 ## Built once from the skill roster: the computer's mastery actions, one per skill.
 const COMPUTER_MASTERY_ACTIONS: Array[String] = ["computer_cooking", "computer_creativity", "computer_charisma", "computer_logic", "computer_gardening", "computer_parenting", "computer_fitness", "computer_music"]
-const LEISURE_ACTIONS: Array[String] = ["paint", "read", "watch", "relax", "play_piano", "play_chess", "dance", "play_games", "practice_speech", "stretch", "warm_up", "jog", "play_toys", "sketch_for_fun", "deep_read", "experiment_recipe", "morning_run", "push_through"]
+const LEISURE_ACTIONS: Array[String] = ["paint", "read", "watch", "relax", "play_piano", "play_chess", "dance", "play_games", "practice_speech", "stretch", "warm_up", "jog", "play_toys", "sketch_for_fun", "deep_read", "experiment_recipe", "morning_run", "push_through", LifeGardenGames.ACTION_ID]
 const PRE_DUTY_LEISURE: Array[String] = ["relax", "read", "watch", "stretch", "warm_up", "paint"]  # brief pastimes before a school or work day; the short ones sit ahead of the canvas
 const DEPARTURE_WALK: float = 15.0  # game minutes allowed for the walk from a pastime to the lot exit in a busy home
 const LEISURE_APPROACH: float = 10.0  # game minutes allowed for the walk to a pastime before it starts
@@ -327,7 +327,7 @@ func _build_actions() -> void:
 	_define("bin_meal","Throw it in the bin",5.0,{},0,"",0.0,"Carry spoiled food to the rubbish bin and tip it out. The bin takes it; nothing is eaten.")
 	_define("clean_plate","Wash this plate",10.0,{"hygiene":-1.0},0,"",0.0,"Carry the used plate to a sink and wash it.")
 	_define("snack", "Grab a snack", 15.0, {"hunger": 32.0}, 4, "", 0.0, "A quick bite to keep the day going.")
-	_define("cook", "Cook a fresh meal", 45.0, {"fun": 8.0, "hygiene": -5.0}, 8, "cooking", 34.0, "Choose a recipe to prepare and share. Cooking skill unlocks more dishes. Eating restores hunger. Ingredients start at §8.")
+	_define("cook", "Cook a fresh meal", 45.0, {"fun": 8.0, "hygiene": -5.0}, 8, "cooking", 34.0, "Choose a recipe to prepare and share. Cooking skill unlocks more dishes. Eating restores hunger. Ingredients start at ℒ8.")
 	_define("sleep", "Sleep", 360.0, {"energy": 95.0, "fun": 15.0}, 0, "", 0.0, "A full night's rest restores energy and chases the boredom away.")
 	_define("try_for_baby", "Try for Baby", LifeBabyPlan.DURATION, {"social": 20.0, "fun": 14.0, "energy": -6.0}, 0, "", 0.0, "An intimate moment with your partner while you share the bed. If you both want to, this can begin a pregnancy.")
 	_define("nap", "Take a nap", 75.0, {"energy": 38.0}, 0, "", 0.0, "A short, refreshing nap.")
@@ -363,7 +363,17 @@ func _build_actions() -> void:
 	_define("jog", "Go for a run", 45.0, {"fun": 18.0, "energy": -14.0, "hygiene": -18.0}, 0, "fitness", 40.0, "A steady run builds Fitness. Expect to need a shower afterwards.")
 	_define("stretch", "Stretch and breathe", 30.0, {"fun": 12.0, "energy": 10.0}, 0, "fitness", 24.0, "Gentle stretching restores a little energy and builds Fitness.")
 	_define("dance", "Dance to a record", 35.0, {"fun": 40.0, "energy": -8.0, "hygiene": -6.0}, 0, "fitness", 12.0, "Put a record on and move. Great fun, a little tiring.")
+	_define("read_post", "Read the post", 10.0, {"fun": 4.0}, 0, "", 0.0, "Open the post box and read what has arrived. A bill can be settled straight from its letter.")
+	# Every outdoor furnishing shares this one action; the placed object supplies
+	# the flavour, the gate and the skill, exactly as the garden games do.
+	_define(LifeOutdoorActs.ACTION_ID, "Enjoy the garden", 40.0, {}, 0, "", 0.0, "Use what is standing in the garden.")
+	_define(LifeOutdoorActs.PUSH_ID, "Push the children", LifeOutdoorActs.PUSH.duration, LifeOutdoorActs.PUSH.changes.duplicate(), 0, "", 0.0, "Push whoever is on the swings. Good fun for the pusher and the child alike.")
+	_define("ride_bike", "Go for a ride", 60.0, {"fun": 34.0, "energy": -16.0, "hygiene": -14.0, "social": 6.0}, 0, "fitness", 42.0, "Ride out along the lane and back. Needs a helmet, and builds Fitness fast.")
+	_define("wear_helmet", "Put on a helmet", 4.0, {}, 0, "", 0.0, "Strap on a bicycle helmet. Riding a bike needs one.")
 	_define("play_toys", "Play with toys", 45.0, {"fun": 42.0, "social": 4.0}, 0, "creativity", 14.0, "Imaginative play for children. Builds a little Creativity.")
+	# Every garden game shares this one action. The placed game supplies the
+	# flavour, so a new game model is playable the moment it is catalogued.
+	_define(LifeGardenGames.ACTION_ID, "Play", LifeGardenGames.DURATION, LifeGardenGames.CHANGES.duplicate(), 0, "", 0.0, "Have a proper go on a garden game. Builds the skill that game teaches.")
 	_define("change_outfit", "Change outfit", 4.0, {}, 0, "", 0.0, "Switch to the next saved outfit type in your wardrobe.")
 	_define("change_in_wardrobe", "Open the wardrobe…", 6.0, {}, 0, "", 0.0, "Browse your tops, hair, makeup and jewelry and see each one on before you keep it.")
 	_define("wear_everyday", "Wear everyday clothes", 4.0, {}, 0, "", 0.0, "Change into the Everyday look you designed.")
@@ -378,7 +388,7 @@ func _build_actions() -> void:
 	_define("wear_hoodie", "Wear the hoodie", 4.0, {}, 0, "", 0.0, "Change into the soft hoodie.")
 	_define("warm_up", "Warm up by the fire", 25.0, {"fun": 16.0, "energy": 8.0}, 0, "", 0.0, "A quiet moment by the hearth.")
 	_define("mourn", "Mourn", 30.0, {"fun": -4.0}, 0, "", 0.0, "Spend a quiet moment in respectful silence. Shedding tears eases grief.")
-	_define("leave_flowers", "Leave fresh flowers", 15.0, {"fun": 10.0}, 15, "", 0.0, "Place fresh blooms (§15) at the memorial to honour their memory.")
+	_define("leave_flowers", "Leave fresh flowers", 15.0, {"fun": 10.0}, 15, "", 0.0, "Place fresh blooms (ℒ15) at the memorial to honour their memory.")
 	_define("remember_passed", "Reminisce", 25.0, {"fun": 14.0, "social": 4.0}, 0, "", 0.0, "Reflect on fond memories and wisdom shared with the departed.")
 	_define("play_games", "Play video games", 45.0, {"fun": 40.0, "energy": -4.0}, 0, "logic", 10.0, "An hour of games at the computer. Great fun, a little Logic.")
 	_define("friendly", "Have a friendly chat", 25.0, {"social": 28.0, "fun": 6.0}, 0, "charisma", 18.0, "Say hello, catch up and grow your friendship.")
@@ -466,9 +476,24 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 			for wear_id: String in WEAR_ACTIONS:
 				if int(WEAR_ACTIONS[wear_id]) != int(character.get("outfit", 0)): ids.append(wear_id)
 		"garden_bed": ids = ["water"]
+		# The post box is where the household's post arrives, so it offers its own
+		# box of letters rather than being decoration.
+		"post_box": ids = ["read_post"]
+		# A bicycle is ridden, not sat on: riding builds Fitness and needs a
+		# helmet, which the availability gate checks rather than the menu hiding.
+		"bike_adult", "bike_kids": ids = ["ride_bike"]
 		"fireplace": ids = ["warm_up"]
 		"urn", "tombstone", "memorial": ids = ["remember_life", "mourn", "leave_flowers", "remember_passed"]
 		"neighbor", "maya", "leo", "priya", "tom": ids = SOCIAL_ACTIONS
+	if LifeGardenGames.is_game(kind): ids = [LifeGardenGames.ACTION_ID]
+	elif LifeOutdoorActs.is_outdoor_act(kind):
+		ids = [LifeOutdoorActs.ACTION_ID]
+		if LifeOutdoorActs.can_push(kind): ids.append(LifeOutdoorActs.PUSH_ID)
+	elif LifeOutdoorActs.is_leisure_only(kind):
+		# Bought garden furniture a Lifelet can simply enjoy: a seat, a plant to
+		# tend, a table to clear, a television to watch. Each reuses the one action
+		# the brief's own equivalent already has, rather than a second rule.
+		ids = LifeOutdoorActs.leisure_actions(kind, float(needs.bladder) <= BLADDER_DESPERATE)
 	if str(character.age_stage) in LifeEducation.SCHOOL_STAGES:
 		if kind in ["desk","computer"]: ids = ["school","homework","study","study_hard"] + (["play_games"] if kind == "computer" else [])
 		elif kind == "bookshelf": ids = ["read","homework","study","study_book","buy_book","deep_read"]
@@ -490,6 +515,63 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 
 func get_action_definition(id: String) -> Dictionary:
 	return _actions.get(id, {}).duplicate(true)
+
+
+## Why this Lifelet may not ride this bicycle, or "" when they may. The bicycle's
+## own catalogue entry names the ages that fit it, and a helmet must actually
+## stand in the home: the rule is that you must wear one to ride.
+func _ride_bike_error(target_id: String) -> String:
+	var kind: String = _target_kind_of(target_id)
+	var data: Dictionary = LifeCatalog.get_item(kind)
+	if data.is_empty(): return "Choose a bicycle to ride."
+	if is_away(): return "Wait until this Lifelet is home."
+	var stage: String = str(character.age_stage)
+	var from: String = str(data.get("ride_from", ""))
+	var until: String = str(data.get("ride_until", ""))
+	if not from.is_empty() and not LifeLifecycle.at_least(stage, from):
+		return "That bike is too big for a %s. The kids' bike fits them." % str(LifeLifecycle.LABELS.get(stage, stage)).to_lower()
+	if not until.is_empty() and LifeLifecycle.at_least(stage, until):
+		return "That bike is too small for a %s now. An adult bike fits them." % str(LifeLifecycle.LABELS.get(stage, stage)).to_lower()
+	if not _helmet_available():
+		return "You must wear a helmet to ride. Buy one and place it in the home."
+	return ""
+
+
+## Whether the household owns a placed bicycle helmet. Riding is refused without
+## one, which is the rule rather than a suggestion.
+func _helmet_available() -> bool:
+	if is_instance_valid(household_service) and household_service.has_method("owns_helmet"):
+		return bool(household_service.call("owns_helmet"))
+	return true
+
+
+## Whether a pool stands in this home. The pool's own toys are used in one, so
+## they are refused with a reason rather than silently doing nothing.
+func _pool_present() -> bool:
+	for entry: Dictionary in _targets:
+		if str(entry.get("kind", "")) == "pool": return true
+	return false
+
+
+## How many other Lifelets are already using this furnishing. Playing together is
+## what makes a shared garden activity lift a friendship, so the count is read at
+## queue time and carried on the action.
+func _company_at(target_id: String) -> int:
+	if target_id.is_empty(): return 0
+	var count: int = 0
+	for member: Dictionary in _autonomy_household_members():
+		if member.sim == self: continue
+		var other: Dictionary = member.sim.get_current_action()
+		if str(other.get("target_id", "")) == target_id: count += 1
+	return count
+
+
+## The kind of the furnishing an action names. The garden games share one action
+## id, so the target's own kind is what tells one game from another.
+func _target_kind_of(target_id: String) -> String:
+	for target: Dictionary in _targets:
+		if str(target.get("id", "")) == target_id: return str(target.get("kind", ""))
+	return ""
 
 
 func is_away() -> bool:
@@ -661,6 +743,47 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 		var reason:String=LifeMeals.recipe_error(recipe,int(skills.cooking.level),str(character.age_stage),funds)
 		if not reason.is_empty():_emit_notice(reason);return false
 		definition=LifeMeals.cooking_definition(definition,recipe)
+	if id == LifeOutdoorActs.ACTION_ID:
+		var act_kind: String = _target_kind_of(target_id)
+		if not LifeOutdoorActs.is_outdoor_act(act_kind):
+			_emit_notice("Choose something in the garden to use.")
+			return false
+		var act_reason: String = LifeOutdoorActs.act_error(act_kind, str(character.age_stage), is_away(), _pool_present())
+		if not act_reason.is_empty():
+			_emit_notice(act_reason)
+			return false
+		definition = definition.duplicate(true)
+		definition["label"] = LifeOutdoorActs.act_label(act_kind)
+		definition["duration"] = float(LifeOutdoorActs.acts(act_kind).get("duration", 40.0))
+		definition["changes"] = LifeOutdoorActs.changes_for(act_kind, _company_at(target_id))
+		definition["skill"] = LifeOutdoorActs.skill_for(act_kind)
+		definition["xp"] = LifeOutdoorActs.xp_for(act_kind)
+		definition["description"] = str(LifeOutdoorActs.acts(act_kind).get("note", ""))
+	if id == LifeOutdoorActs.PUSH_ID:
+		var swing_kind: String = _target_kind_of(target_id)
+		var push_reason: String = LifeOutdoorActs.push_refusal(swing_kind, str(character.age_stage), is_away())
+		if not push_reason.is_empty():
+			_emit_notice(push_reason)
+			return false
+		definition = definition.duplicate(true)
+		definition["changes"] = LifeOutdoorActs.PUSH.changes.duplicate(true)
+	if id == LifeGardenGames.ACTION_ID:
+		# A garden game shares one action id, so the placed furnishing supplies the
+		# skill it builds and the flavour the player reads. Binding both at queue
+		# time keeps a save taken mid-game faithful to the game that was played.
+		var game_kind: String = _target_kind_of(target_id)
+		if not LifeGardenGames.is_game(game_kind):
+			_emit_notice("Choose a garden game to play on.")
+			return false
+		var game_reason: String = LifeGardenGames.play_error(game_kind, str(character.age_stage), is_away())
+		if not game_reason.is_empty():
+			_emit_notice(game_reason)
+			return false
+		definition = definition.duplicate(true)
+		definition["skill"] = LifeGardenGames.skill(game_kind)
+		definition["xp"] = LifeGardenGames.xp(game_kind)
+		definition["description"] = LifeGardenGames.blurb(game_kind)
+		definition["label"] = "Play on the %s" % str(LifeCatalog.get_item(game_kind).get("label", "garden game")).to_lower()
 	if id=="study_book" and is_instance_valid(household_service):
 		# The shelf owns which subject a session teaches. Bind it now so a save
 		# taken mid-read remembers what the Lifelet was actually studying, and so
@@ -671,12 +794,12 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 			return false
 		definition=household_service.study_definition(definition,subject)
 	if funds < int(definition["cost"]):
-		_emit_notice("You need §%d for %s." % [int(definition["cost"]), str(definition["label"]).to_lower()])
+		_emit_notice("You need ℒ%d for %s." % [int(definition["cost"]), str(definition["label"]).to_lower()])
 		return false
 	if id in ["job","career_day"] and int(career["worked_day"]) == day:
 		_emit_notice("Today's shift is complete. You can work again tomorrow.")
 		return false
-	if id in SOCIAL_ACTIONS or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or COMPUTER_MASTERY_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "bin_meal", "jog", "play_toys", "put_in_fridge"]:
+	if id in SOCIAL_ACTIONS or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or COMPUTER_MASTERY_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "bin_meal", "jog", "play_toys", "put_in_fridge", LifeGardenGames.ACTION_ID, LifeOutdoorActs.ACTION_ID, LifeOutdoorActs.PUSH_ID]:
 		var availability: Dictionary = get_action_availability(id, target_id)
 		if not bool(availability.available):
 			_emit_notice(str(availability.reason))
@@ -939,6 +1062,8 @@ func _tick_bladder(game_minutes:float,bladder_before:float) -> void:
 
 func _sanitation_reason(id:String,target:String,resuming:bool=false) -> String:
 	if is_away():return "This Lifelet will be available after coming home."
+	if LifeOutdoorActs.is_not_a_toilet(_target_kind_of(target)):
+		return "A sand pit is for playing in, not for a toilet. Use an indoor toilet."
 	if id=="plant_wee":
 		if float(needs.bladder)>BLADDER_DESPERATE and not resuming:return "This emergency option is only available at 12 bladder or lower."
 		var found:bool=false
@@ -1017,6 +1142,15 @@ static func emotion_color(emotion: String) -> Color:
 	return Color(colors.get(emotion,"7aaf89"))
 
 
+## Grow one skill from outside the action queue. A pet interaction credits the
+## person's own learning this way, so a child teaching a trick grows in Logic and
+## an adult training a pet grows in Parenting by exactly the advertised amount.
+func gain_skill(skill_name: String, amount: float) -> void:
+	if not SKILL_NAMES.has(skill_name) or amount <= 0.0: return
+	_gain_skill(skill_name, amount)
+	_emit_changed()
+
+
 func _gain_skill(skill_name: String, amount: float, practice: float = -1.0, book_limit: int = 0) -> void:
 	# Chapter practice counts the effort put in; emotion and trait bonuses only speed the skill.
 	_record_practice(skill_name, amount if practice < 0.0 else practice)
@@ -1087,7 +1221,7 @@ func _finish_front() -> void:
 			if str(get_mood().label) == "Inspired": sale = int(sale * 1.5)
 		funds += sale
 		earned = sale
-		_emit_notice("Canvas sold for §%d. A little creativity goes a long way." % sale)
+		_emit_notice("Canvas sold for ℒ%d. A little creativity goes a long way." % sale)
 	elif id == "host_a_chat":
 		# A host gathers the room: every housemate who can actually see the host
 		# shares the social lift. Somebody on the far side of a partition is not
@@ -1105,7 +1239,7 @@ func _finish_front() -> void:
 		funds += income
 		earned = income
 		career["performance"] = minf(100.0, float(career["performance"]) + _career_performance_gain(8.0))
-		_emit_notice("Freelance project complete. Earned §%d." % income)
+		_emit_notice("Freelance project complete. Earned ℒ%d." % income)
 	elif id == "job":
 		var income: int = int(career["salary"])
 		funds += income
@@ -1114,7 +1248,7 @@ func _finish_front() -> void:
 		career.schedule=LifeCareerSchedule.attend(career.get("schedule",LifeCareerSchedule.fresh(day)),day,0.0)
 		var comfort: float = (float(needs["hunger"]) + float(needs["energy"]) + float(needs["fun"])) / 3.0
 		career["performance"] = float(career["performance"]) + _career_performance_gain(18.0 + comfort * 0.15 + float(skills["logic"]["level"]) * 2.0)
-		_emit_notice("Shift finished. Earned §%d." % income)
+		_emit_notice("Shift finished. Earned ℒ%d." % income)
 		_check_promotion()
 	elif id in SOCIAL_ACTIONS:
 		action["social_accepted"] = _apply_social(action)
@@ -1300,14 +1434,34 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 	# An unpaid bill has a real cost: the utilities are cut, so the home cannot
 	# cook, run hot water or run anything electrical until the household settles.
 	if utilities_cut and id in UTILITY_ACTIONS:
-		return {"available":false, "reason":"The utilities are cut. Pay the outstanding §%d bill from the phone." % bill_total_due()}
+		return {"available":false, "reason":"The utilities are cut. Pay the outstanding ℒ%d bill from the phone." % bill_total_due()}
 	# A baby is driven by a caregiver: it keeps its recovery and play set and is
 	# refused everything else here, before any target or queue rule applies.
 	var stage_reason: String = LifeStagePolicy.action_error(str(character.age_stage), str(character.life_stage), id)
 	if not stage_reason.is_empty():
 		return {"available":false, "reason":stage_reason}
+	# A garden game's own gate names the game, so the reason a player reads says
+	# which game is too old for them rather than naming only the action.
+	if id == LifeGardenGames.ACTION_ID:
+		var game_kind: String = _target_kind_of(target_id)
+		var game_reason: String = LifeGardenGames.play_error(game_kind, str(character.age_stage), is_away())
+		if not game_reason.is_empty():
+			return {"available":false, "reason":game_reason}
+	elif id == LifeOutdoorActs.ACTION_ID:
+		var act_kind: String = _target_kind_of(target_id)
+		var act_reason: String = LifeOutdoorActs.act_error(act_kind, str(character.age_stage), is_away(), _pool_present())
+		if not act_reason.is_empty():
+			return {"available":false, "reason":act_reason}
+	elif id == LifeOutdoorActs.PUSH_ID:
+		var push_reason: String = LifeOutdoorActs.push_refusal(_target_kind_of(target_id), str(character.age_stage), is_away())
+		if not push_reason.is_empty():
+			return {"available":false, "reason":push_reason}
 	if is_spirit() and (id in SPIRIT_BLOCKED or id == LifeBabyPlan.ACTION_ID):
 		return {"available":false, "reason":"A spirit has finished that chapter of life."}
+	# A bicycle's own entry names the ages that fit it, and a helmet must really
+	# stand in the home. The rule is stated plainly: you must wear one to ride.
+	if id == "ride_bike":
+		return {"available":false, "reason":_ride_bike_error(target_id)} if not _ride_bike_error(target_id).is_empty() else {"available":true, "reason":""}
 	if id=="career_day":
 		reason=_career_departure_error(target_id)
 	elif id == LifeBabyPlan.ACTION_ID:
@@ -1339,7 +1493,7 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 	elif id == "play_toys" and str(character.age_stage) != "child":
 		reason = "The toy chest is for children."
 	elif funds < int(_actions[id].cost):
-		reason = "Requires §%d." % int(_actions[id].cost)
+		reason = "Requires ℒ%d." % int(_actions[id].cost)
 	elif id == "job" and int(career.worked_day) == day:
 		reason = "Today's shift is already complete."
 	elif id=="job" and day<int(career.get("schedule",LifeCareerSchedule.fresh(day)).first_day):
@@ -1621,7 +1775,7 @@ func _check_promotion() -> void:
 	career["title"] = titles[int(career["level"]) - 1]
 	career["salary"] = int(track.base_salary) + (int(career["level"]) - 1) * 110
 	funds += 200
-	_emit_notice("Promotion! You are now a %s. §200 bonus and a higher daily salary." % str(career["title"]).to_lower())
+	_emit_notice("Promotion! You are now a %s. ℒ200 bonus and a higher daily salary." % str(career["title"]).to_lower())
 	add_moodlet("A step forward","Confident","Your hard work is paying off.",360,4)
 	remember("A promotion",str(career.title))
 
@@ -1642,7 +1796,7 @@ func choose_career(track_id:String) -> bool:
 	career={"schedule":LifeCareerSchedule.fresh(day,day+1 if minutes>LifeCareerSchedule.CLOSE else day),"track":track_id,"title":track.titles[0],"level":1,"performance":0.0,"salary":track.base_salary,"worked_day":int(career.worked_day)}
 	remember("A new direction","Joined "+str(track.label))
 	add_moodlet("New possibilities","Inspired","A new career is a chance to grow.",240,2)
-	_emit_notice("Your new job: %s. §%d per shift.%s" % [career.title,career.salary," §%d course fee paid." % entry_fee if entry_fee>0 else ""])
+	_emit_notice("Your new job: %s. ℒ%d per shift.%s" % [career.title,career.salary," ℒ%d course fee paid." % entry_fee if entry_fee>0 else ""])
 	_emit_changed()
 	return true
 
@@ -1659,7 +1813,7 @@ func career_entry_error(track_id:String) -> String:
 	if not skill_name.is_empty() and required>0 and int(skills.get(skill_name,{"level":1}).level)<required:
 		return "Requires %s level %d. This Lifelet is at %s level %d." % [skill_name.capitalize(),required,skill_name.capitalize(),int(skills.get(skill_name,{"level":1}).level)]
 	var fee:int=int(entry.get("cost",0))
-	if funds<fee:return "The §%d course fee needs §%d more." % [fee,fee-funds]
+	if funds<fee:return "The ℒ%d course fee needs ℒ%d more." % [fee,fee-funds]
 	return ""
 
 func add_moodlet(label:String,emotion:String,description:String,duration:float,strength:int=2) -> void:
@@ -1788,14 +1942,14 @@ func _advance_bill_cycle() -> void:
 			# in between and was charged nothing, while a prompt payer kept the
 			# promised weekly cadence.
 			last_bill_day = day
-			_emit_notice("The household bills arrived: §%d, due by day %d. Pay them from the phone." % [amount, int(pending_bill.due_day)])
+			_emit_notice("The household bills arrived: ℒ%d, due by day %d. Pay them from the phone." % [amount, int(pending_bill.due_day)])
 		return
 	# A bill past its due date is overdue: one late fee, once.
 	if day > int(pending_bill.due_day) and int(pending_bill.get("late_fee", 0)) == 0:
 		pending_bill["late_fee"] = BILL_LATE_FEE
 		bills_late += 1
 		utilities_cut = true
-		_emit_notice("The household bills are overdue. A §%d late fee was added and the utilities were cut until they are paid." % BILL_LATE_FEE)
+		_emit_notice("The household bills are overdue. A ℒ%d late fee was added and the utilities were cut until they are paid." % BILL_LATE_FEE)
 
 
 ## The ledger is owned by the household's first member; every other member keeps
@@ -1824,13 +1978,13 @@ func buy_insurance(policy_id:String="home") -> Dictionary:
 	if not INSURANCE_POLICIES.has(policy_id):
 		return {"ok":false,"error":"That policy is not offered."}
 	if not insurance_policy_id.is_empty():
-		return {"ok":false,"error":"The home is already insured for §%d a term. Cancel it first to change cover." % int(INSURANCE_POLICIES[insurance_policy_id].premium)}
+		return {"ok":false,"error":"The home is already insured for ℒ%d a term. Cancel it first to change cover." % int(INSURANCE_POLICIES[insurance_policy_id].premium)}
 	var premium:int=int(INSURANCE_POLICIES[policy_id].premium)
 	if funds<premium:
-		return {"ok":false,"error":"The household needs §%d for this policy and has §%d." % [premium,funds]}
+		return {"ok":false,"error":"The household needs ℒ%d for this policy and has ℒ%d." % [premium,funds]}
 	funds-=premium
 	insurance_policy_id=policy_id
-	_emit_notice("Home insurance bought for §%d. A break-in will be paid back in full." % premium)
+	_emit_notice("Home insurance bought for ℒ%d. A break-in will be paid back in full." % premium)
 	_emit_changed()
 	return {"ok":true,"premium":premium,"label":str(INSURANCE_POLICIES[policy_id].label)}
 
@@ -1856,10 +2010,10 @@ func robbery() -> Dictionary:
 		return {"ok":false,"reason":"Nothing was taken. The house was empty."}
 	funds-=loss
 	if insurance_policy_id.is_empty():
-		_emit_notice("A burglar broke in and took §%d. Home insurance from the phone would have covered it." % loss)
+		_emit_notice("A burglar broke in and took ℒ%d. Home insurance from the phone would have covered it." % loss)
 		_emit_changed()
 		return {"ok":true,"stolen":loss,"reimbursed":0,"insured":false}
-	_emit_notice("A burglar broke in and took §%d. Home insurance paid it all back." % loss)
+	_emit_notice("A burglar broke in and took ℒ%d. Home insurance paid it all back." % loss)
 	funds+=loss
 	_emit_changed()
 	return {"ok":true,"stolen":loss,"reimbursed":loss,"insured":true}
@@ -1888,13 +2042,13 @@ func pay_bill() -> Dictionary:
 		return {"ok": false, "reason": "There is no bill to pay right now."}
 	var owed: int = bill_total_due()
 	if funds < owed:
-		return {"ok": false, "reason": "The household needs §%d and has §%d." % [owed, funds]}
+		return {"ok": false, "reason": "The household needs ℒ%d and has ℒ%d." % [owed, funds]}
 	funds -= owed
 	bills_paid_total += owed
 	pending_bill.clear()
 	var restored: bool = utilities_cut
 	utilities_cut = false
-	_emit_notice("Bills paid: §%d.%s" % [owed, " The utilities are back on." if restored else ""])
+	_emit_notice("Bills paid: ℒ%d.%s" % [owed, " The utilities are back on." if restored else ""])
 	_emit_changed()
 	return {"ok": true, "paid": owed, "restored_utilities": restored}
 
@@ -2437,7 +2591,7 @@ func _update_wants() -> void:
 			want["progress"] = float(want["target"])
 			satisfaction += int(want["reward"])
 			funds += int(want["reward"])
-			_emit_notice("Want fulfilled: %s! +%d satisfaction and §%d." % [want["label"], int(want["reward"]), int(want["reward"])])
+			_emit_notice("Want fulfilled: %s! +%d satisfaction and ℒ%d." % [want["label"], int(want["reward"]), int(want["reward"])])
 	_archive_completed_chapter()
 
 
@@ -2570,7 +2724,7 @@ func _create_recurring_wants() -> void:
 		"Successful":
 			var career_skill: String = str(CAREER_TRACKS.get(str(career.get("track", "studio")), CAREER_TRACKS.studio).skill)
 			wants = [
-				_chapter_want("chapter_income", "Build a cushion", "Earn §%d from completed shifts, freelance work or paintings this chapter." % (200 + difficulty * 100), 200 + difficulty * 100, reward + 40, "income"),
+				_chapter_want("chapter_income", "Build a cushion", "Earn ℒ%d from completed shifts, freelance work or paintings this chapter." % (200 + difficulty * 100), 200 + difficulty * 100, reward + 40, "income"),
 				_chapter_want("chapter_practice", "Invest in your craft", "Earn %d %s XP this chapter; practice still counts at level 10." % [100 + difficulty * 20, career_skill.capitalize()], 100 + difficulty * 20, reward, "practice", [], career_skill),
 				_chapter_want("chapter_unwind", "Room for a life", "Complete three different activities: cooking, sleeping, showering, reading, relaxing, watching a show or gardening.", 3, reward, "variety", ["cook", "sleep", "shower", "read", "relax", "watch", "water"])]
 		_:
@@ -2642,7 +2796,7 @@ func _offer_daily_story() -> void:
 
 func _story_choice(id: String, label: String, changes: Dictionary = {}, requirements: Dictionary = {}) -> Dictionary:
 	var available: bool = funds >= int(changes.get("cost", 0))
-	var reason: String = "" if available else "Requires §%d." % int(changes.get("cost", 0))
+	var reason: String = "" if available else "Requires ℒ%d." % int(changes.get("cost", 0))
 	if not requirements.is_empty() and int(skills[str(requirements.skill)].level) < int(requirements.level):
 		available = false
 		reason = "Requires %s level %d." % [str(requirements.skill).capitalize(), int(requirements.level)]
@@ -2718,9 +2872,9 @@ func _story_event(ticket: Dictionary) -> Dictionary:
 func _story_effects_text(changes: Dictionary) -> String:
 	var parts: PackedStringArray = []
 	if int(changes.get("cost", 0)) > 0:
-		parts.append("Pay §%d" % int(changes.cost))
+		parts.append("Pay ℒ%d" % int(changes.cost))
 	if int(changes.get("income", 0)) > 0:
-		parts.append("Earn §%d" % int(changes.income))
+		parts.append("Earn ℒ%d" % int(changes.income))
 	for need_name: String in changes.get("needs", {}):
 		parts.append("%s %+d" % [need_name.capitalize(), int(changes.needs[need_name])])
 	for skill_name: String in changes.get("skills", {}):
@@ -3885,7 +4039,7 @@ func _tick_career_away() -> void:
 		_gain_skill(career_skill,30.0*proportion)
 		var comfort:float=(float(needs.hunger)+float(needs.energy)+float(needs.fun))/3.0
 		career.performance=maxf(0.0,float(career.performance)+_career_performance_gain((18.0+comfort*.15+float(skills[career_skill].level)*2.0)*proportion)-late/20.0)
-		_emit_notice("Shift finished. Earned §%d for %d minutes at work%s."%[income,int(action.duration),"; arrived %d minutes late"%int(late) if late>0.0 else ""])
+		_emit_notice("Shift finished. Earned ℒ%d for %d minutes at work%s."%[income,int(action.duration),"; arrived %d minutes late"%int(late) if late>0.0 else ""])
 		_check_promotion();_activity_memory("job");_record_chapter_activity("job",income)
 		for want:Dictionary in wants:
 			if str(want.id)=="earn":want.progress=float(want.progress)+1.0

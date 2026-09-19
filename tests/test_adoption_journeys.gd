@@ -27,7 +27,7 @@ func _adopt_after_saved_movement()->void:
 	if not is_instance_valid(candidate):return
 	candidate.pressed.emit()
 	var confirm:Button=app.overlay.get_node_or_null("AdoptionConfirm")
-	check(is_instance_valid(confirm) and not confirm.disabled,"Actual review offers a single validated §1,000 confirmation.")
+	check(is_instance_valid(confirm) and not confirm.disabled,"Actual review offers a single validated ℒ1,000 confirmation.")
 	if not is_instance_valid(confirm) or confirm.disabled:return
 	var funds:int=app.household.funds;var minutes:float=app.household.minutes
 	var routes:Dictionary=app.traversal.routes.duplicate(true);var locks:Dictionary=app.traversal.stairs.duplicate(true)

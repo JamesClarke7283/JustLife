@@ -57,7 +57,7 @@ func _producer()->void:
 		_step()
 		var action:Dictionary=app.sim.get_current_action()
 		if str(action.get("id",""))=="cook" and bool(action.paid) and float(action.elapsed)>8:cooking=true;break
-	check(cooking and app.household.funds==money-24,"Explicit skill-unlock fixture actually approaches its oven and pays exactly §24 for a progressing bake.")
+	check(cooking and app.household.funds==money-24,"Explicit skill-unlock fixture actually approaches its oven and pays exactly ℒ24 for a progressing bake.")
 	if not cooking:return
 	app.household.set_speed(0);app.overlay_open=true
 	check(app.save_game("","Before household expansion"),"Named positive save includes the actual paid oven before the later adoption.")

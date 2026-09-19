@@ -17,8 +17,9 @@ const EPS:float=.000001
 ## on how far the ground reaches. The garden is deliberately generous — a kennel,
 ## a garden bed and room to walk between them — and it is not saved with a
 ## household, so enlarging it here grows the garden of current saves and future
-## ones alike the next time their world is built.
-const LOT:=Rect2(-12,-9,24,18)
+## ones alike the next time their world is built. `LifeRoofRules.LOT` is the
+## single owner of the value so the roof rules cannot drift from it again.
+const LOT:=RoofRules.LOT
 ## Half a navigation cell, so a derived grid always contains the whole lot.
 const LOT_MARGIN:float=.25
 const GROUPS:Array[String]=["walls","floors","stairs","openings","roofs"]

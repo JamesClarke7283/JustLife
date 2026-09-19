@@ -109,8 +109,8 @@ func _boundaries() -> void:
 	for funds:int in [999,1000]:
 		var household:LifeHousehold=fixture(1);household.set_funds(funds)
 		var prepared:Dictionary=household.prepare_adoption(["player"],2)
-		check(bool(prepared.ok)==(funds==1000),"Affordability boundary §%d is exact." % funds)
-		if funds==1000:check(bool(apply(household,prepared.request).ok) and household.funds==0,"Exactly §1,000 supports one adoption without negative funds.")
+		check(bool(prepared.ok)==(funds==1000),"Affordability boundary ℒ%d is exact." % funds)
+		if funds==1000:check(bool(apply(household,prepared.request).ok) and household.funds==0,"Exactly ℒ1,000 supports one adoption without negative funds.")
 		household.free()
 	var household:LifeHousehold=fixture(1)
 	var prepared:Dictionary=household.prepare_adoption(["player"],0);household.set_funds(999)

@@ -193,7 +193,7 @@ func _ensure_nodes() -> void:
 	_speech.shaded = false
 	_speech.visible = false
 	if ResourceLoader.exists("res://assets/fonts/Body.ttf"):
-		_speech.font = load("res://assets/fonts/Body.ttf")
+		_speech.font = LifePalette.body_font()
 	add_child(_speech)
 	_voice = AudioStreamPlayer3D.new()
 	_voice.name = "LifeletVoice"
