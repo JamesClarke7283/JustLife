@@ -80,6 +80,21 @@ func _birthdays_and_promotions() -> void:
 	check(worker().restore_state(snapshot(topped)).ok,
 		"A maxed career that kept working is still saveable.")
 
+	# The same must hold for the ordinary commute, which is how most of a working
+	# life's performance is earned.
+	var commuter: LifeSim = worker("adult", 540.0)
+	commuter.career.level = LifeCareers.MAX_LEVEL
+	commuter.career.title = LifeCareers.title_at(str(commuter.career.track), LifeCareers.MAX_LEVEL)
+	commuter.career.performance = 99.0
+	observe(commuter)
+	commuter.queue_action("career_day", "lot_exit")
+	commuter.begin_current_action()
+	advance(commuter, 481.0)
+	check(float(commuter.career.performance) <= 100.0,
+		"A top-rung Lifelet's commute stops performance at the threshold too (%.1f)." % float(commuter.career.performance))
+	check(worker().restore_state(snapshot(commuter)).ok,
+		"A maxed career that commuted daily is still saveable.")
+
 func _career_changes() -> void:
 	var sim: LifeSim = worker()
 	sim.queue_action("career_day", "lot_exit")

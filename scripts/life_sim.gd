@@ -4342,7 +4342,12 @@ func _tick_career_away() -> void:
 			_gain_skill(career_skill,30.0*proportion)
 			skill_rank=float(skills[career_skill].level)
 		var comfort:float=(float(needs.hunger)+float(needs.energy)+float(needs.fun))/3.0
-		career.performance=maxf(0.0,float(career.performance)+_career_performance_gain((18.0+comfort*.15+skill_rank*2.0)*proportion)-late/20.0)
+		# The same ceiling as a shift worked from home. At the top of the ladder
+		# nothing spends the earned performance, so without this an ordinary
+		# working life banks past the limit a save may hold and the household
+		# becomes unsaveable.
+		career.performance=clampf(float(career.performance)+_career_performance_gain((18.0+comfort*.15+skill_rank*2.0)*proportion)-late/20.0,0.0,
+			100.0 if int(career.level)>=LifeCareers.MAX_LEVEL else 1000.0)
 		_emit_notice("Shift finished. Earned ℒ%d for %d minutes at work%s."%[income,int(action.duration),"; arrived %d minutes late"%int(late) if late>0.0 else ""])
 		_check_promotion();_activity_memory("job");_record_chapter_activity("job",income)
 		for want:Dictionary in wants:
