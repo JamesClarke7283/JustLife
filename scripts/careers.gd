@@ -279,11 +279,23 @@ static func base_pay(job_id: String, level: int) -> int:
 ## What this job pays a Lifelet at this level, including what their degree is
 ## worth to it. A job that asks for a degree pays more for one; a job that does
 ## not is unaffected, because a degree is worth nothing to waiting tables.
+##
+## The degree scales the rate a graduate is *taken on* at, not the top of the
+## ladder: the ladder's own ceiling is the ℒ1,000 the brief fixes as the highest
+## pay in the game, and a PHD must not push past it. The premium is therefore
+## earned on the way up and tapers off as a Lifelet reaches the rung where the
+## trade's own rate has caught up with what the qualification is worth.
 static func pay(job_id: String, level: int, degree: String = "none") -> int:
 	var amount: int = base_pay(job_id, level)
 	if not needs_degree(job_id): return amount
 	var multiplier: float = float(DEGREE_MULTIPLIER.get(normalise_degree(degree), 1.0))
-	return roundi(float(amount) * multiplier)
+	if multiplier <= 1.0: return amount
+	# The graduate's premium is a share of the *ladder*, bounded by the ladder's
+	# own ceiling: a PHD earns the same at the top as anybody else who reached
+	# it, having been better paid every step of the way there.
+	var ceiling: int = base_pay(job_id, MAX_LEVEL)
+	var premium: int = roundi(float(amount) * (multiplier - 1.0))
+	return mini(ceiling, amount + premium)
 
 
 ## Whether a job treats a degree as worth paying more for.

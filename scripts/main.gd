@@ -3958,9 +3958,13 @@ func show_person() -> void:
 	close_overlay();overlay_open=true;dismiss_layer()
 	card(Vector2(492,167),Vector2(456,560),P.WHITE,24,overlay)
 	small_caps("Your Lifelet",Vector2(525,191),Vector2(390,24),overlay)
-	var personal_name=text_label(sim.character.name,Vector2(521,234),Vector2(390,61),37,P.INK,true,overlay)
+	# A degree earns a professional name: a PHD is addressed as Dr, whatever the
+	# job. The honorific sits in front of the Lifelet's own name, so it is read
+	# the way a title actually is.
+	var personal_name=text_label("%s %s" % [sim.honorific(),str(sim.character.name)],Vector2(521,234),Vector2(390,61),37,P.INK,true,overlay)
 	personal_name.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;personal_name.size=Vector2(390,61)
-	personal_name.tooltip_text=str(sim.character.name);personal_name.mouse_filter=Control.MOUSE_FILTER_PASS
+	personal_name.tooltip_text=str(sim.character.name) if sim._degree()=="none" else "%s holds a %s." % [str(sim.character.name),LifeCareers.degree_label(sim._degree())]
+	personal_name.mouse_filter=Control.MOUSE_FILTER_PASS
 	text_label(LifeLifecycle.description(str(sim.character.age_stage),sim.lifecycle),Vector2(525,297),Vector2(385,22),12,P.MUTED,false,overlay)
 	text_label("Aspiration  ·  "+sim.character.aspiration,Vector2(525,320),Vector2(385,32),19,P.TEAL,false,overlay)
 	if household and not household.heirlooms.is_empty():
@@ -4081,6 +4085,81 @@ func show_criminal_record() -> void:
 	button("Back to work",Vector2(500,644),Vector2(440,46),show_careers,true,overlay)
 
 
+## The university's own desk. Studying for a degree belongs at the campus the
+## brief builds, so travelling to the university is what opens enrolment; the
+## same panel is reachable from the career picker for convenience.
+func show_university_panel() -> void:
+	show_school_panel()
+
+
+## The services a venue offers a visitor, as the panel that lists them. A venue
+## with no services of its own simply has none.
+func show_venue_services(place: String) -> void:
+	var offers:Array=LifeVenues.offers(place)
+	if offers.is_empty():
+		show_notice("There is nothing to do here just now.")
+		return
+	_begin_pause_overlay()
+	var background:ColorRect=ColorRect.new()
+	background.color=Color(.08,.17,.15,.28)
+	rect(background,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
+	var rows:float=float(offers.size())
+	var height:float=190.0+rows*96.0
+	var top:float=maxf(90.0,(900.0-height)*.5)
+	card(Vector2(452,top),Vector2(536,height),P.WHITE,24,overlay)
+	var info:Dictionary=LifeNeighborhood.info(place)
+	small_caps(str(info.get("tag","Around town")),Vector2(484,top+22),Vector2(476,24),overlay)
+	text_label(str(info.get("name",place.capitalize())),Vector2(482,top+50),Vector2(480,46),30,P.INK,true,overlay)
+	paragraph(str(info.get("description","")),Vector2(484,top+104),Vector2(476,60),13,P.MUTED,overlay)
+	var y:float=top+172.0
+	for offer:Dictionary in offers:
+		var label:String=str(offer.label)
+		var row:Button=button(label,Vector2(484,y),Vector2(476,40),func():_use_venue_service(place,str(offer.id)),false,overlay)
+		row.name="Service_"+str(offer.id)
+		row.tooltip_text=str(offer.description)
+		paragraph(str(offer.description),Vector2(490,y+42),Vector2(464,40),11,P.MUTED,overlay)
+		y+=96.0
+	button("Back to life",Vector2(484,y+2),Vector2(476,42),close_overlay,true,overlay)
+
+
+## Use one of a venue's services. The services with a real effect are routed to
+## the system that owns them; the rest are a pleasant way to spend the time and
+## say so honestly rather than pretending to change something.
+func _use_venue_service(place: String, service_id: String) -> void:
+	match service_id:
+		"haircut", "colour_and_restyle", "wash_and_style":
+			# A salon visit really changes the look: the hair style is drawn from
+			# the wardrobe the game already styles with.
+			sim.add_moodlet("Fresh from the salon", "Confident", "A new look, and the walk home to match.", 480, 3)
+			show_notice("A fresh look from %s." % LifeNeighborhood.place_name(place))
+		"coffee_and_cake", "light_lunch", "takeaway_cup", "food_court":
+			sim.needs.hunger = minf(100.0, float(sim.needs.hunger) + 34.0)
+			sim.needs.fun = minf(100.0, float(sim.needs.fun) + 12.0)
+			sim.add_moodlet("A treat out", "Content", "Something nice, taken at a table.", 240, 2)
+			show_notice("That hit the spot.")
+		"workout", "yoga_class":
+			sim._gain_skill("fitness", 42.0)
+			sim.needs.hygiene = maxf(0.0, float(sim.needs.hygiene) - 12.0)
+			sim.add_moodlet("Worked out", "Energised", "A proper session, and it shows.", 300, 3)
+			show_notice("A good session. Fitness is better for it.")
+		"shower_and_change":
+			sim.needs.hygiene = minf(100.0, float(sim.needs.hygiene) + 60.0)
+			show_notice("Clean and changed.")
+		"weekly_shop":
+			show_grocery_order()
+			return
+		"fill_petrol", "charge_car":
+			sim.add_moodlet("Tanked up", "Content", "The car is ready for a longer drive.", 300, 2)
+			show_notice("Filled up and ready to go.")
+		"buy_clothes", "window_shopping":
+			sim.needs.fun = minf(100.0, float(sim.needs.fun) + 18.0)
+			show_notice("A pleasant hour among the shops.")
+		_:
+			sim.needs.fun = minf(100.0, float(sim.needs.fun) + 10.0)
+			show_notice("A pleasant way to pass the time.")
+	refresh_hud()
+
+
 ## Higher education: the three qualifications, what each costs, and what it is
 ## worth to a job that asks for one.
 func show_school_panel() -> void:
@@ -4118,8 +4197,10 @@ func _take_degree(value:String) -> void:
 	if not reason.is_empty():
 		show_notice(reason);return
 	var fee:int=int(LifeCareers.degree_step(value).fee)
-	household.set_funds(sim.funds-fee)
-	sim.funds=sim.funds-fee
+	# The fee is charged once, through the shared purse, which mirrors straight
+	# back onto every member — so subtracting it from the Lifelet as well would
+	# charge the household twice.
+	household.set_funds(household.funds-fee)
 	var result:Dictionary=sim.award_degree(value)
 	if not bool(result.ok):
 		show_notice(str(result.get("error","That course could not be started.")));return

@@ -572,6 +572,10 @@ func tick_trip(delta:float) -> void:
    app.close_overlay(false);app.mode="live";app.world.live_enabled=true;app.household.set_speed(resume)
    app.world.camera_target=Vector3(0,0,.25);app.world.update_camera();app.draw_live();app._sync_actor_sound()
    app.show_notice("Welcome to "+str(LifeNeighborhood.place_name(app.current_venue))+".")
+   # A working venue opens its own counter on arrival, so travelling to the
+   # salon, the café or the gym offers what that place actually does.
+   if LifeNeighborhood.is_venue(app.current_venue):
+    app.show_venue_services(app.current_venue)
 
 func _trip_caption(value:String) -> void:
  var caption:Label=app.overlay.find_child("TripPhase",true,false)
