@@ -421,7 +421,7 @@ func _nearest_valid_stair(state:Dictionary,p:Vector3)->Dictionary:
 				# Reject the impossible spots with two rectangle tests before
 				# paying for a full structural proposal (about 2.5 ms each).
 				var stair:Dictionary={"x":record.x,"z":record.z,"rotation":rotation,"lower":0,"upper":1}
-				if not Building.LOT.encloses(Building.stair_rect(stair)) or not Building.LOT.encloses(Building.landing_rect(stair,false)) or not Building.LOT.encloses(Building.landing_rect(stair,true)):continue
+				if not Building.lot().encloses(Building.stair_rect(stair)) or not Building.lot().encloses(Building.landing_rect(stair,false)) or not Building.lot().encloses(Building.landing_rect(stair,true)):continue
 				if not Building.footprint_supported(state,1,Building.stair_rect(stair)):continue
 				if not Building.propose(state,{"op":"add","collection":"stairs","record":record.duplicate(true)},1000000).get("ok",false):continue
 				best_distance=distance;best=record

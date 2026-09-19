@@ -98,7 +98,7 @@ func _prepare_geometry()->void:
 		var surfaces:Array=Building._rects(_state,"floors",level)
 		# Bearings are computed from the original slabs and openings once.
 		surfaces.append_array(Building._wall_bearing_rects(_state,level))
-		if level==0:surfaces.append(Building.LOT)
+		if level==0:surfaces.append(Building.lot())
 		_support_surfaces[level]=surfaces
 		_support_holes[level]=Building._rects(_state,"openings",level)
 		for wall:Dictionary in _state.walls:
@@ -110,7 +110,7 @@ func _prepare_geometry()->void:
 			if int(obstacle.level)==level:_blockers[level].append(Building.rect(obstacle))
 
 func _bounds_clear(level:int,bounds:Rect2)->bool:
-	if not Building.LOT.encloses(bounds) or not Building._covered(bounds,_support_surfaces[level],_support_holes[level]):return false
+	if not Building.lot().encloses(bounds) or not Building._covered(bounds,_support_surfaces[level],_support_holes[level]):return false
 	for blocker:Rect2 in _blockers[level]:
 		if blocker.intersects(bounds):return false
 	return true

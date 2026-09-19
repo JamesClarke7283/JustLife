@@ -49,6 +49,7 @@ const NEED_NAMES: Array[String] = ["hunger", "energy", "hygiene", "bladder", "fu
 ## continues where it stopped instead of restarting the whole shift.
 const RESUMABLE_BREAK_ACTIONS: Array[String] = ["job"]
 const LifeWantsManager = preload("res://scripts/wants_manager.gd")
+const LifeLand = preload("res://scripts/land.gd")
 const TRAIT_NAMES: Array[String] = ["Creative", "Outgoing", "Active", "Bookworm", "Foodie", "Neat"]
 const ASPIRATION_NAMES: Array[String] = ["Maker", "Connected", "Successful", "Balanced"]
 const NEED_DECAY: Dictionary = {"hunger": 3.5, "energy": 3.0, "hygiene": 2.1, "bladder": 4.0, "fun": 2.5, "social": 2.0}
@@ -3423,6 +3424,12 @@ func _validate_state(state: Dictionary) -> String:
 	for trait_name: Variant in profile["traits"]:
 		if not trait_name is String or str(trait_name) not in TRAIT_NAMES:
 			return "Save contains an invalid trait."
+	# The household's land rides the world state. A corrupt plot count would
+	# otherwise ask for a lot no navigation grid can be built for.
+	var world_state: Variant = profile.get("world_state", {})
+	if world_state is Dictionary:
+		var land_error: String = LifeLand.validate(world_state.get("land"))
+		if not land_error.is_empty(): return land_error
 	for need_name: String in NEED_NAMES:
 		if not _number_in_range(state["needs"].get(need_name), 0.0, 100.0):
 			return "Save contains an invalid need."

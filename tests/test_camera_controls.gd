@@ -101,13 +101,13 @@ func _run() -> void:
 	await pointer_button(at,MOUSE_BUTTON_LEFT,false,true)
 	check(app.world.camera_target==before,"Opening a modal ends the drag")
 	app.close_overlay();await frames()
-	app.world.camera_target=Vector3(LifeBuildingState.LOT.end.x-3.1,0,LifeBuildingState.LOT.end.y-3.1);app.world.update_camera()
+	app.world.camera_target=Vector3(LifeBuildingState.lot().end.x-3.1,0,LifeBuildingState.lot().end.y-3.1);app.world.update_camera()
 	await pointer_button(at,MOUSE_BUTTON_LEFT,true,true)
 	await pointer_motion(at+Vector2(-5000,5000),Vector2(-5000,5000),MOUSE_BUTTON_MASK_LEFT,true)
 	await pointer_button(at,MOUSE_BUTTON_LEFT,false,true)
 	# The pan runs to the lot the camera is showing, so the bound follows the
 	# garden rather than a fixed strip of the old, smaller lawn.
-	check(absf(app.world.camera_target.x)<=absf(LifeBuildingState.LOT.position.x)+3.0 and absf(app.world.camera_target.z)<=absf(LifeBuildingState.LOT.position.y)+3.0,"Panning respects the lot camera bounds")
+	check(absf(app.world.camera_target.x)<=absf(LifeBuildingState.lot().position.x)+3.0 and absf(app.world.camera_target.z)<=absf(LifeBuildingState.lot().position.y)+3.0,"Panning respects the lot camera bounds")
 	app.queue_free();await frames(5)
 	print("CAMERA_CONTROLS_RESULT checks=%d failures=%d" % [checks,failures.size()])
 	quit(0 if failures.is_empty() else 1)

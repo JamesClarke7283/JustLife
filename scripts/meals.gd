@@ -279,7 +279,7 @@ static func _saved_floor_error(value:Dictionary,layout:Array) -> String:
 	var half:Vector2=PLATE_HALF_SIZE if value.has("batch") else PLATTER_HALF_SIZE
 	var bounds:=Rect2(Vector2(at.x,at.z)-half,half*2)
 	if terrain:
-		if not Building.LOT.encloses(bounds):return "A saved floor dish is outside the lot."
+		if not Building.lot().encloses(bounds):return "A saved floor dish is outside the lot."
 		for tile:Dictionary in Building.surface_tiles(state,0):
 			if tile.rect.intersects(bounds):return "A saved floor dish is below its visible floor."
 	elif not Building.footprint_supported(state,level,bounds):return "A saved floor dish extends beyond its supporting floor."

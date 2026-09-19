@@ -1,6 +1,7 @@
 extends Node
 
 const P = preload("res://scripts/palette.gd")
+const Land = preload("res://scripts/land.gd")
 const Variants = preload("res://scripts/catalog_variants.gd")
 const LifeLog = preload("res://scripts/logger.gd")
 const LifeWantsManager = preload("res://scripts/wants_manager.gd")
@@ -1090,6 +1091,15 @@ func setup_live(layout:Array) -> void:
 	route_generation+=1
 	mode="live"
 	if stage:stage.visible=false
+	# The household's land is set before anything is built, because the ground,
+	# the hedge, the navigation region, the compatibility grid and the camera pan
+	# are all derived from it. At home it is the saved land; anywhere else it is
+	# the starting plot, since a venue is not the household's to expand.
+	if current_venue=="home":
+		var saved_land:Variant=sim.character.get("world_state",{}).get("land") if sim.character.get("world_state",{}) is Dictionary else null
+		LifeBuildingState.set_land(saved_land)
+	else:
+		LifeBuildingState.set_land({})
 	if current_venue=="home":world.create_home(layout)
 	elif current_venue in LifeNeighborhood.RESIDENT_HOMES:world.create_resident_home(current_venue,layout)
 	else:world.create_public_venue(current_venue,layout)
@@ -2261,7 +2271,7 @@ func draw_build_catalog() -> void:
 	var category_row:=HBoxContainer.new()
 	category_row.add_theme_constant_override("separation",6)
 	category_scroll.add_child(category_row)
-	for category:String in LifeCatalog.CATEGORIES:
+	for category:String in LifeCatalog.CATEGORIES + ["Land"]:
 		var tab=button(category,Vector2.ZERO,Vector2(112,35),func():catalog_category=category;draw_live(),catalog_category==category,category_row)
 		tab.name="CatalogCategory_"+category
 		compact_button(tab);tab.size=Vector2(112,35)
@@ -2286,6 +2296,9 @@ func draw_build_catalog() -> void:
 			var box:LineEdit=boxes.front()
 			box.grab_focus();box.caret_column=box.text.length())
 	paragraph("Click to place  ·  R rotate  ·  Esc cancel",Vector2(41,834),Vector2(232,40),12)
+	if catalog_category=="Land":
+		show_land_panel()
+		return
 	if catalog_category=="Structure":
 		button("Wall",Vector2(305,725),Vector2(146,46),func():begin_construction("wall"))
 		button("Room",Vector2(461,725),Vector2(146,46),func():begin_construction("room"))
@@ -2350,6 +2363,45 @@ func draw_build_catalog() -> void:
 		model_thumbnail(kind,Vector2(8,2),Vector2(136,88),false,cell,{},str(Variants.style_or_default("",data)),str(Variants.size_or_default("",data)))
 		var l=text_label(data.label,Vector2(9,91),Vector2(135,20),11,P.INK,false,cell);l.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 		text_label("ℒ %d" % from_price if to_price==from_price else "ℒ %d–%d" % [from_price,to_price],Vector2(10,112),Vector2(130,20),13,P.TEAL,false,cell)
+
+## The land panel: buy the neighbouring plot on any side the lot can grow, and
+## watch the ground it would add.
+##
+## Every offer is priced and gated by `LifeLand` (preloaded as `Land`), so a greyed-out button and a
+## refused purchase state exactly the same reason.
+func show_land_panel() -> void:
+	button("Land",Vector2(305,725),Vector2(146,46),func():pass,true)
+	var note:String=Land.describe(LifeBuildingState.land)
+	text_label(note,Vector2(463,731),Vector2(420,34),14,P.MUTED,false).autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	var offers:Array=Land.offers(LifeBuildingState.land,sim.funds)
+	var x:float=305.0
+	for side_index:int in range(offers.size()):
+		var offer:Dictionary=offers[side_index]
+		var side:String=str(offer.side)
+		var bought:int=int(offer.plots)
+		var label:String="Buy %s plot · ℒ%s" % [side.to_lower(),commas(int(offer.price))]
+		if bought>0:label="Buy %s plot (%d) · ℒ%s" % [side.to_lower(),bought+1,commas(int(offer.price))]
+		var buy:Button=button(label,Vector2(x,791),Vector2(230,46),func():_buy_land(side),false)
+		buy.name="BuyLand_"+side
+		buy.disabled=not bool(offer.available)
+		if not bool(offer.available):buy.tooltip_text=str(offer.reason)
+		else:buy.tooltip_text="Extends the lot %s by one plot. The lawn, hedge and boundaries all move." % side
+		text_label(str(offer.reason) if not bool(offer.available) else "%d bought on this side." % bought,
+			Vector2(x+4,841),Vector2(222,24),11,P.CORAL if not bool(offer.available) else P.MUTED,false)
+		x+=242.0
+	button("Undo",Vector2(1250,725),Vector2(144,35),undo_build)
+	button("Wall",Vector2(305,847),Vector2(120,31),func():begin_construction("wall"))
+	button("Room",Vector2(433,847),Vector2(120,31),func():begin_construction("room"))
+
+
+## Buy one neighbouring plot, through the same transaction the build tools use.
+func _buy_land(side:String) -> void:
+	var result:Dictionary=build_transactions.buy_land(side)
+	if not bool(result.ok):
+		show_notice(str(result.error));draw_live();return
+	refresh_hud()
+	show_notice("A new plot %s. The garden is %s" % [side,Land.describe(LifeBuildingState.land)])
+	draw_live()
 
 func change_floor(color:String) -> void:
 	if mode=="build":
@@ -3940,7 +3992,7 @@ func save_game(slot_id:String="",title:String="") -> bool:
 	_store_motion()
 	if current_venue=="home":home_layout=world.serialize_items()
 	else:venue_layouts[current_venue]=world.serialize_items()
-	sim.character["world_state"]={"player":[player.position.x,player.position.y,player.position.z],"player_rotation":player.rotation.y,"camera":[world.camera_target.x,world.camera_target.y,world.camera_target.z],"angle":world.camera_angle,"elevation":world.camera_elevation,"zoom":world.camera.size,"floor":floor_color,"lot":selected_lot,"cutaway":world.cutaway,"view_level":world.view_level,"sound":sound_enabled,"music":music_enabled,"venue":current_venue,"home_layout":home_layout,"venue_layouts":venue_layouts,"residents":residents.snapshot()}
+	sim.character["world_state"]={"player":[player.position.x,player.position.y,player.position.z],"player_rotation":player.rotation.y,"camera":[world.camera_target.x,world.camera_target.y,world.camera_target.z],"angle":world.camera_angle,"elevation":world.camera_elevation,"zoom":world.camera.size,"floor":floor_color,"lot":selected_lot,"cutaway":world.cutaway,"view_level":world.view_level,"sound":sound_enabled,"music":music_enabled,"venue":current_venue,"home_layout":home_layout,"venue_layouts":venue_layouts,"land":LifeBuildingState.land.duplicate(true),"residents":residents.snapshot()}
 	# Store the user's live speed, not a temporary menu/build pause.
 	var current_speed:int=sim.speed
 	sim.speed=speed_before_build if mode=="build" else (pause_before_menu if overlay_pauses_sim else current_speed)
@@ -3978,7 +4030,7 @@ func _restore_world_state(value:Variant) -> void:
 	player.position=position
 	player.rotation.y=_saved_number(state.get("player_rotation"),0.0,-1000.0,1000.0)
 	var target:Vector3=_saved_vector(state.get("camera"),world.camera_target)
-	world.camera_target=Vector3(clampf(target.x,LifeBuildingState.LOT.position.x+3,LifeBuildingState.LOT.end.x-3),clampf(target.y,-2,5),clampf(target.z,LifeBuildingState.LOT.position.y+3,LifeBuildingState.LOT.end.y-3))
+	world.camera_target=Vector3(clampf(target.x,LifeBuildingState.lot().position.x+3,LifeBuildingState.lot().end.x-3),clampf(target.y,-2,5),clampf(target.z,LifeBuildingState.lot().position.y+3,LifeBuildingState.lot().end.y-3))
 	world.camera_angle=_saved_number(state.get("angle"),world.camera_angle,-1000.0,1000.0)
 	world.camera_elevation=_saved_number(state.get("elevation"),world.camera_elevation,LifeWorld.CAMERA_MIN_PITCH,LifeWorld.CAMERA_MAX_PITCH)
 	world.camera.size=_saved_number(state.get("zoom"),world.camera.size,LifeWorld.CAMERA_MIN_ZOOM,LifeWorld.CAMERA_MAX_ZOOM)
@@ -4481,7 +4533,7 @@ func _process(delta:float) -> void:
 			var side=Vector3(cos(world.camera_angle),0,-sin(world.camera_angle))
 			var forward=Vector3(sin(world.camera_angle),0,cos(world.camera_angle))
 			world.camera_target+=(side*pan.x+forward*pan.y)*delta*LifeWorld.CAMERA_PAN_SPEED
-			world.camera_target.x=clampf(world.camera_target.x,LifeBuildingState.LOT.position.x+3,LifeBuildingState.LOT.end.x-3);world.camera_target.z=clampf(world.camera_target.z,LifeBuildingState.LOT.position.y+3,LifeBuildingState.LOT.end.y-3)
+			world.camera_target.x=clampf(world.camera_target.x,LifeBuildingState.lot().position.x+3,LifeBuildingState.lot().end.x-3);world.camera_target.z=clampf(world.camera_target.z,LifeBuildingState.lot().position.y+3,LifeBuildingState.lot().end.y-3)
 			world.update_camera()
 
 func _advance_movement(delta:float) -> bool:

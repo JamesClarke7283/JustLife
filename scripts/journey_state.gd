@@ -4,6 +4,7 @@ class_name LifeJourneyState
 ## schedules, temporary graph indices and runtime node references are derived.
 const VERSION:int=2
 const Building=preload("res://scripts/building_state.gd")
+const LifeLand=preload("res://scripts/land.gd")
 const Navigation=preload("res://scripts/lot_navigation.gd")
 const Gait=preload("res://scripts/stair_gait.gd")
 const PHASES:Array[String]=["route","to_wait","waiting","entry","transit","clear"]
@@ -121,6 +122,13 @@ static func validate(data:Variant,household:Dictionary)->Dictionary:
 	var venue:Variant=context.get("venue","home")
 	if context.has("view_level") and not number(context.view_level,0,1,true):return {"ok":false,"error":"Invalid saved visible floor."}
 	if not venue is String or not LifeNeighborhood.PLACES.has(venue):return {"ok":false,"error":"Invalid saved venue."}
+	# The household's land is checked and applied before any layout is validated,
+	# because every rectangle in a layout is bounded by the lot the household
+	# actually owns — a layout saved on a bought plot cannot be judged against
+	# the starting plot.
+	var land_error:String=LifeLand.validate(context.get("land"))
+	if not land_error.is_empty():return {"ok":false,"error":land_error}
+	if venue=="home":Building.set_land(context.get("land"))
 	var checked:Dictionary=layout_context(household.world)
 	if not bool(checked.ok):return checked
 	var layouts:Dictionary={venue:household.world}

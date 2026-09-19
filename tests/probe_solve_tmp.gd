@@ -16,7 +16,7 @@ func _place(world:LifeWorld,canonical:Dictionary,placed:Array,e:Dictionary)->Dic
 				var cand:Dictionary=base.duplicate(true)
 				cand.x=base.x+float(dx)*.25;cand.z=base.z+float(dz)*.25
 				var a:Rect2=world.furnishing_rect(cand)
-				if not Building.LOT.encloses(a):continue
+				if not Building.lot().encloses(a):continue
 				if not Building.footprint_supported(canonical,lvl,a):continue
 				if not passable and Building.blocked_rect(canonical,lvl,a):continue
 				if not passable:

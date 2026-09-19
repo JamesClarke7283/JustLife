@@ -37,7 +37,7 @@ func _run() -> void:
 	app.set_process(false)
 	app.world.set_process(false)
 
-	print("LOT=", LifeBuildingState.LOT, " cells=", LifeBuildingState.cell_range())
+	print("LOT=", LifeBuildingState.lot(), " cells=", LifeBuildingState.cell_range())
 	# A point well outside the old lot but inside the new one.
 	for at: Vector3 in [Vector3(-10.5, .16, 0), Vector3(10.5, .16, 0), Vector3(0, .16, -7.5), Vector3(0, .16, 7.5), Vector3(-8.5, .16, 6.5)]:
 		var clear: bool = app.world.lot_navigation.point_clear(0, at)

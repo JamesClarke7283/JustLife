@@ -7,7 +7,7 @@ func _initialize()->void:_run.call_deferred()
 func _valid(world:LifeWorld,canonical:Dictionary,e:Dictionary,others:Dictionary)->bool:
 	var lvl:int=int(e.get("level",0))
 	var a:Rect2=world.furnishing_rect(e)
-	if not Building.LOT.encloses(a):return false
+	if not Building.lot().encloses(a):return false
 	if not Building.footprint_supported(canonical,lvl,a):return false
 	if not LifeCatalog.passable(str(e.kind)) and Building.blocked_rect(canonical,lvl,a):return false
 	for other:Dictionary in others.values():

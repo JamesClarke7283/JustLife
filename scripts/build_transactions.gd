@@ -6,6 +6,7 @@ const Building=preload("res://scripts/building_state.gd")
 const RoofEdits=preload("res://scripts/roof_edits.gd")
 const RoofRules=preload("res://scripts/roof_rules.gd")
 const Edits=preload("res://scripts/building_edits.gd")
+const Land=preload("res://scripts/land.gd")
 const Navigation=preload("res://scripts/lot_navigation.gd")
 const Protection=preload("res://scripts/build_protection.gd")
 var app:Node
@@ -333,6 +334,60 @@ func _same_geometry(first:Dictionary,second:Dictionary)->bool:
 	return left==right
 
 func clear_history()->void:_history.clear();_cache_key="";_cache.clear()
+
+## Buy the next neighbouring plot on one side of the lot, and rebuild the world
+## around the larger ground.
+##
+## It is a transaction like any other build: the quote is priced against the
+## land as it stands, the wallet is charged only on success, and the ground,
+## hedge, navigation region, compatibility grid and camera bound are all rebuilt
+## from the new lot in the same step, so a plot can never be half-bought.
+func buy_land(side:String)->Dictionary:
+	if _busy:return _error("A building change is already being applied.")
+	if not is_instance_valid(app) or not is_instance_valid(app.world):return _error("No home is open.")
+	if str(app.current_venue)!="home":return _error("Only the household's own lot can be expanded.")
+	var purchase:Dictionary=Land.purchase(Building.land,side,app.sim.funds)
+	if not bool(purchase.ok):return purchase
+	var before:Dictionary=Building.land.duplicate(true)
+	var after:Dictionary=purchase.state
+	# Land purchase is not a construction edit, so it takes no building revision
+	# and no undo entry. Instead the two changes are applied together: the land
+	# is set, the world rebuilds, and the wallet pays only if that succeeded.
+	Building.set_land(after)
+	var result:Dictionary=_rebuild_for_land()
+	if not bool(result.ok):
+		Building.set_land(before)
+		_rebuild_for_land()
+		return result
+	if is_instance_valid(app.household):app.household.set_funds(int(purchase.funds))
+	else:app.sim.funds=int(purchase.funds)
+	# The home layout is re-serialized because the lot moved the ground under it.
+	if str(app.get("current_venue"))=="home":app.home_layout=app.world.serialize_items()
+	return {"ok":true,"side":side,"cost":int(purchase.cost),"land":after.duplicate(true),"plots":Land.plots(after),"lot":Building.lot()}
+
+
+## Rebuild the world in place after the land changed, keeping the building state
+## and every furnishing exactly where they were.
+func _rebuild_for_land()->Dictionary:
+	var protection:Dictionary=_protection()
+	_busy=true
+	# The ground is redrawn first, because the lawn, hedge and street all move
+	# with the lot; the building and its furnishings are untouched.
+	if app.world.has_method("draw_ground"):app.world.draw_ground()
+	app.world.rebuild_navigation()
+	var error:String=app.world.last_layout_error
+	if error.is_empty():
+		var state:Dictionary=app.world.construction.validated_state()
+		if not bool(state.ok):error=str(state.error)
+	if not error.is_empty():
+		_busy=false;return _error(error)
+	# Existing routes ride the same graph generation, exactly as any other
+	# rebuild does, so nobody is stranded by the boundary moving under them.
+	if app.has_method("build_protection_context"):
+		var unchanged:Array[String]=Protection.unchanged_routes(protection,app.world.construction.building_state,app.world.construction.building_state,app.world.lot_navigation)
+		Protection.acknowledge_rebuild(app,protection,unchanged)
+	_cache_key="";_cache.clear();_busy=false
+	return {"ok":true}
 
 func _apply(before:Dictionary,after:Dictionary,funds:int)->Dictionary:
 	var protection:Dictionary=_protection()

@@ -28,7 +28,7 @@ func _run()->void:
 	# bearing walls still fit, but the roof's 28 cm eaves cross the lot edge.
 	# Derived from the lot, so a further garden enlargement keeps the fixture at
 	# the real rim instead of pinning a stale one.
-	var edge_delta:float=Building.LOT.end.x-4.0-.08
+	var edge_delta:float=Building.lot().end.x-4.0-.08
 	var edge:Dictionary=base()
 	for group:String in ["walls","floors"]:
 		for entry:Dictionary in edge[group]:entry.x+=edge_delta
@@ -39,7 +39,7 @@ func _run()->void:
 	# The same home far enough inside that the eaves clear: this is a garden-room
 	# position the old 18x16 roof bound refused even though the lot had already
 	# grown to 24x18, so a legal roof out in the garden could not be bought.
-	var garden_delta:float=Building.LOT.end.x-4.28-.02
+	var garden_delta:float=Building.lot().end.x-4.28-.02
 	var garden:Dictionary=base()
 	for group:String in ["walls","floors"]:
 		for entry:Dictionary in garden[group]:entry.x+=garden_delta

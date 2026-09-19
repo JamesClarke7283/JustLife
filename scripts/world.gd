@@ -45,6 +45,9 @@ var sun: DirectionalLight3D
 var environment: Environment
 var house: Node3D
 var furniture: Node3D
+## The ground and its dressing (lawn, hedge, street, trees), kept apart from the
+## house so buying a neighbouring plot redraws only the land.
+var ground_node: Node3D
 var walls: Array[Node3D] = []
 var items: Array[Dictionary] = []
 var _furnishing_volume_cache:Dictionary={}
@@ -265,8 +268,13 @@ func create_home(layout: Array = []) -> void:
 	house.add_child(furniture)
 	items.clear()
 	walls.clear()
-	box(house,Vector3(0,-.3,0),Vector3(120,.3,120),"b8cdaa")
-	box(house,Vector3(0,-.17,0),Vector3(17,.15,17),"a8c191")
+	# The ground and everything dressing it live in their own node, so buying a
+	# neighbouring plot redraws only the land without disturbing the house, the
+	# furnishings or the actors standing on it.
+	ground_node=Node3D.new()
+	ground_node.name="Ground"
+	house.add_child(ground_node)
+	draw_ground()
 	var surface_start:int=house.get_child_count()
 	box(house,Vector3(0,-.025,0),Vector3(12.35,.25,10.35),"d3c9b6")
 	box(house,Vector3(0,.105,0),Vector3(12,.045,10),"cfa97e").set_meta("starter_wood_finish",true)
@@ -312,16 +320,9 @@ func create_home(layout: Array = []) -> void:
 	side_skirting.set_meta("wall_decoration",true);side_skirting.set_meta("wall_support_normal",Vector3.LEFT)
 	box(house,Vector3(0,.02,5.72),Vector3(2.4,.2,1.35),"c7bea9")
 	box(house,Vector3(0,-.025,7.1),Vector3(1.75,.08,1.8),"dcd5be")
-	box(house,Vector3(0,-.02,8.5),Vector3(75,.10,1.25),"e0d9c7")
-	box(house,Vector3(0,-.07,11.0),Vector3(100,.12,3.7),"798781")
-	for x in range(-30,31,5): box(house,Vector3(x,.003,11),Vector3(2,.009,.08),"e6ddbc")
-	for x in [-7.55,7.55]:
-		for z in [-6.8,-1.2,5.9]: tree(Vector3(x,-.10,z),rng.randf_range(.8,1.1) if z<0 else .55)
-	for x in [-10.5,10.6,16,-17]:tree(Vector3(x,-.12,-8),rng.randf_range(1.0,1.6))
-	# The boundary hedge sits on the garden's own back edge, so a deeper garden
-	# moves it rather than leaving it standing in the middle of the lawn.
-	for z in [Building.LOT.position.y+.6, Building.LOT.position.y+1.2]:
-		for x in range(int(Building.LOT.position.x)+1,int(Building.LOT.end.x)):sphere(house,Vector3(x,.25,z),Vector3(1.0,.64,.80),"71945e")
+	# The house's own foundation beds and doorstep flowers stay beside the
+	# building; the lawn, hedges, street and trees belong to draw_ground(), which
+	# is redrawn whenever the household buys a neighbouring plot.
 	for x in [-6.85,6.85]:
 		for z in range(-5,5):
 			if z%2==0:sphere(house,Vector3(x,.16,z),Vector3(.68,.34,.65),"84a366").set_meta("garden_decoration",true)
@@ -329,11 +330,6 @@ func create_home(layout: Array = []) -> void:
 		for i in range(12):
 			var p=Vector3(x+rng.randf_range(-.9,.9),-.09,6.8+rng.randf_range(-.45,.45))
 			flower_clump(p, rng, "d4868e" if i%2 else "f5e5ad")
-	for x in [-23,25]: neighbor_home(Vector3(x,0,-1))
-	# A simple open mailbox with a brass house number plate.
-	box(house,Vector3(2,.52,7.8),Vector3(.10,1.1,.10),"ab7951")
-	box(house,Vector3(2,1.06,7.8),Vector3(.45,.35,.33),"397e70")
-	box(house,Vector3(2,1.07,7.98),Vector3(.26,.05,.008),"c8a562")
 	grid = Node3D.new()
 	house.add_child(grid)
 	for i in range(-12,13):box(grid,Vector3(i*.5,.17,0),Vector3(.012,.005,10),"a6bca9")
@@ -367,7 +363,7 @@ func validate_home_layout(layout:Variant) -> String:
 		if not Building.number(entry.get("level",0),0,1,true):return "Invalid furnishing level."
 		for key:String in ["x","z","rotation"]:
 			if not Building.number(entry.get(key,0),-10000,10000):return "Invalid furnishing transform."
-		if not Building.LOT.encloses(furnishing_rect(entry)):return "A furnishing extends beyond the navigable lot."
+		if not Building.lot().encloses(furnishing_rect(entry)):return "A furnishing extends beyond the navigable lot."
 	# Align ingress with the detached graph's obstacle bound so a valid layout
 	# cannot replace the live scene and only then fail graph construction.
 	if ids.size()>512:return "Too many furnishings for this lot."
@@ -532,12 +528,13 @@ func window_panel(p: Vector3, side: bool) -> void:
 	for x in [-1.0,1.0]:box(root,Vector3(x,.03,.12),Vector3(.18,1.6,.09),"d9cbb2")
 	assign_structure_layer(root,clampi(floori((p.y-Building.GROUND_Y)/Building.RISE),0,1))
 
-func tree(p: Vector3, s: float) -> void:
+func tree(p: Vector3, s: float, parent: Node3D = null) -> void:
 	# Coordinate-only variation preserves the world's shared random stream.
 	var key:int=(roundi(p.x*100.0)*73856093) ^ (roundi(p.z*100.0)*19349663)
 	var variant:String="a" if posmod(key,5)<3 else "b"
 	var tree_root:Node3D=load("res://assets/models/tree_field_maple_%s.glb"%variant).instantiate()
-	house.add_child(tree_root)
+	if parent == null: parent = house
+	parent.add_child(tree_root)
 	tree_root.position=p
 	# The imported scene has two immediate meshes. Keep the same root transform
 	# and immediate GeometryInstance3D contract used by camera transparency.
@@ -549,6 +546,54 @@ func tree(p: Vector3, s: float) -> void:
 		var tree_material:StandardMaterial3D=mesh.get_active_material(0)
 		tree_material.vertex_color_use_as_albedo=true
 	landscape_trees.append(tree_root)
+
+## Draw the household's land: the lawn it covers, the boundary hedges on its own
+## outer edges, the street in front and the trees behind.
+##
+## Everything here is derived from `Building.lot()`, so it is drawn again from
+## scratch whenever the land grows. Redrawing is cheap and complete, which is
+## what keeps a bought plot from leaving the old hedge standing in the middle of
+## the new lawn.
+func draw_ground() -> void:
+	if not is_instance_valid(ground_node):
+		return
+	for child:Node in ground_node.get_children():
+		ground_node.remove_child(child)
+		child.queue_free()
+	# The camera's transparency list must not keep trees that have been redrawn.
+	landscape_trees = landscape_trees.filter(func(node: Node3D) -> bool: return is_instance_valid(node) and node.get_parent() != null)
+	ground_node.position=Vector3.ZERO
+	var ground:Rect2=Building.lot()
+	var parent:Node3D=ground_node
+	box(parent,Vector3(ground.get_center().x,-.3,ground.get_center().y),Vector3(ground.size.x+80,.3,ground.size.y+80),"b8cdaa")
+	# Trees behind the house, kept clear of the lawn the household can walk on by
+	# sitting them beyond the lot's own back edge.
+	for x in [-7.55,7.55]:
+		for z in [-6.8,-1.2,5.9]: tree(Vector3(x,-.10,z),0.55,parent)
+	var back_edge:float=ground.position.y
+	for x in [-10.5,10.6,16,-17]:tree(Vector3(x,-.12,back_edge+4.0),1.0,parent)
+	# The boundary hedges sit on the garden's own edges, so a deeper or wider
+	# garden moves them rather than leaving them standing in the middle of the
+	# lawn. The frontage is left open for the street.
+	var west_edge:float=ground.position.x
+	var east_edge:float=ground.end.x
+	for z in [back_edge+.6, back_edge+1.2]:
+		for x in range(int(west_edge)+1,int(east_edge)):sphere(parent,Vector3(x,.25,z),Vector3(1.0,.64,.80),"71945e")
+	for side_x:float in [west_edge+.85, east_edge-.85]:
+		var span:int=int(maxf(1.0,(ground.end.y-2.0)-back_edge))
+		for step:int in range(span):
+			var z:float=back_edge+1.0+float(step)
+			sphere(parent,Vector3(side_x,.25,z),Vector3(.9,.5,.80),"71945e")
+	# The street stays where it is: the lot grows away from the frontage.
+	box(parent,Vector3(0,-.02,8.5),Vector3(75,.10,1.25),"e0d9c7")
+	box(parent,Vector3(0,-.07,11.0),Vector3(100,.12,3.7),"798781")
+	for x in range(-30,31,5): box(parent,Vector3(x,.003,11),Vector3(2,.009,.08),"e6ddbc")
+	for x in [-23,25]: neighbor_home(Vector3(x,0,-1))
+	# A simple open mailbox with a brass house number plate.
+	box(parent,Vector3(2,.52,7.8),Vector3(.10,1.1,.10),"ab7951")
+	box(parent,Vector3(2,1.06,7.8),Vector3(.45,.35,.33),"397e70")
+	box(parent,Vector3(2,1.07,7.98),Vector3(.26,.05,.008),"c8a562")
+
 
 func neighbor_home(p: Vector3) -> void:
 	var cottage:bool=p.x<0
@@ -978,7 +1023,7 @@ func begin_construction(tool:String) -> void:
 func grounds(point:Vector2,level:int) -> bool:
 	if construction.floor_contains(point,level):return true
 	if level!=0:return false
-	return Building.LOT.has_point(point)
+	return Building.lot().has_point(point)
 
 ## Whether this style and size of a kind may stand here. `style` and `size`
 ## default to the family's own first choice, so every existing caller that knows

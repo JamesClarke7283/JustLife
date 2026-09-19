@@ -4,19 +4,13 @@ class_name LifeRoofRules
 ## No Nodes, renderer, clock or wallet access. Attics/junctions are not implied.
 const EAVE:float=.28
 const SHELL:float=.10
-## The navigable lot: the house plus its garden. This is the single source of
-## truth for how far the ground reaches — `LifeBuildingState.LOT` aliases it,
-## and the navigation region, the compatibility grid and the pan clamp are all
-## derived from it — so every geometric rule bounds against the same,
-## deliberately generous garden. It is derived rather than saved, so enlarging it
-## here grows the garden of current saves and future ones alike.
-##
-## The house sits at x -6..6, z -5..5 and the front sidewalk stays at z 8.5, so
-## the lot is anchored there and grows outward: 12 m of garden beside the house
-## and 9 m behind it, which is where a pool, a court and a garage can all stand
-## together with room to walk between them. The front edge is left where it is so
-## the street, the doorstep and every walk to the lot exit stay put.
-const LOT:=Rect2(-18,-12,36,21)
+## The navigable lot is the household's own land: the plot it started with plus
+## every neighbouring plot it has bought. It is owned by `LifeBuildingState`
+## (which derives it from `LifeLand`), so this file reads the one live value
+## rather than holding its own copy that could drift from it.
+static func lot() -> Rect2:
+	return LifeBuildingState.lot()
+
 static func parameters(record:Dictionary)->Dictionary:
 	var span:float=float(record.w) if int(record.rotation)==0 else float(record.d)
 	var length:float=float(record.d) if int(record.rotation)==0 else float(record.w)
@@ -37,7 +31,7 @@ static func validate(state:Dictionary)->String:
 	if state.roofs.size()>16:return "This home already has the maximum16 separate roof pieces."
 	for roof:Dictionary in state.roofs:
 		if float(roof.w)<1.5 or float(roof.d)<1.5:return "A gable roof must be at least1.5 metres wide and deep."
-		if not LOT.encloses(support_rect(roof).grow(EAVE)):return "The roof's full28cm eaves must stay inside the lot."
+		if not lot().encloses(support_rect(roof).grow(EAVE)):return "The roof's full28cm eaves must stay inside the lot."
 		var volume:AABB=envelope(roof)
 		for other:Dictionary in state.roofs:
 			if str(roof.id)!=str(other.id) and volume.grow(.005).intersects(envelope(other)):return "Separate roofs need clear eaves. Intersecting roof junctions are not supported yet."

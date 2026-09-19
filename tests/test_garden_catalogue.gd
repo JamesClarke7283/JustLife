@@ -288,7 +288,7 @@ func _free_spot(kind: String, style: String, size: String) -> Vector3:
 ## a change here is what makes the garden bigger — and the room claims are what
 ## make that change worth anything.
 func _lot_room() -> void:
-	var lot: Rect2 = LifeBuildingState.LOT
+	var lot: Rect2 = LifeBuildingState.lot()
 	check(lot.size.x >= 36.0 and lot.size.y >= 21.0,
 		"The garden is at least 36 by 21 m (%d by %d)." % [int(lot.size.x), int(lot.size.y)])
 	# The street, the doorstep and every walk to the lot exit stay put when the
