@@ -54,6 +54,9 @@ func _run() -> void:
 	await _placement()
 	await _picker()
 	await _seat_capacity()
+	_lot_room()
+	_bike_prices()
+	_no_dead_catalogue_keys()
 
 	print("GARDEN_CATALOGUE %d checks, %d failures" % [checks, failures.size()])
 	app.queue_free()
@@ -278,6 +281,93 @@ func _free_spot(kind: String, style: String, size: String) -> Vector3:
 			z += 0.5
 		x += 0.5
 	return Vector3.INF
+
+
+## The lot's own size, and that the garden it describes really has room for what
+## is sold to stand in it. The lot is one constant every geometric rule reads, so
+## a change here is what makes the garden bigger — and the room claims are what
+## make that change worth anything.
+func _lot_room() -> void:
+	var lot: Rect2 = LifeBuildingState.LOT
+	check(lot.size.x >= 36.0 and lot.size.y >= 21.0,
+		"The garden is at least 36 by 21 m (%d by %d)." % [int(lot.size.x), int(lot.size.y)])
+	# The street, the doorstep and every walk to the lot exit stay put when the
+	# garden grows, so the front edge is anchored rather than scaled.
+	check(is_equal_approx(lot.end.y, 9.0), "The front edge of the lot is unchanged (%.1f)." % lot.end.y)
+	# The house must sit inside it with room all round, or the garden is not a
+	# garden.
+	check(lot.position.x <= -15.0 and lot.position.y <= -10.0,
+		"The lot extends well behind and beside the house (%s)." % str(lot.position))
+	# Every family the catalogue sells as a garden piece must have somewhere legal
+	# to stand. This is the check that caught a 6x4 m pool fitting nowhere.
+	var homeless: Array[String] = []
+	for kind: String in ["pool", "hot_tub", "garage", "car", "climbing_frame", "kids_swing",
+			"sand_pit", "outdoor_swing", "garden_ready", "game_trampoline", "game_giant_chess",
+			"bbq", "garden_table", "outdoor_tv", "tree_garden", "fence", "post_box"]:
+		var data: Dictionary = LifeCatalog.get_item(kind)
+		var style: String = LifeCatalogVariants.style_or_default("", data)
+		if _free_spot(kind, style, "small").is_finite(): continue
+		homeless.append(kind)
+	check(homeless.is_empty(), "Every garden family has room to stand in the lot (%s)."
+		% ", ".join(PackedStringArray(homeless)))
+	# A large pool is the biggest thing sold, and the extra room is what makes it
+	# placeable at all.
+	var big: int = 0
+	var x: float = -17.5
+	while x <= 17.5:
+		var z: float = -11.0
+		while z <= 8.0:
+			if app.world.can_place("pool", Vector3(x, 0.16, z), 0.0, "classic", "large"): big += 1
+			z += 1.0
+		x += 1.0
+	check(big > 0, "The garden is big enough for a large pool (%d spots)." % big)
+	# The navigation region and the compatibility grid are derived from the lot, so
+	# the whole of it is walkable rather than only the strip the house stands on.
+	var region: Rect2i = app.world.navigation.region
+	check(region.encloses(LifeBuildingState.cell_range()),
+		"The navigation region covers the whole lot (%s against %s)." % [str(region), str(LifeBuildingState.cell_range())])
+	var far: Array[String] = []
+	for corner: Vector2 in [Vector2(lot.position.x + 1.0, lot.position.y + 1.0),
+			Vector2(lot.end.x - 1.0, lot.position.y + 1.0),
+			Vector2(lot.position.x + 1.0, lot.end.y - 3.0),
+			Vector2(lot.end.x - 1.0, lot.end.y - 3.0)]:
+		var cell := Vector2i(roundi(corner.x * 4.0), roundi(corner.y * 4.0))
+		if cell.x < region.position.x or cell.x >= region.end.x or cell.y < region.position.y or cell.y >= region.end.y:
+			far.append(str(corner)); continue
+		if app.world.navigation.is_point_solid(cell): far.append(str(corner))
+	check(far.is_empty(), "The far corners of the garden are real ground (%s)." % ", ".join(PackedStringArray(far)))
+
+
+## Bicycles have to stay the cheap, ordinary way to get about: cheaper than a car
+## and affordable out of a starting purse.
+func _bike_prices() -> void:
+	var adult: Dictionary = LifeCatalog.get_item("bike_adult")
+	var kids: Dictionary = LifeCatalog.get_item("bike_kids")
+	var helmet: Dictionary = LifeCatalog.get_item("helmet")
+	var car: Dictionary = LifeCatalog.get_item("car")
+	check(int(adult.price) < int(car.price), "A bicycle costs less than a car (%d against %d)." % [int(adult.price), int(car.price)])
+	check(int(kids.price) < int(adult.price), "A child's bicycle costs less than an adult's (%d against %d)." % [int(kids.price), int(adult.price)])
+	check(int(adult.price) + int(helmet.price) < 250,
+		"A bike and its helmet together are affordable out of a starting purse (%d)." % (int(adult.price) + int(helmet.price)))
+	check(int(adult.price) < int(LifeCatalog.get_item("pool").price),
+		"A bicycle costs less than a pool (%d against %d)." % [int(adult.price), int(LifeCatalog.get_item("pool").price)])
+
+
+## A catalogue key that no code reads is a second answer waiting to disagree with
+## the one that is enforced, so the age rule for the grown-up swing lives only in
+## `LifeOutdoorActs` and the catalogue carries no flag of its own.
+func _no_dead_catalogue_keys() -> void:
+	var swing: Dictionary = LifeCatalog.get_item("outdoor_swing")
+	check(not swing.has("adults_only"), "The catalogue carries no unenforced age flag.")
+	# And the rule it used to describe really is enforced.
+	check(not LifeOutdoorActs.act_error("outdoor_swing", "child", false).is_empty(),
+		"A child is refused the grown-up swing.")
+	check(LifeOutdoorActs.act_error("outdoor_swing", "teen", false).is_empty(),
+		"A teenager may use the grown-up swing.")
+	check(LifeOutdoorActs.act_error("outdoor_swing", "adult", false).is_empty(),
+		"An adult may use the grown-up swing.")
+	check(LifeCatalogVariants.seats(swing, "large") == 8,
+		"The grown-up swing still states how many it seats (%d)." % LifeCatalogVariants.seats(swing, "large"))
 
 
 ## A furnishing really seats the number the catalogue advertises.
