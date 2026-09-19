@@ -1292,7 +1292,13 @@ func _finish_front() -> void:
 			_gain_skill(job_skill, 24.0)
 			skill_rank = float(skills[job_skill].level)
 		var comfort: float = (float(needs["hunger"]) + float(needs["energy"]) + float(needs["fun"])) / 3.0
-		career["performance"] = float(career["performance"]) + _career_performance_gain(18.0 + comfort * 0.15 + skill_rank * 2.0)
+		# At the top of the ladder there is no promotion left to spend performance
+		# on, so it would accumulate for ever — past the ceiling the save validator
+		# allows, which made a maxed career impossible to save. It is capped where
+		# the ladder ends, exactly as the freelance and scheduled work already cap
+		# theirs.
+		career["performance"] = minf(100.0 if int(career["level"]) >= LifeCareers.MAX_LEVEL else 1000.0,
+			float(career["performance"]) + _career_performance_gain(18.0 + comfort * 0.15 + skill_rank * 2.0))
 		_emit_notice("Shift finished. Earned ℒ%d." % income)
 		_check_promotion()
 	elif id in SOCIAL_ACTIONS:

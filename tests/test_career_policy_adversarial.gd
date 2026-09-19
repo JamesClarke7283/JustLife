@@ -53,6 +53,33 @@ func _birthdays_and_promotions() -> void:
 	check(promoted.away_state.salary == start_pay and promoted.career.salary == LifeCareers.pay(LifeCareers.DEFAULT_JOB, 2), "Paid return keeps pre-promotion shift salary distinct from new salary.")
 	check(worker().restore_state(snapshot(promoted)).ok, "A promotion during the completion callback remains loadable.")
 
+	# At the top of the ladder there is no promotion left to spend performance on,
+	# so it must not accumulate past what a save may hold. It used to: a Lifelet
+	# who reached rung ten and kept working banked performance for ever, and once
+	# it passed the validator's ceiling the household could no longer be saved at
+	# all. Ninety days of ordinary work reproduced it (1023.8) — the save was
+	# refused with "Save contains an invalid career".
+	var topped: LifeSim = worker("adult", 540.0)
+	topped.career.level = LifeCareers.MAX_LEVEL
+	topped.career.title = LifeCareers.title_at(str(topped.career.track), LifeCareers.MAX_LEVEL)
+	topped.career.performance = 99.0
+	observe(topped)
+	topped.queue_action("job", "desk")
+	check(not topped.action_queue.is_empty(), "A top-rung Lifelet can still queue a home shift.")
+	topped.begin_current_action()
+	advance(topped, 361.0)
+	# There is no promotion left at the top of the ladder, so nothing spends the
+	# earned performance. It must stop at the promotion threshold rather than
+	# climbing for ever: unbounded, it passed the validator's ceiling and the
+	# household could no longer be saved at all. Ninety days of ordinary work
+	# produced 1023.8 and the save was refused with "Save contains an invalid
+	# career".
+	check(int(topped.career.level) == LifeCareers.MAX_LEVEL, "A top-rung Lifelet stays at the top of the ladder.")
+	check(float(topped.career.performance) <= 100.0,
+		"Performance at the top of the ladder stops at the promotion threshold (%.1f)." % float(topped.career.performance))
+	check(worker().restore_state(snapshot(topped)).ok,
+		"A maxed career that kept working is still saveable.")
+
 func _career_changes() -> void:
 	var sim: LifeSim = worker()
 	sim.queue_action("career_day", "lot_exit")
