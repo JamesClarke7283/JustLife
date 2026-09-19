@@ -50,6 +50,7 @@ const NEED_NAMES: Array[String] = ["hunger", "energy", "hygiene", "bladder", "fu
 const RESUMABLE_BREAK_ACTIONS: Array[String] = ["job"]
 const LifeWantsManager = preload("res://scripts/wants_manager.gd")
 const LifeLand = preload("res://scripts/land.gd")
+const LifeProperties = preload("res://scripts/properties.gd")
 const TRAIT_NAMES: Array[String] = ["Creative", "Outgoing", "Active", "Bookworm", "Foodie", "Neat"]
 const ASPIRATION_NAMES: Array[String] = ["Maker", "Connected", "Successful", "Balanced"]
 const NEED_DECAY: Dictionary = {"hunger": 3.5, "energy": 3.0, "hygiene": 2.1, "bladder": 4.0, "fun": 2.5, "social": 2.0}
@@ -57,7 +58,10 @@ const SKILL_NAMES: Array[String] = ["cooking", "creativity", "charisma", "logic"
 ## What a home insurance policy is. The catalogue lives here so a save and the
 ## phone price the same product; the household owns the purchased record.
 const INSURANCE_POLICIES: Dictionary = {
-	"home":{"label":"Home insurance","premium":450}
+	"home":{"label":"Home insurance","premium":450,"payout_multiple":1.0},
+	# Higher cover on a bigger house: a larger premium, and a break-in is paid
+	# back with interest rather than merely made even.
+	"premium":{"label":"Premium home insurance","premium":900,"payout_multiple":1.5},
 }
 ## The nightly break-in that makes a policy worth buying: a real loss, capped at
 ## what the purse actually holds so funds can never go negative.
@@ -2119,6 +2123,11 @@ func robbery() -> Dictionary:
 		return {"ok":true,"stolen":loss,"reimbursed":0,"insured":false}
 	_emit_notice("A burglar broke in and took ℒ%d. Home insurance paid it all back." % loss)
 	funds+=loss
+	var multiple:float=float(INSURANCE_POLICIES[insurance_policy_id].get("payout_multiple",1.0))
+	if multiple>1.0:
+		var extra:int=roundi(float(loss)*(multiple-1.0))
+		funds+=extra
+		_emit_notice("Premium cover paid a further ℒ%d on top." % extra)
 	_emit_changed()
 	return {"ok":true,"stolen":loss,"reimbursed":loss,"insured":true}
 
@@ -3430,6 +3439,8 @@ func _validate_state(state: Dictionary) -> String:
 	if world_state is Dictionary:
 		var land_error: String = LifeLand.validate(world_state.get("land"))
 		if not land_error.is_empty(): return land_error
+		var property_error: String = LifeProperties.validate(world_state.get("properties"))
+		if not property_error.is_empty(): return property_error
 	for need_name: String in NEED_NAMES:
 		if not _number_in_range(state["needs"].get(need_name), 0.0, 100.0):
 			return "Save contains an invalid need."

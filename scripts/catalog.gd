@@ -221,6 +221,61 @@ static func passable(kind: String) -> bool:
 static func get_item(kind: String) -> Dictionary:
 	return ITEMS.get(kind, {})
 
+## The furniture of the two larger houses. They are laid out inside the same
+## 12 m by 10 m shell as the starter homes — the shell is what Build mode lets a
+## player reshape — but every room is a separate one, so a growing household has
+## real bedrooms rather than one shared room.
+##
+## Rowan Villa uses the middle partition as its bedroom wall, Juniper House uses
+## the two side rooms as separate bedrooms and the middle as a hallway.
+static func _rowan_entries() -> Array:
+	return [
+		# Kitchen along the back-left, with a second counter run for a big household.
+		["fridge",-5.28,-4.3,0],["counter",-4.18,-4.4,0],["counter",-3.1,-4.4,0],["stove",-2.02,-4.4,0],["sink",-.94,-4.4,0],
+		["dining",-2.6,-2.0,0],["chair",-2.6,-2.95,0],["chair",-2.6,-1.05,180],["chair",-3.6,-2.0,90],["chair",-1.6,-2.0,-90],
+		# Living room.
+		["rug",-4.0,2.2,0],["sofa",-4.5,3.6,180],["loveseat",-1.9,3.6,180],["table",-3.2,2.1,0],
+		["tv",-5.1,.6,90],["lamp",-5.15,4.2,0],["floor_lamp",-.2,4.3,0],
+		# Study corner.
+		["desk",-.2,-2.9,0],["chair",-.2,-2.0,180],["bookshelf",-.2,-4.3,0],["bookshelf",2.2,-4.3,0],
+		# Two real bedrooms behind the side partition.
+		["bed",2.6,-2.4,0],["nightstand",1.6,-2.4,0],["wardrobe",3.7,-4.2,180],
+		["bed",4.8,1.4,90],["nightstand",4.8,2.6,0],["wardrobe",2.4,4.3,180],["mirror",2.4,-.5,0],
+		# Bathroom in the far corner.
+		["shower",5.2,-3.9,0],["toilet",2.2,-.6,-90],["sink",4.0,-.6,-90],
+		["plant",1.5,3.4,0],["plant",-5.0,-.6,0],["painting",-2.1,-4.91,0],["painting",2.6,4.91,180],
+		["rubbish_bin",-.6,-4.45,0],["piano",3.6,2.6,0],
+	]
+
+
+static func _juniper_entries() -> Array:
+	return [
+		# A wide kitchen along the whole back wall.
+		["fridge",-5.28,-4.3,0],["counter",-4.18,-4.4,0],["counter",-3.1,-4.4,0],["stove",-2.02,-4.4,0],
+		["sink",-.94,-4.4,0],["counter",.14,-4.4,0],["counter",1.22,-4.4,0],
+		# Formal dining room on the left, seating six.
+		["dining",-4.2,-.6,0],["chair",-4.2,-1.6,0],["chair",-4.2,.4,180],["chair",-5.3,-.6,90],["chair",-3.1,-.6,-90],
+		["painting",-5.9,-.6,90],["plant",-5.0,1.6,0],
+		# Two reception rooms: a lounge and a snug.
+		["rug",-3.5,3.1,0],["sofa",-4.4,4.0,180],["loveseat",-1.5,4.0,180],["table",-3.0,3.0,0],
+		["tv",-5.15,2.2,90],["lamp",-5.15,4.4,0],
+		["armchair",-1.0,2.0,0],["book_nook",-.4,3.9,180],["floor_lamp",-1.9,1.4,0],
+		# Four bedrooms: two off the hallway on the right, two beyond it.
+		["bed",2.4,-3.3,0],["nightstand",1.4,-3.3,0],["wardrobe",3.7,-4.2,180],
+		["bed",4.9,-1.2,90],["nightstand",4.9,-2.4,0],["wardrobe",2.4,-1.2,-90],
+		["bed",2.4,1.5,0],["nightstand",1.4,1.5,0],["wardrobe",3.7,3.6,180],
+		["bed",4.9,3.4,90],["nightstand",4.9,4.5,0],["mirror",3.0,4.6,180],
+		# Two bathrooms: the family bathroom and an en-suite.
+		["shower",5.2,-4.2,0],["bathtub",3.0,4.5,0],["toilet",.2,.6,0],["sink",.2,1.6,180],
+		["toilet",1.4,-.2,0],["sink",1.4,-1.2,180],
+		# Study and study corner.
+		["desk",-.2,-2.2,180],["chair",-.2,-1.3,0],["computer",1.4,-2.2,180],
+		["bookshelf",-.2,-4.3,0],["bookshelf",-.2,.9,0],
+		["plant",.6,4.5,0],["plant",-5.0,-2.6,0],["painting",-2.1,-4.91,0],["painting",1.0,4.91,180],
+		["rubbish_bin",.9,-4.45,0],["piano",3.9,2.9,0],["stereo",4.9,.4,90],
+	]
+
+
 static func starter_layout(lot: int = 0) -> Array:
 	var a: Array = []
 	var entries = [
@@ -248,6 +303,10 @@ static func starter_layout(lot: int = 0) -> Array:
 			["painting",-3.6,-4.91,0],["rubbish_bin",.1,-4.45,0],
 			["wardrobe",5.32,3.35,-90]
 		]
+	elif lot == 3:
+		entries = _rowan_entries()
+	elif lot == 4:
+		entries = _juniper_entries()
 	for i in range(entries.size()):
 		var e: Array = entries[i]
 		a.append({"id":"item_%d" % i,"kind":e[0],"x":e[1],"z":e[2],"rotation":e[3]})

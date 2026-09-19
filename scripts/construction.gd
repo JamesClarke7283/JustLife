@@ -230,7 +230,7 @@ func valid_record(e: Variant) -> bool:
 	if not e is Dictionary:return false
 	for key in ["x","z","w","d"]:
 		if not e.has(key) or not (e[key] is float or e[key] is int):return false
-	return absf(float(e.x))<9 and absf(float(e.z))<8 and float(e.w)>0 and float(e.d)>0 and float(e.w)<=18 and float(e.d)<=16
+	return absf(float(e.x))<Building.Land.MAX_SPAN*.5 and absf(float(e.z))<Building.Land.MAX_SPAN*.5 and float(e.w)>0 and float(e.d)>0 and float(e.w)<=Building.Land.MAX_SPAN and float(e.d)<=Building.Land.MAX_SPAN
 
 func update_cutaway(value: bool) -> void:
 	cutaway=value

@@ -2,6 +2,7 @@ extends Node
 
 const P = preload("res://scripts/palette.gd")
 const Land = preload("res://scripts/land.gd")
+const Properties = preload("res://scripts/properties.gd")
 const Variants = preload("res://scripts/catalog_variants.gd")
 const LifeLog = preload("res://scripts/logger.gd")
 const LifeWantsManager = preload("res://scripts/wants_manager.gd")
@@ -42,6 +43,9 @@ var catalog_search: String = ""
 var portrait_stale: bool = false
 var profile: Dictionary = {"name":"Mara Vale","frame":0,"hair":1,"skin_color":"d9a17d","hair_color":"54382a","top_color":"c97c66","bottom_color":"eadfc9","shoe_color":"e9e4d9","body_scale":1.0,"height_scale":1.0,"outfit":0,"eye_color":"547365","traits":["Creative","Outgoing","Foodie"],"aspiration":"Maker"}
 var selected_lot: int = 0
+## The homes this household owns, which one it lives in, and the insurance on
+## each. Rides the save beside the land and the layouts.
+var properties: Dictionary = Properties.fresh()
 var path: PackedVector3Array = []
 var path_index: int = 0
 var walk_only: bool = false
@@ -998,7 +1002,10 @@ func show_lot_selection() -> void:
 	if stage:stage.visible=false
 	world.sun.light_energy=.8
 	world.sun.rotation_degrees=Vector3(-52,-35,0)
-	world.create_home(LifeCatalog.starter_layout(selected_lot))
+	# The starter houses are the property policy's own list, so the opening
+	# picker and a mid-game move offer the same homes by the same rules.
+	selected_lot=clampi(selected_lot,0,Properties.starters().size()-1)
+	world.create_home(LifeCatalog.starter_layout(int(Properties.type_info(Properties.starters()[selected_lot]).layout)))
 	world.camera.projection=Camera3D.PROJECTION_ORTHOGONAL
 	world.camera.size=19.5
 	world.camera_angle=.65
@@ -1010,19 +1017,133 @@ func show_lot_selection() -> void:
 	small_caps("Welcome to",Vector2(57,140))
 	text_label("Juniper Bay",Vector2(54,171),Vector2(300,58),39,P.INK,true)
 	paragraph("Tree-lined streets. Friendly faces.\nA little space to make your own.",Vector2(58,242),Vector2(274,57),16)
-	var names=["Willow Cottage","Sage House","A Fresh Canvas"]
-	var desc=["A furnished start, with room to grow.","A creative home for your next chapter.","The essentials. You bring the ideas."]
-	for i in range(3):
-		var b=button(names[i],Vector2(54,331+i*95),Vector2(292,50),func():selected_lot=i;show_lot_selection(),selected_lot==i)
+	var starter_ids:Array[String]=Properties.starters()
+	for i in range(starter_ids.size()):
+		var info:Dictionary=Properties.type_info(starter_ids[i])
+		var b=button(str(info.label),Vector2(54,331+i*95),Vector2(292,50),func():selected_lot=i;show_lot_selection(),selected_lot==i)
 		b.alignment=HORIZONTAL_ALIGNMENT_LEFT
-		text_label(desc[i],Vector2(61,382+i*95),Vector2(282,30),12,P.MUTED)
-	text_label("1 BED  /  1 BATH  /  GARDEN",Vector2(57,640),Vector2(280,27),11,P.MUTED)
+		text_label(str(info.tagline),Vector2(61,382+i*95),Vector2(282,30),12,P.MUTED)
+	var chosen:Dictionary=Properties.type_info(starter_ids[selected_lot])
+	text_label("%d BED  /  %d BATH  /  %d ROOMS  /  GARDEN" % [int(chosen.beds),int(chosen.baths),int(chosen.rooms)],Vector2(57,640),Vector2(280,27),11,P.MUTED)
 	card(Vector2(476,750),Vector2(920,118),Color("f9faf2"))
 	small_caps("Move-in ready",Vector2(500,764))
-	text_label(names[selected_lot],Vector2(498,795),Vector2(360,43),30,P.INK,true)
-	text_label("Household funds after move-in\nℒ %s" % ("4,500" if selected_lot==2 else "2,500"),Vector2(814,782),Vector2(310,58),14,P.MUTED)
+	text_label(str(chosen.label),Vector2(498,795),Vector2(360,43),30,P.INK,true)
+	text_label("Household funds after move-in\nℒ %s" % ("4,500" if not bool(chosen.price) else "2,500"),Vector2(814,782),Vector2(310,58),14,P.MUTED)
 	button("Start living  →",Vector2(1136,779),Vector2(234,62),start_household,true)
 	button("←  Back to my Lifelet",Vector2(40,805),Vector2(280,50),show_creator)
+
+
+## Every home the household may live in, as a mid-game move: the starter houses
+## it can still choose, and the larger ones it can buy. The list, the price and
+## every refusal come from `LifeProperties`, so the panel and the move agree.
+func show_property_panel() -> void:
+	_begin_pause_overlay()
+	var background:ColorRect=ColorRect.new()
+	background.color=Color(.08,.17,.15,.28)
+	rect(background,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
+	card(Vector2(398,84),Vector2(644,772),P.WHITE,24,overlay)
+	small_caps("Where you live",Vector2(430,104),Vector2(580,25),overlay)
+	text_label("Homes & property",Vector2(428,136),Vector2(584,50),31,P.INK,true,overlay)
+	paragraph(Properties.describe(properties),Vector2(430,192),Vector2(580,40),15,P.MUTED,overlay)
+	var scroll:ScrollContainer=ScrollContainer.new()
+	scroll.name="PropertyList"
+	rect(scroll,Vector2(430,240),Vector2(580,520),overlay)
+	var column:VBoxContainer=VBoxContainer.new()
+	column.add_theme_constant_override("separation",8)
+	scroll.add_child(column)
+	for offer:Dictionary in Properties.offers(properties,sim.funds):
+		var house_id:String=str(offer.id)
+		var row:Control=Control.new()
+		row.name="PropertyRow_"+house_id
+		row.custom_minimum_size=Vector2(560,72)
+		column.add_child(row)
+		var title:String=str(offer.label)+(" · Current home" if bool(offer.current) else "")
+		if bool(offer.owned) and not bool(offer.current):title+=" · Owned"
+		var move:Button=button(title,Vector2.ZERO,Vector2(560,36),func():_move_house(house_id),bool(offer.current),row)
+		move.name="Property_"+house_id
+		move.disabled=not bool(offer.available)
+		var detail:String="%d bed · %d bath · %d rooms" % [int(offer.beds),int(offer.baths),int(offer.rooms)]
+		if not bool(offer.owned):detail+=" · ℒ%s to buy" % commas(int(offer.price))
+		detail+=" · ℒ%s to move" % commas(int(offer.cost))
+		var policy:Dictionary=offer.policy
+		detail+=" · insured (ℒ%s)" % commas(int(policy.premium)) if not policy.is_empty() else " · uninsured"
+		move.tooltip_text=str(offer.reason) if not bool(offer.available) else str(offer.description)
+		var note:Label=text_label(str(offer.reason) if not bool(offer.available) else detail,
+			Vector2(6,40),Vector2(548,24),11,P.CORAL if not bool(offer.available) else P.MUTED,false,row)
+		note.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	# The insurance of the home the household actually lives in, so a second
+	# property's cover is bought and cancelled where it is lived in.
+	var current_id:String=Properties.active(properties)
+	var insured:bool=false
+	if not current_id.is_empty():
+		var held:Dictionary=Properties.policy(properties,current_id)
+		insured=not held.is_empty()
+		text_label("Insurance on this home: %s" % (str(held.label) if insured else "none"),
+			Vector2(432,770),Vector2(300,26),14,P.INK if insured else P.MUTED,false,overlay)
+		button("Cancel insurance" if insured else "Insure this home · ℒ450",
+			Vector2(740,766),Vector2(270,34),func():_toggle_property_insurance(insured),false,overlay)
+	# A second policy product, so a bigger house can be covered more heavily.
+	if not insured:
+		button("Premium cover · ℒ900",Vector2(430,812),Vector2(280,34),func():_buy_property_policy("premium"),false,overlay)
+	button("Back to life",Vector2(740,812),Vector2(270,34),close_overlay,true,overlay)
+
+
+## Buy the named policy on the house the household lives in.
+func _buy_property_policy(policy_id:String) -> void:
+	var house_id:String=Properties.active(properties)
+	var result:Dictionary=Properties.buy_policy(properties,house_id,policy_id,household.funds)
+	if not bool(result.ok):
+		show_notice(str(result.error));show_property_panel();return
+	properties=result.state
+	household.set_funds(int(result.funds))
+	_apply_property_insurance()
+	show_notice("Cover taken out on this home for ℒ%s." % commas(int(result.cost)))
+	show_property_panel()
+
+
+## Cancel the cover on the house the household lives in.
+func _toggle_property_insurance(insured:bool) -> void:
+	var house_id:String=Properties.active(properties)
+	if insured:
+		var result:Dictionary=Properties.cancel_policy(properties,house_id)
+		if not bool(result.ok):show_notice(str(result.error))
+		else:properties=result.state;_apply_property_insurance();show_notice("Cover cancelled on this home.")
+	else:
+		_buy_property_policy("home")
+		return
+	show_property_panel()
+
+
+## Buy a home and move the household into it, rebuilding the world from its own
+## saved layout. The house left behind keeps its land and its policy.
+func _move_house(house_id:String) -> void:
+	var house:Dictionary=Properties.houses(properties).get(house_id,{})
+	var type_id:String=str(house.get("type",house_id))
+	# The home being left is saved with its land *before* the move is quoted, so
+	# the record the move carries already holds it and a later move back returns
+	# to the same house on the same plot with the same furnishings.
+	var leaving:String=Properties.active(properties)
+	if not leaving.is_empty() and properties.get("houses",{}).has(leaving):
+		properties.houses[leaving]["layout"]=world.serialize_items()
+		properties.houses[leaving]["land"]=LifeBuildingState.land.duplicate(true)
+	var result:Dictionary=Properties.move_into(properties,type_id,household.funds,house_id,LifeBuildingState.land)
+	if not bool(result.ok):
+		show_notice(str(result.error));show_property_panel();return
+	properties=result.state
+	household.set_funds(int(result.funds))
+	_apply_property_insurance()
+	# The new home is built from its own saved layout, or from its type's starter
+	# layout when it has never been lived in.
+	var target:Dictionary=Properties.house(properties,house_id)
+	var layout:Array=target.get("layout",[])
+	if layout.is_empty():layout=LifeCatalog.starter_layout(int(Properties.type_info(type_id).layout))
+	current_venue="home"
+	LifeBuildingState.set_land(target.get("land",{}))
+	home_layout=layout
+	setup_live(layout)
+	refresh_hud()
+	show_notice("Moved in to %s for ℒ%s." % [str(target.get("name","your new home")),commas(int(result.cost))])
+	close_overlay()
 
 func select_creator_member(index:int) -> void:
 	if index<0 or index>=household_profiles.size():return
@@ -1070,7 +1191,14 @@ func start_household() -> void:
 	for person:Dictionary in household_profiles:person.erase("world_state")
 	floor_color="cfa97e"
 	current_venue="home"
-	home_layout=LifeCatalog.starter_layout(selected_lot)
+	# The house the household starts in becomes its first property, so moving
+	# later has somewhere to move back to.
+	var starter_ids:Array[String]=Properties.starters()
+	var starter_type:String=starter_ids[clampi(selected_lot,0,starter_ids.size()-1)]
+	properties=Properties.fresh()
+	var granted:Dictionary=Properties.grant(properties,starter_type,starter_type,Land.fresh())
+	if bool(granted.ok):properties=granted.state
+	home_layout=LifeCatalog.starter_layout(int(Properties.type_info(starter_type).layout))
 	venue_layouts.clear()
 	loading_game=true
 	household.new_household(household_profiles)
@@ -1079,8 +1207,8 @@ func start_household() -> void:
 		loading_game=false;has_active_game=false;show_creator();show_notice(str(family_result.error));return
 	sim=household.selected()
 	bound_member_id=household.selected_id()
-	if selected_lot==2:household.set_funds(4500)
-	setup_live(LifeCatalog.starter_layout(selected_lot))
+	LifeBuildingState.set_land(Land.fresh())
+	setup_live(home_layout)
 	loading_game=false
 	show_notice("Welcome home, %s. Click a furnishing to choose what happens next." % str(sim.character.name).split(" ")[0])
 
@@ -3992,7 +4120,7 @@ func save_game(slot_id:String="",title:String="") -> bool:
 	_store_motion()
 	if current_venue=="home":home_layout=world.serialize_items()
 	else:venue_layouts[current_venue]=world.serialize_items()
-	sim.character["world_state"]={"player":[player.position.x,player.position.y,player.position.z],"player_rotation":player.rotation.y,"camera":[world.camera_target.x,world.camera_target.y,world.camera_target.z],"angle":world.camera_angle,"elevation":world.camera_elevation,"zoom":world.camera.size,"floor":floor_color,"lot":selected_lot,"cutaway":world.cutaway,"view_level":world.view_level,"sound":sound_enabled,"music":music_enabled,"venue":current_venue,"home_layout":home_layout,"venue_layouts":venue_layouts,"land":LifeBuildingState.land.duplicate(true),"residents":residents.snapshot()}
+	sim.character["world_state"]={"player":[player.position.x,player.position.y,player.position.z],"player_rotation":player.rotation.y,"camera":[world.camera_target.x,world.camera_target.y,world.camera_target.z],"angle":world.camera_angle,"elevation":world.camera_elevation,"zoom":world.camera.size,"floor":floor_color,"lot":selected_lot,"cutaway":world.cutaway,"view_level":world.view_level,"sound":sound_enabled,"music":music_enabled,"venue":current_venue,"home_layout":home_layout,"venue_layouts":venue_layouts,"land":LifeBuildingState.land.duplicate(true),"properties":_properties_for_save(),"residents":residents.snapshot()}
 	# Store the user's live speed, not a temporary menu/build pause.
 	var current_speed:int=sim.speed
 	sim.speed=speed_before_build if mode=="build" else (pause_before_menu if overlay_pauses_sim else current_speed)
@@ -4049,6 +4177,40 @@ func _restore_world_state(value:Variant) -> void:
 	if state.get("music") is bool:set_music(state.music)
 	world.update_camera()
 
+## Apply the live home's own policy to the household's sims. A house carries its
+## own cover, so moving into a house that is insured — or out of one that is —
+## changes what a break-in there costs.
+func _apply_property_insurance() -> void:
+	var house_id:String=Properties.active(properties)
+	var held:Dictionary=Properties.policy(properties,house_id)
+	var policy_id:String=str(held.get("id",""))
+	for member:Dictionary in household.members:
+		member.sim.insurance_policy_id=policy_id
+	household._sync_bill_mirror()
+
+
+## The property record as it should be saved: the house being lived in is
+## updated with the live layout and land first, so moving away and back returns
+## to the same house on the same plot with the same furnishings.
+func _properties_for_save() -> Dictionary:
+	var record:Dictionary=properties.duplicate(true)
+	var lived:String=str(record.get("active",""))
+	if not lived.is_empty() and record.get("houses",{}).has(lived) and current_venue=="home":
+		record.houses[lived]["layout"]=home_layout.duplicate(true)
+		record.houses[lived]["land"]=LifeBuildingState.land.duplicate(true)
+	return record
+
+
+func _restore_properties(value:Variant) -> void:
+	properties=Properties.from_save(value)
+	_apply_property_insurance()
+
+
+## Open the property panel from the house menu.
+func _property_panel_available() -> bool:
+	return mode=="live" and current_venue=="home" and not residents.home_visit.active()
+
+
 func _saved_number(value:Variant,fallback:float,minimum:float,maximum:float) -> float:
 	if not (value is float or value is int) or not is_finite(float(value)):return fallback
 	return clampf(float(value),minimum,maximum)
@@ -4100,6 +4262,7 @@ func load_game(slot_id:String="") -> void:
 			current_venue=place
 			for member:Dictionary in household.members:member.sim.visited_venue="" if place=="home" else place
 		home_layout=_safe_layout(saved_world.get("home_layout",[]))
+		_restore_properties(saved_world.get("properties"))
 		var saved_venues:Variant=saved_world.get("venue_layouts",{})
 		if saved_venues is Dictionary:
 			for key:String in saved_venues:

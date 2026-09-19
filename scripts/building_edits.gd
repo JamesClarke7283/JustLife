@@ -22,7 +22,7 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 		if not changed:return _error("The floors on this level already use that finish.")
 	elif tool in ["wall","room"]:
 		for key:String in ["ax","az","bx","bz"]:
-			if not Building.number(operation.get(key),-18,18):return _error("Choose two valid construction points.")
+			if not Building.number(operation.get(key),-Building.Land.MAX_SPAN,Building.Land.MAX_SPAN):return _error("Choose two valid construction points.")
 		var a:=Vector2(float(operation.ax),float(operation.az));var b:=Vector2(float(operation.bx),float(operation.bz))
 		var walls:Array=[];var length:float=0.0;var floor_cost:float=0.0
 		if tool=="wall":
@@ -64,7 +64,7 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 		var wall:Dictionary=Building.find(after,str(operation.id))
 		if wall.is_empty() or Building._group_of(after,str(operation.id))!="walls" or int(wall.level)!=int(level):return _error("The selected wall has changed.")
 		var side:Variant=null
-		if Building.number(operation.get("px"),-18,18) and Building.number(operation.get("pz"),-18,18):
+		if Building.number(operation.get("px"),-Building.Land.MAX_SPAN,Building.Land.MAX_SPAN) and Building.number(operation.get("pz"),-Building.Land.MAX_SPAN,Building.Land.MAX_SPAN):
 			side=Vector2(float(operation.px),float(operation.pz))
 		var changed:int=0
 		for target:Dictionary in (_room_walls(after,wall,int(level),side) if scope=="room" else [wall]):
@@ -80,7 +80,7 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 		var length:float=maxf(float(wall.w),float(wall.d))
 		if tool=="erase":cost=-int(length*20)
 		else:
-			if not Building.number(operation.get("center"),-18,18) or length<1.55:return _error("Choose a wall long enough for a doorway.")
+			if not Building.number(operation.get("center"),-Building.Land.MAX_SPAN,Building.Land.MAX_SPAN) or length<1.55:return _error("Choose a wall long enough for a doorway.")
 			var horizontal:bool=float(wall.w)>float(wall.d)
 			var center:float=float(wall.x) if horizontal else float(wall.z)
 			var door:float=clampf(float(operation.center),center-length*.5+.65,center+length*.5-.65)

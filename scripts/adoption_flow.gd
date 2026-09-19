@@ -2,6 +2,7 @@ extends RefCounted
 class_name LifeAdoptionFlow
 ## Phone presentation and physical arrival. The household owns all family/payment state.
 const P=preload("res://scripts/palette.gd")
+const Properties=preload("res://scripts/properties.gd")
 var app:Node
 var request:Dictionary={}
 var confirming:bool=false
@@ -34,32 +35,39 @@ func show_phone() -> void:
 	if reason.is_empty():reason=app.household.adoption_availability([primary])
 	# Five service rows plus Back now share this panel, so the rows are packed to
 	# the card's own bounds (top 143, height 616, so the last row must end by 759).
-	var agenda:Button=app.button("Household calendar",Vector2(302,346),Vector2(820,40),calendar.open,true,app.overlay)
+	var agenda:Button=app.button("Household calendar",Vector2(302,300),Vector2(820,38),calendar.open,true,app.overlay)
 	agenda.name="PhoneCalendar";agenda.disabled=app.mode!="live"
-	app.paragraph("See everyone's school, work and upcoming birthdays.",Vector2(307,388),Vector2(806,26),15,P.MUTED,app.overlay)
-	var adopt:Button=app.button("Adopt a child",Vector2(302,426),Vector2(820,40),show_candidates,false,app.overlay)
+	app.paragraph("See everyone's school, work and upcoming birthdays.",Vector2(307,340),Vector2(806,22),14,P.MUTED,app.overlay)
+	# Homes and property sit beside the insurance they carry: a second home is a
+	# second policy, and this is where both are bought.
+	var homes:Button=app.button("Homes & property",Vector2(302,368),Vector2(820,38),app.show_property_panel,false,app.overlay)
+	homes.name="PhoneProperty"
+	homes.disabled=not app._property_panel_available()
+	homes.tooltip_text=str(Properties.describe(app.properties)) if not homes.disabled else "Travel home to look after your property."
+	app.paragraph("Own more than one home, move between them, and insure each. %s" % Properties.describe(app.properties),Vector2(307,408),Vector2(806,22),14,P.INK,app.overlay)
+	var adopt:Button=app.button("Adopt a child",Vector2(302,436),Vector2(820,38),show_candidates,false,app.overlay)
 	adopt.name="PhoneAdoptChild";adopt.disabled=not reason.is_empty();adopt.tooltip_text=reason
-	app.paragraph("Welcome a school-age Lifelet into your family. Choose one or two adult guardians. Adoption costs ℒ1,000.",Vector2(307,468),Vector2(806,38),15,P.INK,app.overlay)
+	app.paragraph("Welcome a school-age Lifelet into your family. Choose one or two adult guardians. Adoption costs ℒ1,000.",Vector2(307,476),Vector2(806,34),14,P.INK,app.overlay)
 	var pet_reason:String=app.household.pet_shop_availability()
-	var pets:Button=app.button("Juniper Pet Shop",Vector2(302,508),Vector2(820,40),show_pets,false,app.overlay)
+	var pets:Button=app.button("Juniper Pet Shop",Vector2(302,512),Vector2(820,38),show_pets,false,app.overlay)
 	pets.name="PhonePetShop";pets.disabled=not pet_reason.is_empty();pets.tooltip_text=pet_reason
-	app.paragraph("Adopt a cat or a dog and shape its sex, coat and markings yourself. Bowls, cat trees and kennels are sold alongside.",Vector2(307,550),Vector2(806,34),15,P.INK,app.overlay)
+	app.paragraph("Adopt a cat or a dog and shape its sex, coat and markings yourself. Bowls, cat trees and kennels are sold alongside.",Vector2(307,552),Vector2(806,30),14,P.INK,app.overlay)
 	# Insurance sits with the household's money, beside the bills it protects
 	# against: a break-in takes real funds, and cover is the answer to it.
 	var policy:Dictionary=app.household.insurance()
 	var insured:bool=not policy.is_empty()
 	var home_policy:Dictionary=LifeSim.INSURANCE_POLICIES.home
-	var coverage:Button=app.button(("Home insurance · insured" if insured else "Buy home insurance · ℒ%d" % int(home_policy.premium)),Vector2(302,588),Vector2(820,40),show_insurance,false,app.overlay)
+	var coverage:Button=app.button(("Home insurance · insured" if insured else "Buy home insurance · ℒ%d" % int(home_policy.premium)),Vector2(302,584),Vector2(820,36),show_insurance,false,app.overlay)
 	coverage.name="PhoneInsurance"
 	coverage.tooltip_text=("Cover is in force: a break-in is paid back in full." if insured else "Pay ℒ%d now and any break-in is reimbursed in full from the phone. Buy it before the burglar comes." % int(home_policy.premium))
-	app.paragraph("A burglar can take up to ℒ%d in one night. Cover pays it all back." % LifeSim.ROBBERY_LOSS,Vector2(307,630),Vector2(806,30),15,P.INK,app.overlay)
+	app.paragraph("A burglar can take up to ℒ%d in one night. Cover pays it all back." % LifeSim.ROBBERY_LOSS,Vector2(307,622),Vector2(806,22),14,P.INK,app.overlay)
 	var bill:Dictionary=sim_bill()
 	var bill_label:String="Household bills"
 	if bill.is_empty():
 		bill_label="Household bills · nothing due"
 	else:
 		bill_label="Household bills · ℒ%d due%s" % [int(bill.amount)+int(bill.get("late_fee",0)), " (overdue)" if bool(bill.overdue) else ""]
-	var bills:Button=app.button(bill_label,Vector2(302,666),Vector2(820,40),show_bills,false,app.overlay)
+	var bills:Button=app.button(bill_label,Vector2(302,658),Vector2(820,36),show_bills,false,app.overlay)
 	bills.name="PhoneBills"
 	if bill.is_empty():
 		bills.tooltip_text="The next bill is for what the home is worth: about ℒ%d." % LifeSim.bill_amount_for(owner.home_value())
@@ -67,7 +75,7 @@ func show_phone() -> void:
 		bills.tooltip_text="The utilities are cut until this bill is paid."
 	else:
 		bills.tooltip_text="Due by day %d." % int(bill.due_day)
-	var back:Button=app.button("Back to life",Vector2(302,714),Vector2(820,40),app.close_overlay,false,app.overlay)
+	var back:Button=app.button("Back to life",Vector2(302,710),Vector2(820,38),app.close_overlay,false,app.overlay)
 	back.name="PhoneBack"
 
 ## The selected Lifelet's bill record, with the overdue state folded in so the

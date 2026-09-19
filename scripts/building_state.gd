@@ -63,8 +63,11 @@ static func _error(message:String) -> Dictionary:return {"ok":false,"error":mess
 static func fingerprint(state:Dictionary) -> String:return JSON.stringify(state).sha256_text()
 
 static func _rect_error(record:Dictionary) -> String:
+	# The real bound is the household's own lot, which grows as plots are bought;
+	# the numeric guard only keeps a hostile value out of the arithmetic, so it
+	# must not be tighter than the largest lot a household can own.
 	for key:String in ["x","z","w","d"]:
-		if not number(record.get(key),-18,18):return "A building rectangle has invalid numbers."
+		if not number(record.get(key),-Land.MAX_SPAN,Land.MAX_SPAN):return "A building rectangle has invalid numbers."
 	if float(record.w)<=0 or float(record.d)<=0 or not lot().encloses(rect(record)):return "A building rectangle is outside the lot."
 	return ""
 
@@ -272,7 +275,7 @@ static func validate(state:Variant) -> String:
 			if group=="stairs":
 				if not number(value.get("lower"),0,0,true) or not number(value.get("upper"),1,1,true) or not number(value.get("rotation"),0,270,true) or int(value.rotation)%90!=0:return "A stair must join adjacent supported levels with a right-angle rotation."
 				for key:String in ["x","z"]:
-					if not number(value.get(key),-18,18) or not is_equal_approx(snappedf(float(value[key]),CELL),float(value[key])):return "A stair has an invalid grid position."
+					if not number(value.get(key),-Land.MAX_SPAN,Land.MAX_SPAN) or not is_equal_approx(snappedf(float(value[key]),CELL),float(value[key])):return "A stair has an invalid grid position."
 				if not identifier(value.get("opening")) or not lot().encloses(stair_rect(value)) or not lot().encloses(landing_rect(value,false)) or not lot().encloses(landing_rect(value,true)):return "A stair or landing extends beyond the lot."
 			else:
 				if not number(value.get("level"),0,1,true):return "A record has an invalid level."
@@ -379,7 +382,7 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant) -> Dicti
 		record["id"]=_new_id(after,group)
 		if group=="stairs":
 			for key:String in ["x","z","rotation"]:
-				if not number(record.get(key),-18 if key!="rotation" else 0,18 if key!="rotation" else 270):return _error("Invalid new stair position.")
+				if not number(record.get(key),-Land.MAX_SPAN if key!="rotation" else 0,Land.MAX_SPAN if key!="rotation" else 270):return _error("Invalid new stair position.")
 			record["lower"]=0;record["upper"]=1;record["opening"]=_new_id(after,"openings")
 			var hole:Rect2=stair_rect(record)
 			after.openings.append({"id":record.opening,"stair":record.id,"level":1,"x":hole.get_center().x,"z":hole.get_center().y,"w":hole.size.x,"d":hole.size.y})
