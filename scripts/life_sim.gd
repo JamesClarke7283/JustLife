@@ -644,8 +644,17 @@ func _tick_away(_game_minutes: float) -> void:
 	if str(away_state.activity)=="career":
 		_tick_career_away()
 		return
+	# A prison sentence is not a school day with a curriculum: the Lifelet is
+	# simply not here until the household's own release tick brings them home,
+	# so time passes without an action to progress.
+	if str(away_state.activity)=="prison":
+		return
 	if day != int(away_state.departure_day) or str(character.age_stage) != str(away_state.age_stage):
 		request_return_home()
+		return
+	if action_queue.is_empty():
+		# An absence with no action to progress cannot advance; the household
+		# owns the return, so nothing is silently stranded here.
 		return
 	var action: Dictionary = action_queue[0]
 	var elapsed: float = clampf(minutes-float(away_state.departure_minutes),0.0,float(action.duration))
@@ -1905,21 +1914,70 @@ func is_imprisoned() -> bool:
 	return int(criminal_record.get("prison_until_day",0))>day
 
 
+## Whether this Lifelet is inside at the prison right now, as opposed to having a
+## sentence they are serving at home. Being caught is a real absence: the Lifelet
+## is taken to Blackmoor and is not on the household's lot until they are free,
+## which is what makes visiting them there mean anything.
+func is_at_prison() -> bool:
+	return is_imprisoned() and not bool(criminal_record.get("serving_at_home",false))
+
+
+## The prison absence this sentence imposes, in the shape the away machine
+## already understands, so the body, the HUD and the save all agree about where
+## an incarcerated Lifelet is.
+func prison_away_state() -> Dictionary:
+	if not is_at_prison():return {}
+	return {"version":1,"activity":"prison","phase":"away","departure_day":day,
+		"departure_minutes":minutes,"return_day":int(criminal_record.get("prison_until_day",day)),
+		"return_minutes":480.0,"exit_id":"lot_exit","exit_position":Vector3.ZERO,
+		"age_stage":str(character.age_stage),"career_track":str(career.get("track","")),
+		"salary":0,"completed":true,"ended_at":0.0,"prison":true}
+
+
 ## What being caught costs: the fine, the days inside, and the record of it. The
 ## household purse pays, capped at what it holds, so a fine can never drive the
 ## household into the negative.
+##
+## Being caught really takes the Lifelet away: `away_state` is set to the prison,
+## so they leave the household's lot and stay at Blackmoor until the sentence
+## ends. A Lifelet already away from home (at work, or on a trip) cannot be
+## arrested into a second absence, so their sentence is served from home instead —
+## the record is identical either way, and only the body differs.
 func serve_sentence(fine:int,days:int) -> Dictionary:
 	var paid:int=mini(maxi(fine,0),funds)
 	funds-=paid
 	var previous:int=int(criminal_record.get("caught_count",0))
+	var until:int=day+maxi(1,days)
+	var from_home:bool=is_away()
 	criminal_record={"version":1,"caught_count":previous+1,
-		"prison_until_day":day+maxi(1,days),
-		"fines_paid":int(criminal_record.get("fines_paid",0))+paid}
+		"prison_until_day":until,
+		"fines_paid":int(criminal_record.get("fines_paid",0))+paid,
+		"serving_at_home":from_home}
+	if not from_home:
+		# The Lifelet is taken to Blackmoor; the household's own clock releases
+		# them, driven by `prison_check`.
+		away_state=prison_away_state()
+		_publish("away_changed",[get_away_state()])
 	add_moodlet("Behind bars","Tense","Caught, fined and locked up. That was the risk.",1440,4)
 	remember("Caught","A fine and %d days inside." % maxi(1,days))
-	_emit_notice("Caught! A ℒ%d fine and %d days inside, free on day %d." % [paid,maxi(1,days),int(criminal_record.prison_until_day)])
+	_emit_notice("Caught! A ℒ%d fine and %d days inside at Blackmoor, free on day %d." % [paid,maxi(1,days),until])
 	_emit_changed()
-	return {"ok":true,"fine":paid,"days":maxi(1,days),"until":int(criminal_record.prison_until_day)}
+	return {"ok":true,"fine":paid,"days":maxi(1,days),"until":until,"at_prison":not from_home}
+
+
+## Release a Lifelet whose sentence has ended: they come home, and the record of
+## the sentence is cleared of the prison stay so a released Lifelet is simply a
+## Lifelet at home again.
+func prison_check() -> Dictionary:
+	if not is_at_prison():return {"ok":false,"reason":"Not inside."}
+	if day<int(criminal_record.get("prison_until_day",0)):return {"ok":false,"reason":"Still serving."}
+	criminal_record["serving_at_home"]=false
+	if str(away_state.get("activity",""))=="prison":
+		away_state={}
+		_publish("away_changed",[get_away_state()])
+	_emit_notice("%s has been released and is coming home." % str(character.name))
+	_emit_changed()
+	return {"ok":true,"released":true}
 
 
 ## One day of criminal work, rolled once by the household on its own clock. A
@@ -3372,9 +3430,29 @@ func _validate_autonomy_state(state:Dictionary) -> String:
 
 func _validate_away_state(state:Dictionary) -> String:
 	if not state.get("away_state",{}) is Dictionary:return "Save contains invalid away state."
+	# A prison sentence is its own absence, owned by the criminal record rather
+	# than by a queued action, so it is validated against that record.
+	if str(state.get("away_state",{}).get("activity",""))=="prison":
+		return _validate_prison_away_state(state)
 	if str(state.get("away_state",{}).get("activity",""))=="career" or state.action_queue.any(func(action:Dictionary)->bool:return str(action.id)=="career_day"):
 		return _validate_career_away_state(state)
 	return _validate_school_away_state(state)
+
+
+## Validate a saved prison sentence. The record is the authority: the absence
+## must agree with it, and a Lifelet who is not inside must not have one.
+func _validate_prison_away_state(state:Dictionary) -> String:
+	var record:Variant=state.get("criminal_record",{})
+	var record_error:String=LifeCareers.criminal_error(record)
+	if not record_error.is_empty():return record_error
+	if not record is Dictionary or record.is_empty():return "Save has a prison absence without a criminal record."
+	if not bool(record.get("serving_at_home",false))==false:return "Save serves a prison sentence at home and away at once."
+	var value:Dictionary=state.get("away_state",{})
+	if not _autonomy_integer(value.get("version"),1,1) or str(value.get("phase","")) not in ["away","returning"]:return "Save contains an unsupported prison absence."
+	if _autonomy_integer(value.get("departure_day"),1,int(state.day))==false:return "Save contains an invalid prison departure."
+	if not _autonomy_integer(value.get("return_day"),int(value.get("departure_day",0)),1000000):return "Save contains an invalid prison release day."
+	if int(value.get("return_day",0))!=int(record.get("prison_until_day",0)):return "Save disagrees about when the sentence ends."
+	return ""
 
 
 func _validate_school_away_state(state: Dictionary) -> String:

@@ -281,6 +281,9 @@ func tick(delta: float) -> void:
 		# being caught once a day, on the shared clock, so a practised thief's
 		# lower risk is something the player sees rather than reads about.
 		_criminal_tick()
+		# A sentence ends on the shared clock, so a Lifelet really comes home on
+		# the day their record says they are free.
+		_prison_release_tick()
 	# A grocery delivery arrives when its van does, on the shared clock, so a
 	# household that ordered one is restocked while the player simply plays.
 	_grocery_tick()
@@ -1168,6 +1171,18 @@ func _criminal_tick() -> void:
 		funds = sim.funds
 		if bool(outcome.get("ok", false)) and bool(outcome.get("caught", false)):
 			_sync_wallet()
+
+
+## Release every member whose sentence has run out, so being caught really ends
+## and a released Lifelet comes back to the household's lot.
+func _prison_release_tick() -> void:
+	for member: Dictionary in members:
+		var sim: LifeSim = member.sim
+		if not sim.is_at_prison():
+			continue
+		if sim.day < int(sim.criminal_record.get("prison_until_day", 0)):
+			continue
+		sim.prison_check()
 
 
 ## A break-in against the shared purse. The owner rolls it and the household

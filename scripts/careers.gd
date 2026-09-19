@@ -471,6 +471,10 @@ static func criminal_error(value: Variant) -> String:
 	if not integer(record.get("caught_count", 0), 0, 1000000): return "Save contains an impossible arrest count."
 	if not integer(record.get("prison_until_day", 0), 0, 1000000): return "Save contains an invalid release day."
 	if not integer(record.get("fines_paid", 0), 0, 100000000): return "Save contains an invalid fine total."
+	# A sentence is served either at Blackmoor or, when the Lifelet was already
+	# away when they were caught, from home. Both are the same record.
+	if record.has("serving_at_home") and not record.get("serving_at_home") is bool:
+		return "Save contains an invalid sentence location."
 	return ""
 
 

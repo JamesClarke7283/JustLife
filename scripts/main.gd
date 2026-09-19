@@ -4154,6 +4154,9 @@ func _use_venue_service(place: String, service_id: String) -> void:
 		"buy_clothes", "window_shopping":
 			sim.needs.fun = minf(100.0, float(sim.needs.fun) + 18.0)
 			show_notice("A pleasant hour among the shops.")
+		"visit_family", "hand_in_parcel", "release_day":
+			_visit_incarcerated_family(place, service_id)
+			return
 		_:
 			sim.needs.fun = minf(100.0, float(sim.needs.fun) + 10.0)
 			show_notice("A pleasant way to pass the time.")
@@ -4162,6 +4165,36 @@ func _use_venue_service(place: String, service_id: String) -> void:
 
 ## Higher education: the three qualifications, what each costs, and what it is
 ## worth to a job that asks for one.
+## Visiting an incarcerated family member, or waiting at the gate for their
+## release. It only means anything if somebody in this household is actually
+## inside, so the visit is refused with that reason when nobody is.
+func _visit_incarcerated_family(place: String, service_id: String) -> void:
+	var inside: Array[String] = []
+	for member: Dictionary in household.members:
+		if member.sim.is_at_prison(): inside.append(str(member.id))
+	if inside.is_empty():
+		show_notice("Nobody from this household is serving a sentence here.")
+		return
+	for member_id: String in inside:
+		var prisoner: LifeSim = household.member_sim(member_id)
+		if prisoner == null: continue
+		var free_on: int = int(prisoner.criminal_record.get("prison_until_day", 0))
+		if service_id == "release_day":
+			prisoner.add_moodlet("Met at the gate", "Content", "Family was waiting when the sentence ended.", 480, 3)
+		else:
+			# A visit is really shared: the family member's mood lifts and they
+			# remember who came, and the visitor's social need is met.
+			prisoner.add_moodlet("A visit from family", "Content", "Somebody came to sit with them.", 720, 3)
+			prisoner.remember("A family visit", "Family came to Blackmoor. Free on day %d." % free_on)
+			sim.needs.social = minf(100.0, float(sim.needs.social) + 40.0)
+			sim.add_moodlet("Time with family", "Content", "A hard place made easier by company.", 360, 2)
+	var prisoner_name: String = str(household.member_sim(inside[0]).character.name).split(" ")[0] if not inside.is_empty() else "family"
+	show_notice("%s · %s is free on day %d." % [
+		"Waiting at the gate" if service_id == "release_day" else "Visiting hours",
+		prisoner_name, int(household.member_sim(inside[0]).criminal_record.get("prison_until_day", 0))])
+	refresh_hud()
+
+
 func show_school_panel() -> void:
 	_begin_pause_overlay()
 	var background:ColorRect=ColorRect.new()
@@ -6306,6 +6339,8 @@ func _member_index(id:String) -> int:
 	return 0
 
 func _away_status(state:Dictionary) -> String:
+	if str(state.get("activity",""))=="prison":
+		return "Inside until day %d" % int(state.get("return_day",0))
 	var career_state:bool=str(state.get("activity",""))=="career"
 	var activity:String="work" if career_state else "school"
 	if str(state.get("phase",""))=="returning":return "Coming home from "+activity
