@@ -1,6 +1,7 @@
 extends RefCounted
 class_name LifeNeighborhood
 ## Original small-town destinations. Layout IDs remain stable for saved actions.
+const LifeVenues = preload("res://scripts/venues.gd")
 const PLACES={
 	"home":{"name":"Your home","tag":"Make yourself at home","description":"Your household's own space. Rest, cook, build, and make room for the next chapter.","color":"d3987f"},
 	"park":{"name":"Juniper Gardens","tag":"Breathe a little deeper","description":"A leafy public garden with benches, flowers, and space to meet the neighbors. Tend the greenery or take an unhurried break.","color":"8bab70"},
@@ -14,7 +15,53 @@ const PLACES={
 ## Place keys owned by a resident, mirroring the catalogue homes.
 const RESIDENT_HOMES: Array[String] = ["maya_home", "leo_home", "priya_home", "tom_home"]
 
+## Every place a household can travel to: the original small-town destinations
+## plus the working parts of the town — the shop, the café, the salon, the gym,
+## the filling station, the school, the university and the prison. `LifeVenues`
+## owns the newer ones, so their names, service lists and layout lives in one
+## place and this table only joins them to the original eight.
+static func places() -> Dictionary:
+	var all: Dictionary = PLACES.duplicate(true)
+	for id: String in LifeVenues.ids():
+		all[id] = LifeVenues.info(id)
+	return all
+
+
+static func has(place: String) -> bool:
+	return PLACES.has(place) or LifeVenues.has(place)
+
+
+## Whether this place is a working venue rather than a home or the household's
+## own lot. A venue cannot be bought or edited as a house, and its layout is
+## the venue's own rather than a saved home.
+static func is_venue(place: String) -> bool:
+	return LifeVenues.has(place)
+
+
+static func info(place: String) -> Dictionary:
+	if LifeVenues.has(place):
+		return LifeVenues.info(place)
+	return (PLACES.get(place, {}) as Dictionary).duplicate(true)
+
+
+static func place_name(place: String) -> String:
+	return str(info(place).get("name", place.capitalize()))
+
+
+## Every place a trip can be planned to, in a stable order: the household's own
+## lot first, then the town's places in the order they were authored.
+static func travel_ids() -> Array[String]:
+	var ids: Array[String] = ["home"]
+	for id: String in PLACES:
+		if id != "home": ids.append(id)
+	for id: String in LifeVenues.ids():
+		ids.append(id)
+	return ids
+
+
 static func layout(place:String) -> Array:
+	if LifeVenues.has(place):
+		return LifeVenues.layout(place)
 	var entries:Array=[]
 	match place:
 		"maya_home":entries=[["bed",-3.3,-2.8,0],["nightstand",-4.2,-.55,90],["sofa",-.9,1.1,0],["table",-.9,2.6,0],["rug",-.9,1.7,0],["plant",-4.1,3.4,0],["easel",2.55,3.15,180],["fridge",3.9,-3.2,0],["stove",2.55,-3.3,0],["sink",1.1,-3.3,0],["dining",3.2,.4,0],["chair",3.2,1.4,180],["toilet",-1,-1.5,0],["shower",-1.15,-3.7,0],["bookshelf",-4.1,2.1,90],["plant",4.1,3.3,0]]

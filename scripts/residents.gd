@@ -351,7 +351,7 @@ func restore(value:Variant) -> void:
  for raw_place:Variant in value.locations:
   if not raw_place is String:continue
   var place:String=raw_place
-  if not LifeNeighborhood.PLACES.has(place) or not value.locations[place] is Dictionary:continue
+  if not LifeNeighborhood.has(place) or not value.locations[place] is Dictionary:continue
   var accepted:Dictionary={}
   for id:String in PEOPLE:
    var record:Variant=value.locations[place].get(id)
@@ -481,7 +481,7 @@ func begin_trip(destination:String, party: Array = []) -> bool:
  # The world remains visible through the light transition shade.
  app.overlay.get_child(0).modulate.a=.15
  app.card(Vector2(440,730),Vector2(560,125),app.P.WHITE,18,app.overlay)
- app.text_label("Off to "+str(LifeNeighborhood.PLACES[destination].name),Vector2(463,744),Vector2(515,35),24,app.P.INK,true,app.overlay)
+ app.text_label("Off to "+str(LifeNeighborhood.place_name(destination)),Vector2(463,744),Vector2(515,35),24,app.P.INK,true,app.overlay)
  var caption:Label=app.paragraph("Walking to the shared car · Saving is available on arrival.",Vector2(464,791),Vector2(515,47),14,app.P.MUTED,app.overlay)
  caption.name="TripPhase"
  car=_make_car();app.world.house.add_child(car);car.position=Vector3(0,0,10.25);car.rotation.y=PI*.5
@@ -571,7 +571,7 @@ func tick_trip(delta:float) -> void:
    var resume:int=int(trip.resume);trip.clear()
    app.close_overlay(false);app.mode="live";app.world.live_enabled=true;app.household.set_speed(resume)
    app.world.camera_target=Vector3(0,0,.25);app.world.update_camera();app.draw_live();app._sync_actor_sound()
-   app.show_notice("Welcome to "+str(LifeNeighborhood.PLACES[app.current_venue].name)+".")
+   app.show_notice("Welcome to "+str(LifeNeighborhood.place_name(app.current_venue))+".")
 
 func _trip_caption(value:String) -> void:
  var caption:Label=app.overlay.find_child("TripPhase",true,false)
@@ -686,14 +686,14 @@ func _arrive() -> void:
   actor.position=spot;actor.visible=false
   taken_spots.append(spot)
   spot_index+=1
-  member.sim.remember("A visit across town","Drove to "+str(LifeNeighborhood.PLACES[destination].name)+".")
+  member.sim.remember("A visit across town","Drove to "+str(LifeNeighborhood.place_name(destination))+".")
  app.world.refresh_actor_layers()
  app.clear_ui();app.mode="travel";app.world.live_enabled=false
  car=_make_car();app.world.house.add_child(car);car.position=Vector3(-19,0,10.25);car.rotation.y=PI*.5
  app.world.camera_target=Vector3(0,0,6.5);app.world.update_camera()
  app.overlay_open=true
  app.card(Vector2(440,730),Vector2(560,125),app.P.WHITE,18,app.overlay)
- app.text_label("Arriving at "+str(LifeNeighborhood.PLACES[destination].name),Vector2(463,744),Vector2(515,35),24,app.P.INK,true,app.overlay)
+ app.text_label("Arriving at "+str(LifeNeighborhood.place_name(destination)),Vector2(463,744),Vector2(515,35),24,app.P.INK,true,app.overlay)
  app.paragraph("Pulling up outside · Saving is available when everyone steps out.",Vector2(464,791),Vector2(515,47),14,app.P.MUTED,app.overlay)
  trip.phase="arrival";trip.time=0.0
 

@@ -143,6 +143,17 @@ const ITEMS = {
 		"styles":["brick","timber","lean_to","double","carport"],
 		"sizes":["small","medium","large"], "size_prices":{"small":100,"medium":200,"large":500},
 		"seats":{"small":2,"medium":4,"large":8}},
+	# An electric car is charged rather than filled, and the charger is what
+	# makes it usable: it is bought for the wall of a garage or a driveway and
+	# the car plugs into it at home.
+	"car_electric": {"label":"Electric car", "category":"Vehicles", "price":900, "size":Vector2(4.2,1.8), "height":1.5, "color":"6f8fa8", "tint":true,
+		"styles":[""],
+		"sizes":["small","medium","large"], "size_prices":{"small":900,"medium":1800,"large":4200},
+		"seats":{"small":5,"medium":5,"large":5}},
+	"electric_charger": {"label":"Wall charger", "category":"Vehicles", "price":650, "size":Vector2(.34,.22), "height":1.1, "color":"4a6b5c", "tint":true,
+		"styles":[""],
+		"sizes":["small","medium","large"], "size_prices":{"small":650,"medium":650,"large":650},
+		"wall_mounted":true, "charges":"car_electric"},
 
 	# --------------------------------------------------------- garden games
 	# Fifty garden activities. Each is its own family with its own authored model

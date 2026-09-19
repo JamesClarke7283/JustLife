@@ -3441,6 +3441,11 @@ func _validate_state(state: Dictionary) -> String:
 		if not land_error.is_empty(): return land_error
 		var property_error: String = LifeProperties.validate(world_state.get("properties"))
 		if not property_error.is_empty(): return property_error
+		# The place the household is standing in must be one the town has, or a
+		# later load would build a lot that does not exist.
+		var saved_venue: Variant = world_state.get("venue")
+		if saved_venue != null and (not saved_venue is String or not LifeNeighborhood.has(str(saved_venue))):
+			return "Save contains an unknown venue."
 	for need_name: String in NEED_NAMES:
 		if not _number_in_range(state["needs"].get(need_name), 0.0, 100.0):
 			return "Save contains an invalid need."

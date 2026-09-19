@@ -1745,7 +1745,7 @@ func draw_live() -> void:
 	stories_button=button("Stories",Vector2(400,27),Vector2(95,43),show_stories)
 	stories_button.add_theme_font_size_override("font_size",13)
 	if current_venue!="home":
-		text_label(str(LifeNeighborhood.PLACES[current_venue].name),Vector2(306,86),Vector2(610,40),23,P.INK,true)
+		text_label(str(LifeNeighborhood.place_name(current_venue)),Vector2(306,86),Vector2(610,40),23,P.INK,true)
 	card(Vector2(504,18),Vector2(432,57),P.WHITE,14)
 	button("Live",Vector2(514,27),Vector2(116,39),func():set_build_mode(false),mode=="live")
 	button("Build & buy",Vector2(638,27),Vector2(150,39),func():set_build_mode(true),mode=="build")
@@ -4184,9 +4184,19 @@ func _restore_world_state(value:Variant) -> void:
 ## Apply the live home's own policy to the household's sims. A house carries its
 ## own cover, so moving into a house that is insured — or out of one that is —
 ## changes what a break-in there costs.
+##
+## A household that has never recorded a property keeps whatever policy its sims
+## hold: the phone's own insurance purchase is older than the property system,
+## and a load must not quietly cancel cover the player bought. Only a household
+## that really owns the house it lives in has the final word, so cover taken out
+## through the phone survives a load until the player uses the property panel.
 func _apply_property_insurance() -> void:
 	var house_id:String=Properties.active(properties)
+	if house_id.is_empty() or not Properties.owns(properties,house_id):
+		return
 	var held:Dictionary=Properties.policy(properties,house_id)
+	if held.is_empty():
+		return
 	var policy_id:String=str(held.get("id",""))
 	for member:Dictionary in household.members:
 		member.sim.insurance_policy_id=policy_id
@@ -4262,7 +4272,7 @@ func load_game(slot_id:String="") -> void:
 	current_venue="home";home_layout=[];venue_layouts={}
 	if saved_world is Dictionary:
 		var place:String=str(saved_world.get("venue","home"))
-		if LifeNeighborhood.PLACES.has(place):
+		if LifeNeighborhood.has(place):
 			current_venue=place
 			for member:Dictionary in household.members:member.sim.visited_venue="" if place=="home" else place
 		home_layout=_safe_layout(saved_world.get("home_layout",[]))
@@ -5389,7 +5399,7 @@ func show_relationships() -> void:
 			visit.name="VisitResident_"+id;visit.disabled=not residents.can_visit(id)
 			var invite=button("Invite over",Vector2(224,83),Vector2(212,34),func():invite_neighbor(id),false,row)
 			invite.name="InviteResident_"+id;invite.disabled=not residents.home_visit.requirement(id).is_empty();invite.tooltip_text=residents.home_visit.requirement(id)
-			visit.tooltip_text="Reach 20 friendship to arrange a visit." if visit.disabled else str(LifeNeighborhood.PLACES[LifeResidents.PEOPLE[id].home].tag)
+			visit.tooltip_text="Reach 20 friendship to arrange a visit." if visit.disabled else str(str(LifeNeighborhood.info(LifeResidents.PEOPLE[id].home).get("tag","")))
 	button("Family tree",Vector2(486,699),Vector2(222,43),show_family_tree,false,overlay)
 	button("Back to life",Vector2(724,699),Vector2(230,43),close_overlay,true,overlay)
 
@@ -5439,28 +5449,52 @@ func show_neighborhood(chosen:String="") -> void:
 	# top of each other, so a click in the overlap reached the later pin and the
 	# covered one could not be selected. They now sit on a 3-column grid whose
 	# cells are wider and taller than a pin, and the decorative roads run behind.
+	# Each pin is 170x53 on the decorative map, but the town now has sixteen
+	# places rather than eight. The pins keep the original eight on their grid,
+	# and every place — the original ones and the new working venues alike — is
+	# reachable from the list beside the map, which scrolls.
 	var points:Dictionary={
 		"park":Vector2(6,30),"priya_home":Vector2(200,30),
 		"maya_home":Vector2(6,130),"library":Vector2(200,130),"studio":Vector2(394,130),
 		"home":Vector2(6,230),"leo_home":Vector2(394,230),"tom_home":Vector2(200,330)}
 	for id:String in points:
-		var data:Dictionary=LifeNeighborhood.PLACES[id]
+		if not LifeNeighborhood.has(id):continue
+		var pin_data:Dictionary=LifeNeighborhood.info(id)
 		var p:Vector2=points[id]
 		if id==current_venue:
 			text_label("YOU ARE HERE",p+Vector2(4,-20),Vector2(166,20),10,P.TEAL,false,map)
-		var pin=button(str(data.name),p,Vector2(170,53),func():show_neighborhood(id),id==chosen,map)
+		var pin=button(str(pin_data.name),p,Vector2(170,53),func():show_neighborhood(id),id==chosen,map)
 		pin.add_theme_font_size_override("font_size",13)
 		# The pin's own text sets a minimum width larger than the cell, which
 		# would push it into its neighbour; the cell size is authoritative.
 		compact_button(pin)
 		pin.custom_minimum_size=Vector2.ZERO
 		pin.size=Vector2(170,53)
-	var data:Dictionary=LifeNeighborhood.PLACES[chosen]
+	var data:Dictionary=LifeNeighborhood.info(chosen)
 	small_caps(str(data.tag),Vector2(848,282),Vector2(341,45),overlay)
 	text_label(str(data.name),Vector2(846,334),Vector2(342,46),28,P.INK,true,overlay)
 	paragraph(str(data.description),Vector2(848,395),Vector2(340,115),16,P.MUTED,overlay)
-	paragraph("Travel clears current activities. A shared car takes you across town in 15 minutes.",Vector2(848,541),Vector2(331,72),13,P.MUTED,overlay)
-	var go=button("Travel here  →",Vector2(848,628),Vector2(344,44),func():travel_to(chosen),true,overlay)
+	# Every place the town has, in one scrollable list, so the newer venues are
+	# reachable without a pin of their own.
+	var places_scroll:ScrollContainer=ScrollContainer.new()
+	places_scroll.name="PlaceList"
+	places_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
+	rect(places_scroll,Vector2(846,512),Vector2(346,110),overlay)
+	var places_column:VBoxContainer=VBoxContainer.new()
+	places_column.add_theme_constant_override("separation",4)
+	places_scroll.add_child(places_column)
+	for id:String in LifeNeighborhood.travel_ids():
+		if id=="home":continue
+		var entry_info:Dictionary=LifeNeighborhood.info(id)
+		var label:String=str(entry_info.get("name",id.capitalize()))
+		if LifeNeighborhood.is_venue(id):label+=" ·"
+		var row:Button=button(label,Vector2.ZERO,Vector2(338,30),func():show_neighborhood(id),id==chosen,places_column)
+		row.name="Place_"+id
+		row.add_theme_font_size_override("font_size",12)
+		compact_button(row)
+		row.size=Vector2(338,30)
+		row.tooltip_text=str(entry_info.get("description",""))
+	var go=button("Travel here  →",Vector2(848,632),Vector2(344,42),func():travel_to(chosen),true,overlay)
 	var resident:String=str(data.get("resident",""))
 	go.disabled=chosen==current_venue or (not resident.is_empty() and not residents.can_visit(resident))
 	if not resident.is_empty() and not residents.can_visit(resident):
@@ -5503,7 +5537,7 @@ func show_trip_party(destination:String, reset:bool = true) -> void:
 	var shade=ColorRect.new();shade.color=Color(.08,.17,.15,.28);rect(shade,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
 	card(Vector2(470,150),Vector2(500,600),P.WHITE,24,overlay)
 	small_caps("Who is coming",Vector2(502,172),Vector2(440,24),overlay)
-	text_label("Off to %s" % str(LifeNeighborhood.PLACES[destination].name),Vector2(500,200),Vector2(444,46),30,P.INK,true,overlay)
+	text_label("Off to %s" % str(LifeNeighborhood.place_name(destination)),Vector2(500,200),Vector2(444,46),30,P.INK,true,overlay)
 	paragraph("Tick who is coming along. Anyone left behind stays home and carries on with their own day.",Vector2(502,254),Vector2(440,44),14,P.MUTED,overlay)
 	var y:float=312.0
 	for entry:Dictionary in options:
@@ -5540,8 +5574,8 @@ func _start_trip(destination:String) -> void:
 
 
 func travel_to(destination:String) -> void:
-	if mode not in ["live","build"] or not LifeNeighborhood.PLACES.has(destination) or destination==current_venue:return
-	var resident:String=str(LifeNeighborhood.PLACES[destination].get("resident",""))
+	if mode not in ["live","build"] or not LifeNeighborhood.has(destination) or destination==current_venue:return
+	var resident:String=str(LifeNeighborhood.info(destination).get("resident",""))
 	if not resident.is_empty() and not residents.can_visit(resident):show_notice("Get to know this neighbor first. Visits open at 20 friendship.");return
 	residents.begin_trip(destination)
 
