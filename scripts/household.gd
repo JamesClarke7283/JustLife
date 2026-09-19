@@ -16,6 +16,9 @@ signal member_passed_away(id: String, name: String, memorial_kind: String, payou
 
 const SAVE_PATH = "user://justlife_save.json"
 const MAX_MEMBERS = 8
+## Raised when the household's home cover changes, so the app can keep the
+## property record in step with the sims and the two can never disagree.
+signal insurance_changed(policy_id: String)
 var members: Array = []
 var selected_index: int = 0
 var funds: int = 2500
@@ -48,6 +51,10 @@ var meals: LifeMeals = LifeMeals.new()
 ## A household restocks by ordering from the computer rather than by cooking
 ## straight out of the fridge, so this is real state rather than a convenience.
 var groceries: Dictionary = LifeGroceries.fresh()
+## What the household runs: the businesses it owns, who they employ, and what
+## they have paid and made. A business is bought at a high rung of the skill it
+## needs, so owning one is what a long career builds towards.
+var business: Dictionary = {}
 var sanitation: LifeSanitation = LifeSanitation.new()
 var cooperations: Array = []
 var cooperation_serial: int = 0
@@ -277,6 +284,8 @@ func tick(delta: float) -> void:
 	# A grocery delivery arrives when its van does, on the shared clock, so a
 	# household that ordered one is restocked while the player simply plays.
 	_grocery_tick()
+	# An owned business pays its takings on the same shared clock.
+	_business_tick()
 	# Conception to birth runs on the shared game clock, so fast speed, pause
 	# and a save/load all agree about when the baby is due.
 	pregnancy_tick()
@@ -360,7 +369,7 @@ func get_state(world_data: Array = []) -> Dictionary:
 	adopt_selected_changes()
 	var states:Array=[]
 	for member in members:states.append({"id":member.id,"state":member.sim.get_state()})
-	var result:Dictionary={"household_version":2 if not journeys.is_empty() else 1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"pets":pets.duplicate(true),"mail":mail.duplicate(true),"pregnancy":pregnancy.duplicate(true),"birth_serial":birth_serial,"memorials":memorials.duplicate(true),"heirlooms":heirlooms.duplicate(true),"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state(),"groceries":groceries.duplicate(true),"sanitation":sanitation.get_state(),"extras":extras_provider.call() if extras_provider.is_valid() else {}}
+	var result:Dictionary={"household_version":2 if not journeys.is_empty() else 1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"pets":pets.duplicate(true),"mail":mail.duplicate(true),"pregnancy":pregnancy.duplicate(true),"birth_serial":birth_serial,"memorials":memorials.duplicate(true),"heirlooms":heirlooms.duplicate(true),"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state(),"groceries":groceries.duplicate(true),"business":business.duplicate(true),"sanitation":sanitation.get_state(),"extras":extras_provider.call() if extras_provider.is_valid() else {}}
 	if not journeys.is_empty():result.journeys=journeys.duplicate(true)
 	if physical_snapshot_provider.is_valid():
 		var physical:Dictionary=physical_snapshot_provider.call()
@@ -582,6 +591,10 @@ func restore_state(data: Dictionary) -> Dictionary:
 	if saved_visit!=null and not saved_visit.value.visit.is_empty():guest=saved_visit.value.visit
 	# The kitchen is validated before it is adopted, so a corrupt delivery
 	# cannot strand a household with food that never arrives.
+	var business_error: String = LifeBusiness.validate_owned(data.get("business"))
+	if not business_error.is_empty():
+		for c in candidates: c.sim.free()
+		return {"ok":false,"error":business_error}
 	var grocery_error: String = LifeGroceries.validate(data.get("groceries"))
 	if not grocery_error.is_empty():
 		for c in candidates: c.sim.free()
@@ -624,6 +637,9 @@ func restore_state(data: Dictionary) -> Dictionary:
 	birth_serial=int(data.get("birth_serial",1))
 	meals.restore(meal_data)
 	groceries=LifeGroceries.from_save(data.get("groceries"))
+	# A household that owns no business holds no record at all; the validator
+	# above has already refused anything that does not agree with the table.
+	business=(data.get("business") as Dictionary).duplicate(true) if data.get("business") is Dictionary else {}
 	sanitation.restore(sanitation_data)
 	if extras_restore_provider.is_valid():extras_restore_provider.call(data.get("extras",null))
 	for old in members:old.sim.queue_free()
@@ -922,6 +938,7 @@ func buy_insurance(policy_id: String = "home") -> Dictionary:
 		funds = owner.funds
 		_sync_bill_mirror()
 		_sync_wallet()
+		insurance_changed.emit(policy_id)
 	else:
 		result["error"] = str(result.get("error", result.get("reason", "That policy could not be bought.")))
 	return result
@@ -934,6 +951,7 @@ func cancel_insurance() -> Dictionary:
 		return {"ok": false, "error": "There is no household to insure."}
 	var result: Dictionary = owner.cancel_insurance()
 	_sync_bill_mirror()
+	if bool(result.get("ok", false)): insurance_changed.emit("")
 	return result
 
 
@@ -1036,6 +1054,97 @@ func _sync_grocery_mirror() -> void:
 func _sync_grocery_service() -> void:
 	for member in members:
 		member.sim.grocery_service = self
+
+
+## Buy a business. The skill and level the table demands are checked against the
+## Lifelet actually applying, and the purse pays, so owning a business is a real
+## achievement rather than a purchase.
+func buy_business(business_id: String, member_id: String = "") -> Dictionary:
+	var owner: LifeSim = member_sim(member_id) if not member_id.is_empty() else bill_owner()
+	if owner == null:
+		return {"ok": false, "error": "There is nobody to run a business."}
+	if not business.is_empty():
+		return {"ok": false, "error": "This household already runs a business. A second one is not supported yet."}
+	var reason: String = LifeBusiness.purchase_error(business_id, str(owner.character.life_stage), owner.skills, funds)
+	if not reason.is_empty():
+		return {"ok": false, "error": reason}
+	var cost: int = int(LifeBusiness.info(business_id).cost)
+	business = {"version": LifeBusiness.VERSION, "id": business_id, "staff": [], "invested": cost, "earned": 0}
+	funds -= cost
+	_sync_wallet()
+	owner._emit_notice("You now run the %s. Hire people to make it pay." % str(LifeBusiness.info(business_id).label))
+	owner._emit_changed()
+	return {"ok": true, "cost": cost, "funds": funds}
+
+
+## Hire one Lifelet as an employee. The hire fee is paid from the shared purse
+## and the employee joins the roster.
+func hire_employee(member_id: String) -> Dictionary:
+	if business.is_empty():
+		return {"ok": false, "error": "This household does not run a business."}
+	var employee: LifeSim = member_sim(member_id)
+	if employee == null:
+		return {"ok": false, "error": "That Lifelet is not in this household."}
+	var name: String = str(employee.character.name)
+	var roster: Array = business.get("staff", [])
+	var reason: String = LifeBusiness.hire_error(str(business.id), roster, funds)
+	if not reason.is_empty():
+		return {"ok": false, "error": reason}
+	if roster.has(name):
+		return {"ok": false, "error": "%s already works here." % name}
+	var cost: int = LifeBusiness.hire_cost(str(business.id))
+	business["staff"] = roster + [name]
+	funds -= cost
+	_sync_wallet()
+	var owner: LifeSim = bill_owner()
+	if owner != null:
+		owner._emit_notice("%s now works at the %s." % [name, str(LifeBusiness.info(str(business.id)).label)])
+		owner._emit_changed()
+	return {"ok": true, "cost": cost, "funds": funds, "staff": business.staff.duplicate()}
+
+
+## What the business pays a day, for the day boundary to credit.
+func business_income() -> int:
+	return LifeBusiness.daily_income(business) if not business.is_empty() else 0
+
+
+## Every business the household could run, with its requirement and its own
+## refusal, so the panel and the purchase agree.
+func business_offers(member_id: String = "") -> Array:
+	var owner: LifeSim = member_sim(member_id) if not member_id.is_empty() else bill_owner()
+	var result: Array = []
+	for business_id: String in LifeBusiness.ids():
+		var info: Dictionary = LifeBusiness.info(business_id)
+		var reason: String = "" if owner == null else LifeBusiness.purchase_error(business_id, str(owner.character.life_stage), owner.skills, funds)
+		if owner == null: reason = "There is nobody to run a business."
+		result.append({
+			"id": business_id, "label": str(info.label), "cost": int(info.cost),
+			"income": LifeBusiness.daily_income({"id": business_id, "staff": []}),
+			"staff": int(info.staff), "skill": str(info.skill), "level": int(info.level),
+			"requirements": LifeBusiness.requirement_text(business_id),
+			"available": reason.is_empty(), "reason": reason,
+			"owned": not business.is_empty() and str(business.get("id", "")) == business_id,
+		})
+	return result
+
+
+## The daily takings of an owned business, credited at the day boundary beside
+## the other household income.
+func _business_tick() -> void:
+	if business.is_empty() or speed <= 0:
+		return
+	var owner: LifeSim = bill_owner()
+	if owner == null:
+		return
+	var income: int = business_income()
+	if income <= 0:
+		return
+	business["earned"] = int(business.get("earned", 0)) + income
+	funds += income
+	_sync_wallet()
+	owner.funds = funds
+	owner._emit_notice("The %s took ℒ%d today." % [str(LifeBusiness.info(str(business.id)).label), income])
+	owner._emit_changed()
 
 
 ## Every member on the criminal line of work takes one chance of being caught a

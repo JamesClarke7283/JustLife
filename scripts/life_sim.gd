@@ -4211,7 +4211,7 @@ func _begin_career_departure(action:Dictionary) -> void:
 	for need:String in action.changes:action.changes[need]=float(action.changes[need])*float(action.duration)/LifeCareerSchedule.LENGTH
 	away_state={"version":1,"activity":"career","phase":"away","departure_day":day,"departure_minutes":minutes,"return_day":day,"return_minutes":LifeCareerSchedule.END,"exit_id":str(action.target_id),"exit_position":action.target_position,"age_stage":str(character.age_stage),"career_track":str(career.get("track","studio")),"salary":int(career.salary),"completed":false,"ended_at":0.0}
 	_publish("away_changed",[get_away_state()]);_emit_changed()
-	_emit_notice("%s has left for work and will be home after 17:00."%str(character.name))
+	_emit_notice("%s has left for %s and will be home after 17:00."%[str(character.name),LifeCareers.workplace(str(career.get("track","")))])
 
 func _tick_career_away() -> void:
 	if day!=int(away_state.departure_day) or str(character.life_stage)!="adult":request_return_home();return

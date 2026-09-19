@@ -136,17 +136,16 @@ static func purchase_error(id: String, stage: String, skills: Dictionary, funds:
 	if stage != "adult": return "Business ownership becomes available in young adulthood."
 	var data: Dictionary = info(id)
 	var skill_name: String = str(data.get("skill", ""))
-	var required: int = int(data.get("level", 0))
 	var have: int = 1
 	if not skill_name.is_empty():
 		var row: Variant = skills.get(skill_name, {})
 		have = int((row as Dictionary).get("level", 1)) if row is Dictionary else 1
+		# The bar enforced here is the one `requirement_text` states, so the
+		# number a player reads and the number they are refused against agree.
+		var required: int = _required_level(id)
 		if required > 0 and have < required:
 			return "Requires %s level %d. This Lifelet is at %s level %d." % [
 				skill_name.capitalize(), required, skill_name.capitalize(), have]
-		if have < MIN_LEVEL:
-			return "Running a business demands %s level %d. This Lifelet is at %s level %d." % [
-				skill_name.capitalize(), MIN_LEVEL, skill_name.capitalize(), have]
 	var cost: int = int(data.get("cost", 0))
 	if funds < cost: return "That business costs ℒ%d and the household needs ℒ%d more." % [cost, cost - funds]
 	return ""

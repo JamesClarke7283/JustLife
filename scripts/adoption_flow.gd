@@ -118,8 +118,10 @@ func show_insurance() -> void:
 
 
 ## Buy the policy and report the outcome through the household's own reason.
+## The purchase goes through the app, so the house's own record and the sims'
+## cover are updated together and can never disagree.
 func buy_insurance() -> void:
-	var result:Dictionary=app.household.buy_insurance()
+	var result:Dictionary=app.buy_home_insurance()
 	if bool(result.get("ok",false)):
 		app.refresh_hud()
 		show_insurance()
@@ -129,7 +131,7 @@ func buy_insurance() -> void:
 
 ## Give up the cover; the household owns the notice.
 func cancel_insurance() -> void:
-	var result:Dictionary=app.household.cancel_insurance()
+	var result:Dictionary=app.cancel_home_insurance()
 	if bool(result.get("ok",false)):
 		app.refresh_hud()
 		show_insurance()

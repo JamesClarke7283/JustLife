@@ -192,6 +192,9 @@ func setup_services() -> void:
 	household=LifeHousehold.new()
 	household.name="Household"
 	add_child(household)
+	# Cover bought through the phone is written through to the house's own
+	# record, so the property panel and the sims never disagree.
+	household.insurance_changed.connect(_on_insurance_changed)
 	household.extras_provider=household_flow.get_state
 	# The controller owns the world's layout, so it is the one that can say
 	# where the household's post boxes stand.
@@ -2497,6 +2500,87 @@ func draw_build_catalog() -> void:
 		var l=text_label(data.label,Vector2(9,91),Vector2(135,20),11,P.INK,false,cell);l.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 		text_label("ℒ %d" % from_price if to_price==from_price else "ℒ %d–%d" % [from_price,to_price],Vector2(10,112),Vector2(130,20),13,P.TEAL,false,cell)
 
+## Buy a business and hire people to run it. The skill and level each one needs
+## are shown, and the purse pays, so running a business is what a long career at
+## a high rung actually buys.
+func show_business_panel() -> void:
+	_begin_pause_overlay()
+	var background:ColorRect=ColorRect.new()
+	background.color=Color(.08,.17,.15,.28)
+	rect(background,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
+	card(Vector2(430,84),Vector2(580,780),P.WHITE,24,overlay)
+	small_caps("What you have built",Vector2(462,104),Vector2(516,24),overlay)
+	text_label("Businesses",Vector2(460,132),Vector2(520,48),31,P.INK,true,overlay)
+	var owned:Dictionary=household.business
+	if owned.is_empty():
+		paragraph("Buy a business once your Lifelet is skilled enough to run one. An owner earns its takings every day, and can hire housemates to work there.",
+			Vector2(462,186),Vector2(516,54),14,P.MUTED,overlay)
+	else:
+		var info:Dictionary=LifeBusiness.info(str(owned.id))
+		paragraph("You run the %s. It takes ℒ%s a day and has earned ℒ%s so far." % [
+			str(info.label),commas(household.business_income()),commas(int(owned.get("earned",0)))],
+			Vector2(462,186),Vector2(516,54),14,P.TEAL,overlay)
+		# Hire a housemate, one row each, showing the fee and any refusal.
+		var hire_y:float=250.0
+		text_label("Staff",Vector2(462,hire_y-24),Vector2(516,22),13,P.MUTED,false,overlay)
+		for member:Dictionary in household.members:
+			var member_id:String=str(member.id)
+			var name:String=str(member.sim.character.name)
+			var roster:Array=owned.get("staff",[])
+			var employed:bool=roster.has(name)
+			var reason:String=LifeBusiness.hire_error(str(owned.id),roster,household.funds)
+			if employed:reason="Already works here."
+			var row:Button=button(("%s  ✓" if employed else "%s · hire for ℒ%s") % [name.split(" ")[0],commas(LifeBusiness.hire_cost(str(owned.id)))],
+				Vector2(462,hire_y),Vector2(516,36),func():_hire_employee(member_id),employed,overlay)
+			row.name="Hire_"+member_id
+			row.disabled=not reason.is_empty()
+			row.tooltip_text=reason if not reason.is_empty() else "Hire %s to work at the business." % name.split(" ")[0]
+			hire_y+=44.0
+	var scroll:ScrollContainer=ScrollContainer.new()
+	scroll.name="BusinessList"
+	rect(scroll,Vector2(462,470),Vector2(516,300),overlay)
+	var column:VBoxContainer=VBoxContainer.new()
+	column.add_theme_constant_override("separation",8)
+	scroll.add_child(column)
+	for offer:Dictionary in household.business_offers(household.selected_id()):
+		var business_id:String=str(offer.id)
+		var row:Control=Control.new()
+		row.name="BusinessRow_"+business_id
+		row.custom_minimum_size=Vector2(498,62)
+		column.add_child(row)
+		var buy:Button=button("%s · ℒ%s" % [str(offer.label),commas(int(offer.cost))],
+			Vector2.ZERO,Vector2(498,32),func():_buy_business(business_id),bool(offer.owned),row)
+		buy.name="Business_"+business_id
+		buy.disabled=not bool(offer.available)
+		buy.tooltip_text=str(offer.reason) if not bool(offer.available) else "Buys the business outright. It then earns money every day."
+		var note:Label=text_label(str(offer.reason) if not bool(offer.available) else "%s · ℒ%s a day when staffed · room for %d" % [str(offer.requirements),commas(int(offer.income)),int(offer.staff)],
+			Vector2(4,34),Vector2(492,24),11,P.CORAL if not bool(offer.available) else P.MUTED,false,row)
+		note.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	button("Back to work",Vector2(462,788),Vector2(516,42),show_careers,true,overlay)
+
+
+## Buy one business and show the panel again with its new state.
+func _buy_business(business_id:String) -> void:
+	var result:Dictionary=household.buy_business(business_id,household.selected_id())
+	if not bool(result.ok):
+		show_notice(str(result.error))
+	else:
+		refresh_hud()
+		show_notice("You now run the %s." % str(LifeBusiness.info(business_id).label))
+	show_business_panel()
+
+
+## Hire one housemate and show the panel again.
+func _hire_employee(member_id:String) -> void:
+	var result:Dictionary=household.hire_employee(member_id)
+	if not bool(result.ok):
+		show_notice(str(result.error))
+	else:
+		refresh_hud()
+		show_notice("Hired. The business pays more with more people working.")
+	show_business_panel()
+
+
 ## The land panel: buy the neighbouring plot on any side the lot can grow, and
 ## watch the ground it would add.
 ##
@@ -3929,9 +4013,14 @@ func show_careers() -> void:
 		barred.tooltip_text="No work or study until this Lifelet is free."
 	button("Higher education…",Vector2(432,278),Vector2(196,34),show_school_panel,false,overlay).name="CareerEducation"
 	button("Criminal record",Vector2(636,278),Vector2(196,34),show_criminal_record,false,overlay).name="CareerCriminalRecord"
+	# Running a business is the far end of a career, so it belongs beside the
+	# jobs that earn the skill it needs.
+	var business_button:Button=button("Businesses…",Vector2(432,318),Vector2(196,34),show_business_panel,false,overlay)
+	business_button.name="CareerBusinesses"
+	business_button.tooltip_text="Buy a business once a Lifelet is skilled enough to run one, and hire people to work there."
 	# The list grows with the jobs the game offers, so it scrolls inside the card.
 	var scroll:ScrollContainer=ScrollContainer.new();scroll.name="CareerList"
-	rect(scroll,Vector2(430,322),Vector2(580,452),overlay)
+	rect(scroll,Vector2(430,362),Vector2(580,412),overlay)
 	var column:VBoxContainer=VBoxContainer.new()
 	column.add_theme_constant_override("separation",8)
 	scroll.add_child(column)
@@ -4233,23 +4322,63 @@ func _restore_world_state(value:Variant) -> void:
 	if state.get("music") is bool:set_music(state.music)
 	world.update_camera()
 
+## Buy home insurance for the house the household lives in. It is one purchase
+## whichever screen asks for it — the phone or the property panel — so both write
+## through to the house's own record and cannot disagree about what is covered.
+func buy_home_insurance(policy_id: String = "home") -> Dictionary:
+	# A household with no property record at all keeps the sim's own policy, so
+	# this still works for a household that predates the property system.
+	var house_id: String = Properties.active(properties)
+	if house_id.is_empty() or not Properties.owns(properties, house_id):
+		return household.buy_insurance(policy_id)
+	var bought: Dictionary = Properties.buy_policy(properties, house_id, policy_id, household.funds)
+	if not bool(bought.ok):
+		return {"ok": false, "error": str(bought.error)}
+	properties = bought.state
+	household.set_funds(int(bought.funds))
+	_apply_property_insurance()
+	return {"ok": true, "premium": int(bought.cost), "label": str(LifeSim.INSURANCE_POLICIES.get(policy_id, {}).get("label", "Home insurance"))}
+
+
+## Give up the cover on the house the household lives in.
+func cancel_home_insurance() -> Dictionary:
+	var house_id: String = Properties.active(properties)
+	if house_id.is_empty() or not Properties.owns(properties, house_id):
+		return household.cancel_insurance()
+	var result: Dictionary = Properties.cancel_policy(properties, house_id)
+	if not bool(result.ok):
+		return {"ok": false, "error": str(result.error)}
+	properties = result.state
+	_apply_property_insurance()
+	return {"ok": true}
+
+
+## Keep the property record in step with cover bought through the phone, so the
+## two never disagree about what the house carries.
+func _on_insurance_changed(policy_id: String) -> void:
+	var house_id: String = Properties.active(properties)
+	if house_id.is_empty() or not Properties.owns(properties, house_id):
+		return
+	if properties.houses[house_id].get("policy", "") == policy_id:
+		return
+	properties.houses[house_id]["policy"] = policy_id
+
+
 ## Apply the live home's own policy to the household's sims. A house carries its
 ## own cover, so moving into a house that is insured — or out of one that is —
-## changes what a break-in there costs.
+## changes what a break-in there costs, and moving into an uninsured house really
+## leaves the household uncovered.
 ##
 ## A household that has never recorded a property keeps whatever policy its sims
-## hold: the phone's own insurance purchase is older than the property system,
-## and a load must not quietly cancel cover the player bought. Only a household
-## that really owns the house it lives in has the final word, so cover taken out
-## through the phone survives a load until the player uses the property panel.
+## hold, because the phone's own insurance purchase predates the property system
+## and a load must not quietly cancel cover the player bought. Once the household
+## owns the house it lives in, that house's record is the final word — and the
+## phone writes through to it, so the two can never disagree.
 func _apply_property_insurance() -> void:
 	var house_id:String=Properties.active(properties)
 	if house_id.is_empty() or not Properties.owns(properties,house_id):
 		return
-	var held:Dictionary=Properties.policy(properties,house_id)
-	if held.is_empty():
-		return
-	var policy_id:String=str(held.get("id",""))
+	var policy_id:String=str(Properties.policy(properties,house_id).get("id",""))
 	for member:Dictionary in household.members:
 		member.sim.insurance_policy_id=policy_id
 	household._sync_bill_mirror()
@@ -6096,8 +6225,14 @@ func _member_index(id:String) -> int:
 	return 0
 
 func _away_status(state:Dictionary) -> String:
-	var activity:String="work" if str(state.get("activity",""))=="career" else "school"
+	var career_state:bool=str(state.get("activity",""))=="career"
+	var activity:String="work" if career_state else "school"
 	if str(state.get("phase",""))=="returning":return "Coming home from "+activity
+	# A Lifelet at work is at their own workplace, so the HUD names where they
+	# actually are rather than a generic "work".
+	if career_state and is_instance_valid(sim):
+		var place:String=LifeCareers.workplace(str(sim.career.get("track","")))
+		if not place.is_empty():activity=place
 	var until:int=int(state.get("return_minutes",900))
 	return "At %s · Back %02d:%02d" % [activity,until/60,until%60]
 

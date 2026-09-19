@@ -68,31 +68,31 @@ const JOBS: Dictionary = {
 	# the work itself is still plied with a skill, so a waiter who keeps at it
 	# grows the Charisma that opens the better-paid doors.
 	"waiter": {
-		"label": "Waiting staff", "skill": "charisma", "base": 85, "step": 16, "entry": {"skill": "", "level": 0, "cost": 0},
+		"label": "Waiting staff", "workplace": "The Riverside Brasserie", "skill": "charisma", "base": 85, "step": 16, "entry": {"skill": "", "level": 0, "cost": 0},
 		"titles": ["Trainee waiter", "Waiter", "Waiting staff", "Senior waiter",
 			"Head waiter", "Restaurant supervisor", "Duty manager", "Assistant restaurant manager",
 			"Restaurant manager", "General manager"],
 	},
 	"barista": {
-		"label": "Coffee shop", "skill": "charisma", "base": 90, "step": 17, "entry": {"skill": "", "level": 0, "cost": 0},
+		"label": "Coffee shop", "workplace": "Bay Window Café", "skill": "charisma", "base": 90, "step": 17, "entry": {"skill": "", "level": 0, "cost": 0},
 		"titles": ["Trainee barista", "Barista", "Coffee shop assistant", "Senior barista",
 			"Shift leader", "Coffee shop supervisor", "Assistant manager", "Coffee shop manager",
 			"Area manager", "Head of coffee"],
 	},
 	"retail": {
-		"label": "Retail", "skill": "charisma", "base": 88, "step": 16, "entry": {"skill": "", "level": 0, "cost": 0},
+		"label": "Retail", "workplace": "Harbourgate Shopping Centre", "skill": "charisma", "base": 88, "step": 16, "entry": {"skill": "", "level": 0, "cost": 0},
 		"titles": ["Retail assistant", "Sales assistant", "Retail associate", "Senior sales assistant",
 			"Team leader", "Department supervisor", "Assistant store manager", "Store manager",
 			"Regional manager", "Head of retail"],
 	},
 	"cleaner": {
-		"label": "Cleaning", "skill": "fitness", "base": 82, "step": 15, "entry": {"skill": "", "level": 0, "cost": 0},
+		"label": "Cleaning", "workplace": "Juniper Bay Council depot", "skill": "fitness", "base": 82, "step": 15, "entry": {"skill": "", "level": 0, "cost": 0},
 		"titles": ["Cleaning assistant", "Cleaner", "Facilities assistant", "Senior cleaner",
 			"Cleaning supervisor", "Facilities coordinator", "Facilities manager", "Operations manager",
 			"Head of facilities", "Director of operations"],
 	},
 	"delivery": {
-		"label": "Delivery", "skill": "fitness", "base": 95, "step": 19, "entry": {"skill": "", "level": 0, "cost": 0},
+		"label": "Delivery", "workplace": "The depot on Rowan Close", "skill": "fitness", "base": 95, "step": 19, "entry": {"skill": "", "level": 0, "cost": 0},
 		"titles": ["Delivery assistant", "Delivery driver", "Van driver", "Senior driver",
 			"Route leader", "Depot supervisor", "Depot manager", "Logistics manager",
 			"Head of logistics", "Director of logistics"],
@@ -100,37 +100,37 @@ const JOBS: Dictionary = {
 
 	# ------------------------------------------------------------- trades
 	"hairdresser": {
-		"label": "Hairdressing", "skill": "charisma", "base": 150, "step": 30, "entry": {"skill": "charisma", "level": 1, "cost": 120},
+		"label": "Hairdressing", "workplace": "The Cutting Room", "skill": "charisma", "base": 150, "step": 30, "entry": {"skill": "charisma", "level": 1, "cost": 120},
 		"titles": ["Salon assistant", "Junior stylist", "Stylist", "Senior stylist",
 			"Colour specialist", "Salon supervisor", "Assistant salon manager", "Salon manager",
 			"Salon owner", "Creative director"],
 	},
 	"chef": {
-		"label": "Culinary arts", "skill": "cooking", "base": 170, "step": 34, "entry": {"skill": "cooking", "level": 2, "cost": 0},
+		"label": "Culinary arts", "workplace": "The Riverside Brasserie kitchen", "skill": "cooking", "base": 170, "step": 34, "entry": {"skill": "cooking", "level": 2, "cost": 0},
 		"titles": ["Kitchen assistant", "Prep cook", "Commis chef", "Chef de partie",
 			"Sous chef", "Head chef", "Kitchen manager", "Executive chef",
 			"Head of kitchens", "Culinary director"],
 	},
 	"gardener": {
-		"label": "Gardening", "skill": "gardening", "base": 140, "step": 26, "entry": {"skill": "gardening", "level": 1, "cost": 0},
+		"label": "Gardening", "workplace": "Juniper Gardens", "skill": "gardening", "base": 140, "step": 26, "entry": {"skill": "gardening", "level": 1, "cost": 0},
 		"titles": ["Garden centre assistant", "Gardener", "Plant technician", "Senior gardener",
 			"Horticulturist", "Head gardener", "Grounds supervisor", "Landscape manager",
 			"Head of grounds", "Director of horticulture"],
 	},
 	"fitness": {
-		"label": "Wellness club", "skill": "fitness", "base": 150, "step": 28, "entry": {"skill": "fitness", "level": 1, "cost": 0},
+		"label": "Wellness club", "workplace": "The Movement Rooms", "skill": "fitness", "base": 150, "step": 28, "entry": {"skill": "fitness", "level": 1, "cost": 0},
 		"titles": ["Gym assistant", "Fitness instructor", "Personal trainer", "Senior trainer",
 			"Studio coordinator", "Fitness manager", "Wellness lead", "Club manager",
 			"Head of wellness", "Operations director"],
 	},
 	"musician": {
-		"label": "Music", "skill": "music", "base": 130, "step": 30, "entry": {"skill": "music", "level": 2, "cost": 0},
+		"label": "Music", "workplace": "Common Ground Studio", "skill": "music", "base": 130, "step": 30, "entry": {"skill": "music", "level": 2, "cost": 0},
 		"titles": ["Session hand", "Cover musician", "Recording musician", "Touring musician",
 			"Soloist", "Musical director", "Composer", "Head of music",
 			"Artistic director", "Royal composer"],
 	},
 	"studio": {
-		"label": "Creative studio", "skill": "creativity", "base": 180, "step": 40, "entry": {"skill": "creativity", "level": 1, "cost": 0},
+		"label": "Creative studio", "workplace": "Common Ground Studio", "skill": "creativity", "base": 180, "step": 40, "entry": {"skill": "creativity", "level": 1, "cost": 0},
 		"titles": ["Studio assistant", "Project coordinator", "Creative specialist", "Senior creative",
 			"Art director", "Creative lead", "Studio manager", "Head of creative",
 			"Creative director", "Chief creative officer"],
@@ -138,55 +138,55 @@ const JOBS: Dictionary = {
 
 	# --------------------------------------------------------- public service
 	"community": {
-		"label": "Community work", "skill": "charisma", "base": 150, "step": 32, "entry": {"skill": "charisma", "level": 1, "cost": 0},
+		"label": "Community work", "workplace": "Juniper Bay community hall", "skill": "charisma", "base": 150, "step": 32, "entry": {"skill": "charisma", "level": 1, "cost": 0},
 		"titles": ["Community assistant", "Outreach worker", "Event organiser", "Community officer",
 			"Programme coordinator", "Programme manager", "Community lead", "Head of community",
 			"Director of community", "Chief executive"],
 	},
 	"teacher": {
-		"label": "Teaching", "skill": "logic", "base": 210, "step": 45, "entry": {"skill": "logic", "level": 4, "cost": 0},
+		"label": "Teaching", "workplace": "Juniper Bay School", "skill": "logic", "base": 210, "step": 45, "entry": {"skill": "logic", "level": 4, "cost": 0},
 		"titles": ["Teaching assistant", "Cover supervisor", "Class teacher", "Subject teacher",
 			"Head of subject", "Head of year", "Deputy head", "Head teacher",
 			"Executive head", "Director of education"],
 	},
 	"nurse": {
-		"label": "Nursing", "skill": "logic", "base": 220, "step": 48, "entry": {"skill": "logic", "level": 4, "cost": 0},
+		"label": "Nursing", "workplace": "Juniper Bay clinic", "skill": "logic", "base": 220, "step": 48, "entry": {"skill": "logic", "level": 4, "cost": 0},
 		"titles": ["Care assistant", "Student nurse", "Staff nurse", "Senior staff nurse",
 			"Sister", "Ward manager", "Matron", "Head of nursing",
 			"Director of nursing", "Chief nurse"],
 	},
 	"firefighter": {
-		"label": "Fire service", "skill": "fitness", "base": 230, "step": 50, "entry": {"skill": "fitness", "level": 4, "cost": 0},
+		"label": "Fire service", "workplace": "Juniper Bay fire station", "skill": "fitness", "base": 230, "step": 50, "entry": {"skill": "fitness", "level": 4, "cost": 0},
 		"titles": ["Fire service recruit", "Firefighter", "Firefighter (competent)", "Crew manager",
 			"Watch manager", "Station manager", "Area manager", "Group manager",
 			"Assistant chief officer", "Chief fire officer"],
 	},
 	"police": {
-		"label": "Police service", "skill": "logic", "base": 240, "step": 52, "entry": {"skill": "logic", "level": 4, "cost": 0},
+		"label": "Police service", "workplace": "Juniper Bay police station", "skill": "logic", "base": 240, "step": 52, "entry": {"skill": "logic", "level": 4, "cost": 0},
 		"titles": ["Police cadet", "Constable", "Constable (response)", "Sergeant",
 			"Inspector", "Chief inspector", "Superintendent", "Chief superintendent",
 			"Assistant chief constable", "Chief constable"],
 	},
 	"accountant": {
-		"label": "Accountancy", "skill": "logic", "base": 280, "step": 80, "entry": {"skill": "logic", "level": 5, "cost": 0, "degree": "bachelors"},
+		"label": "Accountancy", "workplace": "Rowan Close offices", "skill": "logic", "base": 280, "step": 80, "entry": {"skill": "logic", "level": 5, "cost": 0, "degree": "bachelors"},
 		"titles": ["Accounts assistant", "Bookkeeper", "Assistant accountant", "Accountant",
 			"Senior accountant", "Audit manager", "Finance manager", "Financial controller",
 			"Finance director", "Chief financial officer"],
 	},
 	"architect": {
-		"label": "Architecture", "skill": "creativity", "base": 325, "step": 75, "entry": {"skill": "creativity", "level": 5, "cost": 0, "degree": "bachelors"},
+		"label": "Architecture", "workplace": "The design practice on Willow Lane", "skill": "creativity", "base": 325, "step": 75, "entry": {"skill": "creativity", "level": 5, "cost": 0, "degree": "bachelors"},
 		"titles": ["Architectural assistant", "Part-qualified architect", "Architect", "Senior architect",
 			"Associate architect", "Principal architect", "Design director", "Practice director",
 			"Managing partner", "Head of practice"],
 	},
 	"lawyer": {
-		"label": "Law", "skill": "charisma", "base": 325, "step": 75, "entry": {"skill": "charisma", "level": 6, "cost": 0, "degree": "bachelors"},
+		"label": "Law", "workplace": "Chambers on Rowan Close", "skill": "charisma", "base": 325, "step": 75, "entry": {"skill": "charisma", "level": 6, "cost": 0, "degree": "bachelors"},
 		"titles": ["Paralegal", "Trainee solicitor", "Solicitor", "Associate solicitor",
 			"Senior associate", "Salaried partner", "Equity partner", "Senior partner",
 			"Head of chambers", "Lord of appeal"],
 	},
 	"doctor": {
-		"label": "Medicine", "skill": "logic", "base": 370, "step": 70, "entry": {"skill": "logic", "level": 6, "cost": 0, "degree": "bachelors"},
+		"label": "Medicine", "workplace": "Juniper Bay clinic", "skill": "logic", "base": 370, "step": 70, "entry": {"skill": "logic", "level": 6, "cost": 0, "degree": "bachelors"},
 		"titles": ["Foundation doctor", "Senior house officer", "Registrar", "Specialty registrar",
 			"Consultant", "Clinical lead", "Head of department", "Medical director",
 			"Chief medical officer", "Dean of medicine"],
@@ -194,7 +194,7 @@ const JOBS: Dictionary = {
 
 	# -------------------------------------------------------------- technology
 	"technology": {
-		"label": "Technology", "skill": "logic", "base": 190, "step": 90, "entry": {"skill": "logic", "level": 3, "cost": 0},
+		"label": "Technology", "workplace": "The technology park", "skill": "logic", "base": 190, "step": 90, "entry": {"skill": "logic", "level": 3, "cost": 0},
 		"titles": ["Support specialist", "Junior developer", "Software engineer", "Senior engineer",
 			"Technical lead", "Engineering manager", "Head of engineering", "Director of engineering",
 			"VP of engineering", "Chief technology officer"],
@@ -203,7 +203,7 @@ const JOBS: Dictionary = {
 	## Software engineer is the step where a technical worker becomes an engineer,
 	## and the tenth level is the chief executive of a technology company.
 	"technical": {
-		"label": "Technical work", "skill": "logic", "base": 280, "step": 80, "entry": {"skill": "logic", "level": 8, "cost": 900, "degree": "bachelors"},
+		"label": "Technical work", "workplace": "The technology park", "skill": "logic", "base": 280, "step": 80, "entry": {"skill": "logic", "level": 8, "cost": 900, "degree": "bachelors"},
 		"titles": ["Apprentice technician", "Bench technician", "Systems technician", "Software engineer",
 			"Senior software engineer", "Lead engineer", "Engineering manager", "Director of engineering",
 			"Chief technology officer", "CEO of a technology company"],
@@ -218,7 +218,7 @@ const JOBS: Dictionary = {
 	## so a practised thief climbs the ladder the same way anybody else does and
 	## a shift on the wrong side of the law still teaches something.
 	"criminal": {
-		"label": "Criminal", "skill": "charisma", "base": 1000, "step": 0, "criminal": true,
+		"label": "Criminal", "workplace": "Wherever the night takes them", "skill": "charisma", "base": 1000, "step": 0, "criminal": true,
 		"entry": {"skill": "", "level": 0, "cost": 0},
 		"titles": ["Lookout", "Shopbreaker", "Runner", "Bagman",
 			"Fence", "Safe-cracker", "Fixer", "Inside man",
@@ -247,6 +247,12 @@ static func job(job_id: String) -> Dictionary:
 
 static func label(job_id: String) -> String:
 	return str(job(job_id).get("label", job_id.capitalize()))
+
+
+## Where this job is actually done. A Lifelet leaves for a real workplace
+## rather than a generic "work", so the commute and its notices name the place.
+static func workplace(job_id: String) -> String:
+	return str(job(job_id).get("workplace", "Work"))
 
 
 static func titles(job_id: String) -> Array:
