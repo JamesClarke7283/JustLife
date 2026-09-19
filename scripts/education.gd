@@ -100,7 +100,10 @@ static func advance(state: Dictionary, stage: String, day: int, enrollment_minut
 				notices.append("School record closed with a %s grade; attendance or coursework was incomplete." % str(record.grade))
 		var records: Array = next.records
 		next = fresh(stage,day)
-		if stage in SCHOOL_STAGES and enrollment_minutes > 720.0:
+		# A birthday at the last possible class start still reaches that day's
+		# lesson, so the enrollment cutoff is the same 14:00 the attendance window
+		# allows. Anything later defers to the next school day.
+		if stage in SCHOOL_STAGES and enrollment_minutes > 840.0:
 			next.first_class_day = day + 1
 		next.records = records
 	return {"ok":true,"state":next,"effects":effects,"notices":notices}

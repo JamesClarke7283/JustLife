@@ -15,7 +15,11 @@ func press(label: String) -> void:
 	check(false, "Missing usable button: " + label)
 func finish_activity() -> void:
 	app.household.set_speed(8)
-	for frame: int in range(220):
+	# Lessons run for a real 180 game minutes and a queued assignment is only
+	# finished by ordinary movement and ticking, so the loop watches the queue
+	# rather than assuming a fixed number of frames is always enough. The bound
+	# is only a guard against a genuinely stuck action.
+	for frame: int in range(900):
 		app._process(.1)
 		await process_frame
 		if app.sim.action_queue.is_empty():return

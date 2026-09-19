@@ -31,8 +31,22 @@ func _run()->void:
 	seats.sort_custom(func(a:Dictionary,b:Dictionary)->bool:return a.node.position.distance_squared_to(actor.position)<b.node.position.distance_squared_to(actor.position))
 	check(seats.size()>=2,"Actual house supplies at least two reachable dining chairs")
 	if seats.size()>=2:
-		app.world.actors.player.position=app.world.approach(seats[0])
-		check(visit._route(actor.position,app.world.approach(seats[0]),"maya").is_empty(),"Visible household body blocks the nearest guest chair route")
+		# A body standing on the chair's approach blocks that seat for the guest.
+		# It must not stand on the guest's own tile: the router deliberately keeps
+		# a crowded body's start and outward escape enabled so anyone overlapping
+		# another can still walk clear, and a route point-to-itself always exists.
+		# So the blocker is placed one clear step along the guest's way in, which
+		# is what actually makes the approach unreachable.
+		# The guest is still standing at a seat from the loaded phase, so the
+		# blocking scenario is set up from a clear starting tile. Otherwise the
+		# "nearest" chair's approach *is* the guest's own tile, which no body can
+		# block: the router deliberately keeps a crowded body's start enabled so
+		# anyone overlapping another can still walk out.
+		var approach_at:Vector3=app.world.approach(seats[0])
+		var away:Vector3=app.world.nearest_clear_point(approach_at+Vector3(0,0,2.5),0)
+		if away.is_finite():actor.position=away
+		app.world.actors.player.position=approach_at
+		check(visit._route(actor.position,approach_at,"maya").is_empty(),"Visible household body blocks the nearest guest chair route")
 		var action:Dictionary=meal.activity();action.meal_seat="";action.meal_standing=false
 		check(app.meal_flow._choose_seat("maya",action) and str(action.meal_seat)!=str(seats[0].id),"Guest skips blocked nearest chair for a reachable farther place")
 		events.append({"nearest":str(seats[0].id),"chosen":str(action.get("meal_seat","")),"standing":action.get("meal_standing",false)})
@@ -58,7 +72,12 @@ func _run()->void:
 	var progress:float=float(meal.plate().progress)
 	var start:float=visit._now();var expires:float=start+.125
 	meal.plate().expires=expires;meal.state.last_at=start
-	app.household.set_speed(1);_step(1)
+	app.household.set_speed(1)
+	# One tick of .05 s advances .05 game minutes, so three ticks cross the
+	# .125-minute boundary. The tick that crosses must consume exactly the
+	# eligible fraction up to the deadline, and the ones before it only what
+	# has actually elapsed.
+	_step(3)
 	var released:Dictionary=app.household.meals.portions[0]
 	check(float(released.progress)==progress+(expires-start)/LifeMeals.EATING_MINUTES,"Expiry crossing consumes exactly the eligible fractional interval")
 	check(str(released.owner).is_empty(),"Expired guest portion is safely set down once")
@@ -67,7 +86,10 @@ func _run()->void:
 	var deadline:float=float(visit.state.phase_at)+LifeHomeVisit.STAY_MINUTES
 	_clock(deadline-.125);meal.state.last_at=visit._now();meal.plate().expires=deadline+100
 	progress=float(meal.plate().progress);start=visit._now()
-	app.household.set_speed(1);_step(1)
+	app.household.set_speed(1)
+	# Same crossing, this time bounded by the visit deadline rather than by the
+	# serving's own expiry, so the elapsed fraction is the deadline interval.
+	_step(3)
 	released=app.household.meals.portions[0]
 	check(float(released.progress)==progress+(deadline-start)/LifeMeals.EATING_MINUTES,"Visit deadline crossing consumes only the original eligible interval")
 	check(_phase()=="leaving" and float(visit.state.phase_at)==deadline,"Guest leaves at the unchanged original visit deadline")

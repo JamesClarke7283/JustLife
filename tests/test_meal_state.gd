@@ -10,6 +10,10 @@ class TestWorld:
 	var navigation := AStarGrid2D.new()
 	var construction := LifeConstruction.new()
 	var house := Node3D.new()
+	## The real support graph, not a stand-in. Placement and floor support now go
+	## through LifeLotNavigation, so a fixture that omits it cannot exercise the
+	## production paths at all.
+	var lot_navigation := LifeLotNavigation.new()
 	func _ready() -> void:
 		# Real support queries need a bounded navigation grid, construction and
 		# an actual floor surface even in this straight-path component fixture.
@@ -24,6 +28,13 @@ class TestWorld:
 		floor_node.mesh = slab
 		house.add_child(floor_node)
 		floor_node.position.y = .06
+		# Build the graph over the same lot the fixture's slab occupies.
+		var state := LifeBuildingState.fresh()
+		state.floors.append({"id": "fixture_floor", "level": 0, "x": 0.0, "z": 0.0,
+			"w": 10.0, "d": 10.0, "material": "cfa97e"})
+		lot_navigation.rebuild(state)
+	func lot_navigation_state() -> Dictionary:
+		return lot_navigation.state_snapshot()
 	func closest_item(kind: String, from: Vector3, maximum: float = 100.0) -> Dictionary:
 		var nearest: Dictionary = {}
 		for entry: Dictionary in items:

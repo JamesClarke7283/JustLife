@@ -154,17 +154,12 @@ var residents:LifeResidents
 var adoption_flow:LifeAdoptionFlow
 var traversal:LifeTraversal
 
-func _ready() -> void:
-	LifeLog.initialize()
-	LifeLog.info("LIFECYCLE", "JustLife engine started", {"cmdline": OS.get_cmdline_args()})
-	# Check before opening the menu: its save listing can initialize storage.
-	if "--release-check" in OS.get_cmdline_user_args() and not preload("res://scripts/release_probe.gd").isolated_environment():
-		set_process(false)
-		printerr("Release check requires isolated XDG_DATA_HOME and JUSTLIFE_DATA_DIR before game startup.")
-		get_tree().quit(2)
-		return
-	get_tree().set_auto_accept_quit(false)
-	DisplayServer.window_set_title("JustLife — make room for your story")
+## Every service a live game owns, created in one place. `_ready` calls this, and
+## so does any component fixture that needs a controller whose availability,
+## routing and meal rules behave as they do in play: hand-building `world` and
+## `household` and leaving the rest unset produces a controller shape that never
+## exists at runtime, so its answers prove nothing about the real game.
+func setup_services() -> void:
 	world=LifeWorld.new()
 	world.name="World"
 	add_child(world)
@@ -186,6 +181,20 @@ func _ready() -> void:
 	household.new_household(household_profiles)
 	sim=household.selected()
 	build_transactions=LifeBuildTransactions.new(self)
+
+
+func _ready() -> void:
+	LifeLog.initialize()
+	LifeLog.info("LIFECYCLE", "JustLife engine started", {"cmdline": OS.get_cmdline_args()})
+	# Check before opening the menu: its save listing can initialize storage.
+	if "--release-check" in OS.get_cmdline_user_args() and not preload("res://scripts/release_probe.gd").isolated_environment():
+		set_process(false)
+		printerr("Release check requires isolated XDG_DATA_HOME and JUSTLIFE_DATA_DIR before game startup.")
+		get_tree().quit(2)
+		return
+	get_tree().set_auto_accept_quit(false)
+	DisplayServer.window_set_title("JustLife — make room for your story")
+	setup_services()
 	_connect_live_nodes()
 	var canvas=CanvasLayer.new()
 	canvas.name="Interface"
@@ -2948,9 +2957,6 @@ func queue_interaction(item:Dictionary,id:String) -> void:
 	if LifeResidents.PEOPLE.has(str(item.id)) and not residents.present(str(item.id)):show_notice("This neighbor has gone home. Catch them on their next walk, or visit their home.");return
 	var destination:Vector3=world.approach(item)
 	if item.kind=="neighbor":destination=item.node.position+Vector3(0,0,.8)
-	if str(item.kind) in world.SHARED_BEDS and not _bed_available_for({"id":id,"target_id":str(item.id)},bound_member_id):
-		show_notice("Someone is already asleep in that bed.")
-		return
 	sim.queue_action(id,item.id,destination)
 	refresh_hud()
 
@@ -4579,22 +4585,6 @@ func _is_my_partner(member_id:String) -> bool:
 	var mine:LifeSim=household.member_sim(bound_member_id)
 	return mine!=null and not str(mine.romantic_partner).is_empty() and str(mine.romantic_partner)==member_id
 
-func _bed_available_for(action:Dictionary,member_id:String) -> bool:
-	# An occupied shared bed admits exactly one other body: this member's
-	# partner. Queued sleepers have no resolved phase, so this rule reads the
-	# household instead of the phase-dependent conflict loop.
-	var item:Dictionary=_find_item(str(action.get("target_id","")))
-	if item.is_empty() or str(item.kind) not in world.SHARED_BEDS:return true
-	var mine:LifeSim=household.member_sim(member_id)
-	var my_partner:String="" if mine==null else str(mine.romantic_partner)
-	for member:Dictionary in household.members:
-		if str(member.id)==member_id:continue
-		var other:Dictionary=member.sim.get_current_action()
-		if other.is_empty() or str(other.get("target_id",""))!=str(item.id):continue
-		if str(member.id)==my_partner and not my_partner.is_empty():continue
-		return false
-	return true
-
 func _activity_available(action:Dictionary) -> bool:
 	return _activity_available_for_member(action,bound_member_id)
 
@@ -4604,7 +4594,6 @@ func _activity_available_for_member(action:Dictionary,member_id:String) -> bool:
 	if str(action.get("id","")) in LifeSim.SOCIAL_ACTIONS and LifeResidents.PEOPLE.has(str(action.get("target_id",""))):
 		if not residents.present(str(action.target_id)) or not residents.home_visit.social_allowed(str(action.target_id),action):return false
 	if meal_flow.standing_place_blocks(member_id,action) or meal_flow.guest_blocks(action):return false
-	if not _bed_available_for(action,member_id):return false
 	var wanted:Array[String]=_activity_resources(action)
 	var session_id:String=str(action.get("cooperation_id",""))
 	# Read the requesting member without rebinding the movement controller

@@ -12,8 +12,10 @@ func add_item(world:LifeWorld,id:String,kind:String,at:Vector3) -> Dictionary:
 	world.items.append(item);return item
 func run() -> void:
 	var app:Node=load("res://scripts/main.gd").new()
-	app.world=LifeWorld.new();root.add_child(app.world)
-	app.household=LifeHousehold.new();root.add_child(app.household)
+	root.add_child(app)
+	# The real service set: availability consults the guest and meal rules, so a
+	# controller built without them would not be answering as the game does.
+	app.setup_services()
 	app.household.new_household([{"age_stage":"child"},{"age_stage":"adult"}])
 	var desk:Dictionary=add_item(app.world,"desk","desk",Vector3.ZERO)
 	var chair:Dictionary=add_item(app.world,"chair","chair",Vector3(0,0,.88))

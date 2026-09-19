@@ -8,8 +8,11 @@ func check(value:bool,detail:String) -> void:
 	if not value:failures+=1;push_error(detail)
 func run() -> void:
 	var app:Node=load("res://scripts/main.gd").new()
-	app.world=LifeWorld.new();root.add_child(app.world)
-	app.household=LifeHousehold.new();root.add_child(app.household)
+	root.add_child(app)
+	# The real service set, so availability, routing and meal rules answer the way
+	# they do in play rather than from a half-built controller.
+	app.setup_services()
+	app.world.name="World"
 	app.household.new_household([{}, {}, {}, {}, {}, {}, {}, {}])
 	var bed:Node3D=Node3D.new();app.world.add_child(bed)
 	app.world.items.append({"id":"bed","kind":"bed","node":bed,"size":Vector2(2,2)})

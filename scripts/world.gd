@@ -118,6 +118,14 @@ func _ready() -> void:
 	sun.directional_shadow_max_distance = 60
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	add_child(sun)
+	# A world always owns a construction. It starts empty, which is already the
+	# "nothing built here yet" state every caller reads, so no reader has to
+	# check whether a home happens to have been built before it can ask about
+	# walls, floors or support.
+	construction = LifeConstruction.new()
+	construction.name = "Construction"
+	add_child(construction)
+	construction.initialize(self)
 	update_camera()
 
 func material(hex: String, roughness: float = .8) -> StandardMaterial3D:
