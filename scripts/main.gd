@@ -43,6 +43,10 @@ var catalog_search: String = ""
 var portrait_stale: bool = false
 var profile: Dictionary = {"name":"Mara Vale","frame":0,"hair":1,"skin_color":"d9a17d","hair_color":"54382a","top_color":"c97c66","bottom_color":"eadfc9","shoe_color":"e9e4d9","body_scale":1.0,"height_scale":1.0,"outfit":0,"eye_color":"547365","traits":["Creative","Outgoing","Foodie"],"aspiration":"Maker"}
 var selected_lot: int = 0
+## Which Lifelets are ticked to come on the trip being planned, and where they
+## are going.
+var party_selection: Array[String] = []
+var _pending_trip_destination: String = ""
 ## The homes this household owns, which one it lives in, and the insurance on
 ## each. Rides the save beside the land and the layouts.
 var properties: Dictionary = Properties.fresh()
@@ -5455,14 +5459,85 @@ func show_neighborhood(chosen:String="") -> void:
 	small_caps(str(data.tag),Vector2(848,282),Vector2(341,45),overlay)
 	text_label(str(data.name),Vector2(846,334),Vector2(342,46),28,P.INK,true,overlay)
 	paragraph(str(data.description),Vector2(848,395),Vector2(340,115),16,P.MUTED,overlay)
-	paragraph("Travel takes the household together and clears current activities. A shared car takes you across town in 15 minutes.",Vector2(848,545),Vector2(331,84),13,P.MUTED,overlay)
-	var go=button("Travel here  →",Vector2(848,650),Vector2(344,50),func():travel_to(chosen),true,overlay)
+	paragraph("Travel clears current activities. A shared car takes you across town in 15 minutes.",Vector2(848,541),Vector2(331,72),13,P.MUTED,overlay)
+	var go=button("Travel here  →",Vector2(848,628),Vector2(344,44),func():travel_to(chosen),true,overlay)
 	var resident:String=str(data.get("resident",""))
 	go.disabled=chosen==current_venue or (not resident.is_empty() and not residents.can_visit(resident))
 	if not resident.is_empty() and not residents.can_visit(resident):
 		go.text="Meet them first · 20 friendship"
 		go.tooltip_text="Say hello when they walk past your home. Get to know them, then arrange a visit."
-	button("Back to life",Vector2(848,716),Vector2(344,35),close_overlay,false,overlay)
+	# Everyone who can comes along; the picker is there for taking only some, so
+	# a Lifelet who is working or at school can be left at home deliberately.
+	var choose:Button=button("Choose who goes…",Vector2(848,680),Vector2(344,36),func():show_trip_party(chosen),false,overlay)
+	choose.name="ChooseTripParty"
+	choose.disabled=go.disabled
+	choose.tooltip_text="Pick only some of the household; anyone left behind stays home."
+	button("Back to life",Vector2(848,724),Vector2(344,34),close_overlay,false,overlay)
+
+
+## Who goes on the trip. Everyone who can travel is listed and ticked; a Lifelet
+## who is working, at school or on the stairs is shown with the reason they
+## cannot come, so nothing is silently left behind.
+##
+## `reset` defaults the party to everyone who can come, and is used only when the
+## panel is first opened. Redrawing after a tick keeps the player's own choices,
+## because a redraw that re-ticked everybody would undo the pick they just made.
+func show_trip_party(destination:String, reset:bool = true) -> void:
+	# Remembered, because every untick redraws this panel and must come back to
+	# the same destination.
+	_pending_trip_destination=destination
+	var options:Array=residents.party_options()
+	if reset:
+		party_selection.clear()
+		for entry:Dictionary in options:
+			if bool(entry.available):party_selection.append(str(entry.id))
+	else:
+		# A Lifelet who has since become unavailable is dropped rather than
+		# travelling while busy.
+		for member_id:String in party_selection.duplicate():
+			var still_ok:bool=false
+			for entry:Dictionary in options:
+				if str(entry.id)==member_id and bool(entry.available):still_ok=true
+			if not still_ok:party_selection.erase(member_id)
+	_begin_pause_overlay()
+	var shade=ColorRect.new();shade.color=Color(.08,.17,.15,.28);rect(shade,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
+	card(Vector2(470,150),Vector2(500,600),P.WHITE,24,overlay)
+	small_caps("Who is coming",Vector2(502,172),Vector2(440,24),overlay)
+	text_label("Off to %s" % str(LifeNeighborhood.PLACES[destination].name),Vector2(500,200),Vector2(444,46),30,P.INK,true,overlay)
+	paragraph("Tick who is coming along. Anyone left behind stays home and carries on with their own day.",Vector2(502,254),Vector2(440,44),14,P.MUTED,overlay)
+	var y:float=312.0
+	for entry:Dictionary in options:
+		var member_id:String=str(entry.id)
+		var chosen:bool=party_selection.has(member_id)
+		var label:String=str(entry.name).split(" ")[0]+("  ✓" if chosen else "")
+		var row:Button=button(label,Vector2(502,y),Vector2(440,42),
+			func():_toggle_party_member(member_id),chosen,overlay)
+		row.name="TripParty_"+member_id
+		row.disabled=not bool(entry.available)
+		row.tooltip_text=str(entry.reason) if not bool(entry.available) else "Comes along on the trip."
+		if not bool(entry.available):
+			text_label(str(entry.reason),Vector2(508,y+44),Vector2(430,20),11,P.CORAL,false,overlay)
+		y+=68.0
+	var go:Button=button("Travel  →",Vector2(502,y+8),Vector2(440,46),func():_start_trip(destination),true,overlay)
+	go.name="TripPartyGo"
+	go.disabled=party_selection.is_empty()
+	go.tooltip_text="Travel with the Lifelets you have chosen." if not party_selection.is_empty() else "Choose at least one Lifelet to come along."
+	button("Back",Vector2(502,y+62),Vector2(440,36),func():show_neighborhood(destination),false,overlay)
+
+
+## Tick or untick one Lifelet for the trip.
+func _toggle_party_member(member_id:String) -> void:
+	if party_selection.has(member_id):party_selection.erase(member_id)
+	else:party_selection.append(member_id)
+	show_trip_party(_pending_trip_destination,false)
+
+
+## Leave with the chosen party.
+func _start_trip(destination:String) -> void:
+	_pending_trip_destination=destination
+	if residents.begin_trip(destination,party_selection):
+		party_selection.clear()
+
 
 func travel_to(destination:String) -> void:
 	if mode not in ["live","build"] or not LifeNeighborhood.PLACES.has(destination) or destination==current_venue:return

@@ -127,10 +127,10 @@ static func layout(place: String) -> Array:
 			["counter",-4.6,-4.3,0],["counter",-3.4,-4.3,0],["wardrobe",-1.6,-4.4,0],
 			["shelf",0.0,-4.9,0],["shelf",1.1,-4.9,0],["shelf",2.2,-4.9,0],
 			["bookshelf",4.2,-4.3,0],["wall_clock",-0.4,-4.9,0],
-			["bench",5.5,-2.6,-90],["bench",5.5,-0.6,-90],["tv",5.6,1.0,-90],["mirror",5.6,3.9,180],
+			["bench",5.5,-2.9,-90],["bench",5.5,-0.6,-90],["tv",5.6,1.8,-90],["mirror",5.6,3.9,180],
 			["rug",-3.4,1.7,0],["dining",-3.4,1.7,0],["chair",-3.4,2.65,180],["chair",-3.4,0.75,0],
 			["bench",-4.9,1.0,90],
-			["plant",5.3,4.2,0],["plant",-5.2,-1.4,0],["plant",-5.2,-3.0,0],["rubbish_bin",4.6,4.5,0],
+			["plant",4.4,4.5,0],["plant",-5.2,-1.4,0],["plant",-5.2,-3.0,0],["rubbish_bin",3.4,4.5,0],
 		]
 		# Two styling chairs facing the mirrors, the basin at the end of that
 		# wall, and the waiting bench turned away from the street.
@@ -153,7 +153,7 @@ static func layout(place: String) -> Array:
 			["dining",0.4,1.0,0],["chair",0.4,1.95,180],["chair",0.4,0.05,0],
 			["dining",3.8,1.0,0],["chair",3.8,1.95,180],["chair",3.8,0.05,0],
 			["rug",-3.6,3.3,0],["sofa",-3.6,4.2,180],["coffee_table",-3.6,2.8,0],
-			["plant",5.3,-2.2,0],["plant",-5.3,-1.0,0],["plant",5.3,4.2,0],["rubbish_bin",5.3,3.6,0],
+			["plant",5.3,-2.2,0],["plant",-5.3,-1.0,0],["plant",5.3,4.2,0],["rubbish_bin",4.5,4.5,0],
 		]
 		# Machines along the back wall, mats laid out in the middle of the floor,
 		# the weights corner on the far side, and the changing room in the corner.
@@ -170,12 +170,12 @@ static func layout(place: String) -> Array:
 		# two rows facing it, and the working corners down either side.
 		"school": entries = [
 			["bookshelf",-5.2,-4.3,0],["sink",1.0,-4.3,0],
-			["desk",4.4,-3.6,0],["chair",4.4,-4.3,0],
-			["desk",-3.4,-2.0,0],["chair",-3.4,-1.1,180],["desk",-1.6,-2.0,0],["chair",-1.6,-1.1,180],
-			["desk",-3.4,0.6,0],["chair",-3.4,1.5,180],["desk",-1.6,0.6,0],["chair",-1.6,1.5,180],
+			["desk",4.4,-3.6,0],["chair",4.4,-4.5,0],
+			["desk",-3.4,-2.0,0],["chair",-3.4,-1.0,180],["desk",-1.6,-2.0,0],["chair",-1.6,-1.0,180],
+			["desk",-3.4,0.6,0],["chair",-3.4,1.6,180],["desk",-1.6,0.6,0],["chair",-1.6,1.6,180],
 			["computer",-5.2,1.6,90],["chair",-4.4,1.6,-90],["computer",-5.2,3.3,90],["chair",-4.4,3.3,-90],
 			["piano",5.0,1.0,-90],["stool",4.0,1.0,90],["easel",3.6,3.4,180],
-			["dining",1.2,3.6,0],["chair",1.2,4.5,180],["chair",1.2,2.7,0],
+			["dining",1.2,3.6,0],["chair",1.2,4.6,180],["chair",1.2,2.6,0],
 			["shelf",2.8,-4.9,0],["wall_clock",1.9,-4.9,0],["painting",-5.9,-2.6,90],
 			["plant",5.4,-1.4,0],["plant",-5.4,-1.4,0],["rubbish_bin",5.4,4.4,0],
 		]
@@ -186,9 +186,9 @@ static func layout(place: String) -> Array:
 			["bookshelf",1.4,-4.2,0],["bookshelf",3.1,-4.2,0],["bookshelf",4.8,-4.2,0],
 			["wall_clock",0.0,-4.9,0],
 			["rug",-2.6,0.6,0],["sofa",-2.6,-0.6,0],["table",-2.6,0.9,0],["armchair",-4.6,0.4,90],["lamp",-5.4,2.6,0],
-			["desk",2.6,-1.0,0],["chair",2.6,-0.1,180],["desk",2.6,1.8,0],["chair",2.6,2.7,180],
+			["desk",2.6,-1.4,0],["chair",2.6,-0.5,180],["desk",2.6,0.4,0],["chair",2.6,1.3,180],
 			["computer",5.3,-1.2,90],["chair",4.4,-1.2,90],["computer",5.3,1.4,90],["chair",4.4,1.4,90],
-			["dining",-2.6,3.4,0],["chair",-2.6,4.3,180],["chair",-2.6,2.5,0],
+			["dining",-2.6,3.4,0],["chair",-2.6,4.4,180],["chair",-2.6,2.4,0],
 			["plant",5.4,3.8,0],["plant",-5.3,-1.6,0],["rubbish_bin",5.3,4.6,0],
 		]
 		# The visiting room: the officer's desk and the sign-in counter at the
@@ -196,9 +196,9 @@ static func layout(place: String) -> Array:
 		"prison": entries = [
 			["counter",-4.6,-4.3,0],["wall_clock",3.0,-4.9,0],
 			["desk",-5.0,1.0,90],["chair",-4.1,1.0,-90],
-			["dining",-2.2,-2.4,0],["chair",-2.2,-1.5,180],["chair",-2.2,-3.3,0],
-			["dining",-2.2,2.6,0],["chair",-2.2,3.5,180],["chair",-2.2,1.7,0],
-			["dining",1.2,2.6,0],["chair",1.2,3.5,180],["chair",1.2,1.7,0],
+			["dining",-2.2,-2.4,0],["chair",-2.2,-1.4,180],["chair",-2.2,-3.4,0],
+			["dining",-2.2,2.6,0],["chair",-2.2,3.6,180],["chair",-2.2,1.6,0],
+			["dining",1.2,2.6,0],["chair",1.2,3.6,180],["chair",1.2,1.6,0],
 			["bench",5.4,-2.0,-90],["bench",5.4,1.2,-90],
 			["toilet",5.3,3.8,180],["sink",3.6,4.3,180],
 			["plant",-5.4,-2.6,0],["rubbish_bin",-5.0,4.4,0],

@@ -941,6 +941,12 @@ func clear_actor_preview(id:String) -> void:
 func set_actor_away(id:String,away:bool,unavailable:bool) -> bool:
 	var actor:LifeActor=actors.get(id)
 	if not is_instance_valid(actor):return false
+	# A Lifelet left off this lot by a partial trip is not shown again by an
+	# unrelated away-state refresh: the trip's own left-behind list owns them
+	# until the party comes home.
+	if bool(actor.get_meta("left_behind",false)):
+		actor.visible=false
+		return false
 	var changed:bool=bool(actor.get_meta("away",false))!=unavailable
 	actor.set_meta("away",unavailable)
 	actor.visible=not away
