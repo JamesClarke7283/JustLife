@@ -18,4 +18,8 @@ Build history is LIFO and shared with furnishing operations. Undo validates the 
 
 `world.serialize_items()` includes the canonical marker alongside furnishings. Saved household loads prepare the complete world and routes off-tree before adoption. See [SAVE_LIBRARY_API.md](SAVE_LIBRARY_API.md) for the load boundary and [HOUSEHOLD_API.md](HOUSEHOLD_API.md) for physical snapshots.
 
+The lot a building is validated against is the household's own land, owned by `LifeLand` and read live through `LifeBuildingState.lot()`, so a house can be built on a plot bought next door. Every geometric bound — building rectangles, stairs, roofs, furnishings, the navigation region and the camera pan — moves with it. See [LAND_PROPERTY_VENUES.md](LAND_PROPERTY_VENUES.md).
+
+Two rooms drawn side by side share the wall between them rather than stacking a second one on the same line, so the dividing wall can be broken to merge the rooms into one bigger space, or given a doorway. See `tests/test_room_extension.gd`.
+
 Current limits: two levels, rectangular slabs, axis-aligned walls, straight stairs and separate gable roofs. Curved stairs, basements, terrain editing, intersecting roof junctions, valleys, dormers and a general structural-engineering simulation are not implemented.
