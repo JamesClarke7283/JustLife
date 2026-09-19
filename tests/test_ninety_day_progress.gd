@@ -13,6 +13,9 @@ extends "res://tests/test_playthrough.gd"
 ##
 ##   python tests/run_playthrough.py --suite ninety_day_progress --timeout 5400
 
+## Ninety days is the proof this suite was written for. `JUSTLIFE_NINETY_DAYS`
+## shortens the run so its own tail (the evidence panels and the named save) can
+## be smoke-tested without waiting for the full ninety.
 const DAYS: int = 90
 ## Skill levels a household should reach in three months of ordinary living.
 const SKILL_TARGET: int = 5
@@ -23,6 +26,7 @@ var history: Array = []
 var orders: int = 0
 var promotions: int = 0
 var qualification: String = ""
+var days: int = clampi(int(OS.get_environment("JUSTLIFE_NINETY_DAYS")) if OS.has_environment("JUSTLIFE_NINETY_DAYS") else DAYS, 1, 400)
 
 func _run() -> void:
 	screenshot_dir = "res://art/ninety_day_progress"
@@ -42,7 +46,7 @@ func _run() -> void:
 		await _save_ninety()
 	_write_report()
 	app.queue_free();await frames(3)
-	print("NINETY_DAY_RESULT assertions=%d failures=%d resume=%s days=%d" % [assertions,failures.size(),str(resume_only),DAYS])
+	print("NINETY_DAY_RESULT assertions=%d failures=%d resume=%s days=%d" % [assertions,failures.size(),str(resume_only),days])
 	quit(0 if failures.is_empty() else 1)
 
 ## Watch the household's own signals, so promotions and deliveries are counted
@@ -107,7 +111,7 @@ func _ninety_days() -> void:
 	check(not qualification.is_empty(),"The higher-education panel really awards a degree (%s)." % qualification)
 	await screenshot("00_start")
 	var start: Dictionary = _snapshot("start")
-	var target: float = _now() + float(DAYS) * 1440.0
+	var target: float = _now() + float(days) * 1440.0
 	await _run_to(target)
 	print("NINETY_DAY_RUN days=%d wall_s=%.1f" % [app.household.day, Time.get_ticks_msec() / 1000.0])
 	await _report_progress(start)
@@ -156,7 +160,7 @@ func _run_to(target: float) -> void:
 			last_sample = _now()
 			history.append(_snapshot("day_%d" % app.household.day))
 	app.household.set_speed(0)
-	check(_now() >= target,"The household really reaches day %d (reached day %d, %.0f game minutes)." % [DAYS,app.household.day,_now()])
+	check(_now() >= target,"The household really reaches day %d (reached day %d, %.0f game minutes)." % [days,app.household.day,_now()])
 
 func _snapshot(label_text: String) -> Dictionary:
 	var members: Array = []
@@ -185,7 +189,7 @@ func _snapshot(label_text: String) -> Dictionary:
 func _report_progress(start: Dictionary) -> void:
 	var end: Dictionary = _snapshot("end")
 	history.append(end)
-	var report: Dictionary = {"days":DAYS,"start":start,"end":end,"history":history,
+	var report: Dictionary = {"days":days,"start":start,"end":end,"history":history,
 		"orders_delivered":orders,"promotions_seen":promotions,"qualification":qualification}
 	print("NINETY_DAY_SUMMARY ", JSON.stringify({"start_highest_skill":int(start.highest_skill),
 		"end_highest_skill":int(end.highest_skill),"start_career":int(start.career_level),
@@ -194,7 +198,7 @@ func _report_progress(start: Dictionary) -> void:
 		"memorials":int(end.memorials)}))
 	var file: FileAccess = FileAccess.open("user://ninety_day_progress.json",FileAccess.WRITE)
 	file.store_string(JSON.stringify(report,"\t"));file.close()
-	check(int(end.day) >= DAYS + 1,"Ninety days really elapsed (%d days)." % int(end.day))
+	check(int(end.day) >= days + 1,"Ninety days really elapsed (%d days)." % int(end.day))
 	# The household must actually get somewhere.
 	check(int(end.highest_skill) > int(start.highest_skill),
 		"A skill rose over the ninety days (%d -> %d)." % [int(start.highest_skill),int(end.highest_skill)])
@@ -212,7 +216,7 @@ func _report_progress(start: Dictionary) -> void:
 	for entry: Dictionary in end.members:
 		check(not bool(entry.dead) or float(entry.starvation) == 0.0,
 			"%s did not die of hunger (%s)." % [str(entry.name),str(entry.cause)])
-	check(int(end.memorials) > 0 or int(end.day) < DAYS - 20,
+	check(int(end.memorials) > 0 or int(end.day) < days - 20,
 		"Elderly members reach a real end of life rather than living forever (%d memorials)." % int(end.memorials))
 	# The kitchen's own order entry is what keeps food reachable in a home with
 	# no computer, so the run must have used it and been delivered to.
@@ -222,14 +226,20 @@ func _report_progress(start: Dictionary) -> void:
 		"A qualification is held after ninety days (%s)." % str(end.members[0].degree))
 	check(int(end.funds) >= int(start.funds) - 5000,
 		"The household's money is not quietly drained (%d -> %d)." % [int(start.funds),int(end.funds)])
-	await press("My Lifelet")
-	await press("Career details",true)
+	# Evidence of the run's own progress, read from the real panels: the career
+	# record the HUD opens, and the Lifelet's own card. The career panel is opened
+	# through the same call the HUD button makes, because that button only exists
+	# while the career card is drawn.
+	app.show_career_record()
+	await frames(4)
 	await screenshot("90_career")
+	app.close_overlay()
+	await frames(2)
+	await press("My Lifelet")
+	await frames(4)
+	await screenshot("90_lifelet")
 	await press("Back to life")
-	await press("People")
-	await press("All relationships",true)
-	await screenshot("90_relationships")
-	await press("Back to life")
+	await frames(2)
 
 func _save_ninety() -> void:
 	var expected: Dictionary = {"state":app.sim.get_state(),"player":vec(app.player.position),
@@ -247,7 +257,7 @@ func _resume_ninety() -> void:
 	await _compare_saved(expected,"ninety-day fresh process")
 	var restored: LifeSim = app.household.member_sim(str(expected.members[0].id))
 	check(app.household.members.size() == expected.members.size(),"The fresh process restores every member.")
-	check(int(restored.day) >= DAYS + 1,"The restored household is still on a late day (%d)." % int(restored.day))
+	check(int(restored.day) >= days + 1,"The restored household is still on a late day (%d)." % int(restored.day))
 	var career_kept: bool = true
 	var skills_kept: bool = true
 	for member: Dictionary in expected.members:
