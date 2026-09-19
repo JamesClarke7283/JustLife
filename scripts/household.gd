@@ -284,6 +284,11 @@ func tick(delta: float) -> void:
 		# A sentence ends on the shared clock, so a Lifelet really comes home on
 		# the day their record says they are free.
 		_prison_release_tick()
+		# A bill that has reached its due day is settled from the shared purse, so
+		# the utilities are not lost for good while nobody is at the phone. A bill
+		# still inside its window stays the player's own decision.
+		if not bill().is_empty():
+			pay_due_bill()
 	# A grocery delivery arrives when its van does, on the shared clock, so a
 	# household that ordered one is restocked while the player simply plays.
 	_grocery_tick()
@@ -913,6 +918,36 @@ func pay_bill() -> Dictionary:
 	if owner == null:
 		return {"ok": false, "reason": "There is no household to bill."}
 	owner.funds = funds
+	var result: Dictionary = owner.pay_bill()
+	if bool(result.get("ok", false)):
+		funds = owner.funds
+		_sync_bill_mirror()
+		_sync_wallet()
+	return result
+
+
+## Settle the outstanding bill from the shared purse.
+##
+## A player pays from the phone or by reading the bill's letter, and an
+## autonomous household must be able to do the same: a bill nobody ever settles
+## cuts the utilities for good, so a home with a full fridge and a healthy purse
+## can no longer cook, bathe or watch anything. That is what an unattended
+## ninety-day run found — the household ate snacks beside fourteen unused meals
+## for eighty-four days. Called on the household's own clock when a bill falls
+## due, so the upkeep a player would do is done rather than forgotten.
+func pay_due_bill() -> Dictionary:
+	var owner: LifeSim = bill_owner()
+	if owner == null:
+		return {"ok": false, "reason": "There is no household to bill."}
+	owner.funds = funds
+	var record: Dictionary = bill()
+	if record.is_empty():
+		return {"ok": false, "reason": "There is nothing due."}
+	# Only a bill that has actually fallen due is settled automatically. A bill
+	# still inside its payment window stays the player's own choice, which is the
+	# design: an unpaid bill is a decision until it comes due.
+	if day < int(record.get("due_day", 0)):
+		return {"ok": false, "reason": "The bill is not due yet."}
 	var result: Dictionary = owner.pay_bill()
 	if bool(result.get("ok", false)):
 		funds = owner.funds
