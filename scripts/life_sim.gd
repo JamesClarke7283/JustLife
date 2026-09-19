@@ -445,7 +445,7 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"lot_exit":
 			ids = ["school_day"] if str(character.age_stage) in LifeEducation.SCHOOL_STAGES else (["career_day"] if str(character.life_stage)=="adult" else [])
 			ids.append("morning_run")
-		"fridge": ids = ["cook", "snack", "birthday"]
+		"fridge": ids = ["cook", "snack", "order_groceries", "birthday"]
 		"stove", "kitchen": ids = ["cook", "experiment_recipe"]
 		"sink": ids = ["wash_hands", "brush_teeth", "deep_clean"]
 		"dining", "counter", "coffee_table": ids = ["clear_table", "deep_clean"]
@@ -1330,6 +1330,14 @@ func _finish_front() -> void:
 	elif id == "empty_bin":
 		if is_instance_valid(household_service):household_service.empty_bin(str(action.get("target_id","")))
 		_emit_notice("The rubbish is out. The kitchen smells fresher already.")
+	elif id == "order_groceries" and is_instance_valid(grocery_service):
+		# The computer's own panel places this order through the household when a
+		# player uses it. A Lifelet who reaches the kitchen's own order entry (the
+		# fridge) has nobody at the keyboard, so the shop is placed here: the
+		# largest basket the purse can afford, and the van is on its way.
+		var placed:Dictionary=grocery_service.order_groceries_best()
+		if not bool(placed.get("ok",false)):
+			_emit_notice(str(placed.get("error","The shop could not be ordered just now.")))
 	elif id == "watch_together":
 		pass
 	_activity_memory(id)
@@ -1472,6 +1480,12 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 	# household orders its delivery from.
 	if is_instance_valid(grocery_service) and id in ["cook","snack"]:
 		reason=str(grocery_service.cooking_availability(self,target_id))
+		if not reason.is_empty():return {"available":false,"reason":reason}
+	# An order is placed for the whole household, so whether one may be placed at
+	# all is the household's own answer: a delivery already on its way, a purse
+	# that cannot afford even the smallest basket, or a kitchen already stocked.
+	if is_instance_valid(grocery_service) and str(id) == "order_groceries":
+		reason=str(grocery_service.grocery_availability())
 		if not reason.is_empty():return {"available":false,"reason":reason}
 	if not _actions.has(id):
 		return {"available":false, "reason":"That activity is unavailable."}
@@ -2526,6 +2540,12 @@ func _brief_leisure_fits(duty:String,excluded_target_ids:Array=[]) -> bool:
 
 func _autonomy_need_choice(need:String,excluded_target_ids:Array=[],preparing:bool=false) -> Dictionary:
 	if need=="social":return _autonomy_social_choice(excluded_target_ids)
+	# A kitchen with nothing in it has no meal to choose, so the household's own
+	# shop is the recovery: a hungry Lifelet with an empty fridge and no delivery
+	# on its way orders one rather than queueing a meal it cannot cook.
+	if need=="hunger" and is_instance_valid(grocery_service) and str(grocery_service.grocery_availability()).is_empty():
+		var shopping:Dictionary=_autonomy_target_for("order_groceries",excluded_target_ids)
+		if not shopping.is_empty():return shopping
 	var candidates:Array[String]=[]
 	match need:
 		"hunger":candidates=["eat_meal","snack","cook"]

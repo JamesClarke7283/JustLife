@@ -963,8 +963,31 @@ func cancel_insurance() -> Dictionary:
 ## this, so a greyed-out recipe and a refused cook never disagree.
 func cooking_availability(_sim: LifeSim, _target_id: String = "") -> String:
 	if not LifeGroceries.can_cook(groceries):
-		return "The kitchen is empty. Order a delivery from the computer."
+		return "The kitchen is empty. Order a delivery from the computer, or from the fridge."
 	return ""
+
+
+## Whether a Lifelet may order right now, as the reason they may not. Empty means
+## the shop can be ordered: a delivery already on its way, a purse that cannot
+## afford the smallest basket, or a kitchen that is already stocked all refuse it
+## with their own reason, so a menu row and a refused order never disagree.
+func grocery_availability() -> String:
+	if LifeGroceries.has_order(groceries):
+		return LifeGroceries.order_error(groceries, "small", funds)
+	if not LifeGroceries.needs_restock(groceries):
+		return "The kitchen is stocked. A shop now would only spoil."
+	return LifeGroceries.order_error(groceries, "small", funds)
+
+
+## Order the largest basket the household can afford, for a Lifelet shopping from
+## the kitchen rather than from the computer. The smallest basket is the bar: a
+## household that cannot afford even that is refused and told why, exactly as the
+## computer's own panel refuses it.
+func order_groceries_best() -> Dictionary:
+	var basket_id: String = LifeGroceries.best_basket_for(groceries, funds)
+	if basket_id.is_empty():
+		return {"ok": false, "error": LifeGroceries.order_error(groceries, "small", funds)}
+	return order_groceries(basket_id)
 
 
 ## Take one meal out of the kitchen for a recipe or a snack. Refused with a

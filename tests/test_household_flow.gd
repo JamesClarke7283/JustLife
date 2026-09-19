@@ -30,6 +30,12 @@ func run() -> void:
 		"Two playable Lifelets and the lane's residents move into the world.")
 	for member:Dictionary in app.household.members:member.sim.autonomy=false
 	app.set_sound(false)
+	# Cooking draws a meal out of the kitchen, so the fixture stocks it through
+	# the household's own order before queueing a recipe.
+	var ordered:Dictionary=app.household.order_groceries("weekly")
+	var collected:Dictionary=app.household.collect_groceries()
+	check(bool(ordered.ok) and bool(collected.ok),"The fixture stocks its own kitchen through the household's order.")
+	var shop_funds:int=app.household.funds
 	app.set_game_speed(8)
 	app.queue_interaction(item("fridge"),"cook")
 	var first_path:PackedVector3Array=app.path.duplicate()
@@ -48,7 +54,7 @@ func run() -> void:
 	for member:Dictionary in app.household.members:
 		for wish:Dictionary in member.sim.wants:
 			if wish.complete:earned+=int(wish.reward)
-	check(app.household.funds==2500-12+earned and app.sim.funds==app.household.member_sim("housemate_1").funds,"One wallet charges the meal once and receives fulfilled-wish rewards once.")
+	check(app.household.funds==shop_funds+earned and app.sim.funds==app.household.member_sim("housemate_1").funds,"One wallet draws the meal from the kitchen once and receives fulfilled-wish rewards once.")
 	check(float(first.skills.cooking.xp)>0 and app.household.member_sim("housemate_1").skills.cooking.xp==0,"Skill gains stay with the Lifelet who practiced.")
 	app.queue_interaction(item("bed"),"sleep")
 	app.select_household_member(1)

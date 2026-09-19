@@ -4,6 +4,7 @@ extends SceneTree
 ## adult-only actions refused through the public availability path. Headless.
 
 const Actor = preload("res://scripts/actor.gd")
+const LifeGroceries = preload("res://scripts/groceries.gd")
 const BABY_MODEL = "res://assets/models/character_baby.glb"
 
 var checks: int = 0
@@ -139,7 +140,13 @@ func _run() -> void:
 		var availability: Dictionary = sim.get_action_availability(str(pair[0]), "fridge")
 		check(not bool(availability.available) and not str(availability.reason).is_empty(),
 			"A baby is refused %s through the public availability path (%s)." % [str(pair[1]), str(availability.reason)])
-	# The recovery set a baby keeps still works.
+	# The recovery set a baby keeps still works. Cooking and snacking now come out
+	# of the kitchen, so the fixture stocks it through the household's own order —
+	# otherwise the fridge is empty and every meal is refused for that reason
+	# rather than for anything about the baby.
+	app.household.set_funds(app.household.funds + LifeGroceries.LARGE_BASKET_PRICE)
+	check(bool(app.household.order_groceries("large").ok), "The fixture can stock its own kitchen.")
+	check(bool(app.household.collect_groceries().ok), "The fixture's delivery arrives.")
 	for pair: Array in [["sleep", "bed"], ["snack", "fridge"], ["toilet", "toilet"]]:
 		var allowed: Dictionary = sim.get_action_availability(str(pair[0]), str(pair[1]))
 		check(bool(allowed.available), "A baby may still %s (%s)." % [str(pair[0]), str(allowed.reason)])

@@ -643,6 +643,11 @@ func _dress_mirror(node:Node3D,model:Node3D) -> void:
 	node.add_child(probe)
 
 func refresh_mirror_reflections() -> void:
+	# A world exists before a home does — the construction it always owns says so
+	# — so a rebuild with no furniture container yet simply has no mirror to
+	# refresh rather than failing on a missing node.
+	if not is_instance_valid(furniture):
+		return
 	# Furnishings and walls changed: capture the rooms again for every mirror.
 	for probe:ReflectionProbe in furniture.find_children("MirrorReflection","ReflectionProbe",true,false):
 		probe.update_mode=ReflectionProbe.UPDATE_ALWAYS

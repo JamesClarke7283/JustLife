@@ -157,7 +157,7 @@ static func collect(state: Dictionary) -> Dictionary:
 ## refusal when the kitchen is empty.
 static func take_meal(state: Dictionary) -> Dictionary:
 	if stock(state) <= 0:
-		return {"ok": false, "error": "The kitchen is empty. Order a delivery from the computer."}
+		return {"ok": false, "error": "The kitchen is empty. Order a delivery from the computer, or from the fridge."}
 	var after: Dictionary = state.duplicate(true)
 	after["stock"] = stock(state) - 1
 	return {"ok": true, "state": after, "remaining": int(after.stock)}
@@ -176,6 +176,26 @@ static func describe(state: Dictionary) -> String:
 	if not on_way.is_empty():
 		text += " A delivery of %d meals arrives on day %d." % [int(on_way.get("meals", 0)), int(on_way.get("day", 0))]
 	return text
+
+
+## Whether the kitchen is low enough to be worth shopping for. A household whose
+## fridge is already full is refused an order it does not need, so neither the
+## computer nor the fridge offers a delivery nobody wants.
+const WELL_STOCKED_MEALS: int = 6
+
+## The largest basket the purse can afford, or "" when none is affordable. A
+## household shopping from the kitchen buys as much as it can rather than the
+## smallest order, which is what makes one big shop worth doing.
+static func best_basket_for(state: Dictionary, funds: int) -> String:
+	for basket_id: String in ["large", "weekly", "small"]:
+		if order_error(state, basket_id, funds).is_empty():
+			return basket_id
+	return ""
+
+
+## Whether the fridge is stocked enough that a shop would be wasted.
+static func needs_restock(state: Dictionary) -> bool:
+	return stock(state) < WELL_STOCKED_MEALS
 
 
 ## Validate a saved grocery record, so a corrupt one cannot mint free food or
