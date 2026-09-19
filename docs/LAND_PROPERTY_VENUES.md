@@ -87,7 +87,10 @@ edit in a list.
 ## The kitchen: `LifeGroceries`
 
 The fridge no longer sells food. Cooking and snacking take a meal *out of the
-kitchen*, and the kitchen is restocked by ordering a delivery from the computer.
+kitchen*, and the kitchen is restocked by ordering a delivery. The order is
+placed from the computer's own panel, and from the fridge itself — the kitchen's
+own order entry, which is what makes shopping reachable in a home with no
+computer and what lets an unattended household feed itself.
 
 - `fresh()` holds `{stock, order}`: what is in the fridge in meals, and the
   delivery on its way.
@@ -96,10 +99,17 @@ kitchen*, and the kitchen is restocked by ordering a delivery from the computer.
 - `arrival_due(state, day, minutes)` and `collect(state)` are the van's side;
   `take_meal(state)` is what cooking calls.
 - `validate(value)` refuses an impossible stock or an unknown basket.
+- `needs_restock(state)` and `best_basket_for(state, funds)` are what an order
+  placed away from the computer reads: a household shops when the fridge is low,
+  and buys the largest basket the purse can afford.
 
 The household owns the record, runs `_grocery_tick()` on its own clock, and
 hands itself to each member as `grocery_service`, which is what the stove's menu,
-the cook gate and the availability check read.
+the cook gate and the availability check read. `grocery_availability()` is the
+one answer for whether a shop may be placed at all — a delivery already on its
+way, a purse short of the smallest basket, or a kitchen already stocked — so the
+computer's panel, the fridge's own entry and the autonomy chooser never disagree.
+A hungry Lifelet whose kitchen is bare and has no delivery coming orders one.
 
 ## The prison: sentences and visits
 
@@ -155,3 +165,4 @@ starting plot.
 | `tests/test_business.gd` | the level-9 bar, the two price points, buying, hiring raising the takings, the daily income and the save |
 | `tests/test_education_degrees.gd` | the Bachelors/Masters/PHD ladder, the fees, the Dr title on the profile, pay rising with a degree but never past ℒ1,000, and the save |
 | `tests/test_prison.gd` | being caught really taking a Lifelet to Blackmoor, the HUD and the job refusal, a real family visit, the release arriving on the household clock, a Lifelet caught while away serving from home, and the sentence's save record |
+| `tests/test_ninety_day_progress.gd` | ninety game days of an autonomous two-adult household, run through `run_playthrough.py --suite ninety_day_progress`: skills passing their mid levels, a career climbing its ladder with real promotions, a degree awarded through the higher-education panel, a kitchen stocked by the household's own order, the purse surviving, nobody starving, and a fresh process keeping the career, the skills and the qualification |
