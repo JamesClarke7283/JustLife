@@ -2718,7 +2718,7 @@ func on_placement(kind:String,p:Vector3,angle:float,style:String="",size:String=
 	var data:Dictionary=LifeCatalog.get_item(kind)
 	var variant:Dictionary=Variants.resolve(data,{"style":style,"size":size})
 	if not world.can_place(kind,p,angle,variant.style,variant.size):
-		show_notice("Hang this against a wall." if kind in LifeCatalog.WALL_MOUNTED and not world.wall_behind(kind,p,angle,variant.size) else "That space needs a little more room.");return
+		show_notice("Hang this against a wall." if LifeCatalog.wall_mounted(kind) and not world.wall_behind(kind,p,angle,variant.size) else "That space needs a little more room.");return
 	var moving:bool=not pending_move.is_empty() and str(pending_move.entry.kind)==kind
 	if not pending_move.is_empty() and not moving:cancel_placement()
 	var price:int=0 if moving else Variants.price(data,variant.size)

@@ -76,6 +76,14 @@ wall-mounted `electric_charger`, which names the car it charges and must be
 placed against a wall. Both models were authored to the same contract as the
 existing vehicles: one joined `Tint` surface and ground contact at y = 0.
 
+A catalogue entry declares its own wall rule with `"wall_mounted": true`, and
+`LifeCatalog.wall_mounted(kind)` is the one authority every placement rule reads
+— the snapping in `world.can_place`, the refusal when no wall is behind the
+placement, and the ghost's slide along the nearest wall. The older authored
+`WALL_MOUNTED` list still covers the decor that predates the flag, so a new
+wall-mounted furnishing says so in its entry alone rather than needing a second
+edit in a list.
+
 ## The kitchen: `LifeGroceries`
 
 The fridge no longer sells food. Cooking and snacking take a meal *out of the

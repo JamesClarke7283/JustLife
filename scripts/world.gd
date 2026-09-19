@@ -1092,7 +1092,7 @@ func can_place(kind:String,p:Vector3,angle:float,style:String="",size_choice:Str
 	var depth:float=size.y
 	if int(roundf(angle/90))%2:size=Vector2(size.y,size.x)
 	var rect=Rect2(Vector2(p.x,p.z)-size/2,size)
-	if kind in LifeCatalog.WALL_MOUNTED:
+	if LifeCatalog.wall_mounted(kind):
 		# Wall decor sits flush against a wall, so only its room-facing half must
 		# lie on the floor; the shift uses the unrotated depth at every angle.
 		var forward:Vector3=Basis(Vector3.UP,deg_to_rad(angle))*Vector3(0,0,1)
@@ -1105,7 +1105,7 @@ func can_place(kind:String,p:Vector3,angle:float,style:String="",size_choice:Str
 		if not construction.building_state.roofs.is_empty() and not RoofRules.obstruction(construction.building_state,furnishing_volume({"kind":kind,"x":p.x,"z":p.z,"rotation":angle,"level":level,"style":variant.style,"size":variant.size})).is_empty():return false
 	for corner in [rect.position,rect.end,Vector2(rect.position.x,rect.end.y),Vector2(rect.end.x,rect.position.y)]:
 		if not grounds(corner,level):return false
-	if kind in LifeCatalog.WALL_MOUNTED and not wall_behind(kind,p,angle,variant.size):return false
+	if LifeCatalog.wall_mounted(kind) and not wall_behind(kind,p,angle,variant.size):return false
 	if LifeCatalog.passable(kind):return true
 	# Interior walls and doorways stay usable.
 	if construction.rect_blocked(rect,level):return false
@@ -1309,7 +1309,7 @@ func _process(delta:float) -> void:
 	if build_enabled and is_instance_valid(ghost):
 		var p=floor_point(get_viewport().get_mouse_position())
 		p.x=snappedf(p.x,.25);p.z=snappedf(p.z,.25)
-		if placement_kind in LifeCatalog.WALL_MOUNTED:
+		if LifeCatalog.wall_mounted(placement_kind):
 			# Wall decor slides along the nearest wall and faces into the room.
 			var snap:Dictionary=wall_snap(placement_kind,p,1.0,placement_size)
 			if not snap.is_empty():p=snap.position;placement_angle=float(snap.angle)

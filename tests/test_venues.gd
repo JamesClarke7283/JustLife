@@ -80,6 +80,11 @@ func _run() -> void:
 	check(LifeCatalog.ITEMS.has("car_electric"), "An electric car is sold in the catalogue.")
 	check(bool(LifeCatalog.ITEMS.electric_charger.get("wall_mounted", false)), "The charger must be mounted on a wall.")
 	check(LifeCatalog.ITEMS.electric_charger.get("charges", "") == "car_electric", "The charger names what it charges.")
+	# The wall rule is read from the entry, so a furnishing that declares itself
+	# wall-mounted is refused free-standing without a second edit anywhere.
+	check(LifeCatalog.wall_mounted("electric_charger"), "The charger really counts as wall-mounted.")
+	check(LifeCatalog.wall_mounted("painting") and not LifeCatalog.wall_mounted("plant"),
+		"The authored wall decor still counts, and an ordinary furnishing still does not.")
 
 	# ------------------------------------------------------------- the town
 	app = load("res://scenes/main.tscn").instantiate()
@@ -110,6 +115,20 @@ func _run() -> void:
 	await frames(4)
 	check(app.current_venue == "cafe", "The household arrived at the café (%s)." % app.current_venue)
 	check(app.world.items.size() >= 10, "The café was really built with its furnishings (%d)." % app.world.items.size())
+
+	# The charger the brief asks for must go on a wall, and nowhere else. The
+	# live game is asked the same question the player's click asks.
+	check(not app.world.can_place("electric_charger", Vector3(-9.0, .16, 0.0), 0.0),
+		"A wall charger is refused free-standing in the open garden.")
+	check(app.world.can_place("plant", Vector3(-9.0, .16, 0.0), 0.0),
+		"That same open spot really is free, so it is the charger's own rule refusing it.")
+	var charger_spot: Dictionary = app.world.wall_snap("electric_charger", Vector3(-5.8, .16, 2.0), 1.0)
+	check(not charger_spot.is_empty(), "A clear stretch of wall offers a place for the charger.")
+	if not charger_spot.is_empty():
+		check(app.world.can_place("electric_charger", charger_spot.position, float(charger_spot.angle)),
+			"The charger really fits against that wall.")
+		check(app.world.wall_behind("electric_charger", charger_spot.position, float(charger_spot.angle)),
+			"The place the charger takes really is against a wall.")
 
 	# The venue is a place, not a home: it cannot be built on or edited as one.
 	app.set_build_mode(true)

@@ -224,7 +224,19 @@ const INSTRUMENTS: Array[String] = ["guitar", "violin"]
 
 # Floor coverings and wall decor: they never block routes, walls or other furnishings.
 const PASSABLE: Array[String] = ["rug", "painting", "wall_clock", "shelf", "yoga_mat", "room_light", "memorial"]
+## Decor that hangs flat against a wall, kept as a list for the pieces that have
+## always been authored that way. A catalogue entry may also declare
+## `"wall_mounted": true` for itself, and `wall_mounted(kind)` is the one
+## authority every placement rule reads — so a new wall-mounted furnishing says so
+## in its own entry rather than needing a second edit in a list here.
 const WALL_MOUNTED: Array[String] = ["painting", "wall_clock", "shelf"]
+
+## Whether this furnishing must be placed against a wall. The entry's own flag
+## wins, and the authored list covers the pieces that predate it.
+static func wall_mounted(kind: String) -> bool:
+	if bool(ITEMS.get(kind, {}).get("wall_mounted", false)):
+		return true
+	return kind in WALL_MOUNTED
 
 static func passable(kind: String) -> bool:
 	return kind in PASSABLE
