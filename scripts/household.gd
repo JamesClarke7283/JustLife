@@ -44,6 +44,10 @@ var mail: Dictionary = LifeMail.fresh()
 var pregnancy: Dictionary = LifeBabyPlan.fresh()
 var _family_roles: Dictionary = {}
 var meals: LifeMeals = LifeMeals.new()
+## The household's kitchen: what is in the fridge, and the delivery on its way.
+## A household restocks by ordering from the computer rather than by cooking
+## straight out of the fridge, so this is real state rather than a convenience.
+var groceries: Dictionary = LifeGroceries.fresh()
 var sanitation: LifeSanitation = LifeSanitation.new()
 var cooperations: Array = []
 var cooperation_serial: int = 0
@@ -270,6 +274,9 @@ func tick(delta: float) -> void:
 		# being caught once a day, on the shared clock, so a practised thief's
 		# lower risk is something the player sees rather than reads about.
 		_criminal_tick()
+	# A grocery delivery arrives when its van does, on the shared clock, so a
+	# household that ordered one is restocked while the player simply plays.
+	_grocery_tick()
 	# Conception to birth runs on the shared game clock, so fast speed, pause
 	# and a save/load all agree about when the baby is due.
 	pregnancy_tick()
@@ -280,6 +287,7 @@ func tick(delta: float) -> void:
 	# pets the rest of the old day as well as the new one.
 	_tick_pet_care(float(minutes) - start_minutes + float(day - start_day) * 1440.0)
 	_sync_wallet()
+	_sync_grocery_service()
 	if paired:
 		_reconcile_cooperations()
 		_end_cooperation_change()
@@ -352,7 +360,7 @@ func get_state(world_data: Array = []) -> Dictionary:
 	adopt_selected_changes()
 	var states:Array=[]
 	for member in members:states.append({"id":member.id,"state":member.sim.get_state()})
-	var result:Dictionary={"household_version":2 if not journeys.is_empty() else 1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"pets":pets.duplicate(true),"mail":mail.duplicate(true),"pregnancy":pregnancy.duplicate(true),"birth_serial":birth_serial,"memorials":memorials.duplicate(true),"heirlooms":heirlooms.duplicate(true),"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state(),"sanitation":sanitation.get_state(),"extras":extras_provider.call() if extras_provider.is_valid() else {}}
+	var result:Dictionary={"household_version":2 if not journeys.is_empty() else 1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"pets":pets.duplicate(true),"mail":mail.duplicate(true),"pregnancy":pregnancy.duplicate(true),"birth_serial":birth_serial,"memorials":memorials.duplicate(true),"heirlooms":heirlooms.duplicate(true),"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state(),"groceries":groceries.duplicate(true),"sanitation":sanitation.get_state(),"extras":extras_provider.call() if extras_provider.is_valid() else {}}
 	if not journeys.is_empty():result.journeys=journeys.duplicate(true)
 	if physical_snapshot_provider.is_valid():
 		var physical:Dictionary=physical_snapshot_provider.call()
@@ -572,6 +580,12 @@ func restore_state(data: Dictionary) -> Dictionary:
 	var guest:Dictionary={}
 	var saved_visit:Variant=LifeHomeVisit.saved_visit(data)
 	if saved_visit!=null and not saved_visit.value.visit.is_empty():guest=saved_visit.value.visit
+	# The kitchen is validated before it is adopted, so a corrupt delivery
+	# cannot strand a household with food that never arrives.
+	var grocery_error: String = LifeGroceries.validate(data.get("groceries"))
+	if not grocery_error.is_empty():
+		for c in candidates: c.sim.free()
+		return {"ok":false,"error":grocery_error}
 	var meal_data: Variant = data.get("meals",LifeMeals.new().get_state())
 	var meal_error: String = LifeMeals.validate(meal_data,ids,(lead.day-1)*1440.0+lead.minutes,guest)
 	if meal_error.is_empty():meal_error=LifeMeals.validate_actions(meal_data,data.members,journey_result.get("custody",{}),str(journey_result.get("venue","")),guest)
@@ -609,6 +623,7 @@ func restore_state(data: Dictionary) -> Dictionary:
 	pregnancy=LifeBabyPlan.fresh() if pregnancy_data==null else (pregnancy_data as Dictionary).duplicate(true)
 	birth_serial=int(data.get("birth_serial",1))
 	meals.restore(meal_data)
+	groceries=LifeGroceries.from_save(data.get("groceries"))
 	sanitation.restore(sanitation_data)
 	if extras_restore_provider.is_valid():extras_restore_provider.call(data.get("extras",null))
 	for old in members:old.sim.queue_free()
@@ -920,6 +935,107 @@ func cancel_insurance() -> Dictionary:
 	var result: Dictionary = owner.cancel_insurance()
 	_sync_bill_mirror()
 	return result
+
+
+## Whether a Lifelet may cook right now, as the reason they may not. Empty means
+## the kitchen has food. The stove's menu and `begin_current_action` both read
+## this, so a greyed-out recipe and a refused cook never disagree.
+func cooking_availability(_sim: LifeSim, _target_id: String = "") -> String:
+	if not LifeGroceries.can_cook(groceries):
+		return "The kitchen is empty. Order a delivery from the computer."
+	return ""
+
+
+## Take one meal out of the kitchen for a recipe or a snack. Refused with a
+## reason when the kitchen is empty, so nothing is cooked from nothing.
+func take_meal_for(_sim: LifeSim, _action_id: String = "") -> Dictionary:
+	var result: Dictionary = LifeGroceries.take_meal(groceries)
+	if not bool(result.ok):
+		return result
+	groceries = result.state
+	_sync_grocery_mirror()
+	return result
+
+
+## Order a grocery delivery from the computer. The shared purse pays, and the van
+## is given its own arrival time; a household that orders and cooks in the same
+## minute has to wait for it like anybody else.
+func order_groceries(basket_id: String = "weekly") -> Dictionary:
+	var owner: LifeSim = bill_owner()
+	if owner == null:
+		return {"ok": false, "error": "There is no household to order for."}
+	var reason: String = LifeGroceries.order_error(groceries, basket_id, funds)
+	if not reason.is_empty():
+		return {"ok": false, "error": reason}
+	var placed_day: int = day if owner.day == day else day
+	var placed_minutes: float = minutes if absf(owner.minutes - minutes) < .0001 else minutes
+	var result: Dictionary = LifeGroceries.order(groceries, basket_id, funds, placed_day, placed_minutes)
+	if not bool(result.ok):
+		return result
+	groceries = result.state
+	funds = int(result.funds)
+	_sync_wallet()
+	owner.funds = funds
+	owner._emit_notice("Groceries ordered. A delivery of %d meals arrives %s." % [int(result.meals), "today" if int(result.day) == placed_day else "tomorrow"])
+	owner._emit_changed()
+	return result
+
+
+## What the van has brought, if anything is due. The household drives this from
+## its own clock, so a delivery arrives while the player simply plays.
+func collect_groceries() -> Dictionary:
+	var result: Dictionary = LifeGroceries.collect(groceries)
+	if not bool(result.ok):
+		return result
+	groceries = result.state
+	_sync_grocery_mirror()
+	var owner: LifeSim = bill_owner()
+	if owner != null:
+		owner._emit_notice("The organic delivery van arrived: %d meals into the kitchen." % int(result.meals))
+		owner._emit_changed()
+	return result
+
+
+## The kitchen as the player reads it.
+func kitchen() -> String:
+	return LifeGroceries.describe(groceries)
+
+
+## Every basket the computer may order, with its price and its own refusal.
+func grocery_offers() -> Array:
+	var result: Array = []
+	for basket_id: String in LifeGroceries.baskets():
+		var reason: String = LifeGroceries.order_error(groceries, basket_id, funds)
+		var data: Dictionary = LifeGroceries.basket(basket_id)
+		result.append({
+			"id": basket_id, "label": str(data.label), "meals": int(data.meals),
+			"price": int(data.price), "description": str(data.description),
+			"available": reason.is_empty(), "reason": reason,
+		})
+	return result
+
+
+## Whether the van has arrived, checked once a tick on the shared clock.
+func _grocery_tick() -> void:
+	if speed <= 0:
+		return
+	var owner: LifeSim = bill_owner()
+	if owner == null:
+		return
+	if LifeGroceries.arrival_due(groceries, day, minutes):
+		collect_groceries()
+
+
+func _sync_grocery_mirror() -> void:
+	for member in members:
+		member.sim.grocery_service = self
+
+
+## Hand every member this household as its kitchen, so the stove's menu and the
+## cook gate read the same fridge.
+func _sync_grocery_service() -> void:
+	for member in members:
+		member.sim.grocery_service = self
 
 
 ## Every member on the criminal line of work takes one chance of being caught a

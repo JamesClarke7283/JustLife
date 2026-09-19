@@ -938,6 +938,54 @@ func clear_actor_preview(id:String) -> void:
 	if saved is Dictionary:actor.apply_wardrobe(saved)
 
 
+## The organic delivery van, parked outside while a grocery order is dropped off.
+##
+## It is scenery with the household's own sign on it: three leaves on a cream
+## panel, so a player sees which van the order came in. It is created when the
+## delivery is on its way and removed once it has been taken in.
+var delivery_van: Node3D
+
+
+## Bring the delivery van onto the street with its organic sign. Called when a
+## delivery is due, so the arrival the notice describes is a thing the player
+## can actually see.
+func show_delivery_van() -> void:
+	if is_instance_valid(delivery_van):
+		return
+	if not is_instance_valid(house):
+		return
+	var van: Node3D = load("res://assets/models/car_van.glb").instantiate()
+	van.name = "OrganicDeliveryVan"
+	house.add_child(van)
+	van.position = Vector3(0, 0, 10.6)
+	van.rotation.y = PI * .5
+	assign_structure_layer(van, 0)
+	# The sign: a cream panel on each flank with three leaves, so the van reads
+	# as the organic grocer rather than any other vehicle.
+	for sx: float in [-1.0, 1.0]:
+		var panel: MeshInstance3D = box(van, Vector3(sx * .98, 1.35, -.3), Vector3(.04, .62, 1.5), "f4efe0")
+		panel.set_meta("delivery_sign", true)
+		for leaf: int in range(3):
+			var offset: float = (float(leaf) - 1.0) * .42
+			sphere(van, Vector3(sx * 1.01, 1.42, -.3 + offset), Vector3(.20, .26, .16), "5f8f52").set_meta("delivery_leaf", true)
+		var word: Label3D = Label3D.new()
+		word.text = "ORGANIC"
+		word.font_size = 96
+		word.pixel_size = .0032
+		word.modulate = Color("3f6b3a")
+		word.position = Vector3(sx * 1.04, 1.14, -.3)
+		word.rotation.y = PI * .5 if sx > 0 else -PI * .5
+		van.add_child(word)
+	delivery_van = van
+
+
+## Take the van away once the shopping has been carried in.
+func hide_delivery_van() -> void:
+	if is_instance_valid(delivery_van):
+		delivery_van.queue_free()
+	delivery_van = null
+
+
 func set_actor_away(id:String,away:bool,unavailable:bool) -> bool:
 	var actor:LifeActor=actors.get(id)
 	if not is_instance_valid(actor):return false

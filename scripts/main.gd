@@ -3,6 +3,7 @@ extends Node
 const P = preload("res://scripts/palette.gd")
 const Land = preload("res://scripts/land.gd")
 const Properties = preload("res://scripts/properties.gd")
+const LifeGroceries = preload("res://scripts/groceries.gd")
 const Variants = preload("res://scripts/catalog_variants.gd")
 const LifeLog = preload("res://scripts/logger.gd")
 const LifeWantsManager = preload("res://scripts/wants_manager.gd")
@@ -2708,6 +2709,56 @@ func undo_build() -> void:
 	refresh_hud()
 	show_notice("Your last furnishing change was undone.")
 
+## Order the weekly shop from the computer. Every basket the shop delivers is
+## listed with its price, what it fills the kitchen by and its own refusal, so
+## a greyed-out row and a refused order state exactly the same reason.
+func show_grocery_order() -> void:
+	_begin_pause_overlay()
+	var background:ColorRect=ColorRect.new()
+	background.color=Color(.08,.17,.15,.28)
+	rect(background,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
+	card(Vector2(452,150),Vector2(536,600),P.WHITE,24,overlay)
+	small_caps("Order online",Vector2(484,172),Vector2(476,24),overlay)
+	text_label("The weekly shop",Vector2(482,200),Vector2(480,46),31,P.INK,true,overlay)
+	paragraph(household.kitchen(),Vector2(484,254),Vector2(476,44),15,P.TEAL,overlay)
+	paragraph("An organic delivery van brings it to the door. Order before 6pm and it comes later today; after that, tomorrow.",
+		Vector2(484,306),Vector2(476,44),13,P.MUTED,overlay)
+	var y:float=362.0
+	for offer:Dictionary in household.grocery_offers():
+		var basket_id:String=str(offer.id)
+		var label:String="%s · ℒ%s" % [str(offer.label),commas(int(offer.price))]
+		var buy:Button=button(label,Vector2(484,y),Vector2(476,44),func():_order_groceries(basket_id),false,overlay)
+		buy.name="Grocery_"+basket_id
+		buy.disabled=not bool(offer.available)
+		buy.tooltip_text=str(offer.reason) if not bool(offer.available) else str(offer.description)
+		text_label(str(offer.reason) if not bool(offer.available) else "%d meals' worth." % int(offer.meals),
+			Vector2(490,y+46),Vector2(464,22),11,P.CORAL if not bool(offer.available) else P.MUTED,false,overlay)
+		y+=74.0
+	button("Back to life",Vector2(484,y+6),Vector2(476,44),close_overlay,true,overlay)
+
+
+## Order one basket and show the panel again with its new state.
+func _order_groceries(basket_id:String) -> void:
+	var result:Dictionary=household.order_groceries(basket_id)
+	if not bool(result.ok):
+		show_notice(str(result.error))
+	else:
+		refresh_hud()
+		show_notice("Groceries ordered. A delivery of %d meals arrives %s." % [int(result.meals),"today" if int(result.day)==household.day else "tomorrow"])
+	show_grocery_order()
+
+
+## Keep the delivery van in step with the household's order: it stands outside
+## while a delivery is on its way, and leaves once the shopping is carried in.
+func _sync_delivery_van() -> void:
+	if not is_instance_valid(world) or current_venue != "home":
+		return
+	if LifeGroceries.has_order(household.groceries):
+		world.show_delivery_van()
+	else:
+		world.hide_delivery_van()
+
+
 ## The household storage unit. Every stored furnishing can be taken out (which
 ## begins an ordinary placement, so the destination is validated like any
 ## purchase) or sold for its usual value. It holds up to MAX_STORAGE items.
@@ -2895,6 +2946,7 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 			elif str(a.id)=="do_makeup":show_wardrobe_panel(str(item.id),"makeup")
 			elif str(a.id)=="change_jewelry":show_wardrobe_panel(str(item.id),"jewelry")
 			elif str(a.id)=="read_post":show_post_box()
+			elif str(a.id)=="order_groceries":show_grocery_order()
 			elif str(a.id)=="supported_homework":show_homework_helpers(item)
 			elif str(a.id)==LifeBabyPlan.ACTION_ID:try_for_baby(item);close_overlay()
 			elif str(a.id)=="stop_try_for_baby":
@@ -4645,6 +4697,7 @@ func _process(delta:float) -> void:
 		_update_cover_beat(delta)
 		residents.publish_targets()
 		meal_flow.sync_world(household.speed>0)
+		_sync_delivery_van()
 		_store_motion()
 		if household.speed>0:_reconcile_social_routes()
 		var selected_id:String=household.selected_id()

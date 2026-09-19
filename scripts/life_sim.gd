@@ -8,6 +8,11 @@ signal action_finished(action: Dictionary)
 var meal_service: Node
 var sanitation_service: Node
 var household_service: Node
+## Optional live kitchen: answers whether the household has food, and takes a
+## meal out of the fridge when a recipe or a snack is cooked. A standalone
+## simulation without a household leaves it invalid and keeps the old behaviour
+## of paying for ingredients at the moment of cooking.
+var grocery_service: Node
 # Optional live resource admission; standalone simulations keep their old policy.
 var autonomy_activity_available: Callable
 ## Optional live witness test for group social actions (host_a_chat). Given two
@@ -392,6 +397,7 @@ func _build_actions() -> void:
 	_define("mourn", "Mourn", 30.0, {"fun": -4.0}, 0, "", 0.0, "Spend a quiet moment in respectful silence. Shedding tears eases grief.")
 	_define("leave_flowers", "Leave fresh flowers", 15.0, {"fun": 10.0}, 15, "", 0.0, "Place fresh blooms (ℒ15) at the memorial to honour their memory.")
 	_define("remember_passed", "Reminisce", 25.0, {"fun": 14.0, "social": 4.0}, 0, "", 0.0, "Reflect on fond memories and wisdom shared with the departed.")
+	_define("order_groceries", "Order the weekly shop", 5.0, {}, 0, "", 0.0, "Order a grocery delivery from the computer. The van arrives later today, or tomorrow if it is already evening, and the kitchen is restocked when it does.")
 	_define("play_games", "Play video games", 45.0, {"fun": 40.0, "energy": -4.0}, 0, "logic", 10.0, "An hour of games at the computer. Great fun, a little Logic.")
 	_define("friendly", "Have a friendly chat", 25.0, {"social": 28.0, "fun": 6.0}, 0, "charisma", 18.0, "Say hello, catch up and grow your friendship.")
 	_define("joke", "Tell a joke", 20.0, {"social": 22.0, "fun": 16.0}, 0, "charisma", 16.0, "Share a laugh and strengthen your friendship.")
@@ -454,7 +460,7 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"bookshelf", "book_nook": ids = ["read", "study", "study_book", "buy_book", "deep_read"]
 		"easel": ids = ["paint", "paint_masterpiece", "sketch_for_fun"]
 		"desk": ids = ["work", "study", "job", "study_hard"]
-		"computer": ids = ["work", "study", "job", "play_games", "study_hard"] + COMPUTER_MASTERY_ACTIONS
+		"computer": ids = ["order_groceries", "work", "study", "job", "play_games", "study_hard"] + COMPUTER_MASTERY_ACTIONS
 		"plant": ids = ["water","plant_wee"] if float(needs.bladder)<=BLADDER_DESPERATE else ["water"]
 		"puddle": ids = ["mop_puddle"]
 		"bathtub": ids = ["bath"]
@@ -864,8 +870,15 @@ func begin_current_action() -> void:
 			cancel_action()
 			return
 	if str(action.id)=="cook":
-		var recipe_reason:String=LifeMeals.recipe_error(str(action.get("recipe","garden_skillet")),int(skills.cooking.level),str(character.age_stage),funds,bool(action.paid))
-		if not recipe_reason.is_empty():_emit_notice(recipe_reason);cancel_action();return
+		# With a live kitchen the ingredients come out of the fridge rather than
+		# being bought at the stove, so an empty kitchen is what stops a meal —
+		# not the household's purse. A standalone simulation keeps the old rule.
+		if is_instance_valid(grocery_service):
+			var kitchen_reason:String=str(grocery_service.cooking_availability(self,str(action.get("target_id",""))))
+			if not kitchen_reason.is_empty():_emit_notice(kitchen_reason);cancel_action();return
+		else:
+			var recipe_reason:String=LifeMeals.recipe_error(str(action.get("recipe","garden_skillet")),int(skills.cooking.level),str(character.age_stage),funds,bool(action.paid))
+			if not recipe_reason.is_empty():_emit_notice(recipe_reason);cancel_action();return
 	if str(action.id) in RELATIONSHIP_ACTIONS or str(action.id) in ["flirt", "birthday", "job", "work"]:
 		var availability: Dictionary = get_action_availability(str(action.id), str(action.target_id))
 		if not bool(availability.available):
@@ -887,16 +900,29 @@ func begin_current_action() -> void:
 				_emit_notice("Taking care of the day before starting another responsibility.")
 				cancel_action()
 				return
-		if funds < cost:
-			_emit_notice("There isn't enough money for that activity anymore.")
-			cancel_action()
-			return
-		if str(action["id"]) == "job" and int(career["worked_day"]) == day:
-			_emit_notice("You have already worked today's shift.")
-			cancel_action()
-			return
-		funds -= cost
-		action["paid"] = true
+		# Cooking and snacking are paid for out of the kitchen, not the purse: a
+		# recipe takes one meal's ingredients from the fridge, and an empty kitchen
+		# refuses the action with the reason the kitchen itself gives.
+		var from_kitchen:bool=is_instance_valid(grocery_service) and str(action.id) in ["cook","snack"]
+		if from_kitchen:
+			var drawn:Dictionary=grocery_service.take_meal_for(self,str(action.id))
+			if not bool(drawn.get("ok",false)):
+				_emit_notice(str(drawn.get("error","The kitchen is empty. Order a delivery from the computer.")))
+				cancel_action()
+				return
+			action["paid"] = true
+			action["from_kitchen"] = true
+		else:
+			if funds < cost:
+				_emit_notice("There isn't enough money for that activity anymore.")
+				cancel_action()
+				return
+			if str(action["id"]) == "job" and int(career["worked_day"]) == day:
+				_emit_notice("You have already worked today's shift.")
+				cancel_action()
+				return
+			funds -= cost
+			action["paid"] = true
 	if not action.has("started_minutes"):
 		action["started_day"] = day
 		action["started_minutes"] = minutes
@@ -1431,6 +1457,12 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 		if not reason.is_empty():return {"available":false,"reason":reason}
 	if is_instance_valid(meal_service) and id in ["cook","eat_meal","store_meal","clean_plate","discard_meal","bin_meal","put_in_fridge"]:
 		reason=meal_service.action_availability(self,id,target_id)
+		if not reason.is_empty():return {"available":false,"reason":reason}
+	# A recipe and a snack both come out of the kitchen, so an empty fridge is
+	# what refuses them. The reason names the computer, which is where the
+	# household orders its delivery from.
+	if is_instance_valid(grocery_service) and id in ["cook","snack"]:
+		reason=str(grocery_service.cooking_availability(self,target_id))
 		if not reason.is_empty():return {"available":false,"reason":reason}
 	if not _actions.has(id):
 		return {"available":false, "reason":"That activity is unavailable."}
