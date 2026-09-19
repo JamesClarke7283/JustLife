@@ -51,6 +51,15 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 					if supported:break
 				if not supported:return _error("An upper room needs a supported floor or two complete opposite bearing walls below.")
 			floor_cost=maxf(0.0,added_area)*12
+		# A room built against an existing room shares that wall rather than
+		# building a second one on top of it: two rooms side by side are divided
+		# by one wall, which is what the player sees and what makes breaking it
+		# later merge them into one bigger room.
+		var placed:Array=[]
+		for wall:Dictionary in walls:
+			if not _coincident_wall(after,wall,int(level)).is_empty():continue
+			placed.append(wall)
+		walls=placed
 		for wall:Dictionary in walls:
 			wall.merge({"id":Building._new_id(after,"walls"),"level":int(level),"height":2.6,"cut":true,"material":"eae7d7"});after.walls.append(wall)
 		cost=int(length*55+floor_cost) # Preserve legacy whole-quote currency truncation.
@@ -99,6 +108,19 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 	if int(funds)-cost>1000000000:return _error("This refund exceeds the wallet limit.")
 	after.revision=int(current.revision)+1
 	return {"ok":true,"operation":operation.duplicate(true),"before":Building.fingerprint(current),"after":after,"cost":cost,"funds_before":int(funds),"funds_after":int(funds)-cost}
+
+## The existing wall a proposed wall would duplicate exactly, or an empty
+## dictionary. A room drawn against another room must share the wall between
+## them rather than stacking a second one on the same line, so two rooms are
+## divided by one wall.
+static func _coincident_wall(state:Dictionary,proposed:Dictionary,level:int) -> Dictionary:
+	var area:=Rect2(Vector2(float(proposed.x)-float(proposed.w)*.5,float(proposed.z)-float(proposed.d)*.5),Vector2(float(proposed.w),float(proposed.d)))
+	for wall:Dictionary in state.walls:
+		if int(wall.level)!=level:continue
+		var other:=Rect2(Vector2(float(wall.x)-float(wall.w)*.5,float(wall.z)-float(wall.d)*.5),Vector2(float(wall.w),float(wall.d)))
+		if area.grow(.02).encloses(other) or other.grow(.02).encloses(area):return wall
+	return {}
+
 
 static func _wall_ends(wall:Dictionary) -> Array:
 	var horizontal:bool=float(wall.w)>=float(wall.d)
