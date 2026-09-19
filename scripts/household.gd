@@ -266,6 +266,10 @@ func tick(delta: float) -> void:
 			robber.robbery_check()
 			funds=robber.funds
 			_sync_wallet()
+		# Every Lifelet on the criminal line of work takes their own chance of
+		# being caught once a day, on the shared clock, so a practised thief's
+		# lower risk is something the player sees rather than reads about.
+		_criminal_tick()
 	# Conception to birth runs on the shared game clock, so fast speed, pause
 	# and a save/load all agree about when the baby is due.
 	pregnancy_tick()
@@ -916,6 +920,29 @@ func cancel_insurance() -> Dictionary:
 	var result: Dictionary = owner.cancel_insurance()
 	_sync_bill_mirror()
 	return result
+
+
+## Every member on the criminal line of work takes one chance of being caught a
+## day, on the shared clock. It is rolled by the household rather than by the
+## Lifelet alone so that the odds apply while the player simply plays, exactly as
+## the burglar's night does.
+##
+## A Lifelet already inside serves their sentence and cannot be caught again
+## until they are out, and someone caught today is not re-rolled the same day.
+func _criminal_tick() -> void:
+	if speed <= 0:
+		return
+	for member: Dictionary in members:
+		var sim: LifeSim = member.sim
+		if not LifeCareers.is_criminal(str(sim.career.get("track", ""))):
+			continue
+		if sim.is_imprisoned():
+			continue
+		sim.funds = funds
+		var outcome: Dictionary = sim.criminal_day_check()
+		funds = sim.funds
+		if bool(outcome.get("ok", false)) and bool(outcome.get("caught", false)):
+			_sync_wallet()
 
 
 ## A break-in against the shared purse. The owner rolls it and the household

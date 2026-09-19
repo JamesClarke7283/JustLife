@@ -7,6 +7,9 @@ func targets() -> Array:
 	return result
 
 func run() -> void:
+	# The default job's first rung is the pay every worked day here is measured
+	# against, taken from the ladder rather than written into the test.
+	var start_pay: int = LifeCareers.base_pay(LifeCareers.DEFAULT_JOB, 1)
 	for stage:String in ["young_adult","adult","elder"]:
 		var worker:LifeSim=setup(stage,540.0)
 		check(worker.queue_action("career_day","lot_exit"),stage+": weekday work queues a real exit.")
@@ -21,19 +24,19 @@ func run() -> void:
 		advance(worker,402.875);advance(resumed,402.875)
 		for need:String in LifeSim.NEED_NAMES:check(is_equal_approx(worker.needs[need],resumed.needs[need]),"Resumed work preserves proportional "+need+" care.")
 		check(worker.away_state.completed and worker.away_state.phase=="returning" and worker.career.worked_day==1,"17:00 earns attendance before the route home.")
-		check(worker.funds==before+180 and resumed.funds==worker.funds,"A full workday pays its salary once across restart.")
-		check(worker.career.schedule.attended==1 and worker.skills.creativity.xp>0,"Ordinary work advances actual career skill and attendance.")
+		check(worker.funds==before+start_pay and resumed.funds==worker.funds,"A full workday pays its salary once across restart.")
+		check(worker.career.schedule.attended==1 and worker.skills.charisma.xp>0,"Ordinary work advances actual career skill and attendance.")
 		var returning:Dictionary=snapshot(worker)
 		check(setup(stage).restore_state(returning).ok,"Paid returning work state is valid before walking home.")
 		worker._tick_away(1.0);worker.complete_away_return();worker.complete_away_return()
-		check(worker.funds==before+180 and not worker.is_away(),"Repeated end/arrival callbacks cannot pay twice.")
+		check(worker.funds==before+start_pay and not worker.is_away(),"Repeated end/arrival callbacks cannot pay twice.")
 		check(not worker.queue_action("job","desk") and not worker.queue_action("career_day","lot_exit"),"A paid day cannot be repeated at home or off lot.")
 	for departure:float in [540.0,600.125,659.375,719.999,720.0]:
 		var late:LifeSim=setup("adult",departure)
 		late.queue_action("career_day","lot_exit");late.begin_current_action()
 		var before:int=late.funds
 		advance(late,LifeCareerSchedule.END-departure)
-		check(late.funds-before==roundi(180.0*(1020.0-departure)/480.0),"Late salary reflects actual time at work: "+str(departure))
+		check(late.funds-before==roundi(float(start_pay)*(1020.0-departure)/480.0),"Late salary reflects actual time at work: "+str(departure))
 		check(is_equal_approx(late.career.schedule.late_minutes,maxf(0.0,departure-600.0)),"Exact lateness is recorded at "+str(departure))
 		check(setup("adult").restore_state(snapshot(late)).ok,"Fractional paid return remains loadable at "+str(departure))
 	var early:LifeSim=setup("adult",600.0);early.queue_action("career_day","lot_exit");early.begin_current_action()

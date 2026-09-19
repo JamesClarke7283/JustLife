@@ -3666,45 +3666,141 @@ func show_person() -> void:
 	button("Family tree",Vector2(524,649),Vector2(179,48),show_family_tree,false,overlay)
 	button("Back to life",Vector2(717,649),Vector2(196,48),close_overlay,true,overlay)
 
+## The career picker. Every job the game offers is listed with what it asks for,
+## what it pays now and what its top rung pays, so a Lifelet can see the whole
+## ladder before choosing — and a job they cannot take yet states exactly what is
+## missing rather than being hidden.
 func show_careers() -> void:
 	_begin_pause_overlay()
 	var background:ColorRect=ColorRect.new()
 	background.color=Color(.08,.17,.15,.28)
 	rect(background,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
-	card(Vector2(446,132),Vector2(548,722),P.WHITE,24,overlay)
-	small_caps("Find your direction",Vector2(478,155),Vector2(480,25),overlay)
-	text_label("A new chapter at work.",Vector2(476,194),Vector2(484,57),33,P.INK,true,overlay)
-	paragraph("Choose a path that fits your Lifelet. A career change starts at its first rank; your learned skills stay with you.",Vector2(479,261),Vector2(479,54),14,P.MUTED,overlay)
-	# The tracks live in a scroll region rather than at absolute rows: the list
-	# grows with the tracks the simulation offers, and a track whose detail line
-	# ran past the card could not be read or chosen. Every track stays reachable
-	# by wheel, by the scrollbar and by dragging the list.
+	card(Vector2(398,96),Vector2(644,760),P.WHITE,24,overlay)
+	small_caps("Find your direction",Vector2(430,116),Vector2(580,25),overlay)
+	text_label("A new chapter at work.",Vector2(428,150),Vector2(584,50),31,P.INK,true,overlay)
+	# The working life this Lifelet already has, so the picker opens on the facts
+	# rather than on a bare list.
+	var job_id:String=str(sim.career.get("track",LifeCareers.DEFAULT_JOB))
+	var job:Dictionary=LifeCareers.job(job_id)
+	var held:String=LifeCareers.degree_label(sim._degree())
+	paragraph("%s · %s · level %d of %d · ℒ%d a shift · %s" % [
+		str(job.get("label","—")),str(sim.career.get("title","—")),int(sim.career.get("level",1)),
+		LifeCareers.MAX_LEVEL,int(sim.career_pay()),held],
+		Vector2(432,204),Vector2(578,40),15,P.MUTED,overlay)
+	if sim.is_imprisoned():
+		var barred:Label=text_label("Serving a sentence until day %d." % int(sim.criminal_record.get("prison_until_day",0)),
+			Vector2(432,246),Vector2(578,26),15,P.CORAL,false,overlay)
+		barred.tooltip_text="No work or study until this Lifelet is free."
+	button("Higher education…",Vector2(432,278),Vector2(196,34),show_school_panel,false,overlay).name="CareerEducation"
+	button("Criminal record",Vector2(636,278),Vector2(196,34),show_criminal_record,false,overlay).name="CareerCriminalRecord"
+	# The list grows with the jobs the game offers, so it scrolls inside the card.
 	var scroll:ScrollContainer=ScrollContainer.new();scroll.name="CareerList"
-	rect(scroll,Vector2(468,322),Vector2(504,438),overlay)
+	rect(scroll,Vector2(430,322),Vector2(580,452),overlay)
 	var column:VBoxContainer=VBoxContainer.new()
-	column.add_theme_constant_override("separation",10)
+	column.add_theme_constant_override("separation",8)
 	scroll.add_child(column)
-	for track_id:String in LifeSim.CAREER_TRACKS:
-		var track:Dictionary=LifeSim.CAREER_TRACKS[track_id]
-		var current:bool=str(sim.career.get("track","studio"))==track_id
-		# One gate for every track: an entry fee or a skill demand is reported by
-		# the simulation itself, so the greyed-out button and a refused click say
-		# exactly the same thing.
-		var reason:String=sim.career_entry_error(track_id)
-		var entry:Dictionary=track.get("entry",{})
-		var entry_note:String=""
-		if int(entry.get("cost",0))>0:entry_note+=" · ℒ%d course" % int(entry.cost)
-		if int(entry.get("level",0))>0:entry_note+=" · %s level %d" % [str(entry.skill).capitalize(),int(entry.level)]
+	for offer:Dictionary in sim.career_offers():
+		var track_id:String=str(offer.id)
+		var reason:String=str(offer.reason)
 		var row:Control=Control.new()
 		row.name="CareerRow_"+track_id
-		row.custom_minimum_size=Vector2(484,58)
+		row.custom_minimum_size=Vector2(560,64)
 		column.add_child(row)
-		var choose:Button=button(str(track.label)+( " · Current" if current else ""),Vector2.ZERO,Vector2(484,36),func():_select_career(track_id),current,row)
+		var choose:Button=button(str(offer.label)+(" · Current" if bool(offer.current) else ""),
+			Vector2.ZERO,Vector2(560,34),func():_select_career(track_id),bool(offer.current),row)
 		choose.name="Career_"+track_id
 		choose.disabled=not reason.is_empty()
-		choose.tooltip_text=reason if not reason.is_empty() else "%s. ℒ%d per shift." % [str(track.titles[0]),int(track.base_salary)]
-		text_label("%s · ℒ%d / shift · %s skill%s" % [track.titles[0],track.base_salary,str(track.skill).capitalize(),entry_note],Vector2(6,38),Vector2(474,18),11,P.MUTED,false,row)
-	button("Back to life",Vector2(478,780),Vector2(484,43),close_overlay,false,overlay)
+		choose.tooltip_text=reason if not reason.is_empty() else "%s. ℒ%d now, ℒ%d at the top." % [str(offer.first_title),int(offer.pay),int(offer.pay_at_top)]
+		# What the ladder pays, and what it takes, on the row's own detail line.
+		var detail:String="%s → %s · ℒ%d–ℒ%d" % [str(offer.first_title),str(offer.top_title),int(offer.pay),int(offer.pay_at_top)]
+		if bool(offer.criminal):
+			detail+=" · %d%% risk a day" % roundi(float(offer.detection)*100.0)
+		var note:Label=text_label(detail,Vector2(6,38),Vector2(548,20),11,P.MUTED,false,row)
+		note.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+		if not reason.is_empty():
+			var why:Label=text_label(reason,Vector2(6,38),Vector2(548,20),11,P.CORAL,false,row)
+			why.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+			note.visible=false
+	button("Back to life",Vector2(430,786),Vector2(580,43),close_overlay,false,overlay)
+
+
+## The criminal record: what the gamble has cost so far, and what it risks now.
+func show_criminal_record() -> void:
+	_begin_pause_overlay()
+	var background:ColorRect=ColorRect.new()
+	background.color=Color(.08,.17,.15,.28)
+	rect(background,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
+	card(Vector2(470,190),Vector2(500,520),P.WHITE,24,overlay)
+	small_caps("What the risk has cost",Vector2(500,214),Vector2(440,24),overlay)
+	text_label("A criminal record",Vector2(498,242),Vector2(444,46),31,P.INK,true,overlay)
+	var record:Dictionary=sim.criminal_record
+	var fines:int=int(record.get("fines_paid",0))
+	var caught:int=int(record.get("caught_count",0))
+	paragraph("Caught %d %s and paid ℒ%s in fines." % [caught,"time" if caught==1 else "times",commas(fines)],
+		Vector2(500,300),Vector2(440,50),18,P.INK,overlay)
+	var job_id:String=str(sim.career.get("track",LifeCareers.DEFAULT_JOB))
+	if LifeCareers.is_criminal(job_id):
+		var level:int=int(sim.career.get("level",1))
+		var now:float=LifeCareers.detection_chance(job_id,level)
+		var top:float=LifeCareers.detection_chance(job_id,LifeCareers.MAX_LEVEL)
+		paragraph("At %s the risk is %d%% a day, falling to %d%% at %s. A fine is ℒ%s and %d days inside." % [
+			str(sim.career.get("title","—")),roundi(now*100.0),roundi(top*100.0),
+			LifeCareers.title_at(job_id,LifeCareers.MAX_LEVEL),commas(LifeCareers.fine(job_id,level)),
+			LifeCareers.prison_days(job_id,level)],
+			Vector2(502,368),Vector2(440,120),15,P.MUTED,overlay)
+	else:
+		paragraph("This Lifelet is not on the criminal line of work. That ladder pays best and asks for nothing, and the risk is the price.",
+			Vector2(502,368),Vector2(440,90),15,P.MUTED,overlay)
+	paragraph("A Lifelet inside cannot work or study, but their family can visit them at the prison.",
+		Vector2(502,498),Vector2(440,60),14,P.MUTED,overlay)
+	button("Back to work",Vector2(500,644),Vector2(440,46),show_careers,true,overlay)
+
+
+## Higher education: the three qualifications, what each costs, and what it is
+## worth to a job that asks for one.
+func show_school_panel() -> void:
+	_begin_pause_overlay()
+	var background:ColorRect=ColorRect.new()
+	background.color=Color(.08,.17,.15,.28)
+	rect(background,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
+	card(Vector2(430,150),Vector2(580,600),P.WHITE,24,overlay)
+	small_caps("Higher education",Vector2(462,174),Vector2(520,24),overlay)
+	text_label("Study for a degree.",Vector2(460,202),Vector2(524,46),31,P.INK,true,overlay)
+	paragraph("A degree raises what the jobs that ask for one will pay. A PHD is a doctor, whatever the job.",
+		Vector2(464,256),Vector2(516,48),15,P.MUTED,overlay)
+	var held:String=LifeCareers.degree_label(sim._degree())
+	text_label("Currently: %s" % held,Vector2(464,310),Vector2(516,28),17,P.TEAL,false,overlay)
+	var y:float=352.0
+	for value:String in ["bachelors","masters","phd"]:
+		var step:Dictionary=LifeCareers.degree_step(value)
+		var reason:String=LifeCareers.degree_error(value,str(sim.character.life_stage),sim._degree(),sim.funds)
+		var label:String="%s · ℒ%s · %d days" % [str(step.label),commas(int(step.fee)),int(step.days)]
+		var take:Button=button(label,Vector2(462,y),Vector2(516,44),func():_take_degree(value),false,overlay)
+		take.name="Degree_"+value
+		take.disabled=not reason.is_empty()
+		take.tooltip_text=reason if not reason.is_empty() else "Pay ℒ%s and study for %d days. A job that asks for one pays %s what it would without." % [commas(int(step.fee)),int(step.days),"%d%% more than" % roundi((LifeCareers.degree_multiplier(value)-1.0)*100.0)]
+		text_label(reason if not reason.is_empty() else "Worth a %d%% raise in a job that asks for one." % roundi((LifeCareers.degree_multiplier(value)-1.0)*100.0),
+			Vector2(466,y+46),Vector2(508,20),11,P.CORAL if not reason.is_empty() else P.MUTED,false,overlay)
+		y+=76
+	button("Back to work",Vector2(462,y+6),Vector2(516,44),show_careers,true,overlay)
+
+
+## Begin a degree, charging its fee once and awarding it the same day. The study
+## is represented by its cost and its award rather than by a second clock, so a
+## qualification is one fact on the Lifelet.
+func _take_degree(value:String) -> void:
+	var reason:String=LifeCareers.degree_error(value,str(sim.character.life_stage),sim._degree(),sim.funds)
+	if not reason.is_empty():
+		show_notice(reason);return
+	var fee:int=int(LifeCareers.degree_step(value).fee)
+	household.set_funds(sim.funds-fee)
+	sim.funds=sim.funds-fee
+	var result:Dictionary=sim.award_degree(value)
+	if not bool(result.ok):
+		show_notice(str(result.get("error","That course could not be started.")));return
+	refresh_hud()
+	show_school_panel()
+
 
 func _select_career(track_id:String) -> void:
 	# A disabled button cannot be pressed, but a caller that reaches here another

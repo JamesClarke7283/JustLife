@@ -53,23 +53,6 @@ const TRAIT_NAMES: Array[String] = ["Creative", "Outgoing", "Active", "Bookworm"
 const ASPIRATION_NAMES: Array[String] = ["Maker", "Connected", "Successful", "Balanced"]
 const NEED_DECAY: Dictionary = {"hunger": 3.5, "energy": 3.0, "hygiene": 2.1, "bladder": 4.0, "fun": 2.5, "social": 2.0}
 const SKILL_NAMES: Array[String] = ["cooking", "creativity", "charisma", "logic", "gardening", "parenting", "fitness", "music"]
-const CAREER_TRACKS: Dictionary = {
-	"studio":{"label":"Creative studio","skill":"creativity","base_salary":180,"titles":["Studio assistant","Project coordinator","Creative specialist","Studio lead","Creative director"]},
-	"culinary":{"label":"Culinary arts","skill":"cooking","base_salary":160,"titles":["Kitchen assistant","Prep cook","Line chef","Sous chef","Head chef"]},
-	"technology":{"label":"Technology","skill":"logic","base_salary":200,"titles":["Support specialist","Junior developer","Software engineer","Technical lead","Principal engineer"]},
-	"community":{"label":"Community work","skill":"charisma","base_salary":150,"titles":["Community assistant","Event organizer","Outreach specialist","Program manager","Community director"]},
-	"fitness":{"label":"Wellness club","skill":"fitness","base_salary":170,"titles":["Club assistant","Fitness coach","Personal trainer","Wellness lead","Body architect"]},
-	"botany":{"label":"Botany guild","skill":"gardening","base_salary":155,"titles":["Garden centre clerk","Plant technician","Botanist","Head horticulturist","Master gardener"]},
-	# The criminal track pays far better than honest work because the money is
-	# the reward for the risk. Anyone can walk into it: `entry` names no skill and
-	# no fee, so the only career a fresh Lifelet can always start is this one.
-	"criminal":{"label":"Criminal","skill":"charisma","base_salary":1000,"titles":["Lookout","Runner","Fence","Fixer","Kingpin"],
-		"entry":{"cost":0,"skill":"","level":0}},
-	# A technical trade is bought, not walked into: the household pays the ℒ900
-	# course fee and the Lifelet must already think in steps (Logic 8).
-	"technical":{"label":"Technical work","skill":"logic","base_salary":240,"titles":["Apprentice technician","Bench technician","Systems technician","Lead technician","Master technician"],
-		"entry":{"cost":900,"skill":"logic","level":8}}
-}
 ## What a home insurance policy is. The catalogue lives here so a save and the
 ## phone price the same product; the household owns the purchased record.
 const INSURANCE_POLICIES: Dictionary = {
@@ -85,6 +68,13 @@ var character: Dictionary = {}
 var lifecycle: Dictionary = {}
 var education: Dictionary = {}
 var away_state: Dictionary = {}
+## The highest qualification this Lifelet has finished: no degree, a Bachelors,
+## a Masters or a PHD. A job that asks for one pays more for it, and a PHD is a
+## doctor whatever the job.
+var degree: String = "none"
+## The criminal record: how often this Lifelet has been caught, what that cost,
+## and the day they are free again. Empty for anybody who has never been inside.
+var criminal_record: Dictionary = {}
 var cooperation_owner: Node = null
 var cooperation_member_id: String = ""
 var _notification_depth: int = 0
@@ -277,7 +267,14 @@ func new_household(profile: Dictionary) -> void:
 	_social_adults.clear()
 	_social_reciprocal.clear()
 	_social_family.clear()
-	career = {"schedule":LifeCareerSchedule.fresh(1),"track":"studio","title": "Studio assistant", "level": 1, "performance": 0.0, "salary": 180, "worked_day": 0}
+	# The default is the way into work: a Lifelet with no skills and no degree
+	# starts waiting tables, which is the lowest rung and the only one open to
+	# them. Everything above it asks for something they have not earned yet.
+	degree = "none"
+	criminal_record = {}
+	career = {"schedule":LifeCareerSchedule.fresh(1),"track":LifeCareers.DEFAULT_JOB,
+		"title":LifeCareers.title_at(LifeCareers.DEFAULT_JOB,1),"level":1,"performance":0.0,
+		"salary":LifeCareers.base_pay(LifeCareers.DEFAULT_JOB,1),"worked_day":0}
 	moodlets.clear();memories.clear()
 	aspiration_stage = 1
 	aspiration_next_day = 0
@@ -1246,8 +1243,16 @@ func _finish_front() -> void:
 		earned = income
 		career["worked_day"] = day
 		career.schedule=LifeCareerSchedule.attend(career.get("schedule",LifeCareerSchedule.fresh(day)),day,0.0)
+		# A home shift is the same work as the commute, so it trains the same
+		# skill and is judged by it — a trade with no skill of its own simply
+		# has none to raise.
+		var job_skill: String = str(LifeCareers.job(str(career.get("track", ""))).get("skill", ""))
+		var skill_rank: float = 0.0
+		if SKILL_NAMES.has(job_skill):
+			_gain_skill(job_skill, 24.0)
+			skill_rank = float(skills[job_skill].level)
 		var comfort: float = (float(needs["hunger"]) + float(needs["energy"]) + float(needs["fun"])) / 3.0
-		career["performance"] = float(career["performance"]) + _career_performance_gain(18.0 + comfort * 0.15 + float(skills["logic"]["level"]) * 2.0)
+		career["performance"] = float(career["performance"]) + _career_performance_gain(18.0 + comfort * 0.15 + skill_rank * 2.0)
 		_emit_notice("Shift finished. Earned ℒ%d." % income)
 		_check_promotion()
 	elif id in SOCIAL_ACTIONS:
@@ -1749,17 +1754,37 @@ func _update_relationship_status(person: Dictionary) -> void:
 		person["status"] = "Acquaintance"
 
 
+## The highest qualification this Lifelet holds.
+func _degree() -> String:
+	return LifeCareers.normalise_degree(degree)
+
+
+## This Lifelet's own pay at their current rung, including what their degree is
+## worth to this job. The single place a salary is worked out, so the ladder, the
+## notice and the save never disagree.
+func career_pay() -> int:
+	return LifeCareers.pay(str(career.get("track", LifeCareers.DEFAULT_JOB)), int(career.get("level", 1)), _degree())
+
+
+## The rung above this Lifelet, and what reaching it takes. A job's ladder runs
+## the whole ten levels the brief asks for: each step needs the job's own skill at
+## the level reached, so a career rewards learning all the way to the top.
 func promotion_requirement() -> Dictionary:
-	# Promotion to the next level needs the track's skill at the current level, so careers reward learning.
-	var track:Dictionary=CAREER_TRACKS.get(str(career.get("track","studio")),CAREER_TRACKS.studio)
-	if int(career["level"]) >= 5: return {}
+	var job_id: String = str(career.get("track", LifeCareers.DEFAULT_JOB))
+	if not LifeCareers.has(job_id): return {}
+	if int(career["level"]) >= LifeCareers.MAX_LEVEL: return {}
+	var next_level: int = int(career["level"]) + 1
+	var skill_name: String = str(LifeCareers.job(job_id).get("skill", ""))
+	# The skill is asked for at the rung being left, so the first step is open to
+	# a beginner and reaching the top really needs the trade learned to level 9.
 	var required: int = int(career["level"])
-	var skill_name: String = str(track.skill)
-	return {"skill":skill_name, "level":required, "met":int(skills.get(skill_name,{"level":1}).level) >= required, "next_title":str(track.titles[int(career["level"])])}
+	var have: int = int((skills.get(skill_name, {}) as Dictionary).get("level", 1))
+	return {"skill": skill_name, "level": required, "met": have >= required,
+		"next_title": LifeCareers.title_at(job_id, next_level)}
 
 
 func _check_promotion() -> void:
-	if float(career["performance"]) < 100.0 or int(career["level"]) >= 5:
+	if float(career["performance"]) < 100.0 or int(career["level"]) >= LifeCareers.MAX_LEVEL:
 		return
 	var requirement: Dictionary = promotion_requirement()
 	if not requirement.is_empty() and not bool(requirement.met):
@@ -1770,51 +1795,129 @@ func _check_promotion() -> void:
 		return
 	career["performance"] = float(career["performance"]) - 100.0
 	career["level"] = int(career["level"]) + 1
-	var track:Dictionary=CAREER_TRACKS.get(str(career.get("track","studio")),CAREER_TRACKS.studio)
-	var titles: Array = track.titles
-	career["title"] = titles[int(career["level"]) - 1]
-	career["salary"] = int(track.base_salary) + (int(career["level"]) - 1) * 110
+	var job_id: String = str(career["track"])
+	career["title"] = LifeCareers.title_at(job_id, int(career["level"]))
+	career["salary"] = LifeCareers.pay(job_id, int(career["level"]), _degree())
 	funds += 200
-	_emit_notice("Promotion! You are now a %s. ℒ200 bonus and a higher daily salary." % str(career["title"]).to_lower())
+	_emit_notice("Promotion! You are now a %s. ℒ200 bonus and ℒ%d a shift." % [str(career["title"]).to_lower(), int(career["salary"])])
 	add_moodlet("A step forward","Confident","Your hard work is paying off.",360,4)
 	remember("A promotion",str(career.title))
 
+## Take up a new line of work. The door is the job's own entry rule, so a job
+## that wants a skill, a degree or a course fee is refused here exactly as the
+## picker shows it — which is what makes moving between careers hard rather than
+## free. The ladder restarts at its first rung, because experience in one trade is
+## not experience in another.
 func choose_career(track_id:String) -> bool:
-	if str(character.life_stage) != "adult":
-		_emit_notice("Careers become available in young adulthood.");return false
-	if not CAREER_TRACKS.has(track_id):return false
-	if career.get("track","studio")==track_id:return true
-	# One gate for the picker, the queue and this entry point: a track that
-	# demands a fee or a skill level is refused here exactly as the menu shows it.
 	var entry_error:String=career_entry_error(track_id)
 	if not entry_error.is_empty():_emit_notice(entry_error);return false
+	if career.get("track",LifeCareers.DEFAULT_JOB)==track_id:return true
 	for action in action_queue:
 		if action.id in ["job","career_day"]:_emit_notice("Finish or cancel your shift before changing careers.");return false
-	var track:Dictionary=CAREER_TRACKS[track_id]
-	var entry_fee:int=int(track.get("entry",{}).get("cost",0))
+	var job:Dictionary=LifeCareers.job(track_id)
+	var entry:Dictionary=job.get("entry",{})
+	var entry_fee:int=int(entry.get("cost",0))
 	if entry_fee>0:funds-=entry_fee
-	career={"schedule":LifeCareerSchedule.fresh(day,day+1 if minutes>LifeCareerSchedule.CLOSE else day),"track":track_id,"title":track.titles[0],"level":1,"performance":0.0,"salary":track.base_salary,"worked_day":int(career.worked_day)}
-	remember("A new direction","Joined "+str(track.label))
+	career={"schedule":LifeCareerSchedule.fresh(day,day+1 if minutes>LifeCareerSchedule.CLOSE else day),
+		"track":track_id,"title":LifeCareers.title_at(track_id,1),"level":1,"performance":0.0,
+		"salary":LifeCareers.pay(track_id,1,_degree()),"worked_day":int(career.worked_day)}
+	remember("A new direction","Joined "+str(job.label))
 	add_moodlet("New possibilities","Inspired","A new career is a chance to grow.",240,2)
 	_emit_notice("Your new job: %s. ℒ%d per shift.%s" % [career.title,career.salary," ℒ%d course fee paid." % entry_fee if entry_fee>0 else ""])
 	_emit_changed()
 	return true
 
 
-## Whether this Lifelet may take up a track, as the player-readable reason it may
-## not. Empty means the door is open. The career picker and `choose_career` both
-## read this one answer, so a greyed-out button and a refused queue never disagree.
+## Whether this Lifelet may take up a job, as the player-readable reason they may
+## not. Empty means the door is open. The career picker, the queue and
+## `choose_career` all read this one answer, so a greyed-out button and a refused
+## call never disagree.
 func career_entry_error(track_id:String) -> String:
-	if not CAREER_TRACKS.has(track_id):return "That line of work is not offered here."
-	if str(character.life_stage)!="adult":return "Careers become available in young adulthood."
-	var entry:Dictionary=CAREER_TRACKS[track_id].get("entry",{})
-	var skill_name:String=str(entry.get("skill",""))
-	var required:int=int(entry.get("level",0))
-	if not skill_name.is_empty() and required>0 and int(skills.get(skill_name,{"level":1}).level)<required:
-		return "Requires %s level %d. This Lifelet is at %s level %d." % [skill_name.capitalize(),required,skill_name.capitalize(),int(skills.get(skill_name,{"level":1}).level)]
-	var fee:int=int(entry.get("cost",0))
-	if funds<fee:return "The ℒ%d course fee needs ℒ%d more." % [fee,fee-funds]
-	return ""
+	if is_imprisoned():
+		return "This Lifelet is serving a sentence until day %d." % int(criminal_record.get("prison_until_day", 0))
+	return LifeCareers.entry_error(track_id,str(character.life_stage),skills,_degree(),funds)
+
+
+## What a job asks for, as the picker's own line of text.
+func career_requirement_text(track_id:String) -> String:
+	return LifeCareers.requirement_text(track_id)
+
+
+## Every job offered to this Lifelet, in the order a picker should show them, with
+## the reason each is shut. One list, so the picker and the gate agree.
+func career_offers() -> Array:
+	var out:Array=[]
+	for job_id:String in LifeCareers.ordered():
+		var job:Dictionary=LifeCareers.job(job_id)
+		out.append({
+			"id":job_id,"label":str(job.label),"current":str(career.get("track",""))==job_id,
+			"first_title":LifeCareers.title_at(job_id,1),
+			"top_title":LifeCareers.title_at(job_id,LifeCareers.MAX_LEVEL),
+			"pay":LifeCareers.pay(job_id,1,_degree()),
+			"pay_at_top":LifeCareers.pay(job_id,LifeCareers.MAX_LEVEL,_degree()),
+			"requirements":LifeCareers.requirement_text(job_id),
+			"criminal":LifeCareers.is_criminal(job_id),
+			"detection":LifeCareers.detection_chance(job_id,1),
+			"reason":career_entry_error(job_id),
+		})
+	return out
+
+
+## Whether this Lifelet is inside today.
+func is_imprisoned() -> bool:
+	return int(criminal_record.get("prison_until_day",0))>day
+
+
+## What being caught costs: the fine, the days inside, and the record of it. The
+## household purse pays, capped at what it holds, so a fine can never drive the
+## household into the negative.
+func serve_sentence(fine:int,days:int) -> Dictionary:
+	var paid:int=mini(maxi(fine,0),funds)
+	funds-=paid
+	var previous:int=int(criminal_record.get("caught_count",0))
+	criminal_record={"version":1,"caught_count":previous+1,
+		"prison_until_day":day+maxi(1,days),
+		"fines_paid":int(criminal_record.get("fines_paid",0))+paid}
+	add_moodlet("Behind bars","Tense","Caught, fined and locked up. That was the risk.",1440,4)
+	remember("Caught","A fine and %d days inside." % maxi(1,days))
+	_emit_notice("Caught! A ℒ%d fine and %d days inside, free on day %d." % [paid,maxi(1,days),int(criminal_record.prison_until_day)])
+	_emit_changed()
+	return {"ok":true,"fine":paid,"days":maxi(1,days),"until":int(criminal_record.prison_until_day)}
+
+
+## One day of criminal work, rolled once by the household on its own clock. A
+## working criminal risks being caught; a practised one risks far less. Returns
+## what happened so the household can report it.
+func criminal_day_check() -> Dictionary:
+	var job_id:String=str(career.get("track",LifeCareers.DEFAULT_JOB))
+	if not LifeCareers.is_criminal(job_id):return {"ok":false,"reason":"Not on that line of work."}
+	if is_imprisoned():return {"ok":false,"reason":"Already inside."}
+	var chance:float=LifeCareers.detection_chance(job_id,int(career.get("level",1)))
+	var roll:float=randf()
+	if roll>=chance:return {"ok":true,"caught":false,"chance":chance}
+	return serve_sentence(LifeCareers.fine(job_id,int(career.get("level",1))),LifeCareers.prison_days(job_id,int(career.get("level",1))))
+
+
+## Finish a degree. The qualification is the household's to pay for and the
+## Lifelet's to hold, and it rides the save so a doctor stays a doctor.
+func award_degree(value:String) -> Dictionary:
+	var step:Dictionary=LifeCareers.degree_step(value)
+	if step.is_empty():return {"ok":false,"error":"That is not a qualification on offer."}
+	degree=LifeCareers.normalise_degree(value)
+	# A degree is worth more to the job this Lifelet already holds, so the pay
+	# rises the moment it is awarded rather than only on the next promotion.
+	career["salary"]=career_pay()
+	add_moodlet("Graduated","Confident","A %s in hand and better paid for it." % LifeCareers.degree_label(degree),720,4)
+	remember("Graduated","Awarded a %s." % LifeCareers.degree_label(degree))
+	_emit_notice("%s graduated with a %s. Pay is now ℒ%d a shift." % [str(character.name),LifeCareers.degree_label(degree),int(career.salary)])
+	_emit_changed()
+	return {"ok":true,"degree":degree}
+
+
+## The professional name this Lifelet is addressed by: a PHD is a doctor.
+func honorific() -> String:
+	return LifeCareers.honorific(_degree())
+
 
 func add_moodlet(label:String,emotion:String,description:String,duration:float,strength:int=2) -> void:
 	for i in range(moodlets.size()-1,-1,-1):
@@ -2112,7 +2215,7 @@ func _autonomy_duty_id() -> String:
 			id="school_day"
 		elif int(education.last_homework_day)!=day and (int(education.last_attendance_day)==day or minutes>=900.0) and minutes>=600.0 and minutes<=1320.0:
 			id="homework"
-	elif str(character.life_stage)=="adult" and str(career.get("track","studio")) in CAREER_TRACKS and int(career.worked_day)!=day:
+	elif str(character.life_stage)=="adult" and LifeCareers.has(str(career.get("track",""))) and int(career.worked_day)!=day:
 		if day>=int(career.get("schedule",LifeCareerSchedule.fresh(day)).first_day) and minutes>=LifeCareerSchedule.OPEN and minutes<=LifeCareerSchedule.CLOSE:id="career_day"
 	if not id.is_empty() and float(autonomy_state.deferred.get(id,-1.0))>_autonomy_now():return ""
 	return id
@@ -2125,7 +2228,7 @@ func _autonomy_preparation_duty_id() -> String:
 	var start:float=0.0
 	if str(character.age_stage) in LifeEducation.SCHOOL_STAGES and int(education.last_attendance_day)!=day and day>=int(education.first_class_day):
 		id="school_day";start=480.0
-	elif str(character.life_stage)=="adult" and str(career.get("track","studio")) in CAREER_TRACKS and int(career.worked_day)!=day:
+	elif str(character.life_stage)=="adult" and not is_imprisoned() and LifeCareers.has(str(career.get("track",""))) and int(career.worked_day)!=day:
 		id="career_day";start=LifeCareerSchedule.OPEN
 		if day<int(career.get("schedule",LifeCareerSchedule.fresh(day)).first_day):return ""
 	if id.is_empty() or minutes<start-180.0 or minutes>=start:return ""
@@ -2722,7 +2825,11 @@ func _create_recurring_wants() -> void:
 				_chapter_want("chapter_listen", "The art of conversation", "Earn %d Charisma XP this chapter through conversation or learning." % (60 + difficulty * 15), 60 + difficulty * 15, reward, "practice", [], "charisma"),
 				_chapter_want("chapter_moments", "More than small talk", "Complete a friendly chat, a joke and a heartfelt talk.", 3, reward, "variety", social_actions)]
 		"Successful":
-			var career_skill: String = str(CAREER_TRACKS.get(str(career.get("track", "studio")), CAREER_TRACKS.studio).skill)
+			# An unskilled ladder names no skill of its own, and a chapter want
+			# must name one the skill table actually holds, so the service trades
+			# fall back to the Charisma every one of them works with.
+			var career_skill: String = str(LifeCareers.job(str(career.get("track", ""))).get("skill", ""))
+			if not SKILL_NAMES.has(career_skill): career_skill = "charisma"
 			wants = [
 				_chapter_want("chapter_income", "Build a cushion", "Earn ℒ%d from completed shifts, freelance work or paintings this chapter." % (200 + difficulty * 100), 200 + difficulty * 100, reward + 40, "income"),
 				_chapter_want("chapter_practice", "Invest in your craft", "Earn %d %s XP this chapter; practice still counts at level 10." % [100 + difficulty * 20, career_skill.capitalize()], 100 + difficulty * 20, reward, "practice", [], career_skill),
@@ -2789,8 +2896,10 @@ func _offer_daily_story() -> void:
 	# one slot per eight-day cycle, so kind and host pairings drift instead of
 	# locking one-to-one.
 	var neighbor: String = LifeResidentCatalogue.IDS[(((day - 2) * 3) + (day - 2) / 8) % LifeResidentCatalogue.IDS.size()]
-	var track: Dictionary = CAREER_TRACKS.get(str(career.get("track", "studio")), CAREER_TRACKS.studio)
-	story_events.append({"id":"story_day_%d" % day, "kind":kind, "day":day, "context":{"neighbor":neighbor, "skill":str(track.skill), "career_level":int(career.level), "creativity_level":int(skills.creativity.level)}})
+	var track: Dictionary = LifeCareers.job(str(career.get("track", "")))
+	var story_skill: String = str(track.get("skill", ""))
+	if not SKILL_NAMES.has(story_skill): story_skill = "charisma"
+	story_events.append({"id":"story_day_%d" % day, "kind":kind, "day":day, "context":{"neighbor":neighbor, "skill":story_skill, "career_level":int(career.level), "creativity_level":int(skills.creativity.level)}})
 	_emit_notice("A new story choice is waiting: %s." % _story_event(story_events.back()).title)
 
 
@@ -2972,7 +3081,7 @@ func get_mood() -> Dictionary:
 
 
 func get_state() -> Dictionary:
-	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "bladder_grace":bladder_grace, "starvation_minutes":starvation_minutes, "exhaustion_minutes":exhaustion_minutes, "deferred_passing_minutes":deferred_passing_minutes, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "wants": wants.duplicate(true), "whims": whims.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "last_bill_day": last_bill_day, "pending_bill":pending_bill.duplicate(true), "bills_paid_total":bills_paid_total, "bills_late":bills_late, "utilities_cut":utilities_cut, "insurance_policy_id":insurance_policy_id, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "routine_memory_days":routine_memory_days.duplicate(true)}
+	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "bladder_grace":bladder_grace, "starvation_minutes":starvation_minutes, "exhaustion_minutes":exhaustion_minutes, "deferred_passing_minutes":deferred_passing_minutes, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "degree": degree, "criminal_record": criminal_record.duplicate(true), "wants": wants.duplicate(true), "whims": whims.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "last_bill_day": last_bill_day, "pending_bill":pending_bill.duplicate(true), "bills_paid_total":bills_paid_total, "bills_late":bills_late, "utilities_cut":utilities_cut, "insurance_policy_id":insurance_policy_id, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "routine_memory_days":routine_memory_days.duplicate(true)}
 
 
 func save_game(world_data: Array = []) -> bool:
@@ -3056,6 +3165,18 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 		entry.minutes = int(entry.minutes)
 	_recent_social_events.clear()
 	career = state["career"].duplicate(true)
+	degree = LifeCareers.normalise_degree(str(state.get("degree", "none")))
+	criminal_record = (state.get("criminal_record", {}) as Dictionary).duplicate(true)
+	# A save made before this ladder grew can carry a rung and a title from the
+	# old five-level table, so the record is rebuilt from the ladder it names.
+	var saved_track: String = str(career.get("track", LifeCareers.DEFAULT_JOB))
+	if not LifeCareers.has(saved_track):
+		saved_track = LifeCareers.DEFAULT_JOB
+	var saved_level: int = clampi(int(career.get("level", 1)), 1, LifeCareers.MAX_LEVEL)
+	career["track"] = saved_track
+	career["level"] = saved_level
+	career["title"] = LifeCareers.title_at(saved_track, saved_level)
+	career["salary"] = LifeCareers.pay(saved_track, saved_level, degree)
 	career["schedule"]=career.get("schedule",LifeCareerSchedule.fresh(int(state.day)))
 	wants = state["wants"].duplicate(true)
 	moodlets=state.get("moodlets",[]).duplicate(true)
@@ -3330,8 +3451,16 @@ func _validate_state(state: Dictionary) -> String:
 		if not person is Dictionary or not person.get("name") is String or not person.get("status") is String or not _number_in_range(person.get("friendship"), -100.0, 100.0) or not _number_in_range(person.get("romance"), 0.0, 100.0):
 			return "Save contains an invalid relationship."
 	var job: Dictionary = state["career"]
-	if not job.get("title") is String or not _number_in_range(job.get("level"), 1.0, 5.0) or not _number_in_range(job.get("performance"), 0.0, 1000.0) or not _number_in_range(job.get("salary"), 0.0, 1000000.0) or not _number_in_range(job.get("worked_day"), 0.0, 1000000.0):
+	# The career is validated by the policy that owns it, so a rung, a title and a
+	# salary that disagree are rejected here exactly as the ladder defines them.
+	if not job.get("title") is String or not _number_in_range(job.get("level"), 1.0, float(LifeCareers.MAX_LEVEL)) or not _number_in_range(job.get("performance"), 0.0, 1000.0) or not _number_in_range(job.get("salary"), 0.0, 1000000.0) or not _number_in_range(job.get("worked_day"), 0.0, 1000000.0):
 		return "Save contains an invalid career."
+	if not LifeCareers.has(str(job.get("track", ""))):
+		return "Save contains an unknown career track."
+	var degree_error: String = _validate_degree(state)
+	if not degree_error.is_empty(): return degree_error
+	var criminal_error: String = LifeCareers.criminal_error(state.get("criminal_record"))
+	if not criminal_error.is_empty(): return criminal_error
 	if job.has("schedule"):
 		var schedule_error:String=LifeCareerSchedule.validate(job.schedule,int(state.day),int(job.get("worked_day",0)))
 		if not schedule_error.is_empty():return schedule_error
@@ -3608,7 +3737,7 @@ func _validate_progression(state: Dictionary) -> String:
 			return "Save contains an invalid story identity."
 		event_ids.append(str(ticket.id))
 		var context: Dictionary = ticket.context
-		if str(context.get("neighbor", "")) not in LifeResidentCatalogue.IDS or str(context.get("skill", "")) not in SKILL_NAMES or not _number_in_range(context.get("career_level"), 1, 5) or not _number_in_range(context.get("creativity_level"), 1, 10):
+		if str(context.get("neighbor", "")) not in LifeResidentCatalogue.IDS or str(context.get("skill", "")) not in SKILL_NAMES or not _number_in_range(context.get("career_level"), 1, LifeCareers.MAX_LEVEL) or not _number_in_range(context.get("creativity_level"), 1, 10):
 			return "Save contains an invalid story context."
 	for story: Variant in state.get("story_history", []):
 		if not story is Dictionary:
@@ -3769,6 +3898,17 @@ func _prune_school_actions() -> void:
 		if front_removed: _start_front()
 		for message: String in messages: _emit_notice(message)
 		_emit_changed()
+
+
+## Validate the qualification a save carries. An unknown degree would let a
+## corrupt save mint a raise it never studied for, so only the three the game
+## sells are accepted.
+func _validate_degree(state: Dictionary) -> String:
+	if not state.get("degree", "none") is String:
+		return "Save contains an invalid qualification."
+	if not LifeCareers.DEGREES.has(str(state.get("degree", "none"))):
+		return "Save contains an unknown qualification."
+	return ""
 
 
 func _validate_school_state(state: Dictionary) -> String:
@@ -4035,10 +4175,15 @@ func _tick_career_away() -> void:
 		var income:int=roundi(float(away_state.salary)*proportion)
 		funds+=income;career.worked_day=day
 		career.schedule=LifeCareerSchedule.attend(career.get("schedule",LifeCareerSchedule.fresh(day)),day,late)
-		var career_skill:String=str(CAREER_TRACKS[str(away_state.career_track)].skill)
-		_gain_skill(career_skill,30.0*proportion)
+		var career_skill:String=str(LifeCareers.job(str(away_state.career_track)).get("skill",""))
+		# A service job trains no trade of its own, so a shift there still counts
+		# as a real day's work for performance but grows no skill.
+		var skill_rank:float=0.0
+		if SKILL_NAMES.has(career_skill):
+			_gain_skill(career_skill,30.0*proportion)
+			skill_rank=float(skills[career_skill].level)
 		var comfort:float=(float(needs.hunger)+float(needs.energy)+float(needs.fun))/3.0
-		career.performance=maxf(0.0,float(career.performance)+_career_performance_gain((18.0+comfort*.15+float(skills[career_skill].level)*2.0)*proportion)-late/20.0)
+		career.performance=maxf(0.0,float(career.performance)+_career_performance_gain((18.0+comfort*.15+skill_rank*2.0)*proportion)-late/20.0)
 		_emit_notice("Shift finished. Earned ℒ%d for %d minutes at work%s."%[income,int(action.duration),"; arrived %d minutes late"%int(late) if late>0.0 else ""])
 		_check_promotion();_activity_memory("job");_record_chapter_activity("job",income)
 		for want:Dictionary in wants:
@@ -4065,7 +4210,7 @@ func _validate_career_away_state(state:Dictionary) -> String:
 	if not _autonomy_integer(value.get("departure_day"),1,int(state.day)) or not _autonomy_integer(value.get("return_day"),int(value.departure_day),int(value.departure_day)) or not LifeEducation.weekday(int(value.departure_day)):return "Save contains an invalid work calendar."
 	if not state.career.has("schedule") or int(value.get("departure_day",0))<int(state.career.schedule.first_day):return "Save starts work before employment begins."
 	if not _number_in_range(value.get("departure_minutes"),LifeCareerSchedule.OPEN,LifeCareerSchedule.CLOSE) or not _number_in_range(value.get("return_minutes"),LifeCareerSchedule.END,LifeCareerSchedule.END) or not value.get("completed") is bool:return "Save contains invalid work departure or return times."
-	if LifeLifecycle.eligibility(str(value.get("age_stage","")))!="adult" or str(value.get("exit_id",""))!="lot_exit" or str(value.get("career_track","")) not in CAREER_TRACKS or str(value.career_track)!=str(state.career.get("track","studio")) or not _autonomy_integer(value.get("salary"),0,1000000):return "Save contains an invalid worker, salary or career."
+	if LifeLifecycle.eligibility(str(value.get("age_stage","")))!="adult" or str(value.get("exit_id",""))!="lot_exit" or not LifeCareers.has(str(value.get("career_track",""))) or str(value.career_track)!=str(state.career.get("track","")) or not _autonomy_integer(value.get("salary"),0,1000000):return "Save contains an invalid worker, salary or career."
 	if str(value.phase)=="away" and int(value.salary)!=int(state.career.salary):return "Save contains a changed salary during work."
 	var position:Variant=value.get("exit_position")
 	if position is Vector3:

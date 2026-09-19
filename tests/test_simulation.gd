@@ -173,8 +173,11 @@ func _test_traits_and_relationships() -> void:
 
 func _test_income_and_wants() -> void:
 	var sim: Node = _new_sim({"aspiration": "Successful", "traits": []})
+	# The advertised rate is the ladder's own: the starting job at its first rung.
+	var start_pay: int = LifeCareers.base_pay(LifeCareers.DEFAULT_JOB, 1)
 	_complete(sim, "job")
-	_check(sim.funds == 2680 and int(sim.career["worked_day"]) == 1, "Job shifts should pay the advertised daily salary.")
+	_check(sim.funds == 2500 + start_pay and int(sim.career["worked_day"]) == 1,
+		"Job shifts should pay the advertised daily salary (ℒ%d)." % start_pay)
 	_check(not sim.queue_action("job"), "A second job shift on the same day must be rejected.")
 	var funds_before: int = sim.funds
 	_complete(sim, "work")
@@ -190,7 +193,8 @@ func _test_income_and_wants() -> void:
 	sim.career["performance"] = 99.0
 	sim.career["worked_day"] = 0
 	_complete(sim, "job")
-	_check(int(sim.career["level"]) == 2 and int(sim.career["salary"]) == 290, "Sufficient career performance should earn a promotion and raise.")
+	_check(int(sim.career["level"]) == 2, "Sufficient career performance should earn a promotion.")
+	_check(int(sim.career["salary"]) == LifeCareers.pay(LifeCareers.DEFAULT_JOB, 2), "A promotion raises pay to the next rung's rate.")
 	sim.free()
 
 

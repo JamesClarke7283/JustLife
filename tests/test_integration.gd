@@ -251,6 +251,9 @@ func _test_save_load() -> void:
 func _test_career_ui() -> void:
 	_cancel_all()
 	main.set_game_speed(3)
+	# The office asks for Logic 3, so the skill is earned before the picker is
+	# asked to take the job; the picker's own pausing is what is being checked.
+	main.sim.skills.logic.level = 3
 	main.show_careers()
 	_check(main.sim.speed==0 and main.overlay_pauses_sim,"Career choices pause the household while being reviewed.")
 	main._select_career("technology")

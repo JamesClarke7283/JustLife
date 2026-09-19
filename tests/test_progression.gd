@@ -90,19 +90,26 @@ func _legacy_progression() -> void:
 	sim.tick(24.0 / LifeSim.GAME_MINUTES_PER_SECOND)
 	check(sim.moodlets.is_empty(), "Timed emotions expire with the simulation clock.")
 	check(sim.choose_career("fitness"), "A Lifelet can choose a wellness career.")
-	check(str(sim.career.title) == "Club assistant" and int(sim.career.salary) == 170, "The wellness track has actual titles and pay.")
+	check(str(sim.career.title) == "Gym assistant" and int(sim.career.salary) == LifeCareers.base_pay("fitness", 1), "The wellness track has actual titles and pay.")
 	check(str(sim.promotion_requirement().skill) == "fitness", "The wellness track promotes on the Fitness skill.")
+	sim.skills.fitness.level = 2
 	sim.career.performance = 100
 	sim._check_promotion()
-	check(sim.choose_career("culinary"), "A Lifelet can choose a culinary career.")
-	check(str(sim.career.title) == "Kitchen assistant" and int(sim.career.salary) == 160, "Career changes have actual titles and pay.")
+	# The kitchen asks for Cooking 2, so the door stays shut until it is earned.
+	check(sim.career_entry_error("chef").contains("Cooking"), "The kitchen states the skill it wants.")
+	sim.skills.cooking.level = 2
+	check(sim.choose_career("chef"), "A Lifelet can choose a culinary career.")
+	check(str(sim.career.title) == "Kitchen assistant" and int(sim.career.salary) == LifeCareers.base_pay("chef", 1), "Career changes have actual titles and pay.")
 	sim.career.performance = 100
 	sim._check_promotion()
-	check(str(sim.career.title) == "Prep cook" and int(sim.career.salary) == 270, "Promotions follow the selected career.")
+	check(str(sim.career.title) == "Prep cook" and int(sim.career.salary) == LifeCareers.base_pay("chef", 2), "Promotions follow the selected career.")
 	check(sim.memories.size() == 4, "Career milestones become personal memories.")
 	sim.queue_action("job", "desk")
 	check(not sim.choose_career("technology"), "Queued shifts cannot be switched to a different career pay scale.")
 	sim.cancel_action()
+	# The office asks for Logic 3 before it will take anybody on.
+	check(not sim.career_entry_error("technology").is_empty(), "The office states the skill it wants.")
+	sim.skills.logic.level = 3
 	check(sim.choose_career("technology") and str(sim.career.title) == "Support specialist", "Changing careers after cancel works.")
 	sim.add_moodlet("Stress", "Tense", "A hard day.", 100, 4)
 	sim.needs.hunger = 5
@@ -122,20 +129,48 @@ func _legacy_progression() -> void:
 # ---------------------------------------------------------------- careers
 
 func _career_tracks() -> void:
-	check(LifeSim.CAREER_TRACKS.has("criminal"), "CAREER_TRACKS offers a Criminal track.")
-	var criminal: Dictionary = LifeSim.CAREER_TRACKS.criminal
+	check(LifeCareers.has("criminal"), "The job list offers a Criminal track.")
+	var criminal: Dictionary = LifeCareers.job("criminal")
 	check(str(criminal.label) == "Criminal", "The criminal track is labelled Criminal.")
-	check(int(criminal.base_salary) == 1000, "The criminal track pays ℒ1000 a day.")
-	check(str(criminal.skill) == "charisma", "The criminal track grows Charisma.")
+	check(LifeCareers.base_pay("criminal", 1) == 1000, "The criminal track pays ℒ1000 a day.")
+	check(LifeCareers.is_criminal("criminal") and not LifeCareers.is_criminal("waiter"), "Only the criminal track carries the risk.")
 	check(int(criminal.get("entry", {}).get("cost", 0)) == 0, "The criminal track charges no entry fee.")
 	check(int(criminal.get("entry", {}).get("level", 0)) == 0, "The criminal track demands no skill level.")
+	check(LifeCareers.unskilled().size() >= 1, "There is always a way into work for a Lifelet with no skills.")
 
-	check(LifeSim.CAREER_TRACKS.has("technical"), "CAREER_TRACKS offers a Technical track.")
-	var technical: Dictionary = LifeSim.CAREER_TRACKS.technical
+	check(LifeCareers.has("technical"), "The job list offers a Technical track.")
+	var technical: Dictionary = LifeCareers.job("technical")
 	check(int(technical.get("entry", {}).get("cost", 0)) == 900, "The technical track costs ℒ900 to enter.")
 	check(str(technical.get("entry", {}).get("skill", "")) == "logic" and int(technical.get("entry", {}).get("level", 0)) == 8,
 		"The technical track requires Logic level 8 to enter.")
-	check(int(technical.base_salary) > 0, "The technical track pays a real salary once joined.")
+	check(LifeCareers.base_pay("technical", LifeCareers.MAX_LEVEL) > 0, "The technical track pays a real salary once joined.")
+	check(str(LifeCareers.title_at("technical", 4)) == "Software engineer",
+		"Software engineer is a rung of the technical ladder, not a separate job.")
+	check(str(LifeCareers.title_at("technical", LifeCareers.MAX_LEVEL)) == "CEO of a technology company",
+		"The top of the technical ladder is the head of a technology company.")
+
+	# The brief's own numbers: twenty jobs, and 6% falling to 1.5% detection.
+	check(LifeCareers.JOBS.size() >= 20, "At least twenty lines of work are offered (%d)." % LifeCareers.JOBS.size())
+	check(is_equal_approx(LifeCareers.detection_chance("criminal", 1), 0.06),
+		"A first-day criminal is caught 6%% of the time (%.3f)." % LifeCareers.detection_chance("criminal", 1))
+	check(is_equal_approx(LifeCareers.detection_chance("criminal", LifeCareers.MAX_LEVEL), 0.015),
+		"A practised criminal is caught 1.5%% of the time (%.3f)." % LifeCareers.detection_chance("criminal", LifeCareers.MAX_LEVEL))
+	var practised: float = LifeCareers.detection_chance("criminal", LifeCareers.MAX_LEVEL)
+	var raw: float = LifeCareers.detection_chance("criminal", 1)
+	for level: int in range(2, LifeCareers.MAX_LEVEL):
+		var chance: float = LifeCareers.detection_chance("criminal", level)
+		check(chance < raw and chance > practised, "Rank %d is safer than the rank below and riskier than the top." % level)
+	# The best honest ladder and the criminal one are the brief's twin ceilings.
+	var best_honest: int = 0
+	for job_id: String in LifeCareers.JOBS:
+		if LifeCareers.is_criminal(job_id): continue
+		best_honest = maxi(best_honest, LifeCareers.base_pay(job_id, LifeCareers.MAX_LEVEL))
+	check(best_honest == 1000, "The best-paid honest job tops out at the brief's ℒ1000 a day (%d)." % best_honest)
+	for job_id: String in LifeCareers.JOBS:
+		check(LifeCareers.titles(job_id).size() == LifeCareers.MAX_LEVEL,
+			"%s has a title for each of its ten levels (%d)." % [job_id, LifeCareers.titles(job_id).size()])
+		var top: int = LifeCareers.base_pay(job_id, LifeCareers.MAX_LEVEL)
+		check(top <= 1000, "%s never pays past the ℒ1000 ceiling (ℒ%d)." % [job_id, top])
 
 
 ## A criminal shift pays its promised ℒ1000 through the ordinary queue, and the
@@ -146,6 +181,9 @@ func _criminal_shift() -> void:
 	check(sim.career_entry_error("criminal").is_empty(), "A fresh Lifelet may enter the criminal track with no skill and no fee.")
 	check(sim.choose_career("criminal") and str(sim.career.track) == "criminal", "The criminal track can actually be chosen.")
 	check(int(sim.career.salary) == 1000 and str(sim.career.title) == "Lookout", "Joining the criminal track sets its first rank and pay.")
+	# The criminal pays no degree premium, whatever the Lifelet holds.
+	sim.award_degree("phd")
+	check(sim.career_pay() == 1000, "A degree is worth nothing to the criminal track (ℒ%d)." % sim.career_pay())
 	# Work one honest shift through the real departure mechanics.
 	check(sim.queue_action("career_day", "lot_exit", Vector3(0, .16, 8.5)), "A weekday shift queues against the neighborhood exit.")
 	sim.begin_current_action()
@@ -189,6 +227,9 @@ func _criminal_shift() -> void:
 func _technical_entry() -> void:
 	var sim: LifeSim = worker()
 	sim.funds = 2500
+	# The trade wants a degree as well as the skill, so the qualification is in
+	# hand here and the skill gate is what this section is about.
+	sim.degree = "bachelors"
 	sim.skills.logic.level = 7
 	var low: String = sim.career_entry_error("technical")
 	check(not low.is_empty() and low.contains("8") and low.to_lower().contains("logic"),
@@ -201,6 +242,7 @@ func _technical_entry() -> void:
 	check(fee_before - sim.funds == 900, "Joining technical pays the ℒ900 course fee (ℒ%d -> ℒ%d)." % [fee_before, sim.funds])
 	# A purse that cannot cover the fee is refused before anything is charged.
 	var broke: LifeSim = worker()
+	broke.degree = "bachelors"
 	broke.skills.logic.level = 8
 	broke.funds = 100
 	var short_reason: String = broke.career_entry_error("technical")

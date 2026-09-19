@@ -137,35 +137,39 @@ func _run() -> void:
 	app.show_careers()
 	await frames(3)
 	_bounds("careers")
-	var last_row: Button = app.find_child("Career_botany", true, false)
-	check(last_row != null, "The career picker still shows its last track.")
+	# The picker scrolls a roster that grows with the game's job list, so the
+	# last row is whatever the policy orders last rather than a fixed name.
+	var order: Array[String] = LifeCareers.ordered()
+	var last_id: String = order.back()
+	var last_row: Button = app.find_child("Career_" + last_id, true, false)
+	check(last_row != null, "The career picker still shows its last job (%s)." % last_id)
 	if last_row != null:
 		check(last_row.position.y + last_row.size.y <= 902.0, "The last career row fits inside the picker card.")
-	# The tracks live in a scroll region, so a longer roster still reaches every
-	# track instead of running rows past the card where they cannot be chosen.
+	# The jobs live in a scroll region, so a longer roster still reaches every
+	# job instead of running rows past the card where they cannot be chosen.
 	var careers_list: ScrollContainer = app.overlay.find_child("CareerList", true, false)
-	check(careers_list != null, "The career picker keeps its tracks in a scroll region.")
+	check(careers_list != null, "The career picker keeps its jobs in a scroll region.")
 	if careers_list != null:
 		check(Rect2(careers_list.position, careers_list.size).end.y <= 902.0,
 			"The career picker's scroll region sits inside the 1440x900 design space.")
-		var tracks: int = 0
-		for track_id: String in LifeSim.CAREER_TRACKS:
-			if app.overlay.find_child("CareerRow_" + track_id, true, false) != null:
-				tracks += 1
-		check(tracks == LifeSim.CAREER_TRACKS.size(), "Every authored career track gets a row (%d of %d)." % [tracks, LifeSim.CAREER_TRACKS.size()])
-		# The last track must be reachable by scrolling, not merely present: at
+		var rows: int = 0
+		for job_id: String in order:
+			if app.overlay.find_child("CareerRow_" + job_id, true, false) != null:
+				rows += 1
+		check(rows == order.size(), "Every job the game offers gets a row (%d of %d)." % [rows, order.size()])
+		# The last job must be reachable by scrolling, not merely present: at
 		# the bottom of the region it is inside the region's own box.
 		var bottom: VScrollBar = careers_list.get_v_scroll_bar()
 		careers_list.scroll_vertical = 100000
 		await frames(2)
 		check(careers_list.scroll_vertical == int(bottom.max_value - bottom.page),
 			"The career picker scrolls to its own bottom (%.0f of %.0f)." % [careers_list.scroll_vertical, bottom.max_value - bottom.page])
-		var tail: Button = app.find_child("Career_technical", true, false)
+		var tail: Button = app.find_child("Career_" + last_id, true, false)
 		if tail != null:
 			var region: Rect2 = Rect2(careers_list.position, careers_list.size)
 			var tail_rect: Rect2 = Rect2(tail.position, tail.size)
 			check(tail_rect.end.y <= region.end.y + 1.0,
-				"The last career track sits inside the scrolled region at its bottom (ends at %.0f, region ends %.0f)." % [tail_rect.end.y, region.end.y])
+				"The last job sits inside the scrolled region at its bottom (ends at %.0f, region ends %.0f)." % [tail_rect.end.y, region.end.y])
 	app.close_overlay()
 	await frames(2)
 
