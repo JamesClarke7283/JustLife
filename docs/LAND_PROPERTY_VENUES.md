@@ -93,6 +93,32 @@ The household owns the record, runs `_grocery_tick()` on its own clock, and
 hands itself to each member as `grocery_service`, which is what the stove's menu,
 the cook gate and the availability check read.
 
+## The prison: sentences and visits
+
+Being caught is not a fine with a note attached. `LifeSim.serve_sentence(fine, days)`
+fines the purse from what it holds, records the arrest, and takes the Lifelet to
+Blackmoor through the same away machinery the school run and the commute use.
+
+- `is_imprisoned()` is whether a sentence is running; `is_at_prison()` is whether
+  the Lifelet is *there* rather than serving the sentence from home.
+- A Lifelet already away when caught cannot hold two absences at once, so the
+  sentence is served from home and `criminal_record.serving_at_home` records it.
+  The record is otherwise identical.
+- `prison_away_state()` is the absence, whose `return_day` is the record's own
+  `prison_until_day`, so the HUD and the record cannot disagree.
+- The household's `_prison_release_tick()` runs on the shared clock and calls
+  `prison_check()`, so a sentence really ends and the Lifelet comes home.
+
+The prison's visiting desk (`LifeVenues.offers("prison")`) offers a family visit,
+a parcel handed in, and meeting them at the gate. A visit really meets the
+visitor's social need and leaves the family member inside feeling better and
+remembering who came; all three are refused with a reason when nobody from the
+household is serving.
+
+A saved sentence is validated by `_validate_prison_away_state`: the record must
+be valid, must not claim to be served at home and away at once, and the
+absence's release day must agree with the record's.
+
 ## Save validation
 
 Each record validates on load, before anything is adopted:
@@ -120,3 +146,4 @@ starting plot.
 | `tests/test_groceries.gd` | the empty kitchen refusing a meal, the panel ordering, the purse paying once, the van arriving on the household clock, and the save |
 | `tests/test_business.gd` | the level-9 bar, the two price points, buying, hiring raising the takings, the daily income and the save |
 | `tests/test_education_degrees.gd` | the Bachelors/Masters/PHD ladder, the fees, the Dr title on the profile, pay rising with a degree but never past ℒ1,000, and the save |
+| `tests/test_prison.gd` | being caught really taking a Lifelet to Blackmoor, the HUD and the job refusal, a real family visit, the release arriving on the household clock, a Lifelet caught while away serving from home, and the sentence's save record |
