@@ -422,9 +422,20 @@ func furnishing_volume(entry:Dictionary)->AABB:
 			_gather_visual_bounds(scene,Transform3D.IDENTITY,vertices);scene.free()
 			for point:Vector3 in vertices:box=box.expand(point)
 		_furnishing_volume_cache[cache_key]=box
-	var local:AABB=_furnishing_volume_cache[cache_key]*Variants.size_scale(str(entry.get("size","")))
+	var local:AABB=_scaled_volume(_furnishing_volume_cache[cache_key],Variants.size_scale(str(entry.get("size",""))))
 	var transform:=Transform3D(Basis(Vector3.UP,deg_to_rad(float(entry.get("rotation",0)))),Vector3(float(entry.get("x",0)),Building.level_y(int(entry.get("level",0))),float(entry.get("z",0))))
 	return transform*local
+
+## An authored envelope scaled by a size choice, about its own origin.
+##
+## Godot 4 removed `AABB * float`, so the envelope is rebuilt from its two
+## corners instead: the origin scales with the box, because the authored model is
+## centred on its own footprint and a larger table grows outward from the middle.
+static func _scaled_volume(box:AABB,scale:float) -> AABB:
+	if is_equal_approx(scale,1.0):
+		return box
+	var scaled:=AABB(box.position*scale,box.size*scale)
+	return scaled
 
 func set_starter_floor_visible(value:bool) -> void:
 	for node:Node3D in starter_floor_nodes:
