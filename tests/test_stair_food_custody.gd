@@ -87,6 +87,7 @@ func _food_produce()->void:
 	food_expected.slot=app.active_save_id
 	var read:Dictionary=LifeSaveLibrary.read_slot(str(food_expected.slot))
 	check(bool(read.ok),"Saved food crossing passes detached layout, action, journey and custody validation: "+str(read.get("error","valid")))
+	DirAccess.make_dir_recursive_absolute("user://regression/stair_save")
 	var file:=FileAccess.open("user://regression/stair_save/food_"+case_name+"_expected.json",FileAccess.WRITE)
 	file.store_string(JSON.stringify(LifeSaveLibrary._json_safe(food_expected),"  ",true,true));file.close()
 

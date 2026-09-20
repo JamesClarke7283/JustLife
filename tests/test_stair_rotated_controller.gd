@@ -12,6 +12,7 @@ func _run()->void:
 			_step()
 			if not app.walk_only:break
 		check(not app.walk_only and app.player.position.distance_to(destination)<.001,"Rotated stair crossing reaches its exact intended floor destination.")
+	DirAccess.make_dir_recursive_absolute("user://regression/stair_integration")
 	var file:=FileAccess.open("user://regression/stair_integration/rotated_controller.json",FileAccess.WRITE);file.store_string(JSON.stringify({"checks":checks,"failures":failures},"  "));file.close()
 	print("STAIR_ROTATED_CONTROLLER checks=%d failures=%d"%[checks,failures.size()])
 	app.queue_free();await process_frame;await process_frame;await create_timer(.2).timeout

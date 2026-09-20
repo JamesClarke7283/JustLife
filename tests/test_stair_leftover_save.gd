@@ -19,6 +19,7 @@ func _leftover_produce()->void:
 	food_expected.slot=app.active_save_id
 	var read:Dictionary=LifeSaveLibrary.read_slot(str(food_expected.slot))
 	check(bool(read.ok),"Actual leftover stair save passes full detached validation: "+str(read.get("error","valid")))
+	DirAccess.make_dir_recursive_absolute("user://regression/stair_save")
 	var file:=FileAccess.open("user://regression/stair_save/leftover_expected.json",FileAccess.WRITE);file.store_string(JSON.stringify(LifeSaveLibrary._json_safe(food_expected),"  ",true,true));file.close()
 
 func _leftover_consume()->void:

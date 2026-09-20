@@ -164,6 +164,7 @@ func _run()->void:
 	app=load("res://scenes/main.tscn").instantiate();root.add_child(app);app.set_process(false);app.set_sound(false)
 	_walking();_opposite_fifo();_cancel();_crowding();_invalid_pose();_late_waiter()
 	var report:Dictionary={"checks":checks,"failures":failures,"observations":observations_controller,"scope":"Actual main controller ground-click/activity/FIFO/cancel and paused manual 50ms frame updates. No fresh-process save, food custody or rendered continuous contact acceptance."}
+	DirAccess.make_dir_recursive_absolute("user://regression/stair_integration")
 	var file:=FileAccess.open("user://regression/stair_integration/controller.json",FileAccess.WRITE);file.store_string(JSON.stringify(report,"  "));file.close()
 	print("STAIR_CONTROLLER checks=%d failures=%d"%[checks,failures.size()])
 	app.queue_free();await process_frame;await process_frame;await create_timer(.2).timeout
