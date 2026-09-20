@@ -6,7 +6,7 @@ The independent review accepts this bounded functional slice at **8/10**, with
 An actual rendered game creates two different male/female Lifelets, selects
 A Fresh Canvas, then purchases the full upper floor, original staircase,
 bookcase and plant through the public controls. The household pays the normal
-prices from its advertised §4,500. A Lifelet climbs the real staircase and reads
+prices from its advertised ℒ4,500. A Lifelet climbs the real staircase and reads
 upstairs. The public save picker writes that activity, and the household descends
 to its car, visits the library and returns with its original building intact.
 A separate process loads the untouched upstairs checkpoint through the save

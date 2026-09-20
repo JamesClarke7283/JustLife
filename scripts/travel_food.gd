@@ -5,12 +5,13 @@ class_name LifeTravelFood
 var ledger:LifeMeals=LifeMeals.new()
 func food() -> LifeMeals:return ledger
 
-static func departure_error(controller:Node) -> String:
+static func departure_error(controller:Node,members:Array=[]) -> String:
  var probe:=LifeTravelFood.new();probe.app=controller
  probe.ledger.restore(controller.household.meals.get_state())
  var error:String=""
  for member:Dictionary in controller.household.members:
   var id:String=str(member.id)
+  if not members.is_empty() and not members.has(id):continue
   var held:Dictionary=probe.ledger.carried_by(id)
   if held.is_empty():continue
   var current:Dictionary=member.sim.get_current_action()

@@ -73,7 +73,7 @@ func _test_four_day_story_and_chapters() -> void:
 	check(sim.wants.size() == 3 and not sim.wants[0].complete, "Recurring chapters must contain fresh, uncompleted wants.")
 	var events: Array = sim.get_story_events()
 	check(events.size() == 1 and events[0].kind == "neighbor_invitation", "Day two must offer an original neighbor invitation.")
-	check(events[0].choices.size() == 3 and events[0].choices[0].effects.contains("Pay §24"), "Choices must explain concrete costs before selection.")
+	check(events[0].choices.size() == 3 and events[0].choices[0].effects.contains("Pay ℒ24"), "Choices must explain concrete costs before selection.")
 	events[0].choices[0].label = "tampered label"
 	check(sim.get_story_events()[0].choices[0].label != "tampered label", "The UI must receive independent choice data.")
 	sim.needs.energy = 60.0

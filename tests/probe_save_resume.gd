@@ -136,7 +136,7 @@ func _verify() -> void:
 	check(app.mode == "live", "Loading the saved life returns to Live mode")
 	check(str(app.sim.character.name) == str(record.name), "The Lifelet's name resumed (%s vs %s)" % [str(app.sim.character.name), str(record.name)])
 	check(app.household.members.size() == int(record.members), "Every household member resumed (%d vs %d)" % [app.household.members.size(), int(record.members)])
-	check(int(app.sim.funds) == int(record.funds), "Funds resumed (§%d vs §%d)" % [int(app.sim.funds), int(record.funds)])
+	check(int(app.sim.funds) == int(record.funds), "Funds resumed (ℒ%d vs ℒ%d)" % [int(app.sim.funds), int(record.funds)])
 	check(int(app.household.day) == int(record.day), "The day resumed (%d vs %d)" % [int(app.household.day), int(record.day)])
 	check(absf(float(app.household.minutes) - float(record.minutes)) < 60.0, "The clock resumed (%.0f vs %.0f)" % [float(app.household.minutes), float(record.minutes)])
 	check(app.world.items.size() == int(record.items), "The placed furnishing resumed (%d vs %d)" % [app.world.items.size(), int(record.items)])

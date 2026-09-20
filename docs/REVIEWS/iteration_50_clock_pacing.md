@@ -8,7 +8,7 @@ Needs, action durations, school/work hours, pay and deadlines still use the same
 
 Two runs load the same actual Day 2 08:08.4 checkpoint, preserving the complete decoded state and nine inherited player commands. At Normal speed, the original clock leaves both adults at home by noon. The one-minute clock allows Ellis to depart at 10:11.8, and moves Casey's and Morgan's school departures to 08:49.5 and 09:35.5. Rowan still misses work after painting, hygiene and rest. No commands, priorities, need values or route positions are changed to force attendance.
 
-A separate complete-day observation at public speed eight confirms Ellis's actual shift completion, once-only §153 late-arrival pay and physical return. Both children complete their school day. The later sidestep search repair clears an observed overnight blockage using the same live prefix; that navigation change is documented separately in iteration 49.
+A separate complete-day observation at public speed eight confirms Ellis's actual shift completion, once-only ℒ153 late-arrival pay and physical return. Both children complete their school day. The later sidestep search repair clears an observed overnight blockage using the same live prefix; that navigation change is documented separately in iteration 49.
 
 The clock does not solve autonomous routines. In the day observation Ellis still reaches zero hygiene for 22.8 sampled game minutes and Casey zero fun for 36.4. Rowan's missed work remains. Longer activities also take more real time at Normal; the existing faster controls remain useful. These are practical limits, not a new overall quality score.
 

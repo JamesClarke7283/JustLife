@@ -24,7 +24,7 @@ The underlying engine is more than decorative meters: actions have durations and
 
 ### P1 — Fix home-selection meaning and make choices real
 
-Observed in source: the move-in card says “§2,500 to make it yours,” but starting the household leaves §2,500 available. Fresh Canvas displays §4,500 and leaves §4,500. Those amounts are spending money, not purchase prices. Also Willow Cottage and Sage House both call the same furnished starter_layout; only lot 2 differs.
+Observed in source: the move-in card says “ℒ2,500 to make it yours,” but starting the household leaves ℒ2,500 available. Fresh Canvas displays ℒ4,500 and leaves ℒ4,500. Those amounts are spending money, not purchase prices. Also Willow Cottage and Sage House both call the same furnished starter_layout; only lot 2 differs.
 
 Impact: players cannot reason about affordability and are offered a home choice with no visible consequence.
 

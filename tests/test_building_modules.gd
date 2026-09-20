@@ -152,7 +152,7 @@ func _test_transactions() -> void:
 	var base:Dictionary=_base();var before:Dictionary=base.duplicate(true)
 	var operation:Dictionary={"op":"add","collection":"stairs","record":{"x":0.0,"z":-2.0,"rotation":0}}
 	var quote:Dictionary=Building.propose(base,operation,1000)
-	check(bool(quote.ok) and int(quote.cost)==650 and int(quote.funds_after)==350,"Stair quote includes its matching opening for one original §650 charge.")
+	check(bool(quote.ok) and int(quote.cost)==650 and int(quote.funds_after)==350,"Stair quote includes its matching opening for one original ℒ650 charge.")
 	check(base==before and not operation.record.has("id"),"A quote changes no caller-owned building or operation.")
 	if not bool(quote.ok):return
 	var committed:Dictionary=Building.commit(base,quote,1000)
@@ -183,7 +183,7 @@ func _test_transactions() -> void:
 	check(not bool(Building.propose(exhausted,operation,1000).ok),"A maximum revision cannot produce an invalid overflowed candidate.")
 	var sale_base:Dictionary=_base(false)
 	var sale:Dictionary=Building.propose(sale_base,{"op":"remove","id":"north"},100)
-	check(bool(sale.ok) and sale.cost==-160,"An independent ground wall retains the existing §20-per-metre sale refund.")
+	check(bool(sale.ok) and sale.cost==-160,"An independent ground wall retains the existing ℒ20-per-metre sale refund.")
 	if bool(sale.ok):
 		var sold:Dictionary=Building.commit(sale_base,sale,100)
 		check(bool(sold.ok) and not bool(Building.undo(sold.state,sold.receipt,0).ok),"Undoing a sale still requires enough current funds.")

@@ -36,7 +36,7 @@ func _run()->void:
 	construction.anchored=true;construction.anchor=Vector3(-8,0,-7)
 	var overhang:Dictionary=construction.make_proposal(Vector3(8,3.16,7))
 	check(bool(overhang.get("valid",false)) and int(overhang.get("cost",0))==1440,
-		"A drag past the ground walls is fitted to the walled span instead of refused: §%s."%str(overhang.get("cost",-1)))
+		"A drag past the ground walls is fitted to the walled span instead of refused: ℒ%s."%str(overhang.get("cost",-1)))
 	construction.anchored=true;construction.anchor=Vector3(-14.5,0,-9.5)
 	var outside:Dictionary=construction.make_proposal(Vector3(-12,3.16,-7))
 	check(not bool(outside.get("valid",false)) and str(outside.get("error","")).contains("opposite bearing walls"),
@@ -47,10 +47,10 @@ func _run()->void:
 	construction.anchored=true;construction.anchor=Vector3(-6,0,-5)
 	var slab:Dictionary=construction.make_proposal(Vector3(6,3.16,5))
 	check(bool(slab.get("valid",false)) and int(slab.get("cost",0))==1440,
-		"The full upper slab over the enclosed rooms quotes for §1440: §%s."%str(slab.get("cost",-1)))
+		"The full upper slab over the enclosed rooms quotes for ℒ1440: ℒ%s."%str(slab.get("cost",-1)))
 	app.on_construction(slab);await process_frame
 	check(construction.has_upper_floor() and app.household.funds==wallet-1440,
-		"The committed slab lands upstairs and the household pays exactly §1440 through the public callback.")
+		"The committed slab lands upstairs and the household pays exactly ℒ1440 through the public callback.")
 	check(not construction.tool.is_empty() and construction.tool=="floor",
 		"The floor tool stays active after the slab, ready for the Stairs step through the Structure row.")
 

@@ -39,7 +39,7 @@ func _mutations()->void:
 		check(not is_same(app.household.member_sim(id).get_current_action(),previous) and app.traversal.courtesy.owner(app.traversal).is_empty(),"Public cancellation retires only the selected original instruction and releases v3: "+id)
 		check(app.route_generation>generation_before and after.people[other].action_queue==before.people[other].action_queue and after.bodies==before.bodies and after.at==before.at and after.funds==before.funds,"Cancellation keeps generation invalidation, the other queue and physical facts exact: "+id)
 	await _reload_hold();before=_facts();var later:Dictionary=app.household.member_sim(PEER).action_queue[1];await press("Build & buy");await press("Ground")
-	var target:Dictionary=app._find_item("item_14");app.show_build_object(target,Vector2(760,350));await press("Sell  +§",true)
+	var target:Dictionary=app._find_item("item_14");app.show_build_object(target,Vector2(760,350));await press("Sell  +ℒ",true)
 	after=_facts();audit["target_sell"]={"before":before,"after":after,"trace":app.traversal.courtesy.trace.duplicate(true)}
 	check(app._find_item("item_14").is_empty() and app.traversal.courtesy.owner(app.traversal).is_empty(),"Actual public sale removes the resource and retires v3 ownership.")
 	var expected_next:Array=before.people[PEER].action_queue.slice(1).duplicate(true)

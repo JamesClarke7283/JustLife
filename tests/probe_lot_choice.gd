@@ -79,7 +79,7 @@ func _run() -> void:
 	# The three starter layouts must not be the same house three times.
 	var summary: Array[String] = []
 	for i: int in range(3):
-		summary.append("%s: %d items, §%d" % [names[i], int(results[i].items), int(results[i].funds)])
+		summary.append("%s: %d items, ℒ%d" % [names[i], int(results[i].items), int(results[i].funds)])
 	print("lots -> " + "; ".join(summary))
 	for i: int in range(3):
 		for j: int in range(i + 1, 3):
@@ -90,7 +90,7 @@ func _run() -> void:
 	for result: Dictionary in results: distinct[str(result.multiset)] = true
 	check(distinct.size() == 3, "All three starter layouts are distinct (%d of 3)" % distinct.size())
 	# A Fresh Canvas advertises more funds, so the budget choice must be real.
-	check(int(results[2].funds) > int(results[0].funds), "The third lot really starts with more funds (§%d vs §%d)" % [int(results[2].funds), int(results[0].funds)])
+	check(int(results[2].funds) > int(results[0].funds), "The third lot really starts with more funds (ℒ%d vs ℒ%d)" % [int(results[2].funds), int(results[0].funds)])
 	# And it must really be less furnished, as its description promises.
 	check(int(results[2].items) < int(results[0].items), "A Fresh Canvas is really sparer than Willow Cottage (%d vs %d items)" % [int(results[2].items), int(results[0].items)])
 

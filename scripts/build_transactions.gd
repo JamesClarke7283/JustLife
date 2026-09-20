@@ -94,8 +94,7 @@ func _layout_obstacles(layout:Array)->Array:
 	var obstacles:Array=[]
 	for entry:Dictionary in layout:
 		if str(entry.get("kind","")) in ["__construction","meal","plate"] or LifeCatalog.passable(str(entry.get("kind",""))):continue
-		var area:Rect2=app.world.furnishing_rect(entry)
-		obstacles.append({"id":str(entry.id),"level":int(entry.get("level",0)),"x":area.get_center().x,"z":area.get_center().y,"w":area.size.x,"d":area.size.y})
+		for record:Dictionary in app.world.furnishing_obstacles(entry,int(entry.get("level",0))):obstacles.append(record)
 	return obstacles
 
 func furnishing_error(layout:Array)->String:
@@ -142,8 +141,7 @@ func _reach_error(state:Dictionary,layout:Array)->String:
 		if str(entry.get("kind",""))=="__construction" or not LifeCatalog.ITEMS.has(str(entry.get("kind",""))):continue
 		if str(entry.kind) in ["meal","plate","puddle"]:continue
 		if not LifeCatalog.passable(str(entry.kind)):
-			var area:Rect2=app.world.furnishing_rect(entry)
-			obstacles.append({"id":str(entry.id),"level":int(entry.get("level",0)),"x":area.get_center().x,"z":area.get_center().y,"w":area.size.x,"d":area.size.y})
+			for record:Dictionary in app.world.furnishing_obstacles(entry,int(entry.get("level",0))):obstacles.append(record)
 		checked.append(entry)
 	var signature:String=str(int(state.get("revision",0)))+"|"+str(obstacles.hash())+"|"+str(checked.hash())
 	if _reach_cache.has(signature):return str(_reach_cache[signature])
@@ -157,7 +155,13 @@ func _reach_error(state:Dictionary,layout:Array)->String:
 	var candidate=live
 	var excluded:Dictionary={}
 	if not added.is_empty():
-		if not LifeCatalog.passable(str(added.kind)):excluded=live.points_touching(int(added.get("level",0)),app.world.furnishing_rect(added))
+		# Only the cells the new furnishing really occupies come out of the
+		# flood. Excluding its whole declared outline would hide a garage's
+		# hollow interior from the reach test, so a plant already standing
+		# inside would look as if the new building had walled it in.
+		if not LifeCatalog.passable(str(added.kind)):
+			for area:Rect2 in app.world.furnishing_panels(added):
+				excluded.merge(live.points_touching(int(added.get("level",0)),area))
 	else:
 		candidate=load("res://scripts/lot_navigation.gd").new()
 		if not bool(candidate.rebuild(state,obstacles).ok):return ""
@@ -232,6 +236,17 @@ func furnishing_rebuilt(context:Dictionary)->void:
 	if not bool(state.ok):return
 	Protection.acknowledge_rebuild(app,context,Protection.unchanged_routes(context,state.state,state.state,app.world.lot_navigation))
 
+func _changed_stair_error(navigation,before:Dictionary,after:Dictionary,changed_stairs:Array)->String:
+	# A staircase the player just paid for must be one the household can really
+	# use. Its landings are checked against the same authority the walkers obey,
+	# so a purchase never leaves a home with stairs that no route crosses.
+	for stair:Dictionary in changed_stairs:
+		var id:String=str(stair.id)
+		if Building.find(after,id).is_empty():continue
+		if navigation.stair_connected(id):continue
+		return "That staircase has no usable way onto either floor. Leave clear floor beside the upper opening and at the foot of the stairs."
+	return ""
+
 func _candidate_error(before:Dictionary,after:Dictionary)->String:
 	return _layout_candidate_error(before,after,_layout(after))
 
@@ -246,6 +261,8 @@ func _layout_candidate_error(before:Dictionary,after:Dictionary,layout:Array)->S
 	var candidate:=Navigation.new()
 	var rebuilt:Dictionary=candidate.rebuild(after,_layout_obstacles(layout))
 	if not bool(rebuilt.ok):return str(rebuilt.error)
+	error=_changed_stair_error(candidate,before,after,changed_stairs)
+	if not error.is_empty():return error
 	var protection:Dictionary=_protection()
 	error=Protection.validate(protection,before,after,candidate,layout)
 	if not error.is_empty():return error

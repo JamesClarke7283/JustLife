@@ -53,7 +53,17 @@ func _init(owner_app: Node = null) -> void:
 # ---------------------------------------------------------------- persistence
 
 func get_state() -> Dictionary:
-	return {"version":1, "serial":serial, "books":books.duplicate(true), "fill":fill.duplicate(true), "storage":storage.duplicate(true)}
+	return {"version":1, "serial":serial, "books":books.duplicate(true), "fill":fill.duplicate(true), "storage":storage.duplicate(true), "truck":_truck_state()}
+
+
+## The weekly food truck's own small record rides here rather than in a system
+## of its own: it is one schedule stamp and one order counter, and the extras
+## record is already the household's additive, optional sidecar. A build
+## without a truck (an older save) simply carries an empty record.
+func _truck_state() -> Dictionary:
+	if not is_instance_valid(app) or not is_instance_valid(app.food_truck):
+		return {}
+	return app.food_truck.get_state()
 
 
 func restore(data: Variant) -> void:
@@ -76,9 +86,11 @@ func restore(data: Variant) -> void:
 		if not entry is Dictionary or not _stored_record_valid(entry):
 			continue
 		storage.append(_stored_record(entry))
+	if is_instance_valid(app) and is_instance_valid(app.food_truck):
+		app.food_truck.restore(data.get("truck", null))
 
 
-static func validate(data: Variant, layout: Array) -> String:
+static func validate(data: Variant, layout: Array, day: int = 0) -> String:
 	# Additive optional record: absent means the pre-book default, and every
 	# stored reference must still name a real furnishing of the right kind.
 	if data == null:
@@ -123,7 +135,7 @@ static func validate(data: Variant, layout: Array) -> String:
 		if stored_ids.has(stored_id):
 			return "Two saved stored furnishings share an identity."
 		stored_ids[stored_id] = true
-	return ""
+	return LifeFoodTruck.validate(data.get("truck", null), day)
 
 ## A stored record is a detached layout entry: the same identity, kind and
 ## transform a placed furnishing carries, with no live node. It must name a real
@@ -142,12 +154,16 @@ static func _stored_record_valid(entry: Variant) -> bool:
 			return false
 	if entry.has("lit") and not entry.get("lit") is bool:
 		return false
+	if entry.has("paint") and not LifeCatalog._shade(str(entry.get("paint",""))):
+		return false
 	return true
 
 static func _stored_record(entry: Dictionary) -> Dictionary:
 	var record: Dictionary = {"id":str(entry.get("id", "")), "kind":str(entry.get("kind", "")), "x":float(entry.get("x", 0.0)), "z":float(entry.get("z", 0.0)), "rotation":float(entry.get("rotation", 0.0)), "level":int(entry.get("level", 0))}
 	if entry.has("lit"):
 		record["lit"] = bool(entry.lit)
+	if entry.has("paint"):
+		record["paint"] = str(entry.get("paint",""))
 	return record
 
 
@@ -365,6 +381,90 @@ func action_availability(sim: LifeSim, id: String, target_id: String) -> String:
 
 func _item(id: String) -> Dictionary:
 	return app._find_item(id)
+
+
+# ------------------------------------------------------------------- pets
+
+## What a pet can be taught. The canonical list lives in LifePets, beside the
+## save validator that reads it, so a stored trick is always one of these.
+func next_trick(pet_id: String) -> String:
+	var known: Array = tricks_for(pet_id)
+	for trick: String in LifePets.TRICKS:
+		if not known.has(trick):
+			return trick
+	return ""
+
+
+## Every trick this pet has learned, newest last.
+func tricks_for(pet_id: String) -> Array:
+	var record: Dictionary = _pet_record(pet_id)
+	var known: Variant = record.get("tricks", [])
+	return known.duplicate() if known is Array else []
+
+
+## One teaching session. Progress is counted per trick in `trick_progress`, and
+## the trick joins `tricks` only when it is really learned, so a partial session
+## is honest about what the animal can do. Both records ride the household save.
+func teach_pet_trick(pet_id: String, teacher: String) -> Dictionary:
+	var record: Dictionary = _pet_record(pet_id)
+	if record.is_empty():
+		return {"ok":false, "error":"That pet is not part of this household."}
+	var trick: String = next_trick(pet_id)
+	if trick.is_empty():
+		return {"ok":false, "error":"%s already knows everything you know how to teach." % str(record.get("name","Your pet"))}
+	var progress: Dictionary = record.get("trick_progress", {})
+	progress[trick] = int(progress.get(trick, 0)) + 1
+	record["trick_progress"] = progress
+	if int(progress[trick]) >= LifePets.TRICK_SESSIONS:
+		var known: Array = tricks_for(pet_id)
+		known.append(trick)
+		record["tricks"] = known
+		progress.erase(trick)
+		record["trick_progress"] = progress
+		record["taught_by"] = teacher
+		return {"ok":true, "trick":"%s" % trick, "learned":true}
+	return {"ok":true, "trick":trick, "learned":false, "progress":int(progress[trick])}
+
+
+## A tummy rub or a scratch: pure affection. It warms the pet's bond with the
+## person who gave it and is remembered on the pet's own record.
+func affectionate_pet(pet_id: String, person: String) -> Dictionary:
+	var record: Dictionary = _pet_record(pet_id)
+	if record.is_empty():
+		return {"ok":false, "error":"That pet is not part of this household."}
+	record["affection"] = int(record.get("affection", 0)) + 1
+	record["last_affection_by"] = person
+	return {"ok":true}
+
+
+## A bath. It restores the animal's own cleanliness, which the household's clock
+## then drains again like any other need. A cat never reaches this: its coat is
+## its own business, and the availability gate refuses it first.
+func bathe_pet(pet_id: String, bather: String) -> Dictionary:
+	var record: Dictionary = _pet_record(pet_id)
+	if record.is_empty():
+		return {"ok":false, "error":"That pet is not part of this household."}
+	var needs: Dictionary = record.get("needs", {})
+	if not needs is Dictionary or (needs as Dictionary).is_empty():
+		needs = LifePets.fresh_needs()
+	needs["cleanliness"] = 100.0
+	record["needs"] = needs
+	record["last_bathed_by"] = bather
+	return {"ok":true}
+
+
+## The household's live pet record, or empty when the id names no pet here.
+func pet_record(pet_id: String) -> Dictionary:
+	return _pet_record(pet_id)
+
+
+func _pet_record(pet_id: String) -> Dictionary:
+	if not is_instance_valid(app) or not is_instance_valid(app.household):
+		return {}
+	for pet: Dictionary in app.household.pets.get("pets", []):
+		if str(pet.get("id","")) == pet_id:
+			return pet
+	return {}
 
 
 func _now() -> float:

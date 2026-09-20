@@ -12,6 +12,9 @@ const STANDOFF_TIME:float=2.0   # scaled seconds stuck on one step before somebo
 const STANDOFF_HOLD:float=2.5   # scaled seconds a yielder waits at its anchor for the other body to pass
 const STANDOFF_LIMIT:int=3      # retreats on one route before the walker squeezes past bodies
 const STANDOFF_ERROR:String="Somebody is in the way."
+const WAIT_HOLD_TIME:float=4.0   # scaled seconds an owned turn retries a fresh landing plan
+const WAIT_ENTRY_ERROR:String="The staircase cannot be reached from here."
+const WAIT_EXIT_ERROR:String="There is no clear place to step off the stairs."
 var squeeze_count:int=0   # routes that finished by squeezing past bodies after repeated standoffs
 const ASIDE_DISTANCES:Array=[.5,.75,1.0,1.5]
 const ASIDE_DIRECTIONS:Array=[Vector2(1,0),Vector2(-1,0),Vector2(0,1),Vector2(0,-1),Vector2(.7071,.7071),Vector2(-.7071,.7071),Vector2(.7071,-.7071),Vector2(-.7071,-.7071)]
@@ -52,6 +55,11 @@ func request(id:String,destination:Vector3)->Dictionary:
 	if busy(id):return {"ok":false,"error":"Finish the current stair crossing first."}
 	var actor:LifeActor=app.world.actors.get(id)
 	if not is_instance_valid(actor):return {"ok":false,"error":"Missing moving Lifelet."}
+	# An away Lifelet is not in the lot at all: its saved position is where it
+	# will come home, not a body that can walk now. Planning from there produced
+	# a route nobody could ever advance, so say so instead of accepting it. A
+	# returning member is visible again and walks normally.
+	if not actor.visible:return {"ok":false,"error":"This Lifelet is away from home right now."}
 	courtesy.reconcile(self)
 	if courtesy.preserve_request(self,id,destination):
 		var kept:Dictionary=routes[id]
@@ -314,7 +322,19 @@ func advance(id:String,delta:float,speed:int)->Dictionary:
 			if not bool(rebuilt.ok):response.error=str(rebuilt.error);break
 			route=routes[id];continue
 		var leg:Dictionary=route.legs[int(route.cursor)]
-		if not bool(route.prepared) and not _prepare(id,route):break
+		if not bool(route.prepared):
+			if not _prepare(id,route):
+				# The approach place for a stair, or the floor entry route to it,
+				# is not available yet. Retry for a bounded time, then report an
+				# honest reason instead of standing on an unprepared route.
+				route.wait_hold=float(route.get("wait_hold",0.0))+remaining
+				if float(route.wait_hold)<WAIT_HOLD_TIME:break
+				_remove_waiter(id)
+				routes.erase(id)
+				courtesy.reconcile(self)
+				response.error=WAIT_ENTRY_ERROR
+				break
+			route.erase("wait_hold")
 		if str(route.phase) in ["route","to_wait","entry","clear"]:
 			if route.has("standoff"):
 				response.moving=_advance_standoff(id,route,remaining) or bool(response.moving)
@@ -357,10 +377,25 @@ func advance(id:String,delta:float,speed:int)->Dictionary:
 			if not str(lock.owner).is_empty() or lock.queue.is_empty() or str(lock.queue[0].id)!=id:break
 			var exit:Dictionary=_exit_place(id,leg)
 			var entry:PackedVector3Array=_floor_route(actor.position,leg.from,id)
-			if exit.is_empty() or entry.is_empty():break
+			if exit.is_empty() or entry.is_empty():
+				# An arrived waiter whose turn cannot produce a landing plan does
+				# not stand still holding a ticket: it retries a fresh exit and
+				# entry search for a bounded time while it legitimately owns the
+				# turn, then releases its place in the queue so the Lifelets
+				# behind it can proceed, and reports why through the ordinary
+				# notice channel instead of leaving a silent queue ticket.
+				route.wait_hold=float(route.get("wait_hold",0.0))+remaining
+				if float(route.wait_hold)<WAIT_HOLD_TIME:break
+				_remove_waiter(id)
+				var reason:String=WAIT_EXIT_ERROR if exit.is_empty() else WAIT_ENTRY_ERROR
+				routes.erase(id)
+				courtesy.reconcile(self)
+				response.error=reason
+				break
 			lock.queue.pop_front();lock.owner=id;lock.exit=leg.to;lock.clear=exit.point
 			route.exit=leg.to;route.clear=exit.point;route.clear_points=exit.points
 			route.points=entry;route.point=0;route.phase="entry";route.wait=Vector3.INF
+			route.erase("wait_hold")
 			continue
 		if str(route.phase)=="transit":
 			var prior_distance:float=float(route.distance)

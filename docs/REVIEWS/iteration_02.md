@@ -21,11 +21,11 @@ The isolated Godot 4.7.2 run used Forward+ on the available NVIDIA RTX 5090 and 
 **164 first-process assertions and 30 fresh-process assertions passed, with zero engine/script error lines.** Twenty-two PNG captures and both structured reports accompany this review.
 
 - Rowan and Ellis were created through public creator controls with distinct names, body frames, hair and colors. Household chips switched selection while preserving the first person's route and queue.
-- Rowan cooked, showered and conversed while Ellis read. Both completed activities through actual walking and processing. Cooking charged §25 at activity start, hygiene recovered, friendship increased and reading skill stayed with Ellis. The wallet remained shared.
+- Rowan cooked, showered and conversed while Ellis read. Both completed activities through actual walking and processing. Cooking charged ℒ25 at activity start, hygiene recovered, friendship increased and reading skill stayed with Ellis. The wallet remained shared.
 - Pause froze clock, needs and movement. Eight long-label queued activities remained scrollable and were cancelled through their own controls.
-- A valid mouse purchase added a §45 plant. An overlapping purchase changed neither funds nor layout. A 2 × 1.5 m room created four walls and a floor for §421; its doorway cost §90. Overlapping room construction was rejected without state changes. Floor finish persisted.
+- A valid mouse purchase added a ℒ45 plant. An overlapping purchase changed neither funds nor layout. A 2 × 1.5 m room created four walls and a floor for ℒ421; its doorway cost ℒ90. Overlapping room construction was rejected without state changes. Floor finish persisted.
 - Rowan sat on the sofa and lay on the bed. These are real active poses, not manually staged positions.
-- The household saved during a **charged §25 cooking action** with reading queued after it. Same-process and fresh-process loading restored both members' identities, individual needs, skills, relationships and positions, along with money/time, lot, flooring, construction, furnishing placement and queue progress/payment. Resuming the paid action did not charge another §25.
+- The household saved during a **charged ℒ25 cooking action** with reading queued after it. Same-process and fresh-process loading restored both members' identities, individual needs, skills, relationships and positions, along with money/time, lot, flooring, construction, furnishing placement and queue progress/payment. Resuming the paid action did not charge another ℒ25.
 - After resuming, both people completed autonomous activities and the household reached **Day 2, 08:00**. Observed autonomous completions included socializing, toilet use, snacks, showering and sleeping. Needs remained in bounds and the shared clock advanced consistently. Evening and next-morning captures show the daylight change.
 
 ## Corrections confirmed during this review

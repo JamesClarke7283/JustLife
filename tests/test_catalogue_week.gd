@@ -61,12 +61,12 @@ func _run()->void:
 	if with_annex:
 		var tx=app.build_transactions
 		var annex:Dictionary=tx.prepare({"op":"structure","tool":"room","level":0,"ax":ANNEX.ax,"az":ANNEX.az,"bx":ANNEX.bx,"bz":ANNEX.bz})
-		check(bool(annex.ok) and bool(tx.commit(annex).ok),"A garden annex is built through the public build transaction (§%d)." % int(annex.get("cost",0)))
+		check(bool(annex.ok) and bool(tx.commit(annex).ok),"A garden annex is built through the public build transaction (ℒ%d)." % int(annex.get("cost",0)))
 		var door_wall:Dictionary={}
 		for wall:Dictionary in app.world.construction.building_state.walls:
 			if is_equal_approx(float(wall.x),float(ANNEX.ax)) and is_equal_approx(float(wall.z),(float(ANNEX.az)+float(ANNEX.bz))*.5):door_wall=wall
 		var door:Dictionary=tx.prepare({"op":"structure","tool":"door","level":0,"id":str(door_wall.get("id","")),"center":float(ANNEX.door_center)})
-		check(bool(door.ok) and bool(tx.commit(door).ok),"The annex gets a doorway on its west wall (§%d)." % int(door.get("cost",0)))
+		check(bool(door.ok) and bool(tx.commit(door).ok),"The annex gets a doorway on its west wall (ℒ%d)." % int(door.get("cost",0)))
 	var placed:int=0
 	for entry:Array in purchases:
 		var before:int=app.world.items.size()

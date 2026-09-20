@@ -46,6 +46,13 @@ var heirlooms: Array = []
 const ESTATE_GIFT: int = 80
 var _cooperation_depth: int = 0
 const COOPERATION_WAIT_LIMIT: float = 60.0
+## A shared dance is the N-member form of the pair cooperations above: one
+## stereo, one record, one shared clock, up to five dancers at once. Each
+## dancer keeps their own action and their own standing spot around the player.
+const DANCE_KIND: String = "dance"
+const DANCE_TOKEN_PREFIX: String = "dance_"
+const DANCE_DURATION: float = 35.0
+const MAX_DANCERS: int = 5
 
 func new_household(profiles: Array) -> void:
 	journeys.clear()
@@ -517,7 +524,7 @@ func restore_state(data: Dictionary) -> Dictionary:
 	if not meal_error.is_empty():
 		for c in candidates:c.sim.free()
 		return {"ok":false,"error":meal_error}
-	var extras_error:String=LifeHouseholdFlow.validate(data.get("extras",null),data.get("world",[]))
+	var extras_error:String=LifeHouseholdFlow.validate(data.get("extras",null),data.get("world",[]),int(lead.day))
 	if not extras_error.is_empty():
 		for c in candidates:c.sim.free()
 		return {"ok":false,"error":extras_error}
@@ -697,10 +704,10 @@ func _record_passing(member_id: String) -> void:
 			continue
 		member.sim.add_moodlet("In mourning","Sad","Someone beloved has passed.",960,2)
 		member.sim.trigger_fear("fear_of_loss")
-		member.sim.remember("A farewell","%s left a keepsake and §%d for the household." % [str(who.character.name), ESTATE_GIFT])
+		member.sim.remember("A farewell","%s left a keepsake and ℒ%d for the household." % [str(who.character.name), ESTATE_GIFT])
 	member_passed.emit(member_id)
 	member_passed_away.emit(member_id, str(who.character.name), "memorial", ESTATE_GIFT)
-	notice.emit("%s left a keepsake and §%d. Their story stays in the family." % [str(who.character.name), ESTATE_GIFT])
+	notice.emit("%s left a keepsake and ℒ%d. Their story stays in the family." % [str(who.character.name), ESTATE_GIFT])
 
 func _validate_memorials(raw: Variant, ids: Array) -> String:
 	if raw == null:
@@ -920,6 +927,86 @@ func queue_supported_homework(learner_id: String, helper_id: String, furniture_i
 	_end_cooperation_change()
 	return {"ok":true,"session_id":token}
 
+func dance_partners(furniture_id: String, member_id: String) -> Array:
+	# Every household member who could join a shared dance at this stereo, with
+	# their own honest reason when they cannot. The caller's own row is omitted.
+	var result: Array = []
+	for member: Dictionary in members:
+		if str(member.id) == member_id: continue
+		var reason: String = _dance_member_join_error(furniture_id,str(member.id))
+		result.append({"id":str(member.id),"name":str(member.sim.character.name),"available":reason.is_empty(),"reason":reason})
+	return result
+
+func _dance_member_join_error(furniture_id: String, member_id: String) -> String:
+	var actor: LifeSim = member_sim(member_id)
+	if actor == null: return "That Lifelet is not part of this household."
+	var reason: String = "" if _target_kind(furniture_id) == "stereo" else "Choose a music player for the dance."
+	if not reason.is_empty(): return reason
+	if actor.is_away(): return "This Lifelet is away from home. Finish or cancel that activity first."
+	if not actor.action_queue.is_empty(): return "This Lifelet has other plans. Finish or cancel them first."
+	if _member_cooperation(member_id) is Dictionary and not _member_cooperation(member_id).is_empty(): return "This Lifelet is already sharing an activity."
+	var availability: Dictionary = actor.get_action_availability(LifeDancePlan.ACTION_ID,furniture_id)
+	if not bool(availability.available): return str(availability.reason)
+	return ""
+
+func dance_plan(furniture_id: String, member_ids: Array) -> Dictionary:
+	# The single refusal path for a group dance, and the only place the cap is
+	# enforced: the stereo itself, then the group's own size and membership,
+	# then the stereo's existing session, then each dancer's own honesty.
+	var stereo: Dictionary = _target(furniture_id)
+	if stereo.is_empty() or str(stereo.get("kind","")) != "stereo": return {"ok":false,"error":"Choose a music player for the dance."}
+	var known: Array = []
+	for member: Dictionary in members: known.append(str(member.id))
+	var group_reason: String = LifeDancePlan.group_error(member_ids,known)
+	if not group_reason.is_empty(): return {"ok":false,"error":group_reason}
+	var unique: Array[String] = []
+	for id: Variant in member_ids:
+		var member_id: String = str(id)
+		if not unique.has(member_id): unique.append(member_id)
+	for session: Dictionary in cooperations:
+		if LifeBabyPlan.session_kind(session) == DANCE_KIND and str(session.get("furniture_id","")) == furniture_id:
+			return {"ok":false,"error":"That record player already has a dance going."}
+	for member_id: String in unique:
+		var reason: String = _dance_member_join_error(furniture_id,member_id)
+		if not reason.is_empty(): return {"ok":false,"error":reason}
+	return {"ok":true,"members":unique}
+
+func queue_dance_together(furniture_id: String, member_ids: Array, positions: Dictionary = {}) -> Dictionary:
+	var plan: Dictionary = dance_plan(furniture_id,member_ids)
+	if not bool(plan.ok): return plan
+	var dancers: Array = plan.members
+	# Each dancer needs their own real standing spot. The caller resolves them
+	# from the live world; a missing or overlapping spot is refused rather than
+	# stacking two Lifelets on one place around the record player.
+	var spots: Array[Vector3] = []
+	for member_id: String in dancers:
+		var spot: Variant = positions.get(member_id,null)
+		if not _cooperation_position(spot): return {"ok":false,"error":"The dance approach positions are invalid."}
+		var at: Vector3 = _cooperation_vector(spot)
+		for existing: Vector3 in spots:
+			if existing.distance_to(at) < LifeDancePlan.MIN_SPACING: return {"ok":false,"error":"Two dancers would stand in the same spot. Move something out of the way and try again."}
+		spots.append(at)
+	_begin_cooperation_change()
+	cooperation_serial += 1
+	var token: String = LifeDancePlan.TOKEN_PREFIX+str(cooperation_serial)
+	var session: Dictionary = {"id":token,"kind":DANCE_KIND,"furniture_id":furniture_id,"day":day,"created_minutes":minutes,"phase":"assembling","ready":[],"waited":0.0,"members":dancers.duplicate(),"positions":{}}
+	for index: int in range(dancers.size()):
+		session.positions[str(dancers[index])] = [spots[index].x,spots[index].y,spots[index].z]
+	cooperations.append(session)
+	for index: int in range(dancers.size()):
+		var member_id: String = str(dancers[index])
+		var actor: LifeSim = member_sim(member_id)
+		var action: Dictionary = actor._actions[LifeDancePlan.ACTION_ID].duplicate(true)
+		# The first dancer owns the shared clock, exactly as the homework
+		# learner does; everyone else mirrors its elapsed time.
+		action.merge({"target_id":furniture_id,"target_kind":"stereo","target_position":spots[index],"phase":"queued","elapsed":0.0,"progress":0.0,"paid":false,"autonomous":false,"cooperation_id":token,"cooperation_role":LifeDancePlan.ROLE,"cooperation_primary":index==0})
+		actor.action_queue.append(action)
+		actor._idle_minutes=0.0
+		actor._start_front()
+		actor._emit_changed()
+	_end_cooperation_change()
+	return {"ok":true,"session_id":token}
+
 func _member_cooperation(member_id: String) -> Dictionary:
 	for session: Dictionary in cooperations:
 		if _cooperation_member_ids(session).has(member_id): return session
@@ -927,9 +1014,16 @@ func _member_cooperation(member_id: String) -> Dictionary:
 
 func _cooperation_member_ids(session: Dictionary) -> Array[String]:
 	# Homework sessions keep their learner/helper roles. An intimate session is
-	# symmetric: both members are participants and neither is "the helper".
-	if LifeBabyPlan.session_kind(session) == LifeBabyPlan.SESSION_KIND:
+	# symmetric: both members are participants and neither is "the helper". A
+	# shared dance is symmetric for up to five dancers and keeps its own list.
+	var kind: String = LifeBabyPlan.session_kind(session)
+	if kind == LifeBabyPlan.SESSION_KIND:
 		return [str(session.get("a_id","")),str(session.get("b_id",""))]
+	if kind == DANCE_KIND:
+		var dancers: Array[String] = []
+		for id: Variant in session.get("members",[]):
+			dancers.append(str(id))
+		return dancers
 	return [str(session.get("learner_id","")),str(session.get("helper_id",""))]
 
 func _sessions_of_kind(kind: String) -> Array:
@@ -951,16 +1045,29 @@ func cooperation_state(token: String) -> Dictionary:
 func cooperative_presentation(member_id: String) -> Dictionary:
 	var session: Dictionary = _member_cooperation(member_id)
 	if session.is_empty(): return {}
-	if LifeBabyPlan.session_kind(session) == LifeBabyPlan.SESSION_KIND:
+	var kind: String = LifeBabyPlan.session_kind(session)
+	if kind == LifeBabyPlan.SESSION_KIND:
 		return _baby_presentation(session,member_id)
+	if kind == DANCE_KIND:
+		return _dance_presentation(session,member_id)
 	var learner: LifeSim = member_sim(str(session.learner_id))
 	var action: Dictionary = learner.get_current_action()
 	var role: String = "learner" if member_id == str(session.learner_id) else "helper"
 	return {"session_id":str(session.id),"role":role,"phase":str(session.phase),"ready":session.ready.has(member_id),"partner_id":str(session.helper_id) if role == "learner" else str(session.learner_id),"learner_id":str(session.learner_id),"helper_id":str(session.helper_id),"furniture_id":str(session.furniture_id),"elapsed":float(action.get("elapsed",0.0)),"duration":45.0,"progress":float(action.get("progress",0.0)),"learner_position":Vector3(session.learner_position[0],session.learner_position[1],session.learner_position[2]),"helper_position":Vector3(session.helper_position[0],session.helper_position[1],session.helper_position[2])}
 
+func _dance_presentation(session: Dictionary, member_id: String) -> Dictionary:
+	# One shared clock: every dancer mirrors the session owner's elapsed time,
+	# and the presentation names the whole group rather than a single partner.
+	var ids: Array[String] = _cooperation_member_ids(session)
+	var owner: LifeSim = member_sim(str(ids[0])) if not ids.is_empty() else null
+	var action: Dictionary = owner.get_current_action() if owner != null else {}
+	var others: Array[String] = []
+	for id: String in ids:
+		if id != member_id: others.append(id)
+	return {"kind":DANCE_KIND,"session_id":str(session.id),"role":LifeDancePlan.ROLE,"phase":str(session.phase),"ready":session.ready.has(member_id),"dancer_ids":ids,"other_ids":others,"dancer_count":ids.size(),"partner_id":str(others[0]) if not others.is_empty() else "","furniture_id":str(session.furniture_id),"elapsed":float(action.get("elapsed",0.0)),"duration":DANCE_DURATION,"progress":float(action.get("progress",0.0))}
+
 func _baby_presentation(session: Dictionary, member_id: String) -> Dictionary:
 	# One shared clock: the pair's elapsed/minutes are mirrored by the session
-	# owner below, exactly as a shared homework session mirrors its learner.
 	var owner: LifeSim = member_sim(str(session.a_id))
 	var action: Dictionary = owner.get_current_action()
 	var role: String = "a" if member_id == str(session.a_id) else "b"
@@ -969,13 +1076,15 @@ func _baby_presentation(session: Dictionary, member_id: String) -> Dictionary:
 func mark_cooperative_ready(member_id: String) -> void:
 	var session: Dictionary = _member_cooperation(member_id)
 	if session.is_empty() or str(session.phase) != "assembling": return
+	var kind: String = LifeBabyPlan.session_kind(session)
 	_begin_cooperation_change()
 	var reason: String = _cooperation_error(session)
 	if not reason.is_empty():
 		_cancel_cooperation(session,reason)
 	else:
 		if not session.ready.has(member_id): session.ready.append(member_id)
-		if session.ready.size() == 2:
+		var needed: int = _cooperation_member_ids(session).size()
+		if session.ready.size() == needed:
 			session.phase="active"
 			for id: String in _cooperation_member_ids(session):
 				var actor: LifeSim = member_sim(id)
@@ -993,13 +1102,47 @@ func mark_cooperative_ready(member_id: String) -> void:
 func cancel_cooperative_action(member_id: String) -> bool:
 	var session: Dictionary = _member_cooperation(member_id)
 	if session.is_empty(): return false
+	var kind: String = LifeBabyPlan.session_kind(session)
+	if kind == DANCE_KIND:
+		# One dancer stepping out never stops the record for the others.
+		_begin_cooperation_change()
+		_leave_dance(session,member_id)
+		_end_cooperation_change()
+		return true
 	var reason:String = "Homework together was cancelled. The assignment is still available today."
-	if LifeBabyPlan.session_kind(session) == LifeBabyPlan.SESSION_KIND:
+	if kind == LifeBabyPlan.SESSION_KIND:
 		reason = "The moment passed. The bed is free again whenever you both want to try."
 	_begin_cooperation_change()
 	_cancel_cooperation(session,reason)
 	_end_cooperation_change()
 	return true
+
+## One dancer leaves a shared dance: their own action goes, the rest keep
+## dancing. The group dissolves only when nobody is left.
+func _leave_dance(session: Dictionary, member_id: String, reason: String = "") -> void:
+	var ids: Array[String] = _cooperation_member_ids(session)
+	if not ids.has(member_id): return
+	var actor: LifeSim = member_sim(member_id)
+	if actor != null:
+		var front_removed: bool = not actor.action_queue.is_empty() and str(actor.action_queue[0].get("cooperation_id","")) == str(session.id)
+		for index: int in range(actor.action_queue.size()-1,-1,-1):
+			if str(actor.action_queue[index].get("cooperation_id","")) == str(session.id): actor.action_queue.remove_at(index)
+		if front_removed: actor._start_front()
+		actor._emit_changed()
+	session.members.erase(member_id)
+	session.ready.erase(member_id)
+	if session.positions is Dictionary: session.positions.erase(member_id)
+	if session.members.is_empty():
+		cooperations.erase(session)
+		var lead: LifeSim = member_sim(str(ids[0]))
+		if lead != null: lead._emit_notice("The record stops. Everyone has stepped out of the dance.")
+		return
+	var remaining: int = _cooperation_member_ids(session).size()
+	var notice_text: String = reason if not reason.is_empty() else "%s steps out. %d %s still dancing." % [str(actor.character.name) if actor != null else "A dancer",remaining,"Lifelet is" if remaining == 1 else "Lifelets are"]
+	var lead: LifeSim = member_sim(str(_cooperation_member_ids(session)[0]))
+	if lead != null: lead._emit_notice(notice_text)
+	if str(session.phase) == "active":
+		session.waited = 0.0
 
 func _cancel_cooperation(session: Dictionary, reason: String) -> void:
 	cooperations.erase(session)
@@ -1015,8 +1158,11 @@ func _cancel_cooperation(session: Dictionary, reason: String) -> void:
 	if lead != null and not reason.is_empty(): lead._emit_notice(reason)
 
 func _cooperation_error(session: Dictionary) -> String:
-	if LifeBabyPlan.session_kind(session) == LifeBabyPlan.SESSION_KIND:
+	var kind: String = LifeBabyPlan.session_kind(session)
+	if kind == LifeBabyPlan.SESSION_KIND:
 		return _baby_session_error(session)
+	if kind == DANCE_KIND:
+		return _dance_session_error(session)
 	var reason: String = _homework_pair_error(str(session.learner_id),str(session.helper_id),str(session.furniture_id),false)
 	if not reason.is_empty(): return reason
 	var learner: LifeSim = member_sim(str(session.learner_id))
@@ -1027,6 +1173,31 @@ func _cooperation_error(session: Dictionary) -> String:
 		var action: Dictionary = actor.get_current_action()
 		if str(action.get("cooperation_id","")) != str(session.id) or str(action.get("cooperation_role","")) != role or str(action.get("target_id","")) != str(session.furniture_id): return "One Lifelet's homework plans changed."
 	return learner._school_action_error(learner.get_current_action())
+
+func _dance_session_error(session: Dictionary) -> String:
+	# Whole-session problems end the dance for the entire group. A defect in
+	# one dancer's own plans is handled per member by _reconcile_cooperations,
+	# so one Lifelet stepping out never stops the record for the others.
+	if str(session.phase) == "assembling" and float(session.waited) >= COOPERATION_WAIT_LIMIT:
+		return "The Lifelets could not meet at the record player within an hour. Start a fresh dance."
+	var stereo: Dictionary = _target(str(session.furniture_id))
+	if stereo.is_empty() or str(stereo.get("kind","")) != "stereo": return "The record player is gone. The dance is over."
+	for member_id: String in _cooperation_member_ids(session):
+		var actor: LifeSim = member_sim(member_id)
+		if actor == null: return "A dancer is no longer part of this household."
+		if actor.day != int(session.day): return "A new day begins. The record player falls quiet."
+	return ""
+
+func _dance_member_error(session: Dictionary, member_id: String) -> String:
+	# One dancer's own defect, which removes only that dancer.
+	var actor: LifeSim = member_sim(member_id)
+	if actor == null: return "is no longer part of this household"
+	if str(actor.character.get("life_status","living")) != "living": return "has passed on"
+	if actor.is_away(): return "is away from home"
+	var action: Dictionary = actor.get_current_action()
+	if str(action.get("cooperation_id","")) != str(session.id) or str(action.get("cooperation_role","")) != LifeDancePlan.ROLE or str(action.get("id","")) != LifeDancePlan.ACTION_ID or str(action.get("target_id","")) != str(session.furniture_id):
+		return "had other plans"
+	return ""
 
 func _baby_session_error(session: Dictionary) -> String:
 	# Interruption, a moved bed or a new life stage ends the beat for both. The
@@ -1050,6 +1221,9 @@ func _baby_session_error(session: Dictionary) -> String:
 
 func _reconcile_cooperations() -> void:
 	for session: Dictionary in cooperations.duplicate():
+		if LifeBabyPlan.session_kind(session) == DANCE_KIND:
+			_reconcile_dance(session)
+			continue
 		var reason: String = _cooperation_error(session)
 		if not reason.is_empty():
 			_cancel_cooperation(session,reason)
@@ -1060,6 +1234,28 @@ func _reconcile_cooperations() -> void:
 			var mirror: Dictionary = member_sim(other_id).get_current_action()
 			mirror.elapsed=float(source.elapsed)
 			mirror.progress=float(source.progress)
+
+func _reconcile_dance(session: Dictionary) -> void:
+	# The whole-session check first, then each dancer's own plans. One dancer's
+	# defect removes only that dancer; the others keep dancing to the record.
+	var reason: String = _dance_session_error(session)
+	if not reason.is_empty():
+		_cancel_cooperation(session,reason)
+		return
+	for member_id: String in _cooperation_member_ids(session).duplicate():
+		var member_reason: String = _dance_member_error(session,member_id)
+		if not member_reason.is_empty():
+			var actor: LifeSim = member_sim(member_id)
+			_leave_dance(session,member_id,"%s %s and steps out. The record keeps playing." % [str(actor.character.name) if actor != null else "A dancer",member_reason])
+			if cooperations.has(session) == false: return
+	var ids: Array[String] = _cooperation_member_ids(session)
+	if ids.is_empty(): return
+	# Every dancer holds their own spot, so only the shared clock mirrors.
+	var source: Dictionary = member_sim(ids[0]).get_current_action()
+	for id: String in ids.slice(1):
+		var mirror: Dictionary = member_sim(id).get_current_action()
+		mirror.elapsed=float(source.elapsed)
+		mirror.progress=float(source.progress)
 
 func before_member_notification() -> void:
 	if _cooperation_depth > 0 or restoring or cooperations.is_empty(): return
@@ -1085,7 +1281,46 @@ func finish_cooperative_action(token: String) -> void:
 	if LifeBabyPlan.session_kind(session) == LifeBabyPlan.SESSION_KIND:
 		finish_try_for_baby(session)
 		return
+	if LifeBabyPlan.session_kind(session) == DANCE_KIND:
+		finish_dance(session)
+		return
 	finish_cooperative_homework(token)
+
+## The record reaches its end: the group dance completes once, and each dancer
+## is paid the solo dance's own effects by their own ordinary finish path.
+func finish_dance(session: Dictionary) -> void:
+	_begin_cooperation_change()
+	var reason: String = _dance_session_error(session)
+	var ids: Array[String] = _cooperation_member_ids(session)
+	var owner: LifeSim = member_sim(str(ids[0])) if not ids.is_empty() else null
+	if reason.is_empty() and (str(session.phase) != "active" or owner == null or float(owner.get_current_action().elapsed) < DANCE_DURATION):
+		reason = "Every dancer must stay for the whole record."
+	if not reason.is_empty():
+		_cancel_cooperation(session,reason)
+		_end_cooperation_change()
+		return
+	# Release the reservation before any result notification can be observed.
+	cooperations.erase(session)
+	for id: String in ids:
+		var actor: LifeSim = member_sim(id)
+		if actor == null: continue
+		var action: Dictionary = actor.action_queue.pop_front()
+		action.phase="finished"
+		action.elapsed=DANCE_DURATION
+		action.progress=1.0
+		# The solo dance's own effects, applied exactly once per dancer: the
+		# needs, the Fitness skill, the moodlet and the chapter record all come
+		# from the ordinary finish path for the same action id.
+		actor._apply_dance_result(action)
+		actor._emit_action_finished(action)
+		actor._idle_minutes=0.0
+		actor._update_wants()
+		actor._start_front()
+		actor._emit_changed()
+	var lead: LifeSim = member_sim(str(ids[0])) if not ids.is_empty() else null
+	if lead != null: lead._emit_notice("The record ends. %d %s danced together." % [ids.size(),"Lifelet" if ids.size() == 1 else "Lifelets"])
+	_sync_social_context()
+	_end_cooperation_change()
 
 func finish_try_for_baby(session: Dictionary) -> void:
 	# The pair's beat completes: the shared clock must have run its course, and
@@ -1201,7 +1436,9 @@ func _cooperation_vector(value: Variant) -> Vector3:
 
 func _validate_saved_cooperations(data: Dictionary) -> String:
 	var sessions: Variant = data.get("cooperations",[])
-	if not sessions is Array or sessions.size() > MAX_MEMBERS/2: return "Save contains invalid cooperative homework sessions."
+	# Every session pins at least one member and no member can hold two, so the
+	# honest upper bound is the member cap itself rather than a session count.
+	if not sessions is Array or sessions.size() > MAX_MEMBERS: return "Save contains invalid cooperative sessions."
 	if not _cooperation_number(data.get("cooperation_version",1),1,1,true) or not _cooperation_number(data.get("cooperation_serial",0),0,1000000000,true): return "Save contains an invalid cooperation version or identity counter."
 	var by_id: Dictionary = {}
 	for entry: Dictionary in data.members: by_id[str(entry.id)] = entry.state
@@ -1215,6 +1452,11 @@ func _validate_saved_cooperations(data: Dictionary) -> String:
 			var baby_error:String = _validate_saved_baby_session(session,data,by_id,used_members,used_tokens)
 			if not baby_error.is_empty(): return baby_error
 			bound_actions += 2
+			continue
+		if LifeBabyPlan.session_kind(session) == DANCE_KIND:
+			var dance_error:String = _validate_saved_dance_session(session,data,by_id,used_members,used_tokens)
+			if not dance_error.is_empty(): return dance_error
+			bound_actions += _cooperation_member_ids(session).size()
 			continue
 		for key: String in ["id","learner_id","helper_id","furniture_id","learner_stage","phase"]:
 			if not session.get(key) is String: return "Save contains an invalid homework identity."
@@ -1276,6 +1518,58 @@ func _validate_saved_cooperations(data: Dictionary) -> String:
 				actual_actions += 1
 				if index != 0 or not used_members.has(member_id) or not used_tokens.has(str(action.get("cooperation_id",""))): return "Save contains an orphaned or delayed paired action."
 	if actual_actions != bound_actions: return "Save contains mismatched homework sessions and actions."
+	return ""
+
+func _validate_saved_dance_session(session: Dictionary, data: Dictionary, by_id: Dictionary, used_members: Array[String], used_tokens: Array[String]) -> String:
+	for key: String in ["id","kind","furniture_id","phase"]:
+		if not session.get(key) is String: return "Save contains an invalid dance identity."
+	if not session.get("members") is Array or not session.get("positions") is Dictionary: return "Save contains an invalid dance roster."
+	var token: String = str(session.id)
+	var suffix: String = token.trim_prefix(LifeDancePlan.TOKEN_PREFIX)
+	if not token.begins_with(LifeDancePlan.TOKEN_PREFIX) or not suffix.is_valid_int() or str(int(suffix)) != suffix or int(suffix) < 1 or int(suffix) > int(data.get("cooperation_serial",0)) or used_tokens.has(token): return "Save contains a duplicate or invalid dance token."
+	used_tokens.append(token)
+	var dancers: Array[String] = []
+	var positions: Array[Vector3] = []
+	for id: Variant in session.members:
+		if not id is String or by_id.has(str(id)) == false or dancers.has(str(id)) or used_members.has(str(id)): return "Save assigns a Lifelet to an impossible or overlapping dance."
+		dancers.append(str(id))
+	if dancers.is_empty() or dancers.size() > MAX_DANCERS: return "Save contains a dance with no dancers or too many."
+	for member_id: String in dancers:
+		if not session.positions.has(member_id) or not _cooperation_position(session.positions[member_id]): return "Save contains invalid dance standing spots."
+		var at: Vector3 = _cooperation_vector(session.positions[member_id])
+		for existing: Vector3 in positions:
+			if existing.distance_to(at) < LifeDancePlan.MIN_SPACING: return "Save stacks two dancers on one standing spot."
+		positions.append(at)
+	if session.positions.size() != dancers.size(): return "Save contains dance spots for absent dancers."
+	used_members.append_array(dancers)
+	if str(session.furniture_id).is_empty() or by_id.has(str(session.furniture_id)): return "Save assigns a dance to a missing music player."
+	if str(session.phase) not in ["assembling","active"] or not session.get("ready") is Array or session.ready.size() > dancers.size(): return "Save contains an invalid dance phase."
+	var ready: Array = []
+	for id: Variant in session.ready:
+		if not id is String or not dancers.has(str(id)) or ready.has(str(id)): return "Save contains invalid dance arrival flags."
+		ready.append(str(id))
+	if str(session.phase) == "active" and ready.size() != dancers.size(): return "Save starts a dance before every dancer arrives."
+	if not _cooperation_number(session.get("day"),float(data.get("day",1)),float(data.get("day",1)),true) or not _cooperation_number(session.get("created_minutes"),0,float(data.get("minutes",0))): return "Save contains an expired or invalid dance meeting."
+	if not _cooperation_number(session.get("waited"),0,COOPERATION_WAIT_LIMIT-.000001): return "Save contains impossible dance waiting time."
+	if float(session.waited) > float(data.get("minutes",0))-float(session.created_minutes)+.001: return "Save contains impossible dance waiting time."
+	var actions: Array = []
+	for member_id: String in dancers:
+		var state: Dictionary = by_id[member_id]
+		if not LifeStagePolicy.can_use(str(state.character.get("age_stage","")),str(state.character.get("life_stage","adult")),LifeDancePlan.ACTION_ID): return "Save starts a dance for a Lifelet who cannot dance."
+		if not state.get("action_queue") is Array or state.action_queue.is_empty() or not state.action_queue[0] is Dictionary: return "Save is missing a dancer's action."
+		var action: Dictionary = state.action_queue[0]
+		if str(action.get("id","")) != LifeDancePlan.ACTION_ID or str(action.get("cooperation_id","")) != token or str(action.get("cooperation_role","")) != LifeDancePlan.ROLE or str(action.get("target_id","")) != str(session.furniture_id) or str(action.get("target_kind","")) != "stereo": return "Save links a dance to the wrong action or music player."
+		if not _cooperation_position(action.get("target_position")) or not _cooperation_vector(action.target_position).is_equal_approx(_cooperation_vector(session.positions[member_id])): return "Save contains mismatched dance standing spots."
+		if not _cooperation_number(action.get("duration"),DANCE_DURATION,DANCE_DURATION) or not _cooperation_number(action.get("elapsed"),0,DANCE_DURATION-.000001) or not action.get("paid") is bool or bool(action.get("autonomous",false)): return "Save contains invalid dance progress."
+		if str(action.get("phase","")) != ("active" if str(session.phase) == "active" else "approach"): return "Save contains inconsistent dance action phases."
+		actions.append(action)
+	if str(session.phase) == "active" and not bool(actions[0].paid): return "Save contains a dance that never began."
+	for action: Dictionary in actions:
+		if bool(action.paid) != bool(actions[0].paid) or absf(float(action.elapsed)-float(actions[0].elapsed)) > .00001: return "Save contains two different dance clocks."
+		if bool(action.paid) and (action.get("started_day") != actions[0].get("started_day") or action.get("started_minutes") != actions[0].get("started_minutes")): return "Save contains different dance start times."
+	if not bool(actions[0].paid):
+		for action: Dictionary in actions:
+			if float(action.elapsed) != 0: return "Save contains dance progress before arrival."
 	return ""
 
 func _validate_saved_baby_session(session: Dictionary, data: Dictionary, by_id: Dictionary, used_members: Array[String], used_tokens: Array[String]) -> String:
@@ -1495,7 +1789,7 @@ func _target(id: String) -> Dictionary:
 func pet_availability(species: String) -> String:
 	if not LifePets.SPECIES.has(species):return "Choose a cat or a dog."
 	if pets.get("pets",[]).size()>=LifePets.MAX_PETS:return "Your household already has %d pets." % LifePets.MAX_PETS
-	if selected().funds<LifePets.price_for(species):return "A %s costs §%d. Your household needs more funds." % [LifePets.species_label(species).to_lower(),LifePets.price_for(species)]
+	if selected().funds<LifePets.price_for(species):return "A %s costs ℒ%d. Your household needs more funds." % [LifePets.species_label(species).to_lower(),LifePets.price_for(species)]
 	return ""
 
 ## The shop entry point is offered while either species can be adopted. The
@@ -1545,12 +1839,12 @@ func accessory_availability(kind:String) -> String:
 	var reason:String=LifePets.accessory_kind_error(kind,pets.get("pets",[]))
 	if not reason.is_empty():return reason
 	if not LifeCatalog.ITEMS.has(kind):return "That accessory is not for sale."
-	if selected().funds<int(LifeCatalog.ITEMS[kind].price):return "That costs §%d. Your household needs more funds." % int(LifeCatalog.ITEMS[kind].price)
+	if selected().funds<int(LifeCatalog.ITEMS[kind].price):return "That costs ℒ%d. Your household needs more funds." % int(LifeCatalog.ITEMS[kind].price)
 	return ""
 
 func adoption_availability(guardians:Array) -> String:
 	if members.size()>=MAX_MEMBERS:return "Your household already has eight Lifelets."
-	if selected().funds<LifeAdoption.FEE:return "Adoption costs §1,000. Your household needs more funds."
+	if selected().funds<LifeAdoption.FEE:return "Adoption costs ℒ1,000. Your household needs more funds."
 	if guardians.is_empty() or guardians.size()>2:return "Choose one or two adult guardians."
 	var seen:Array=[]
 	for id:Variant in guardians:

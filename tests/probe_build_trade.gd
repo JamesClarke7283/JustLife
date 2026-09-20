@@ -66,8 +66,8 @@ func _run() -> void:
 		await frames(6)
 		check(app.world.items.size() == items_before + 1, "The chair was really placed (%d -> %d)" % [items_before, app.world.items.size()])
 		var funds_after: int = int(app.sim.funds)
-		check(funds_after == funds_before - price, "The purchase debited exactly its price (§%d -> §%d, price §%d)" % [funds_before, funds_after, price])
-		check(int(app.household.funds) == funds_after, "The household's own ledger agrees with the HUD (§%d)" % int(app.household.funds))
+		check(funds_after == funds_before - price, "The purchase debited exactly its price (ℒ%d -> ℒ%d, price ℒ%d)" % [funds_before, funds_after, price])
+		check(int(app.household.funds) == funds_after, "The household's own ledger agrees with the HUD (ℒ%d)" % int(app.household.funds))
 		check(notice_text().contains("added to your home"), "The player is told what happened: \"%s\"" % notice_text())
 		await shot("01_valid_placement")
 
@@ -77,7 +77,7 @@ func _run() -> void:
 		app.undo_build()
 		await frames(6)
 		check(app.world.items.size() == placed - 1, "Undo removed the furnishing (%d -> %d)" % [placed, app.world.items.size()])
-		check(int(app.sim.funds) == funds_before_undo + price, "Undo refunded the price (§%d -> §%d)" % [funds_before_undo, int(app.sim.funds)])
+		check(int(app.sim.funds) == funds_before_undo + price, "Undo refunded the price (ℒ%d -> ℒ%d)" % [funds_before_undo, int(app.sim.funds)])
 
 	# --- An invalid placement is refused and costs nothing --------------------
 	var blocked_funds: int = int(app.sim.funds)
@@ -90,7 +90,7 @@ func _run() -> void:
 	app.on_placement("chair", outside, 0.0)
 	await frames(6)
 	check(app.world.items.size() == blocked_items, "The refused placement added nothing (%d)" % app.world.items.size())
-	check(int(app.sim.funds) == blocked_funds, "The refused placement charged nothing (§%d)" % int(app.sim.funds))
+	check(int(app.sim.funds) == blocked_funds, "The refused placement charged nothing (ℒ%d)" % int(app.sim.funds))
 	check(not notice_text().is_empty(), "The refusal explains itself: \"%s\"" % notice_text())
 	await shot("02_refused_placement")
 	app.cancel_placement()
@@ -106,7 +106,7 @@ func _run() -> void:
 		app.on_placement("bed", poor_spot, 0.0)
 		await frames(6)
 		check(app.world.items.size() == poor_items, "A furnishing the household cannot afford is refused")
-		check(int(app.sim.funds) == 10, "A refused purchase leaves funds untouched (§%d)" % int(app.sim.funds))
+		check(int(app.sim.funds) == 10, "A refused purchase leaves funds untouched (ℒ%d)" % int(app.sim.funds))
 		check(notice_text().contains("You need"), "The shortfall is explained: \"%s\"" % notice_text())
 	app.cancel_placement()
 

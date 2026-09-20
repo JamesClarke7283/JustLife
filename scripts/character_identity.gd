@@ -235,8 +235,9 @@ static func _appearance(rng: RandomNumberGenerator, template: Dictionary, stage:
 	return look
 
 ## Makeup and jewelry read off a look with the right default for its gender.
-## A male Lifelet's lip and eye looks come from the limited men's set, so a menu
-## built from these helpers can never offer him a colour he may not wear.
+## The authored palettes are the suggested starting shades a swatch row offers;
+## a Lifelet may wear any shade the player picks, so `makeup_value` accepts every
+## valid colour and only the empty/none marker means bare skin.
 static func makeup_lip_colors(look: Dictionary) -> Array:
 	return MEN_MAKEUP_LIP_COLORS if is_male(look) else MAKEUP_LIP_COLORS
 
@@ -246,12 +247,22 @@ static func makeup_eye_colors(look: Dictionary) -> Array:
 static func is_male(look: Dictionary) -> bool:
 	return int(look.get("frame", 0)) == 1 or str(look.get("gender", "female")).to_lower() == "male"
 
-static func makeup_value(look: Dictionary, key: String) -> String:
-	var value: String = str(look.get(key, MAKEUP_NONE)).trim_prefix("#").to_lower()
-	if value == MAKEUP_NONE or value == "":
+## Whether a stored makeup value is a colour a face can actually wear. Any
+## six-digit hex shade is valid: the picker hands back whatever the player chose,
+## so a custom lipstick or eyeliner is a colour rather than a membership test.
+static func makeup_shade(value: Variant) -> String:
+	var shade: String = str(value).trim_prefix("#").to_lower()
+	if shade == MAKEUP_NONE or shade.is_empty():
 		return MAKEUP_NONE
-	var palette: Array = makeup_lip_colors(look) if key == "makeup_lips" else makeup_eye_colors(look)
-	return value if palette.has(value) else MAKEUP_NONE
+	if shade.length() != 6:
+		return MAKEUP_NONE
+	for index: int in range(6):
+		if not "0123456789abcdef".contains(shade[index]):
+			return MAKEUP_NONE
+	return shade
+
+static func makeup_value(look: Dictionary, key: String) -> String:
+	return makeup_shade(look.get(key, MAKEUP_NONE))
 
 static func jewelry_metal(look: Dictionary) -> String:
 	var value: String = str(look.get("jewelry_metal", JEWELRY_METALS[0])).trim_prefix("#").to_lower()

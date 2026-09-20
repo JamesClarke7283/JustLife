@@ -46,7 +46,7 @@ func _run()->void:
 
 	for expectation:Array in [["book_nook","Activities",240],["coffee_table","Decor",150],["floor_lamp","Decor",110]]:
 		var data:Dictionary=LifeCatalog.get_item(str(expectation[0]))
-		check(not data.is_empty() and str(data.get("category"))==str(expectation[1]) and int(data.get("price"))==int(expectation[2]),"%s sits in the catalogue at %s for §%d." % [str(expectation[0]),str(expectation[1]),int(expectation[2])])
+		check(not data.is_empty() and str(data.get("category"))==str(expectation[1]) and int(data.get("price"))==int(expectation[2]),"%s sits in the catalogue at %s for ℒ%d." % [str(expectation[0]),str(expectation[1]),int(expectation[2])])
 	# The catalogue grows as pieces are authored; what this suite owns is that the
 	# three iteration-60 pieces are still present among them.
 	check(LifeCatalog.ITEMS.size()>=51,"The catalogue still holds at least its 51 furnishings (now %d)." % LifeCatalog.ITEMS.size())
@@ -57,7 +57,7 @@ func _run()->void:
 	for entry:Array in [["book_nook",-2.2,-2.2,90],["coffee_table",-1.5,2.3,0],["floor_lamp",-5.5,2.6,0]]:
 		app.on_placement(str(entry[0]),Vector3(float(entry[1]),0.16,float(entry[2])),float(entry[3]))
 	await process_frame
-	check(world.items.size()>=3 and app.household.funds==wallet-500,"The three pieces are bought through the public build path for §500 together.")
+	check(world.items.size()>=3 and app.household.funds==wallet-500,"The three pieces are bought through the public build path for ℒ500 together.")
 	var nook:Dictionary=_find(app,"book_nook")
 	var rotated:Rect2=world.furnishing_rect({"id":"probe","kind":"book_nook","x":0.0,"z":0.0,"rotation":90.0})
 	check(rotated.size.x<rotated.size.y,"The reading nook's footprint turns with its rotation, so a 90° purchase fits a .75 m wall run.")
@@ -120,7 +120,7 @@ func _run()->void:
 	var nook_for_sale:Dictionary=_find(app,"book_nook")
 	app.sell_item(nook_for_sale)
 	await process_frame
-	check(_find(app,"book_nook").is_empty() and app.household.funds==funds_before_sale+168,"Selling the nook through the build menu refunds §168 (70% of §240).")
+	check(_find(app,"book_nook").is_empty() and app.household.funds==funds_before_sale+168,"Selling the nook through the build menu refunds ℒ168 (70% of ℒ240).")
 
 	# The same pieces go upstairs through the two-floor suite's pattern: a
 	# supported upper floor and the stair bought as public transactions, then
@@ -141,7 +141,7 @@ func _run()->void:
 	var run_built:Dictionary=app.build_transactions.commit(run.build_quote)
 	check(bool(run_built.ok),"The stair commits through the public structure transaction (%s)." % str(run_built.get("error","")))
 	world.construction.cancel()
-	check(app.household.funds==upstairs_wallet-2090,"The supported upper floor and stair charge §1440 plus §650.")
+	check(app.household.funds==upstairs_wallet-2090,"The supported upper floor and stair charge ℒ1440 plus ℒ650.")
 	for buy:Array in [["coffee_table",Vector3(-4.0,3.16,2.5),0.0],["floor_lamp",Vector3(-4.0,3.16,3.5),90.0]]:
 		world.begin_placement(str(buy[0]))
 		# The same green-ghost computation the pointer preview runs.

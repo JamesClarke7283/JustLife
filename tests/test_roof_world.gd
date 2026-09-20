@@ -19,7 +19,7 @@ func _run()->void:
 	var world:=World.new();root.add_child(world);await process_frame
 	var state:Dictionary=base();check(Building.validate(state).is_empty(),"Actual whole-perimeter ground home is valid before its roof.")
 	var quote:Dictionary=Building.propose(state,{"op":"add","collection":"roofs","record":roof_record()},3000)
-	check(bool(quote.ok) and int(quote.cost)==1440,"Detached complete roof quote retains its original§18 per square metre price.")
+	check(bool(quote.ok) and int(quote.cost)==1440,"Detached complete roof quote retains its originalℒ18 per square metre price.")
 	check(bool(world.load_home([quote.after,{"id":"fridge","kind":"fridge","x":0.0,"z":0.0,"rotation":0}]).ok),"Actual world loads validated roof data and existing furniture.")
 	world.construction.set_roof_visibility(true)
 	check(world.construction.roof_nodes.size()==1 and world.construction.roof_nodes.values()[0].visible,"World renderer builds the parameterized roof from its persisted record.")

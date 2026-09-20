@@ -76,10 +76,10 @@ func _run() -> void:
 	var level_after: int = int(sim.career.level)
 	var title_after: String = str(sim.career.title)
 	var salary_after: int = int(sim.career.salary)
-	print("after: %s lvl %d at §%d -> %s lvl %d at §%d" % [title_before, level_before, salary_before, title_after, level_after, salary_after])
+	print("after: %s lvl %d at ℒ%d -> %s lvl %d at ℒ%d" % [title_before, level_before, salary_before, title_after, level_after, salary_after])
 	check(level_after > level_before, "Excellent performance with the requirement met really promoted (level %d -> %d)" % [level_before, level_after])
 	check(title_after != title_before, "The job title really changed (%s -> %s)" % [title_before, title_after])
-	check(salary_after > salary_before, "Pay really rose with the promotion (§%d -> §%d)" % [salary_before, salary_after])
+	check(salary_after > salary_before, "Pay really rose with the promotion (ℒ%d -> ℒ%d)" % [salary_before, salary_after])
 
 	# --- The record the player reads agrees ----------------------------------
 	app.show_career_record()

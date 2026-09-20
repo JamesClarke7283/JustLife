@@ -19,7 +19,7 @@ Autonomy prepares for scheduled departures, completes daily homework, protects s
 | Real return endpoints, saved arrival boundaries and blocked-route recovery | 44 passed; same-process headless coverage, with two ObjectDB teardown leaks retained in the log |
 | Integrated Linux export and packaged menu/save/family/travel probe | Export passed; 32 checks passed with no warnings or errors; packaged production hashes match the reviewed candidate |
 
-The final week recorded 505 useful completions across 665 samples. All eight members completed five due weekday absences; the maximum useful-completion gap was 13.41 hours, final household funds were §16,474, and the final need floor was 32.50. There were no settled waiting overlaps. Social activity included 23 friendly chats, 13 jokes and 7 heartfelt conversations across eight distinct partners.
+The final week recorded 505 useful completions across 665 samples. All eight members completed five due weekday absences; the maximum useful-completion gap was 13.41 hours, final household funds were ℒ16,474, and the final need floor was 32.50. There were no settled waiting overlaps. Social activity included 23 friendly chats, 13 jokes and 7 heartfelt conversations across eight distinct partners.
 
 ## Remaining limits
 

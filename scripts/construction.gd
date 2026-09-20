@@ -30,6 +30,9 @@ var paint_scope:String="wall"  # "wall" repaints one segment; "room" repaints ev
 var roof_edit_id:String=""
 var build_level:int=0
 var last_error:String=""
+## Why the last staircase search found nowhere to stand, in the player's words.
+## Set by _nearest_valid_stair and read by the refusal notice.
+var _nearest_valid_stair_reason:String=""
 var quote_provider:Callable
 var _preview_signature:String=""
 var _wood_floor_materials:Dictionary={}
@@ -405,10 +408,18 @@ func _nearest_valid_stair(state:Dictionary,p:Vector3)->Dictionary:
 	# runs once, on the chosen point, exactly as it did before. Searching with
 	# that quote for every candidate would cost tens of milliseconds per mouse
 	# move for no extra honesty, since its answer is already the one shown.
+	#
+	# `_nearest_valid_stair_reason` records, for the nearest candidate the loop
+	# examined, why it was refused. The refusal notice uses it, so a player is
+	# told whether there is no upper slab here, no floor beneath the run, or the
+	# staircase body or its opening guard has no slab to stand on, instead of the
+	# one vague sentence that used to cover every cause.
+	_nearest_valid_stair_reason=""
 	const MAX_RING:int=8
 	var rotation:int=posmod(roundi(world.placement_angle),360)
 	var best:Dictionary={}
 	var best_distance:float=INF
+	var examined_distance:float=INF
 	for ring:int in range(0,MAX_RING+1):
 		for step:int in range(-ring,ring+1):
 			# Ring zero is the clicked point itself, so an exact valid click is
@@ -421,13 +432,45 @@ func _nearest_valid_stair(state:Dictionary,p:Vector3)->Dictionary:
 				# Reject the impossible spots with two rectangle tests before
 				# paying for a full structural proposal (about 2.5 ms each).
 				var stair:Dictionary={"x":record.x,"z":record.z,"rotation":rotation,"lower":0,"upper":1}
-				if not Building.LOT.encloses(Building.stair_rect(stair)) or not Building.LOT.encloses(Building.landing_rect(stair,false)) or not Building.LOT.encloses(Building.landing_rect(stair,true)):continue
-				if not Building.footprint_supported(state,1,Building.stair_rect(stair)):continue
-				if not Building.propose(state,{"op":"add","collection":"stairs","record":record.duplicate(true)},1000000).get("ok",false):continue
-				best_distance=distance;best=record
+				if not Building.LOT.encloses(Building.stair_rect(stair)) or not Building.LOT.encloses(Building.landing_rect(stair,false)) or not Building.LOT.encloses(Building.landing_rect(stair,true)):
+					_note_stair_refusal(distance,examined_distance,"The staircase and both its landings have to fit inside the lot. Point further in.")
+					examined_distance=minf(examined_distance,distance)
+					continue
+				if not Building.footprint_supported(state,1,Building.stair_rect(stair)):
+					_note_stair_refusal(distance,examined_distance,"A staircase needs upper floor above its whole run. Point at a spot that is under the upper slab.")
+					examined_distance=minf(examined_distance,distance)
+					continue
+				var attempt:Dictionary=Building.propose(state,{"op":"add","collection":"stairs","record":record.duplicate(true)},1000000)
+				if not bool(attempt.get("ok",false)):
+					var raw:=str(attempt.get("error",""))
+					var hint:=_stair_refusal_hint(raw)
+					_note_stair_refusal(distance,examined_distance,hint if not hint.is_empty() else raw)
+					examined_distance=minf(examined_distance,distance)
+					continue
+				if distance<best_distance:
+					best_distance=distance;best=record
 		# A nearer ring already answered; an outer ring can only be worse.
 		if not best.is_empty():return best
 	return {}
+
+## Keep the refusal that belongs to the nearest candidate examined, so the notice
+## describes the spot under the pointer rather than a far-out ring.
+func _note_stair_refusal(distance:float,examined:float,reason:String)->void:
+	if distance<examined:_nearest_valid_stair_reason=reason
+
+## Turn a structural validator sentence into something a player can act on.
+## Returns "" when the sentence is not one this tool recognises, so a caller can
+## keep the validator's own words rather than replacing them with a guess.
+func _stair_refusal_hint(error:String)->String:
+	if error.contains("beyond the lot") or error.contains("outside an upper slab"):return "The staircase and both its landings have to fit inside the lot, with upper floor over the opening. Point further in."
+	if error.contains("furnishing") or error.contains("wall or stair run"):return "A furnishing, wall or existing staircase is in the way. Move it clear of the run and both landings."
+	if error.contains("no continuous floor support"):return "The run and its landings each need floor beneath them. Point over floor on both storeys."
+	if error.contains("guard") or error.contains("slab beneath its full guard"):return "Leave the slab clear around the opening so the rail and its posts have floor to stand on."
+	if error.contains("blocks a stair or landing"):return "A wall is in the way of the run or a landing. Point clear of the wall."
+	if error.contains("overlap") or error.contains("blocks another stair"):return "Another staircase is too close. Leave a clear run and landing for each one."
+	if error.contains("upper wall needs continuous floor"):return "An upper wall has no floor beneath part of it. Finish the upper slab before adding that wall."
+	if error.contains("Lifelet"):return error
+	return ""
 
 
 func _supported_upper_slab(state:Dictionary, area:Rect2) -> Dictionary:
@@ -499,7 +542,10 @@ func _make_level_proposal(p:Vector3)->Dictionary:
 	var operation:Dictionary={};var view:Dictionary={"valid":false}
 	if tool=="stairs":
 		var spot:Dictionary=_nearest_valid_stair(state,p)
-		if spot.is_empty():return {"valid":false,"error":"There is no clear staircase spot here. Point at the floor beside the upper opening; R rotates."}
+		if spot.is_empty():
+			var why:String=_nearest_valid_stair_reason
+			if why.is_empty():why="No staircase fits here yet. Point at clear upper floor beside the opening; R rotates."
+			return {"valid":false,"error":why}
 		var record:Dictionary={"x":spot.x,"z":spot.z,"rotation":spot.rotation}
 		operation={"op":"add","collection":"stairs","record":record};view["stair_preview"]=record
 	elif tool=="floor":
@@ -530,7 +576,14 @@ func _make_level_proposal(p:Vector3)->Dictionary:
 	if not quote_provider.is_valid():view["error"]="The building transaction service is unavailable.";return view
 	var quote:Dictionary=quote_provider.call(operation)
 	view["valid"]=bool(quote.ok)
-	if not bool(quote.ok):view["error"]=str(quote.error)
+	if not bool(quote.ok):
+		var message:=str(quote.error)
+		if tool=="stairs":
+			# The whole-home quote is authoritative and may refuse what the
+			# structural search allowed: a furnishing, a Lifelet or a lost route.
+			var hint:=_stair_refusal_hint(message)
+			if not hint.is_empty():message=hint
+		view["error"]=message
 	else:view["cost"]=int(quote.cost);view["build_quote"]=quote
 	return view
 
@@ -616,9 +669,8 @@ func _make_legacy_proposal(p: Vector3) -> Dictionary:
 		for item in world.items:
 			if world.item_level(item)!=build_level:continue
 			if LifeCatalog.passable(str(item.kind)):continue
-			var s:Vector2=item.size
-			if int(roundf(item.node.rotation_degrees.y/90))%2:s=Vector2(s.y,s.x)
-			if r.intersects(Rect2(Vector2(item.node.position.x,item.node.position.z)-s/2,s)):is_valid=false
+			for panel:Rect2 in world.item_panels(item):
+				if r.intersects(panel):is_valid=false
 		for old in records:
 			if int(old.get("level",0))!=build_level:continue
 			var existing=wall_rect(old)

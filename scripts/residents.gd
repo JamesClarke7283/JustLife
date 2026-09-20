@@ -25,6 +25,9 @@ func _init(controller:Node) -> void:
   SIDEWALK_LANES[id]=float(PEOPLE[id].get("lane",8.0))
 
 func reset() -> void:
+ # The whole-household trip owns its own transition and frees its car there;
+ # a solo trip runs inside the live lot, so its car is released here.
+ if bool(trip.get("solo",false)) and is_instance_valid(car):car.queue_free();car=null
  locations.clear();active_place="";trip.clear();home_visit.reset();sidewalk_routes.clear();_initiated.clear();_anchor_cache.clear()
 
 ## A visiting resident with a household member nearby starts one contact per
@@ -380,7 +383,13 @@ func _integer(value:Variant,minimum:int,maximum:int) -> bool:
  if not (value is int or value is float):return false
  return is_finite(float(value)) and float(value)>=minimum and float(value)<=maximum and float(value)==floorf(float(value))
 
-func begin_trip(destination:String) -> bool:
+## Minutes a solo trip spends at the destination before its traveller heads
+## home, and the scaled seconds the car takes to drive out of the lot.
+const SOLO_TRIP_MINUTES:float=15.0
+const SOLO_DRIVE_TIME:float=2.8
+
+func begin_trip(destination:String,solo:bool=false) -> bool:
+ if solo:return begin_solo_trip(destination)
  if home_visit.active():app.show_notice("Say goodbye and wait for your guest to leave before traveling.");return false
  if not trip.is_empty():return false
  for member:Dictionary in app.household.members:
@@ -440,6 +449,105 @@ func begin_trip(destination:String) -> bool:
 
 func _make_car() -> Node3D:
  return load("res://assets/models/juniper_car.glb").instantiate()
+
+## Send only the selected Lifelet across town. The household's ordinary
+## controller walks the traveller out to the car and the ordinary per-member
+## away presentation hides them at the destination, so a solo trip needs no
+## transition overlay: every other member keeps their queue, route, stair
+## ownership and position, and stays playable while the traveller is out.
+func begin_solo_trip(destination:String) -> bool:
+ if not LifeNeighborhood.PLACES.has(destination):
+  return false
+ var id:String=str(app.household.selected_id())
+ var sim:LifeSim=app.household.member_sim(id)
+ if not is_instance_valid(sim) or sim.is_away():
+  app.show_notice("Wait until this Lifelet is home before taking a trip.");return false
+ if not trip.is_empty():
+  app.show_notice("Finish the trip you are already on before leaving again.");return false
+ if app.mode!="live":
+  app.show_notice("Finish what you are doing before leaving for "+str(LifeNeighborhood.PLACES[destination].name)+".");return false
+ if home_visit.active():
+  app.show_notice("Say goodbye and wait for your guest to leave before traveling.");return false
+ if app.traversal.busy(id):
+  app.show_notice("Let this Lifelet finish the current stair crossing before leaving.");return false
+ var person:LifeActor=app.world.actors.get(id)
+ if person==null:app.show_notice("This Lifelet is not in the world to travel.");return false
+ var endpoint:Vector3=_boarding_point(app._member_index(id),id,[])
+ if not endpoint.is_finite():app.show_notice("Clear the sidewalk so the car has room to stop.");return false
+ var canonical:bool=not app.world.construction.building_state.is_empty()
+ if canonical:
+  var planner:LifeTraversal=LifeTraversal.new(app)
+  var proposed:Dictionary=planner.request(id,endpoint)
+  if not bool(proposed.ok):app.show_notice("Clear a path to the sidewalk so this Lifelet can reach the car.");return false
+ elif app.world.path_to(person.position,endpoint).is_empty():
+  app.show_notice("Clear a path to the sidewalk so this Lifelet can reach the car.");return false
+ # The traveller may not carry the household's dinner across town; the check
+ # reads the meal ledger against this one member, never cancelling a housemate.
+ var food_error:String=preload("res://scripts/travel_food.gd").departure_error(app,[id])
+ if not food_error.is_empty():app.show_notice(food_error);return false
+ app.cancel_placement()
+ # Everything below touches the traveller alone. Housemates are not cancelled,
+ # not re-queued and not moved: only this member's plans and body are cleared.
+ app._bind_member(id)
+ app._clear_motion()
+ app.household.cancel_cooperative_action(id)
+ while not sim.action_queue.is_empty():sim.cancel_action()
+ sim.character.erase("world_state")
+ app.motion_states[id]=app._empty_motion()
+ if not sim.queue_action("visit","lot_exit",endpoint):return false
+ # The map panel pauses the sim; a solo trip runs in the live lot, so hand the
+ # player back their house. `close_overlay(false)` keeps the paused speed, and
+ # the trip's own walk must be allowed to start.
+ if app.overlay_open:
+  app.close_overlay(false)
+  app.household.set_speed(maxi(1,int(app.pause_before_menu)))
+ app._bind_member(id)
+ car=_make_car();app.world.house.add_child(car);car.position=Vector3(0,0,10.25);car.rotation.y=PI*.5
+ car.visible=true
+ trip={"solo":true,"member":id,"destination":destination,"phase":"walking","time":0.0}
+ app.show_notice("%s is walking out to the car." % _first_name(sim))
+ return true
+
+## Drive a solo trip's car while the ordinary simulation owns the traveller.
+## The walk out, the away state and the walk home are all the household's own
+## machinery; this only plays the car beside them.
+func tick_solo_trip(delta:float) -> void:
+ if not bool(trip.get("solo",false)):return
+ trip.time=float(trip.time)+delta
+ var id:String=str(trip.get("member",""))
+ var sim:LifeSim=app.household.member_sim(id)
+ if not is_instance_valid(sim):
+  _solo_cancel();return
+ var phase:String=str(trip.get("phase",""))
+ if phase=="walking":
+  var action:Dictionary=sim.get_current_action()
+  if action.is_empty() or str(action.get("id",""))!="visit":
+   # The route failed and the controller dropped the plan: say so and stay home.
+   app.show_notice("%s could not reach the car, so the trip is off." % _first_name(sim))
+   _solo_cancel();return
+  if not sim.is_away():return
+  trip.phase="driving";trip.time=0.0
+ elif phase=="driving":
+  if is_instance_valid(car):car.position.x=minf(float(trip.time)/SOLO_DRIVE_TIME,1.0)*21.0
+  if float(trip.time)>=SOLO_DRIVE_TIME:trip.phase="away";trip.time=0.0
+ elif phase=="away":
+  # The traveller's own return decides when the car comes back for them.
+  if str(sim.get_away_state().get("phase",""))!="returning":return
+  trip.phase="returning";trip.time=0.0
+ elif phase=="returning":
+  if is_instance_valid(car):car.position.x=lerpf(-19.0,0.0,minf(float(trip.time)/SOLO_DRIVE_TIME,1.0))
+  if float(trip.time)<SOLO_DRIVE_TIME:return
+  trip.clear();_solo_park()
+
+func _solo_park() -> void:
+ if is_instance_valid(car):car.queue_free()
+ car=null
+
+func _solo_cancel() -> void:
+ trip.clear();_solo_park()
+
+func _first_name(sim:LifeSim) -> String:
+ return str(sim.character.name).split(" ")[0]
 
 func tick_trip(delta:float) -> void:
  if trip.is_empty():return

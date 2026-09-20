@@ -71,16 +71,24 @@ func _build_graph() -> Dictionary:
 			var next_id:int=int(_floor_ids[next])
 			if _segment_bounds_clear(int(location.level),point,_graph.get_point_position(next_id)):_graph.connect_points(id,next_id)
 	for stair:Dictionary in _state.stairs:
-		# Placement validates the entire landing. An obstacle added afterwards may
-		# make this staircase unavailable; never snap its endpoint through it.
+		# A staircase is usable when the walker's own body box fits at both
+		# landings and nothing occupies the run it climbs. The landing cells
+		# already answer the first half: `point_clear` tests that body box and
+		# `_blockers` already carries the authored run at its own level. Asking
+		# instead whether a furnishing grazes the landing's wider reserved
+		# clearance - or a neighbour of a shared counter row - dropped a
+		# staircase a Lifelet can really walk to, leaving the home with a
+		# staircase that no route ever used.
 		var start:Vector3=Building.stair_point(stair,-.5)
 		var finish:Vector3=Building.stair_point(stair,Building.STAIR_RUN+.5,Building.RISE)
 		var first:String=_cell_key(0,Vector2i(roundi(start.x/CELL),roundi(start.z/CELL)))
 		var last:String=_cell_key(1,Vector2i(roundi(finish.x/CELL),roundi(finish.z/CELL)))
-		var clear:bool=_floor_ids.has(first) and _floor_ids.has(last)
+		if not _floor_ids.has(first) or not _floor_ids.has(last):continue
+		var run_blocked:bool=false
 		for obstacle:Dictionary in _obstacles:
-			if Building.stair_rect(stair).intersects(Building.rect(obstacle)) or Building.landing_rect(stair,int(obstacle.level)==1).intersects(Building.rect(obstacle)):clear=false
-		if not clear:continue
+			if int(obstacle.level)!=int(stair.lower):continue
+			if Building.stair_rect(stair).intersects(Building.rect(obstacle)):run_blocked=true;break
+		if run_blocked:continue
 		var prior:int=int(_floor_ids[first])
 		for step:int in range(Building.STAIR_STEPS+1):
 			var point:Vector3=Building.stair_point(stair,float(step)*Building.STAIR_RUN/Building.STAIR_STEPS,float(step)*Building.RISE/Building.STAIR_STEPS)
@@ -228,6 +236,15 @@ func reachable_from(level:int,point:Vector3,excluded:Dictionary={}) -> Dictionar
 			if seen.has(next) or excluded.has(next):continue
 			seen[next]=true;frontier.append(next)
 	return seen
+
+func stair_connected(stair_id:String) -> bool:
+	# Whether the built graph really links this staircase's landings. A blocked
+	# landing leaves the stair standing but unreachable, so a caller that must
+	# not accept an unusable staircase asks this instead of assuming. The
+	# builder records a tagged edge for every tread it links, so a tagged edge
+	# for this staircase means the whole crossing - both landings and every
+	# tread between them - is in the graph. Cheap enough for a live preview.
+	return _stair_edges.values().has(stair_id)
 
 func points_touching(level:int,area:Rect2) -> Dictionary:
 	# Floor point ids whose walking clearance would intersect a new obstacle.

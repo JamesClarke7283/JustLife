@@ -37,6 +37,34 @@ func press_in(node: Node, label: String) -> bool:
 	return false
 
 
+## The LifeActor inside the panel's own preview SubViewport. It is the only actor
+## under the WardrobePreview holder, and is what the player actually looks at.
+func _preview_actor() -> LifeActor:
+	var holder: Node = app.find_child("WardrobePreview", true, false)
+	if holder == null:
+		return null
+	for node: Node in holder.find_children("*", "Node3D", true, false):
+		if node is LifeActor:
+			return node as LifeActor
+	return null
+
+
+## A recoloured surface material by its authored name, to prove a try-on reached
+## the preview's own model rather than only the dictionary.
+func _material_named(actor: LifeActor, surface_name: String) -> StandardMaterial3D:
+	for node: Node in actor.find_children("*", "MeshInstance3D", true, false):
+		var mesh: MeshInstance3D = node as MeshInstance3D
+		if mesh == null or mesh.mesh == null:
+			continue
+		for surface: int in mesh.mesh.get_surface_count():
+			var material: Material = mesh.get_surface_override_material(surface)
+			if material == null:
+				material = mesh.mesh.surface_get_material(surface)
+			if material is StandardMaterial3D and str((material as StandardMaterial3D).resource_name) == surface_name:
+				return material as StandardMaterial3D
+	return null
+
+
 func _run() -> void:
 	app = load("res://scenes/main.tscn").instantiate()
 	root.add_child(app)
@@ -117,7 +145,7 @@ func _run() -> void:
 	# Buying keeps it.
 	press_in(app.overlay, "Buy this look")
 	await frames(3)
-	check(app.household.funds == funds_before - app.WARDROBE_LOOK_PRICE, "Buying the look charges exactly §%d." % app.WARDROBE_LOOK_PRICE)
+	check(app.household.funds == funds_before - app.WARDROBE_LOOK_PRICE, "Buying the look charges exactly ℒ%d." % app.WARDROBE_LOOK_PRICE)
 	check(not app.overlay_open, "Buying the look closes the panel.")
 
 	# Makeup tab, with the limited men's set for a male Lifelet.
@@ -219,6 +247,24 @@ func _run() -> void:
 		if group != null and group.visible:
 			visible_styles.append(style_name)
 	check(visible_styles.size() == 1, "Exactly one hairstyle is visible on the Lifelet (%s)." % str(visible_styles))
+	# The panel's own close-up shows the same thing. Without it the actor at the
+	# furniture stands behind the card, so a try-on would be invisible.
+	var preview_actor: LifeActor = _preview_actor()
+	check(preview_actor != null, "The panel carries its own close-up preview of the Lifelet.")
+	if preview_actor != null:
+		var shown: Array[String] = []
+		for style_name: String in LifeActor.HAIR_NAMES:
+			var group: Node3D = preview_actor.find_child(style_name, true, false) as Node3D
+			if group != null and group.visible:
+				shown.append(style_name)
+		check(shown.size() == 1, "The close-up wears exactly one hairstyle (%s)." % str(shown))
+		check(int(preview_actor.profile.get("hair", -1)) == hair_after, "The close-up wears the hairstyle being tried on (%d)." % int(preview_actor.profile.get("hair", -1)))
+		check(shown.front() == LifeActor.HAIR_NAMES[hair_after], "The close-up shows the same cut as the tried-on row (%s)." % str(shown.front()))
+		# A colour try-on must reach the close-up too, not only the actor.
+		preview_actor.apply_wardrobe({"hair_color": "d7c19a"})
+		await frames(2)
+		var hair_material: StandardMaterial3D = _material_named(preview_actor, "Hair")
+		check(hair_material != null and hair_material.albedo_color.is_equal_approx(Color("d7c19a")), "The close-up recolours its hair with the tried-on colour (%s)." % str(hair_material.albedo_color if hair_material != null else "missing"))
 	# Buying the hairstyle keeps it on the saved look.
 	var funds_pre: int = app.household.funds
 	press_in(app.overlay, "Buy this look")

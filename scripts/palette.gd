@@ -23,9 +23,19 @@ static func panel(color: Color = WHITE, radius: int = 18, border: Color = Color.
 	s.content_margin_bottom = 12
 	return s
 
+## The body face with the display face behind it. The body face has no glyph for
+## the LifeOn money mark (U+2112), so anything that prints money needs the
+## fallback or the mark shows as a tofu box. `duplicate` keeps the fallback off
+## the shared imported resource, so adding it here never leaks into other users.
+static func body_font() -> FontFile:
+	var body: FontFile = load("res://assets/fonts/Body.ttf").duplicate()
+	if body != null:
+		body.fallbacks = [load("res://assets/fonts/Display.otf")]
+	return body
+
 static func theme() -> Theme:
 	var t = Theme.new()
-	t.default_font = load("res://assets/fonts/Body.ttf")
+	t.default_font = body_font()
 	t.default_font_size = 16
 	t.set_color("font_color", "Label", INK)
 	t.set_color("font_color", "Button", INK)

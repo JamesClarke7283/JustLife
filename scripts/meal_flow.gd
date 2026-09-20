@@ -1160,7 +1160,7 @@ func show_recipes(target_id:String) -> void:
 		app.card(Vector2.ZERO,Vector2(742,122),Color("f3f4ed"),13,row)
 		_recipe_preview(recipe,row)
 		app.text_label(str(definition.label),Vector2(179,11),Vector2(533,30),23,app.P.INK,true,row)
-		app.paragraph("%d servings  ·  §%d  ·  %d min  ·  Cooking %d" % [int(definition.servings),int(definition.cost),int(definition.duration),int(definition.skill)],Vector2(181,45),Vector2(533,25),13,app.P.INK,row)
+		app.paragraph("%d servings  ·  ℒ%d  ·  %d min  ·  Cooking %d" % [int(definition.servings),int(definition.cost),int(definition.duration),int(definition.skill)],Vector2(181,45),Vector2(533,25),13,app.P.INK,row)
 		var reason:String=LifeMeals.recipe_error(recipe,int(app.sim.skills.cooking.level),str(app.sim.character.age_stage),app.sim.funds)
 		if reason.is_empty():reason=action_availability(app.sim,"cook",target_id)
 		app.paragraph(str(definition.description) if reason.is_empty() else reason,Vector2(181,79),Vector2(310,35),12,app.P.MUTED,row)

@@ -85,7 +85,7 @@ func _run() -> void:
 	for entry: String in completed: kinds_seen[entry.split(":")[1]] = true
 	check(kinds_seen.has("career_day") or kinds_seen.has("school_day") or kinds_seen.has("homework"),
 		"School or work really ran unattended (%s)" % str(kinds_seen.keys()))
-	check(end_funds != start_funds, "The household's money moved across the day (§%d -> §%d)" % [start_funds, end_funds])
+	check(end_funds != start_funds, "The household's money moved across the day (ℒ%d -> ℒ%d)" % [start_funds, end_funds])
 	# And the world must still be coherent.
 	check(app.world.items.size() > 10, "The home still holds its furnishings (%d)" % app.world.items.size())
 	for member: Dictionary in app.household.members:

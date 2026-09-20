@@ -356,7 +356,7 @@ func _build_target_mutation()->void:
 		audit[operation+"_initial"]=before
 		await press("Build & buy");await press("Ground")
 		var bed:Dictionary=app._find_item("item_16");var original_position:Vector3=bed.node.position;app.show_build_object(bed,Vector2(760,350))
-		if operation=="sell":await press("Sell  +§%d"%int(LifeCatalog.ITEMS.bed.price*.7))
+		if operation=="sell":await press("Sell  +ℒ%d"%int(LifeCatalog.ITEMS.bed.price*.7))
 		else:
 			await press("Move furnishing")
 			if not app.pending_move.is_empty():

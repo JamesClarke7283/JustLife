@@ -222,7 +222,7 @@ func _daily_story() -> void:
 	await press("Stories", true)
 	await _cap("08_daily_story_choices")
 	await press("Bring a homemade dish")
-	check(app.sim.funds == before_funds - 24 and app.household.funds == app.sim.funds, "Story choice charges the displayed §24 from the shared wallet.")
+	check(app.sim.funds == before_funds - 24 and app.household.funds == app.sim.funds, "Story choice charges the displayed ℒ24 from the shared wallet.")
 	check(absf(float(app.sim.needs.hunger) - minf(100, float(before_needs.hunger) + 12)) < 0.001 and absf(float(app.sim.needs.social) - minf(100, float(before_needs.social) + 24)) < 0.001, "Story choice applies its stated hunger/social changes.")
 	check(absf(float(app.sim.skills.cooking.xp) - before_xp - 20) < 0.001 and absf(float(app.sim.relationships.maya.friendship) - before_friendship - 14) < 0.001, "Story choice grants displayed skill XP and friendship.")
 	check(app.sim.minutes == before_time and equivalent(app.sim.action_queue, before_queue), "Story decision preserves time and queued player activity.")
@@ -238,7 +238,7 @@ func _save_away() -> void:
 	app.household.set_speed(8)
 	if not await wait_until(func() -> bool: return active_is("paint", 0.15), "route to studio easel and begin paid painting", 40):return
 	app.household.set_speed(0)
-	check(app.sim.funds == funds_before - 20, "Studio painting charges its §20 material cost on arrival.")
+	check(app.sim.funds == funds_before - 20, "Studio painting charges its ℒ20 material cost on arrival.")
 	await queue_via_menu("bookshelf", "read")
 	await _cap("10_studio_painting_before_away_save", true)
 	var expected: Dictionary = {"state":app.sim.get_state(), "player":vec(app.player.position), "world":app.world.serialize_items(), "lot":app.selected_lot, "floor":app.floor_color, "venue":app.current_venue, "home":expected_home, "finish":expected_finish, "story":story_chosen, "selected_index":app.household.selected_index, "members":[]}

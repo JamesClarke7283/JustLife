@@ -193,7 +193,7 @@ func _ensure_nodes() -> void:
 	_speech.shaded = false
 	_speech.visible = false
 	if ResourceLoader.exists("res://assets/fonts/Body.ttf"):
-		_speech.font = load("res://assets/fonts/Body.ttf")
+		_speech.font = LifePalette.body_font()
 	add_child(_speech)
 	_voice = AudioStreamPlayer3D.new()
 	_voice.name = "LifeletVoice"
@@ -640,7 +640,13 @@ func _recolor(node: Node, material_cache: Dictionary) -> void:
 					"Skin", "Skin_Face_Surface": material.albedo_color = skin
 					"Ear_detail": material.albedo_color = skin.darkened(0.12).lerp(Color("b87565"), 0.12)
 					"Nose_detail": material.albedo_color = skin.darkened(0.40)
-					"Lips": material.albedo_color = skin.darkened(0.12).lerp(Color("b87070"), 0.42)
+					# The released model's own lip and lash surfaces are what a
+					# player actually sees, so a chosen lipstick or eyeliner is
+					# painted straight onto them. Without this a picked shade was
+					# written to the look and never appeared on the face: the
+					# authored model has no separate Makeup_* shells.
+					"Lips": material.albedo_color = _makeup_or("makeup_lips", skin.darkened(0.12).lerp(Color("b87070"), 0.42))
+					"Lashes": material.albedo_color = _makeup_or("makeup_eyes", Color("2c221d"))
 					"Hair", "Hair_Bob_Surface", "Hair_Buzz_Surface": material.albedo_color = hair
 					"Brows": material.albedo_color = _profile_color("brow_color", brow.to_html(false))
 					"Hair_highlight": material.albedo_color = hair.lightened(0.15)
@@ -670,6 +676,16 @@ func _makeup_color(key: String) -> Color:
 	if value == LifeCharacterIdentity.MAKEUP_NONE:
 		return Color(1, 1, 1, 0)
 	return Color.from_string(value, Color("a8564f"))
+
+
+## A surface that carries a chosen makeup shade when one is worn, and this
+## model's own authored tint when the Lifelet wears nothing, so an unworn lip or
+## lash keeps the face it always had.
+func _makeup_or(key: String, authored: Color) -> Color:
+	var value: String = LifeCharacterIdentity.makeup_value(profile, key)
+	if value == LifeCharacterIdentity.MAKEUP_NONE:
+		return authored
+	return Color.from_string(value, authored)
 
 
 func _jewelry_color() -> Color:

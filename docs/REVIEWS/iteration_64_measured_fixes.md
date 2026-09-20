@@ -29,7 +29,7 @@ directly and checked each claim against code and evidence.
 | 5 | No save/resume evidence (the rubric caps at 5 without it) | **Fixed.** Two separate processes: one plays, buys, saves; a fresh one loads and confirms 11 facts off disk. The cap no longer applies. |
 | 6 | The action queue strip was empty in every capture | **Fixed.** It was drawn as a bare `HBoxContainer` at y=650, floating over the 3D scene. It is now a labelled "Next up" card, only present while something is queued, and each chip names its target. |
 | 7 | Character art placeholder-grade at close range | **Partly open.** Hands remain fused mitts; garment seams remain absent. See `evidence/hands_iteration/`. |
-| 8 | World breadth was one house and menu text | **Fixed as a demonstration.** Three distinct starter lots (28/25/5 items, with the third advertising §4,500 against §2,500) and three distinct venues via real travel, all measured. |
+| 8 | World breadth was one house and menu text | **Fixed as a demonstration.** Three distinct starter lots (28/25/5 items, with the third advertising ℒ4,500 against ℒ2,500) and three distinct venues via real travel, all measured. |
 | 9 | No simulation outcomes ever shown changing | **Fixed.** Needs decay and recover, skills level, mood derives, a full game day runs unattended, and a promotion moves a requirement from unmet to met. |
 | 10 | Build & buy never showed money moving or a rejection | **Fixed.** A purchase debits exactly its price, Undo refunds, an illegal point is refused with a reason, an unaffordable item names the shortfall. |
 

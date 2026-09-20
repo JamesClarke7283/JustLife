@@ -66,6 +66,63 @@ const ACCESSORY_PRICES: Dictionary = {
 const TOY_BOX_TOYS: Dictionary = {"cat_toy_box": "cat", "dog_toy_box": "dog"}
 const TOYS_PER_BOX: int = 6
 
+## Everything a household can teach a pet. This is the canonical list the save
+## validator reads, so a stored trick is always one of these. LifeHouseholdFlow
+## owns the teaching itself; this is the shared vocabulary.
+const TRICKS: Array[String] = ["sit", "shake a paw", "lie down", "roll over", "fetch"]
+## How many sessions one trick takes. Teaching is patient work rather than a
+## single button press, so a determined household spends a few afternoons on it.
+const TRICK_SESSIONS: int = 2
+
+## What a pet needs. A cat or a dog looks after itself, so these drain on the
+## shared clock and the animal walks to the bowl, its own bed, or out to the
+## garden when one runs low, exactly as a Lifelet walks to the fridge.
+## Cleanliness is the one a cat keeps up by itself: it grooms rather than
+## needing a bath. Bladder and fun are what send an animal outdoors.
+const NEED_NAMES: Array[String] = ["hunger", "thirst", "energy", "cleanliness", "bladder", "fun"]
+## Units of each need per game hour. Water drains fastest, which is why the
+## animal visits the bowl most often for a drink.
+const NEED_DECAY_PER_HOUR: Dictionary = {"hunger": 4.0, "thirst": 6.5, "energy": 3.0, "cleanliness": 2.2, "bladder": 5.0, "fun": 3.4}
+## How full each need starts when a pet comes home.
+const NEED_START: Dictionary = {"hunger": 78.0, "thirst": 80.0, "energy": 85.0, "cleanliness": 88.0, "bladder": 84.0, "fun": 78.0}
+## The point at which a pet stops what it is doing and sees to itself.
+const NEED_URGENT: float = 35.0
+## The cleanliness a cat keeps for itself by grooming, and how often it does so.
+const CAT_GROOM_TO: float = 82.0
+const CAT_GROOM_PER_HOUR: float = 6.0
+## What a cat will never need from a person. A dog's coat needs a bath; a cat
+## looks after its own hygiene by licking.
+const BATHS_SPECIES: Array[String] = ["dog"]
+## How much one meal, drink, bath or nap restores.
+const FEED_AMOUNT: float = 62.0
+const WATER_AMOUNT: float = 70.0
+const BATH_AMOUNT: float = 65.0
+const SLEEP_PER_HOUR: float = 26.0
+## What a trip outdoors settles: a wee, and the run about that follows it.
+const RELIEF_AMOUNT: float = 85.0
+const PLAY_AMOUNT: float = 60.0
+
+## The needs a newly homed pet arrives with.
+static func fresh_needs() -> Dictionary:
+	return NEED_START.duplicate()
+
+## Whether a stored needs record is a complete, in-range set.
+static func needs_error(value: Variant) -> String:
+	if not value is Dictionary:
+		return "Save contains invalid pet needs."
+	if value.size() != NEED_NAMES.size():
+		return "Save contains a pet with an incomplete need set."
+	for need: String in NEED_NAMES:
+		var amount: Variant = value.get(need)
+		if not (amount is float or amount is int) or not is_finite(float(amount)) or float(amount) < 0.0 or float(amount) > 100.0:
+			return "Save contains an impossible pet need."
+	return ""
+
+## Whether this species can be bathed by a person. A cat grooms itself, so its
+## coat is never somebody else's job.
+static func needs_bathing(species: String) -> bool:
+	return BATHS_SPECIES.has(species)
+
 ## Collar and leash colours. A pet's collar and leash are its own, chosen when
 ## the pet is shaped and kept in the save, so a household can tell two animals
 ## apart at a glance. These are authored accessory tones rather than coat tones.
@@ -218,7 +275,8 @@ static func request_error(value: Variant) -> String:
 
 
 ## Build the stored record from an accepted review. The identity is the
-## household's serial, so pets are numbered in the order they came home.
+## household's serial, so pets are numbered in the order they came home. A new
+## pet arrives knowing nothing and owing nobody affection.
 static func record_from(review: Dictionary, id: String, day: int) -> Dictionary:
 	return {
 		"id": id,
@@ -235,7 +293,39 @@ static func record_from(review: Dictionary, id: String, day: int) -> Dictionary:
 		"leash_color": normalised_colour(review.get("leash_color", ""), DEFAULT_LEASH),
 		"day": day,
 		"fee": price_for(str(review.species)),
+		"tricks": [],
+		"trick_progress": {},
+		"affection": 0,
+		"needs": fresh_needs(),
 	}
+
+## The optional fields a pet acquires over its life with the household: the
+## tricks it has been taught, how far the next one has got, and how much
+## affection it has been given. A saved pet from before this existed simply
+## knows nothing yet, so the record stays additive and every old save loads.
+static func optional_fields_error(pet: Dictionary) -> String:
+	var known: Variant = pet.get("tricks", [])
+	if not known is Array or known.size() > TRICKS.size():
+		return "Save contains an invalid trick list."
+	var seen: Dictionary = {}
+	for trick: Variant in known:
+		if not trick is String or not TRICKS.has(str(trick)) or seen.has(str(trick)):
+			return "Save contains an unknown or duplicated pet trick."
+		seen[str(trick)] = true
+	var progress: Variant = pet.get("trick_progress", {})
+	if not progress is Dictionary or progress.size() > TRICKS.size():
+		return "Save contains invalid trick progress."
+	for trick: Variant in progress:
+		# A trick that is already learned cannot still be in progress, and a
+		# session count beyond the number needed to learn it is impossible.
+		if not TRICKS.has(str(trick)) or seen.has(str(trick)) or not integer(progress[trick], 1, TRICK_SESSIONS - 1):
+			return "Save contains impossible trick progress."
+	for key: String in ["taught_by", "last_affection_by", "last_bathed_by"]:
+		if pet.has(key) and not pet.get(key) is String:
+			return "Save contains an invalid pet companion record."
+	if pet.has("affection") and not integer(pet.get("affection", 0), 0, 1000000000):
+		return "Save contains an invalid pet affection count."
+	return ""
 
 
 ## Validate one stored pet record. `index` fixes the serial so a save cannot
@@ -244,7 +334,13 @@ static func pet_error(value: Variant, index: int, known: Dictionary) -> String:
 	if not value is Dictionary:
 		return "Save contains an invalid pet."
 	var pet: Dictionary = value
-	if pet.size() != 14:
+	# The base record plus the optional life-with-the-household fields a pet
+	# acquires: its tricks, teaching progress, affection and needs.
+	var base_fields:int=14
+	var optional:Array[String]=["tricks","trick_progress","affection","taught_by","last_affection_by","last_bathed_by","needs"]
+	for key:String in optional:
+		if pet.has(key):base_fields+=1
+	if pet.size()!=base_fields:
 		return "Save contains a pet with unexpected fields."
 	var id: String = str(pet.get("id", ""))
 	if id.is_empty() or known.has(id):
@@ -272,6 +368,13 @@ static func pet_error(value: Variant, index: int, known: Dictionary) -> String:
 		return "Save contains an invalid pet purchase record."
 	if int(pet.fee) != price_for(str(pet.species)):
 		return "A saved pet price does not match the shop price."
+	var optional_error:String=optional_fields_error(pet)
+	if not optional_error.is_empty():
+		return optional_error
+	if pet.has("needs"):
+		var needs_problem:String=needs_error(pet.get("needs"))
+		if not needs_problem.is_empty():
+			return needs_problem
 	return ""
 
 

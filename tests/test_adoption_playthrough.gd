@@ -72,7 +72,7 @@ func _adopt() -> void:
 	check(app.household.get_state(app.world.serialize_items())==before,"Canceling the review changes no household state or money.")
 	if oven_fixture:_assert_oven_same(oven_before,"Canceled phone review")
 	await press("Meet Wren");await _second_guardian()
-	await press("Confirm adoption · §1,000")
+	await press("Confirm adoption · ℒ1,000")
 	check(app.household.members.size()==4,"Public confirmation appends one child.")
 	if app.household.members.size()!=4:return
 	var child:LifeSim=app.household.member_sim("housemate_3")

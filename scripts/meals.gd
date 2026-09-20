@@ -40,7 +40,7 @@ static func recipe_error(recipe: String, level: int, age: String, money: int, pa
 	if age=="child":return "Children can grab a snack. An older Lifelet can use the stove."
 	var definition:Dictionary=RECIPES[recipe]
 	if level<int(definition.skill):return "Cooking level %d unlocks this recipe." % int(definition.skill)
-	if not paid and money<int(definition.cost):return "Requires §%d for ingredients." % int(definition.cost)
+	if not paid and money<int(definition.cost):return "Requires ℒ%d for ingredients." % int(definition.cost)
 	return ""
 
 static func cooking_definition(base: Dictionary, recipe: String) -> Dictionary:

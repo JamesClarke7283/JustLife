@@ -285,7 +285,9 @@ static func validate(state:Variant) -> String:
 		if not footprint_supported(state,0,stair_rect(stair)) or not footprint_supported(state,0,landing_rect(stair,false)) or not footprint_supported(state,1,landing_rect(stair,true)):return "A stair or landing has no continuous floor support."
 		for guard:Rect2 in guard_footprints(stair):
 			if not footprint_supported(state,1,guard):return "The stair opening needs surrounding slab beneath its full guard and post footprints."
-			if blocked_rect(state,1,guard,false):return "A wall overlaps the stair opening guard; leave space for the supported guard."
+			# A wall standing in the guard's own band is itself the barrier at that
+			# edge, so it does not refuse the staircase: the run and landing checks
+			# below still keep the whole staircase body clear of every wall.
 		for level:int in [0,1]:
 			if blocked_rect(state,level,stair_rect(stair),false) or blocked_rect(state,level,landing_rect(stair,level==1),false):return "A wall blocks a stair or landing."
 		for other:Dictionary in state.stairs:

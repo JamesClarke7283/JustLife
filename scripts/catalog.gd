@@ -46,6 +46,12 @@ const ITEMS = {
 	"coffee_table": {"label":"Teatime coffee table", "category":"Decor", "price":150, "size":Vector2(1.15,.62), "height":.5, "color":"d7ae7e"},
 	"floor_lamp": {"label":"Reading arc floor lamp", "category":"Decor", "price":110, "size":Vector2(.55,.55), "height":1.85, "color":"c8a562"},
 	"rubbish_bin": {"label":"Pedal rubbish bin", "category":"Kitchen", "price":45, "size":Vector2(.45,.45), "height":.72, "color":"4a4f55"},
+	# A counter-top espresso machine. It stands on the floor like every other
+	# furnishing rather than on a worktop, so its declared box is the appliance's
+	# own 42 x 55 cm footprint and its 86 cm column; the group head, portafilter
+	# and cup shelf that face +z are inside that box. Beans cost a few ℒ at the
+	# machine and the lift they give is the separate temporary-energy pool.
+	"coffee_machine": {"label":"Counter-top espresso machine", "category":"Kitchen", "price":280, "size":Vector2(.42,.55), "height":.86, "color":"4a4f55"},
 	"memorial": {"label":"Garden remembrance stone", "category":"Decor", "price":80, "size":Vector2(.72,.72), "height":.48, "color":"8c8a84"},
 	"guitar": {"label":"Sit-and-strum guitar", "category":"Activities", "price":320, "size":Vector2(.5,.55), "height":1.05, "color":"d7ae7e"},
 	"violin": {"label":"Evening violin", "category":"Activities", "price":380, "size":Vector2(.4,.5), "height":.65, "color":"624435"},
@@ -59,7 +65,40 @@ const ITEMS = {
 	"cat_toy_box": {"label":"Cat Toy Box", "category":"Pets", "price":50, "size":Vector2(.56,.40), "height":.35, "color":"7fa8c6"},
 	"dog_toy_box": {"label":"Dog Toy Box", "category":"Pets", "price":50, "size":Vector2(.56,.40), "height":.35, "color":"7fa8c6"},
 	"urn": {"label":"Ceramic memorial urn", "category":"Decor", "price":120, "size":Vector2(.3,.3), "height":.42, "color":"3e6b65"},
-	"tombstone": {"label":"Carved stone gravestone", "category":"Decor", "price":180, "size":Vector2(.56,.36), "height":.85, "color":"52555a"}
+	"tombstone": {"label":"Carved stone gravestone", "category":"Decor", "price":180, "size":Vector2(.56,.36), "height":.85, "color":"52555a"},
+	# Vehicles. A garage is a building the household owns and a car is the thing
+	# that parks in it, so both sit under Transport. They are deliberately the
+	# dearest things in the catalogue — a car is saved for, and it costs about
+	# what the parlour piano does while the building that shelters it costs more.
+	# An entry that carries "paint" is bought in a colour of the player's own
+	# choosing; the shade named here is the model's own authored Body tint.
+	"garage": {"label":"The family garage", "category":"Transport", "price":1800, "size":Vector2(4.6,5.8), "height":2.59, "color":"417a71"},
+	"electric_car": {"label":"Quiet miles electric car", "category":"Transport", "price":1250, "size":Vector2(1.79,4.19), "height":1.4775, "color":"c6d2da", "paint":"c6d2da"}
+}
+
+## The paints offered for a car, in the row's order, led by the shade the model
+## already wears. Any six-digit shade is valid on a record — this is the palette
+## a buy row offers, exactly as the coat and hair palettes are offered for a pet
+## or a Lifelet rather than enforced on the save.
+const CAR_PAINTS: Array[String] = [
+	"c6d2da", "3f4a55", "1d2124", "8c1f28", "1f3b6b",
+	"2f5f47", "8a6a2f", "b4553a", "6c4f8c", "e8e3d8",
+]
+
+## A piece whose volume is not one solid box lists the bands it really occupies,
+## in its own local metres. The garage is the case: its solid back wall and both
+## side walls (corner posts included) block, while the declared interior and the
+## 4.28 m doorway stay clear, so a car — or two — parks inside. The rolled-up
+## sectional door, its header and the roof are all overhead, which a floor-plan
+## rectangle cannot express, so they are not bands. This is the staircase's own
+## pattern — `stair_rect` plus `guard_footprints` rather than one solid volume —
+## kept next to the size the ordinary box is derived from.
+const BLOCKING_PANELS: Dictionary = {
+	"garage": [
+		{"x":0.0, "z":-2.835, "w":4.59, "d":0.12},
+		{"x":-2.235, "z":0.0, "w":0.12, "d":5.79},
+		{"x":2.235, "z":0.0, "w":0.12, "d":5.79}
+	]
 }
 
 # Accessories for the household's pets. A cat tree is a cat's furnishing and a
@@ -67,7 +106,7 @@ const ITEMS = {
 const PET_ACCESSORIES: Array[String] = ["pet_bowl", "cat_tree", "kennel"]
 
 # The Build & buy filter row, in display order. Structure is the tool page.
-const CATEGORIES: Array[String] = ["All", "Comfort", "Kitchen", "Bathroom", "Activities", "Decor", "Pets", "Structure"]
+const CATEGORIES: Array[String] = ["All", "Comfort", "Kitchen", "Bathroom", "Activities", "Decor", "Pets", "Transport", "Structure"]
 
 # Instruments share one practice action; the authored model is the difference.
 const INSTRUMENTS: Array[String] = ["guitar", "violin"]
@@ -78,6 +117,34 @@ const WALL_MOUNTED: Array[String] = ["painting", "wall_clock", "shelf"]
 
 static func passable(kind: String) -> bool:
 	return kind in PASSABLE
+
+## The solid bands a kind occupies, in its own local metres: its authored ones
+## when one box cannot describe it, otherwise the single box its declared size
+## and depth describe. Only a kind the catalogue does not know returns nothing.
+static func local_panels(kind: String) -> Array:
+	var panels: Array = BLOCKING_PANELS.get(kind, [])
+	if not panels.is_empty(): return panels
+	var data: Dictionary = ITEMS.get(kind, {})
+	if data.is_empty(): return []
+	return [{"x":0.0, "z":0.0, "w":data.size.x, "d":data.size.y}]
+
+## Whether a kind is bought in a colour of the player's own choosing.
+static func paints(kind: String) -> bool:
+	return ITEMS.get(kind, {}).has("paint")
+
+## The paint a record carries: its own choice when it made one, the catalogue's
+## authored tint otherwise. A record with no paint key keeps the model's finish.
+static func paint_of(entry: Dictionary) -> String:
+	var kind: String = str(entry.get("kind", ""))
+	if not ITEMS.has(kind): return ""
+	var value: String = str(entry.get("paint", ITEMS[kind].get("paint", ""))).trim_prefix("#").to_lower()
+	return value if _shade(value) else ITEMS[kind].get("paint", "")
+
+static func _shade(value: String) -> bool:
+	if value.length() != 6: return false
+	for index: int in range(6):
+		if not "0123456789abcdef".contains(value[index]): return false
+	return true
 
 static func get_item(kind: String) -> Dictionary:
 	return ITEMS.get(kind, {})

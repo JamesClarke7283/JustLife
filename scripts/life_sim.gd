@@ -35,7 +35,7 @@ const BILL_LATE_FEE: int = 60
 ## Shutoff makes an unpaid bill matter: no cooking, no hot water and nothing
 ## electrical until the household settles the arrears. Going to work is never
 ## gated, so a cut-off household can always earn its way back on.
-const UTILITY_ACTIONS: Array[String] = ["cook", "experiment_recipe", "shower", "bath", "watch", "watch_together", "play_games", "study_hard", "practice_instrument", "play_piano"]
+const UTILITY_ACTIONS: Array[String] = ["cook", "experiment_recipe", "shower", "bath", "watch", "watch_together", "play_games", "study_hard", "practice_instrument", "play_piano", "drink_coffee"]
 
 ## What this home's weekly bill comes to, from the value of everything placed in
 ## it. A home with nothing in it still pays the base connection charge.
@@ -52,6 +52,19 @@ const LifeWantsManager = preload("res://scripts/wants_manager.gd")
 const TRAIT_NAMES: Array[String] = ["Creative", "Outgoing", "Active", "Bookworm", "Foodie", "Neat"]
 const ASPIRATION_NAMES: Array[String] = ["Maker", "Connected", "Successful", "Balanced"]
 const NEED_DECAY: Dictionary = {"hunger": 3.5, "energy": 3.0, "hygiene": 2.1, "bladder": 4.0, "fun": 2.5, "social": 2.0}
+## Temporary energy: what a coffee lifts a Lifelet with. It is deliberately NOT
+## a seventh need — it is a pool of its own with its own name, its own decay per
+## game hour and its own darker bar in the HUD, so a cup of coffee is a short
+## second wind rather than a second way to fill `energy`. While any of it is
+## left it pays the ordinary energy drain: caffeine carries the body, and when
+## the pool runs out the metabolism resumes where it left off. It is capped at
+## 100 like a need, saved with the Lifelet, and read and validated like one.
+const SECOND_WIND_KEY: String = "second_wind"
+const SECOND_WIND_LABEL: String = "Second wind"
+const SECOND_WIND_DECAY_PER_HOUR: float = 14.0
+const SECOND_WIND_MAX: float = 100.0
+const SECOND_WIND_TOOLTIP: String = "Temporary energy from a coffee. It fades on its own at %d a game hour and cannot be topped up above %d; the ordinary Energy need is untouched by it." % [int(SECOND_WIND_DECAY_PER_HOUR), int(SECOND_WIND_MAX)]
+var second_wind: float = 0.0
 const SKILL_NAMES: Array[String] = ["cooking", "creativity", "charisma", "logic", "gardening", "parenting", "fitness", "music"]
 const CAREER_TRACKS: Dictionary = {
 	"studio":{"label":"Creative studio","skill":"creativity","base_salary":180,"titles":["Studio assistant","Project coordinator","Creative specialist","Studio lead","Creative director"]},
@@ -65,7 +78,7 @@ const CAREER_TRACKS: Dictionary = {
 	# no fee, so the only career a fresh Lifelet can always start is this one.
 	"criminal":{"label":"Criminal","skill":"charisma","base_salary":1000,"titles":["Lookout","Runner","Fence","Fixer","Kingpin"],
 		"entry":{"cost":0,"skill":"","level":0}},
-	# A technical trade is bought, not walked into: the household pays the §900
+	# A technical trade is bought, not walked into: the household pays the ℒ900
 	# course fee and the Lifelet must already think in steps (Logic 8).
 	"technical":{"label":"Technical work","skill":"logic","base_salary":240,"titles":["Apprentice technician","Bench technician","Systems technician","Lead technician","Master technician"],
 		"entry":{"cost":900,"skill":"logic","level":8}}
@@ -186,9 +199,12 @@ const ACTIVITY_OUTFITS: Dictionary = {
 	"dance":"party",
 	"career_day":"formal", "ask_partner":"formal", "commit":"formal",
 	"school_day":"everyday",
+	"visit":"everyday",
 	"return_home":"everyday",
 }
-const HOME_AFTER: Array[String] = ["sleep", "nap", "career_day", "school_day", "jog", "morning_run", "stretch"]
+const HOME_AFTER: Array[String] = ["sleep", "nap", "career_day", "school_day", "jog", "morning_run", "stretch", "visit"]
+## How long a trip across town keeps the solo traveller at the destination.
+const TRIP_MINUTES: float = 15.0
 const SPIRIT_BLOCKED: Array[String] = [
 	"career_day", "school_day", "job", "work", "birthday",
 	"cook", "snack", "eat_meal", "store_meal",
@@ -300,6 +316,7 @@ func new_household(profile: Dictionary) -> void:
 	bills_late = 0
 	utilities_cut = false
 	insurance_policy_id = ""
+	second_wind = 0.0
 	purchased_perks.clear()
 	_idle_minutes = 0.0
 	autonomy_state = {"version":1,"contacts":{},"deferred":{}}
@@ -315,6 +332,7 @@ func _build_actions() -> void:
 	_define("arrive_home","Arriving home",1.0,{},0,"",0.0,"Walk into your new home. Canceling the walk keeps this Lifelet in the family.")
 	_define("career_day", "Go to work", LifeCareerSchedule.LENGTH, {"hunger":30.0,"bladder":52.0,"hygiene":26.0,"social":24.0,"energy":-12.0,"fun":12.0}, 0, "", 0.0, "Weekday work, 09:00–17:00. Arrive by 10:00; late arrivals until noon reduce pay and performance. Lunch, bathroom and washroom breaks are included.")
 	_define("school_day", "Go to school", 420.0, {"hunger":22.0,"bladder":46.0,"hygiene":18.0,"social":35.0,"energy":-7.0,"fun":10.0}, 0, "", 0.0, "Leave for school on weekdays from 08:00. Arrive by 09:00 to be on time; late arrival is possible until 12:00. Return at 15:00. Lunch, bathroom and washroom breaks are part of the school day.")
+	_define("visit", "A trip across town", TRIP_MINUTES, {}, 0, "", 0.0, "Travel to a place in Juniper Bay on your own while the household stays home. The shared car takes fifteen minutes each way.")
 	_define("help_homework", "Help with homework", 45.0, {}, 0, "", 0.0, "Support a child or teen through one assignment and build Parenting skill.")
 	_define("school", "Attend online classes", 180.0, {}, 0, "", 0.0, "Weekday lessons at your desk, 08:00–14:00. Prepared homework improves learning and grades.")
 	_define("homework", "Do homework", 45.0, {}, 0, "", 0.0, "Complete a weekday assignment and prepare for the next attended class.")
@@ -326,8 +344,13 @@ func _build_actions() -> void:
 	_define("discard_meal","Clear this meal",5.0,{},0,"",0.0,"Carry the serving dish to the sink and discard its remaining food.")
 	_define("bin_meal","Throw it in the bin",5.0,{},0,"",0.0,"Carry spoiled food to the rubbish bin and tip it out. The bin takes it; nothing is eaten.")
 	_define("clean_plate","Wash this plate",10.0,{"hygiene":-1.0},0,"",0.0,"Carry the used plate to a sink and wash it.")
+	# The espresso machine's own action. A cup costs a few ℒ of beans and leaves
+	# a real `second_wind` behind: the pool, not the need, is what a coffee
+	# gives, and the action is listed in UTILITY_ACTIONS because the machine
+	# needs the power the household's bills pay for.
+	_define("drink_coffee", "Drink a coffee", 15.0, {"fun": 6.0, "second_wind": 55.0}, 6, "", 0.0, "Pull a shot of espresso and drink it. The beans cost ℒ6 and the lift is a temporary second wind that fades on its own.")
 	_define("snack", "Grab a snack", 15.0, {"hunger": 32.0}, 4, "", 0.0, "A quick bite to keep the day going.")
-	_define("cook", "Cook a fresh meal", 45.0, {"fun": 8.0, "hygiene": -5.0}, 8, "cooking", 34.0, "Choose a recipe to prepare and share. Cooking skill unlocks more dishes. Eating restores hunger. Ingredients start at §8.")
+	_define("cook", "Cook a fresh meal", 45.0, {"fun": 8.0, "hygiene": -5.0}, 8, "cooking", 34.0, "Choose a recipe to prepare and share. Cooking skill unlocks more dishes. Eating restores hunger. Ingredients start at ℒ8.")
 	_define("sleep", "Sleep", 360.0, {"energy": 95.0, "fun": 15.0}, 0, "", 0.0, "A full night's rest restores energy and chases the boredom away.")
 	_define("try_for_baby", "Try for Baby", LifeBabyPlan.DURATION, {"social": 20.0, "fun": 14.0, "energy": -6.0}, 0, "", 0.0, "An intimate moment with your partner while you share the bed. If you both want to, this can begin a pregnancy.")
 	_define("nap", "Take a nap", 75.0, {"energy": 38.0}, 0, "", 0.0, "A short, refreshing nap.")
@@ -363,6 +386,10 @@ func _build_actions() -> void:
 	_define("jog", "Go for a run", 45.0, {"fun": 18.0, "energy": -14.0, "hygiene": -18.0}, 0, "fitness", 40.0, "A steady run builds Fitness. Expect to need a shower afterwards.")
 	_define("stretch", "Stretch and breathe", 30.0, {"fun": 12.0, "energy": 10.0}, 0, "fitness", 24.0, "Gentle stretching restores a little energy and builds Fitness.")
 	_define("dance", "Dance to a record", 35.0, {"fun": 40.0, "energy": -8.0, "hygiene": -6.0}, 0, "fitness", 12.0, "Put a record on and move. Great fun, a little tiring.")
+	# The shared dance is the same record with company. Its numbers are the solo
+	# dance's own, so every dancer gains exactly what dancing alone would give;
+	# the household binds up to five Lifelets to one shared clock.
+	_define("dance_together", "Dance together", 35.0, {"fun": 40.0, "energy": -8.0, "hygiene": -6.0}, 0, "fitness", 12.0, "Share one record with the household. Everyone dances, and everyone hears the same song.")
 	_define("play_toys", "Play with toys", 45.0, {"fun": 42.0, "social": 4.0}, 0, "creativity", 14.0, "Imaginative play for children. Builds a little Creativity.")
 	_define("change_outfit", "Change outfit", 4.0, {}, 0, "", 0.0, "Switch to the next saved outfit type in your wardrobe.")
 	_define("change_in_wardrobe", "Open the wardrobe…", 6.0, {}, 0, "", 0.0, "Browse your tops, hair, makeup and jewelry and see each one on before you keep it.")
@@ -378,7 +405,7 @@ func _build_actions() -> void:
 	_define("wear_hoodie", "Wear the hoodie", 4.0, {}, 0, "", 0.0, "Change into the soft hoodie.")
 	_define("warm_up", "Warm up by the fire", 25.0, {"fun": 16.0, "energy": 8.0}, 0, "", 0.0, "A quiet moment by the hearth.")
 	_define("mourn", "Mourn", 30.0, {"fun": -4.0}, 0, "", 0.0, "Spend a quiet moment in respectful silence. Shedding tears eases grief.")
-	_define("leave_flowers", "Leave fresh flowers", 15.0, {"fun": 10.0}, 15, "", 0.0, "Place fresh blooms (§15) at the memorial to honour their memory.")
+	_define("leave_flowers", "Leave fresh flowers", 15.0, {"fun": 10.0}, 15, "", 0.0, "Place fresh blooms (ℒ15) at the memorial to honour their memory.")
 	_define("remember_passed", "Reminisce", 25.0, {"fun": 14.0, "social": 4.0}, 0, "", 0.0, "Reflect on fond memories and wisdom shared with the departed.")
 	_define("play_games", "Play video games", 45.0, {"fun": 40.0, "energy": -4.0}, 0, "logic", 10.0, "An hour of games at the computer. Great fun, a little Logic.")
 	_define("friendly", "Have a friendly chat", 25.0, {"social": 28.0, "fun": 6.0}, 0, "charisma", 18.0, "Say hello, catch up and grow your friendship.")
@@ -407,6 +434,13 @@ func _build_actions() -> void:
 	_define("morning_run", "Morning run", 45.0, {"fun": 16.0, "energy": -18.0, "hygiene": -20.0}, 0, "fitness", 60.0, "Head out of the front door for a long run around the block. Builds Fitness faster than the treadmill, and costs energy.")
 	_define("deep_read", "Deep read", 120.0, {"fun": 20.0, "energy": -6.0}, 0, "logic", 65.0, "Settle in with a demanding book for a long stretch. High Logic progress.")
 	_define("experiment_recipe", "Experiment with a recipe", 45.0, {"fun": 30.0, "hygiene": -5.0}, 0, "creativity", 30.0, "Try a dish nobody has written down. Fun and creativity, and something new to eat.")
+	# Time with the household's animals. Teaching is slow and patient work that
+	# builds Parenting, and a tummy rub is the plain affection a dog asks for.
+	_define("teach_pet_trick", "Teach a trick", 30.0, {"fun": 20.0, "social": 6.0, "energy": -4.0}, 0, "parenting", 30.0, "Spend a little while teaching the household pet something new. Patience and treats do the work.")
+	_define("pet_tummy_rub", "Give a tummy rub", 20.0, {"fun": 18.0, "social": 12.0}, 0, "parenting", 12.0, "Roll your dog over and rub their tummy properly. A dog's favourite minute of the day.")
+	# A dog's coat needs washing. A cat looks after its own hygiene by licking,
+	# so this is offered for dogs only and the availability gate says why.
+	_define("bathe_pet", "Bathe the dog", 35.0, {"fun": 10.0, "hygiene": -6.0, "energy": -5.0}, 0, "parenting", 26.0, "Soap, warm water and a good towel. A clean coat, and a very happy dog afterwards.")
 	_define("deep_clean", "Deep clean", 45.0, {"hygiene": 6.0, "fun": 10.0}, 0, "", 0.0, "Scrub the surfaces until the room sparkles. Slow, but oddly satisfying.")
 	_define("remember_life", "Remember a life", 20.0, {"social": 12.0, "fun": 6.0}, 0, "", 0.0, "Stand with the stone and remember who they were.")
 	# The computer is where a subject is truly mastered. A skill book stops at
@@ -453,6 +487,7 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"treadmill": ids = ["jog", "push_through"]  # children see the disabled entry with its reason
 		"yoga_mat": ids = ["stretch"]
 		"stereo": ids = ["dance"]
+		"coffee_machine": ids = ["drink_coffee"]
 		"toybox": ids = ["play_toys"]  # adults see the disabled entry with its reason
 		"wardrobe":
 			var worn_category: String = LifeCharacterIdentity.normalize_category(character.get("outfit_category", "everyday"))
@@ -469,6 +504,7 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"fireplace": ids = ["warm_up"]
 		"urn", "tombstone", "memorial": ids = ["remember_life", "mourn", "leave_flowers", "remember_passed"]
 		"neighbor", "maya", "leo", "priya", "tom": ids = SOCIAL_ACTIONS
+		"pet": ids = ["teach_pet_trick", "pet_tummy_rub", "bathe_pet"]
 	if str(character.age_stage) in LifeEducation.SCHOOL_STAGES:
 		if kind in ["desk","computer"]: ids = ["school","homework","study","study_hard"] + (["play_games"] if kind == "computer" else [])
 		elif kind == "bookshelf": ids = ["read","homework","study","study_book","buy_book","deep_read"]
@@ -554,6 +590,9 @@ func _tick_away(_game_minutes: float) -> void:
 	if str(away_state.activity)=="career":
 		_tick_career_away()
 		return
+	if str(away_state.activity)=="visit":
+		_tick_visit_away()
+		return
 	if day != int(away_state.departure_day) or str(character.age_stage) != str(away_state.age_stage):
 		request_return_home()
 		return
@@ -615,6 +654,89 @@ func request_return_home() -> bool:
 	return true
 
 
+## A solo trip's own refusal, re-checked when the traveller reaches the exit.
+## It never asks about housemates: nobody else is travelling.
+func _visit_departure_error(target_id: String) -> String:
+	if is_away(): return "This Lifelet is already away from home."
+	if not target_id.is_empty() and _education_target_kind(target_id) != "lot_exit":
+		return "Choose the neighborhood exit to leave on a trip."
+	return ""
+
+
+func _begin_visit_departure(action: Dictionary) -> void:
+	_wear_for_activity("visit")
+	action.merge({"phase":"active","paid":true,"started_day":day,"started_minutes":minutes,
+		"elapsed":0.0,"progress":0.0,"duration":TRIP_MINUTES},true)
+	away_state = {"version":1,"activity":"visit","phase":"away","departure_day":day,
+		"departure_minutes":minutes,"return_day":day,"return_minutes":minutes+TRIP_MINUTES,
+		"destination":str(action.get("destination","")),"exit_id":str(action.target_id),
+		"exit_position":action.target_position,"completed":false,"ended_at":0.0}
+	_publish("away_changed",[get_away_state()])
+	_emit_changed()
+	_emit_notice("%s is on their way across town." % str(character.name))
+
+
+func _tick_visit_away() -> void:
+	if day != int(away_state.departure_day):request_return_home();return
+	var action: Dictionary = action_queue[0]
+	var elapsed: float = clampf(minutes-float(away_state.departure_minutes),0.0,float(action.duration))
+	action.elapsed = elapsed
+	action.progress = elapsed/float(action.duration)
+	if minutes < float(away_state.return_minutes): return
+	# The visit itself is the whole point of the trip: it is earned when the
+	# time away is up, and the drive home only has to be walked afterwards.
+	away_state.phase = "returning"
+	away_state.ended_at = float(day-1)*1440.0+float(away_state.return_minutes)
+	away_state.completed = true
+	var place:String=str(away_state.get("destination",""))
+	if LifeNeighborhood.PLACES.has(place):
+		remember("A trip across town","Spent the afternoon at "+str(LifeNeighborhood.PLACES[place].name)+" and came back with something to tell.")
+		add_moodlet("A change of scene","Inspired","A little time away from the house clears the head.",120,2)
+	_publish("away_changed",[get_away_state()])
+	_emit_changed()
+	_wear_home_clothes()
+	_emit_notice("%s is heading home." % str(character.name))
+
+
+func _validate_visit_away_state(state: Dictionary) -> String:
+	var value: Dictionary = state.get("away_state",{})
+	var pending: Array = state.action_queue.filter(func(action:Dictionary)->bool:return str(action.id)=="visit")
+	if pending.size() != 1 or state.action_queue.is_empty() or str(state.action_queue[0].id) != "visit":
+		return "Save has an away traveller without its active trip."
+	if not _autonomy_integer(value.get("version"),1,1) or value.get("activity") != "visit" or str(value.get("phase","")) not in ["away","returning"]:
+		return "Save contains an unsupported away activity."
+	if not _autonomy_integer(value.get("departure_day"),1,int(state.day)) or not _autonomy_integer(value.get("return_day"),int(value.departure_day),int(value.departure_day)):
+		return "Save contains an invalid trip calendar."
+	if not _number_in_range(value.get("departure_minutes"),0.0,1439.99999) or not _number_in_range(value.get("return_minutes"),0.0,1439.99999) or not value.get("completed") is bool:
+		return "Save contains invalid trip departure or return times."
+	if not LifeNeighborhood.PLACES.has(str(value.get("destination",""))) or str(value.get("exit_id","")) != "lot_exit":
+		return "Save contains an invalid trip destination or exit."
+	var position: Variant = value.get("exit_position")
+	if position is Vector3:
+		if not position.is_finite(): return "Save contains an invalid trip position."
+	elif position is Array and position.size() == 3:
+		for component: Variant in position:
+			if not _number_in_range(component,-100000.0,100000.0): return "Save contains an invalid trip position."
+	else: return "Save contains an invalid trip position."
+	var departed: float = float(value.departure_day-1)*1440.0+float(value.departure_minutes)
+	var now: float = float(state.day-1)*1440.0+float(state.minutes)
+	if now < departed: return "Save contains a trip that has not departed yet."
+	var action: Dictionary = pending[0]
+	if action.get("paid") != true or not action.get("paid") is bool or str(action.get("target_id","")) != "lot_exit" or str(action.get("target_kind","")) != "lot_exit" or not _as_vector3(action.target_position).is_equal_approx(_as_vector3(position)):
+		return "Save contains a mismatched trip action or exit."
+	if not _number_in_range(action.get("duration"),TRIP_MINUTES,TRIP_MINUTES):
+		return "Save contains an invalid trip duration."
+	if str(value.phase) == "away":
+		if bool(value.completed) or float(value.ended_at) != 0.0 or now-departed-TRIP_MINUTES >= 0.0:
+			return "Save contains an expired or already-finished trip."
+		if not _number_in_range(action.get("elapsed"),maxf(0.0,minf(now-departed,TRIP_MINUTES)-.00001),minf(TRIP_MINUTES,maxf(0.0,now-departed)+.00001)):
+			return "Save contains impossible trip progress."
+	else:
+		if float(value.ended_at) != departed+TRIP_MINUTES or not bool(value.completed):
+			return "Save contains an invalid trip return."
+	return ""
+
+
 func complete_away_return() -> bool:
 	if not is_away() or str(away_state.phase) != "returning": return false
 	# Arrival is owned by the world; never teleport or begin the later queue here.
@@ -645,8 +767,14 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 	if id == "help_homework":
 		_emit_notice("Choose Do homework together at a desk to arrange both Lifelets.")
 		return false
+	if id == LifeDancePlan.ACTION_ID:
+		_emit_notice("Choose Dance together at the music player to invite the household.")
+		return false
 	if id == LifeBabyPlan.ACTION_ID:
 		_emit_notice("Choose Try for Baby on the bed both partners are sleeping in.")
+		return false
+	if id == "visit" and (is_away() or action_queue.any(func(queued:Dictionary)->bool:return str(queued.id)=="visit")):
+		_emit_notice("Finish the trip you are already on before leaving again.")
 		return false
 	if not _actions.has(id):
 		return false
@@ -671,7 +799,7 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 			return false
 		definition=household_service.study_definition(definition,subject)
 	if funds < int(definition["cost"]):
-		_emit_notice("You need §%d for %s." % [int(definition["cost"]), str(definition["label"]).to_lower()])
+		_emit_notice("You need ℒ%d for %s." % [int(definition["cost"]), str(definition["label"]).to_lower()])
 		return false
 	if id in ["job","career_day"] and int(career["worked_day"]) == day:
 		_emit_notice("Today's shift is complete. You can work again tomorrow.")
@@ -711,6 +839,12 @@ func begin_current_action() -> void:
 	if str(action.id)=="arrive_home":return # Physical arrival is confirmed by the controller.
 	if str(action.id)=="career_day":
 		_begin_career_departure(action)
+		return
+	if str(action.id)=="visit":
+		var visit_reason:String=_visit_departure_error(str(action.target_id))
+		if not visit_reason.is_empty():
+			_emit_notice(visit_reason);cancel_action();return
+		_begin_visit_departure(action)
 		return
 	if str(action.id) == "school_day":
 		_begin_school_departure(action)
@@ -865,6 +999,12 @@ func _step(game_minutes: float) -> void:
 		pass_on()
 	_prune_school_actions()
 	for need_name: String in NEED_NAMES:
+		if need_name == "energy" and second_wind > 0.0:
+			# Caffeine carries the body: while any second wind is left, the
+			# ordinary energy need does not drain at all. The pool alone pays for
+			# the wakefulness, and it is drawn down in exactly one place below,
+			# so the rate the player sees is the pool's own and nothing else.
+			continue
 		var decay: float = float(NEED_DECAY[need_name])
 		if need_name == "social" and _has_trait("Outgoing"):
 			decay *= 1.35
@@ -876,6 +1016,10 @@ func _step(game_minutes: float) -> void:
 			decay *= 0.8
 		decay *= _perk_decay_multiplier(need_name)
 		needs[need_name] = clampf(float(needs[need_name]) - decay * game_minutes / 60.0, 0.0, 100.0)
+	# The temporary pool fades on the shared clock at its own, faster rate,
+	# whether the Lifelet is at home, away or asleep. Nothing refills it but a
+	# coffee, so a cup is a second wind and not a second sleep.
+	second_wind = clampf(second_wind - SECOND_WIND_DECAY_PER_HOUR * game_minutes / 60.0, 0.0, SECOND_WIND_MAX)
 	if is_away():
 		bladder_grace=0.0 # School and work include bathroom breaks.
 		_tick_away(game_minutes)
@@ -954,6 +1098,11 @@ func _apply_continuous_effects(action: Dictionary, fraction: float) -> void:
 	var changes: Dictionary = action["changes"]
 	for need_name: String in changes:
 		var amount: float = float(changes[need_name]) * fraction
+		if need_name == SECOND_WIND_KEY:
+			# Temporary energy is its own pool, so it is applied here and not
+			# through the need dictionary.
+			second_wind = clampf(second_wind + amount, 0.0, SECOND_WIND_MAX)
+			continue
 		if need_name == "fun":
 			if (_has_trait("Creative") and action["id"] == "paint") or (_has_trait("Bookworm") and action["id"] == "read"):
 				amount *= 1.5
@@ -991,7 +1140,7 @@ func _activity_emotion(id: String) -> String:
 		"paint": return "Inspired" if _has_trait("Creative") else ""
 		"paint_masterpiece": return "Inspired"
 		"read", "study", "work", "job", "school", "homework", "play_chess", "play_games", "study_hard", "deep_read": return "Focused"
-		"jog", "stretch", "dance", "push_through", "morning_run": return "Energized"
+		"jog", "stretch", "dance", "dance_together", "push_through", "morning_run": return "Energized"
 		"playful_prank": return "Playful"
 		"bold_introduction": return "Confident"
 	return ""
@@ -1087,7 +1236,7 @@ func _finish_front() -> void:
 			if str(get_mood().label) == "Inspired": sale = int(sale * 1.5)
 		funds += sale
 		earned = sale
-		_emit_notice("Canvas sold for §%d. A little creativity goes a long way." % sale)
+		_emit_notice("Canvas sold for ℒ%d. A little creativity goes a long way." % sale)
 	elif id == "host_a_chat":
 		# A host gathers the room: every housemate who can actually see the host
 		# shares the social lift. Somebody on the far side of a partition is not
@@ -1105,7 +1254,7 @@ func _finish_front() -> void:
 		funds += income
 		earned = income
 		career["performance"] = minf(100.0, float(career["performance"]) + _career_performance_gain(8.0))
-		_emit_notice("Freelance project complete. Earned §%d." % income)
+		_emit_notice("Freelance project complete. Earned ℒ%d." % income)
 	elif id == "job":
 		var income: int = int(career["salary"])
 		funds += income
@@ -1114,7 +1263,7 @@ func _finish_front() -> void:
 		career.schedule=LifeCareerSchedule.attend(career.get("schedule",LifeCareerSchedule.fresh(day)),day,0.0)
 		var comfort: float = (float(needs["hunger"]) + float(needs["energy"]) + float(needs["fun"])) / 3.0
 		career["performance"] = float(career["performance"]) + _career_performance_gain(18.0 + comfort * 0.15 + float(skills["logic"]["level"]) * 2.0)
-		_emit_notice("Shift finished. Earned §%d." % income)
+		_emit_notice("Shift finished. Earned ℒ%d." % income)
 		_check_promotion()
 	elif id in SOCIAL_ACTIONS:
 		action["social_accepted"] = _apply_social(action)
@@ -1153,6 +1302,27 @@ func _finish_front() -> void:
 		_emit_notice("The rubbish is out. The kitchen smells fresher already.")
 	elif id == "watch_together":
 		pass
+	elif id == "teach_pet_trick":
+		# Teaching is real progress: the pet keeps the trick it learned, and the
+		# house's own record names what it can do.
+		var learned:String = ""
+		if is_instance_valid(household_service):
+			var taught:Dictionary = household_service.teach_pet_trick(str(action.get("target_id","")),str(character.get("name","")))
+			learned = str(taught.get("trick",""))
+		if learned.is_empty():
+			_emit_notice("A patient session, but nothing stuck today. Try again another time.")
+		else:
+			_emit_notice("%s learned to %s!" % [str(action.get("pet_name","the pet")), learned])
+	elif id == "pet_tummy_rub":
+		if is_instance_valid(household_service):
+			household_service.affectionate_pet(str(action.get("target_id","")),str(character.get("name","")))
+		_emit_notice("A proper tummy rub. %s is delighted." % str(action.get("pet_name","The dog")))
+	elif id == "bathe_pet":
+		# A bath really cleans the coat: the pet's own cleanliness is restored,
+		# and the household's sink or tub is the place it happened.
+		if is_instance_valid(household_service):
+			household_service.bathe_pet(str(action.get("target_id","")),str(character.get("name","")))
+		_emit_notice("%s is clean and fluffy again." % str(action.get("pet_name","The dog")))
 	_activity_memory(id)
 	_record_chapter_activity(id, earned, _social_target(str(action.get("target_id", ""))) if bool(action.get("social_accepted", false)) else "")
 	for want: Dictionary in wants:
@@ -1198,6 +1368,16 @@ func _mirror_level_grant() -> bool:
 	skills["charisma"]["xp"] = 0.0
 	return true
 
+
+## The solo dance's finish effects, applied once for a group dancer. The needs
+## and Fitness skill were already applied minute by minute while the record
+## played; this is the moodlet, the chapter record and the host credit, exactly
+## as the solo finish path pays them.
+func _apply_dance_result(action: Dictionary) -> void:
+	_maybe_credit_host("dance")
+	_maybe_credit_companion("dance",action.get("target_position"))
+	_activity_memory("dance")
+	_record_chapter_activity("dance",0)
 
 func _maybe_credit_host(action_id: String) -> void:
 	# Doing a leisure activity at a resident's home warms the friendship with
@@ -1300,7 +1480,7 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 	# An unpaid bill has a real cost: the utilities are cut, so the home cannot
 	# cook, run hot water or run anything electrical until the household settles.
 	if utilities_cut and id in UTILITY_ACTIONS:
-		return {"available":false, "reason":"The utilities are cut. Pay the outstanding §%d bill from the phone." % bill_total_due()}
+		return {"available":false, "reason":"The utilities are cut. Pay the outstanding ℒ%d bill from the phone." % bill_total_due()}
 	# A baby is driven by a caregiver: it keeps its recovery and play set and is
 	# refused everything else here, before any target or queue rule applies.
 	var stage_reason: String = LifeStagePolicy.action_error(str(character.age_stage), str(character.life_stage), id)
@@ -1339,11 +1519,13 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 	elif id == "play_toys" and str(character.age_stage) != "child":
 		reason = "The toy chest is for children."
 	elif funds < int(_actions[id].cost):
-		reason = "Requires §%d." % int(_actions[id].cost)
+		reason = "Requires ℒ%d." % int(_actions[id].cost)
 	elif id == "job" and int(career.worked_day) == day:
 		reason = "Today's shift is already complete."
 	elif id=="job" and day<int(career.get("schedule",LifeCareerSchedule.fresh(day)).first_day):
 		reason="Your first shift begins on the next workday."
+	elif id in ["teach_pet_trick","pet_tummy_rub","bathe_pet"]:
+		reason=_pet_action_error(id,target_id)
 	elif id in SOCIAL_ACTIONS:
 		var target: String = _social_target(target_id)
 		if target.is_empty() or target == _social_member_id:
@@ -1376,6 +1558,35 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 			elif id == "break_up" and romantic_partner != target:
 				reason = "You are not currently partners."
 	return {"available":reason.is_empty(), "reason":reason}
+
+
+## Whether this Lifelet can do this with that animal. A tummy rub is a dog's own
+## request — a cat will not have it — so the species rule lives here rather than
+## in the menu, and a hidden option and a direct request are refused alike.
+func _pet_action_error(id:String,target_id:String) -> String:
+	var record:Dictionary=_pet_record_for(target_id)
+	if record.is_empty():
+		return "That pet is not part of this household."
+	if id=="pet_tummy_rub" and str(record.get("species","")) != "dog":
+		return "%s is a cat. Cats keep their tummies to themselves." % str(record.get("name","This pet"))
+	if id=="bathe_pet":
+		if not LifePets.needs_bathing(str(record.get("species",""))):
+			return "%s is a cat. Cats keep themselves clean by licking." % str(record.get("name","This pet"))
+		if float((record.get("needs",{}) as Dictionary).get("cleanliness",100.0))>=92.0:
+			return "%s is already clean." % str(record.get("name","This pet"))
+	if id=="teach_pet_trick" and is_instance_valid(household_service):
+		if not household_service.has_method("next_trick") or str(household_service.call("next_trick",target_id)).is_empty():
+			return "%s already knows every trick you can teach." % str(record.get("name","This pet"))
+	return ""
+
+## The household's live pet record, or empty when the id names no pet here. The
+## simulation reaches it through the live household service, exactly as it
+## reaches the meal and sanitation ledgers.
+func _pet_record_for(pet_id:String) -> Dictionary:
+	if not is_instance_valid(household_service) or not household_service.has_method("pet_record"):
+		return {}
+	var record:Variant=household_service.call("pet_record",pet_id)
+	return record if record is Dictionary else {}
 
 
 func _try_for_baby_error(bed_id: String) -> String:
@@ -1621,7 +1832,7 @@ func _check_promotion() -> void:
 	career["title"] = titles[int(career["level"]) - 1]
 	career["salary"] = int(track.base_salary) + (int(career["level"]) - 1) * 110
 	funds += 200
-	_emit_notice("Promotion! You are now a %s. §200 bonus and a higher daily salary." % str(career["title"]).to_lower())
+	_emit_notice("Promotion! You are now a %s. ℒ200 bonus and a higher daily salary." % str(career["title"]).to_lower())
 	add_moodlet("A step forward","Confident","Your hard work is paying off.",360,4)
 	remember("A promotion",str(career.title))
 
@@ -1642,7 +1853,7 @@ func choose_career(track_id:String) -> bool:
 	career={"schedule":LifeCareerSchedule.fresh(day,day+1 if minutes>LifeCareerSchedule.CLOSE else day),"track":track_id,"title":track.titles[0],"level":1,"performance":0.0,"salary":track.base_salary,"worked_day":int(career.worked_day)}
 	remember("A new direction","Joined "+str(track.label))
 	add_moodlet("New possibilities","Inspired","A new career is a chance to grow.",240,2)
-	_emit_notice("Your new job: %s. §%d per shift.%s" % [career.title,career.salary," §%d course fee paid." % entry_fee if entry_fee>0 else ""])
+	_emit_notice("Your new job: %s. ℒ%d per shift.%s" % [career.title,career.salary," ℒ%d course fee paid." % entry_fee if entry_fee>0 else ""])
 	_emit_changed()
 	return true
 
@@ -1659,7 +1870,7 @@ func career_entry_error(track_id:String) -> String:
 	if not skill_name.is_empty() and required>0 and int(skills.get(skill_name,{"level":1}).level)<required:
 		return "Requires %s level %d. This Lifelet is at %s level %d." % [skill_name.capitalize(),required,skill_name.capitalize(),int(skills.get(skill_name,{"level":1}).level)]
 	var fee:int=int(entry.get("cost",0))
-	if funds<fee:return "The §%d course fee needs §%d more." % [fee,fee-funds]
+	if funds<fee:return "The ℒ%d course fee needs ℒ%d more." % [fee,fee-funds]
 	return ""
 
 func add_moodlet(label:String,emotion:String,description:String,duration:float,strength:int=2) -> void:
@@ -1710,7 +1921,7 @@ func _activity_memory(id:String) -> void:
 		"play_piano":add_moodlet("Music in the air","Inspired","A melody is still playing in your head.",180,3)
 		"play_chess":add_moodlet("Sharp mind","Focused","A few moves ahead of everyone.",150,2)
 		"jog","stretch":add_moodlet("Body in motion","Energized","Your body feels awake and strong.",180,2)
-		"dance":add_moodlet("Still humming","Playful","That song is still going round.",150,3)
+		"dance","dance_together":add_moodlet("Still humming","Playful","That song is still going round.",150,3)
 		"play_toys":add_moodlet("Made-up worlds","Playful","Imagination made the afternoon fly by.",150,3)
 		"warm_up":add_moodlet("Hearthside calm","Happy","Warm hands and a quiet mind.",120,1)
 		"play_games":add_moodlet("One more level","Playful","That game is still on your mind.",120,2)
@@ -1788,14 +1999,14 @@ func _advance_bill_cycle() -> void:
 			# in between and was charged nothing, while a prompt payer kept the
 			# promised weekly cadence.
 			last_bill_day = day
-			_emit_notice("The household bills arrived: §%d, due by day %d. Pay them from the phone." % [amount, int(pending_bill.due_day)])
+			_emit_notice("The household bills arrived: ℒ%d, due by day %d. Pay them from the phone." % [amount, int(pending_bill.due_day)])
 		return
 	# A bill past its due date is overdue: one late fee, once.
 	if day > int(pending_bill.due_day) and int(pending_bill.get("late_fee", 0)) == 0:
 		pending_bill["late_fee"] = BILL_LATE_FEE
 		bills_late += 1
 		utilities_cut = true
-		_emit_notice("The household bills are overdue. A §%d late fee was added and the utilities were cut until they are paid." % BILL_LATE_FEE)
+		_emit_notice("The household bills are overdue. A ℒ%d late fee was added and the utilities were cut until they are paid." % BILL_LATE_FEE)
 
 
 ## The ledger is owned by the household's first member; every other member keeps
@@ -1824,13 +2035,13 @@ func buy_insurance(policy_id:String="home") -> Dictionary:
 	if not INSURANCE_POLICIES.has(policy_id):
 		return {"ok":false,"error":"That policy is not offered."}
 	if not insurance_policy_id.is_empty():
-		return {"ok":false,"error":"The home is already insured for §%d a term. Cancel it first to change cover." % int(INSURANCE_POLICIES[insurance_policy_id].premium)}
+		return {"ok":false,"error":"The home is already insured for ℒ%d a term. Cancel it first to change cover." % int(INSURANCE_POLICIES[insurance_policy_id].premium)}
 	var premium:int=int(INSURANCE_POLICIES[policy_id].premium)
 	if funds<premium:
-		return {"ok":false,"error":"The household needs §%d for this policy and has §%d." % [premium,funds]}
+		return {"ok":false,"error":"The household needs ℒ%d for this policy and has ℒ%d." % [premium,funds]}
 	funds-=premium
 	insurance_policy_id=policy_id
-	_emit_notice("Home insurance bought for §%d. A break-in will be paid back in full." % premium)
+	_emit_notice("Home insurance bought for ℒ%d. A break-in will be paid back in full." % premium)
 	_emit_changed()
 	return {"ok":true,"premium":premium,"label":str(INSURANCE_POLICIES[policy_id].label)}
 
@@ -1856,10 +2067,10 @@ func robbery() -> Dictionary:
 		return {"ok":false,"reason":"Nothing was taken. The house was empty."}
 	funds-=loss
 	if insurance_policy_id.is_empty():
-		_emit_notice("A burglar broke in and took §%d. Home insurance from the phone would have covered it." % loss)
+		_emit_notice("A burglar broke in and took ℒ%d. Home insurance from the phone would have covered it." % loss)
 		_emit_changed()
 		return {"ok":true,"stolen":loss,"reimbursed":0,"insured":false}
-	_emit_notice("A burglar broke in and took §%d. Home insurance paid it all back." % loss)
+	_emit_notice("A burglar broke in and took ℒ%d. Home insurance paid it all back." % loss)
 	funds+=loss
 	_emit_changed()
 	return {"ok":true,"stolen":loss,"reimbursed":loss,"insured":true}
@@ -1888,13 +2099,13 @@ func pay_bill() -> Dictionary:
 		return {"ok": false, "reason": "There is no bill to pay right now."}
 	var owed: int = bill_total_due()
 	if funds < owed:
-		return {"ok": false, "reason": "The household needs §%d and has §%d." % [owed, funds]}
+		return {"ok": false, "reason": "The household needs ℒ%d and has ℒ%d." % [owed, funds]}
 	funds -= owed
 	bills_paid_total += owed
 	pending_bill.clear()
 	var restored: bool = utilities_cut
 	utilities_cut = false
-	_emit_notice("Bills paid: §%d.%s" % [owed, " The utilities are back on." if restored else ""])
+	_emit_notice("Bills paid: ℒ%d.%s" % [owed, " The utilities are back on." if restored else ""])
 	_emit_changed()
 	return {"ok": true, "paid": owed, "restored_utilities": restored}
 
@@ -2437,7 +2648,7 @@ func _update_wants() -> void:
 			want["progress"] = float(want["target"])
 			satisfaction += int(want["reward"])
 			funds += int(want["reward"])
-			_emit_notice("Want fulfilled: %s! +%d satisfaction and §%d." % [want["label"], int(want["reward"]), int(want["reward"])])
+			_emit_notice("Want fulfilled: %s! +%d satisfaction and ℒ%d." % [want["label"], int(want["reward"]), int(want["reward"])])
 	_archive_completed_chapter()
 
 
@@ -2570,7 +2781,7 @@ func _create_recurring_wants() -> void:
 		"Successful":
 			var career_skill: String = str(CAREER_TRACKS.get(str(career.get("track", "studio")), CAREER_TRACKS.studio).skill)
 			wants = [
-				_chapter_want("chapter_income", "Build a cushion", "Earn §%d from completed shifts, freelance work or paintings this chapter." % (200 + difficulty * 100), 200 + difficulty * 100, reward + 40, "income"),
+				_chapter_want("chapter_income", "Build a cushion", "Earn ℒ%d from completed shifts, freelance work or paintings this chapter." % (200 + difficulty * 100), 200 + difficulty * 100, reward + 40, "income"),
 				_chapter_want("chapter_practice", "Invest in your craft", "Earn %d %s XP this chapter; practice still counts at level 10." % [100 + difficulty * 20, career_skill.capitalize()], 100 + difficulty * 20, reward, "practice", [], career_skill),
 				_chapter_want("chapter_unwind", "Room for a life", "Complete three different activities: cooking, sleeping, showering, reading, relaxing, watching a show or gardening.", 3, reward, "variety", ["cook", "sleep", "shower", "read", "relax", "watch", "water"])]
 		_:
@@ -2642,7 +2853,7 @@ func _offer_daily_story() -> void:
 
 func _story_choice(id: String, label: String, changes: Dictionary = {}, requirements: Dictionary = {}) -> Dictionary:
 	var available: bool = funds >= int(changes.get("cost", 0))
-	var reason: String = "" if available else "Requires §%d." % int(changes.get("cost", 0))
+	var reason: String = "" if available else "Requires ℒ%d." % int(changes.get("cost", 0))
 	if not requirements.is_empty() and int(skills[str(requirements.skill)].level) < int(requirements.level):
 		available = false
 		reason = "Requires %s level %d." % [str(requirements.skill).capitalize(), int(requirements.level)]
@@ -2718,9 +2929,9 @@ func _story_event(ticket: Dictionary) -> Dictionary:
 func _story_effects_text(changes: Dictionary) -> String:
 	var parts: PackedStringArray = []
 	if int(changes.get("cost", 0)) > 0:
-		parts.append("Pay §%d" % int(changes.cost))
+		parts.append("Pay ℒ%d" % int(changes.cost))
 	if int(changes.get("income", 0)) > 0:
-		parts.append("Earn §%d" % int(changes.income))
+		parts.append("Earn ℒ%d" % int(changes.income))
 	for need_name: String in changes.get("needs", {}):
 		parts.append("%s %+d" % [need_name.capitalize(), int(changes.needs[need_name])])
 	for skill_name: String in changes.get("skills", {}):
@@ -2785,10 +2996,26 @@ func choose_story_event(event_id: String, choice_id: String) -> bool:
 	return false
 
 
+## The HUD clock line. The weekday and whether this Lifelet is due at work or
+## school matters more than how many days have passed, so the line names the day
+## and what kind of day it is: a workday, a school day, or a day off. The day
+## number stays on the line beside the weekday, because saves, bills and
+## schedules all speak in day numbers.
 func get_clock_text() -> String:
 	var hour: int = int(minutes) / 60
 	var minute: int = int(minutes) % 60
-	return "Day %d · %02d:%02d" % [day, hour, minute]
+	return "%s · Day %d · %02d:%02d · %s" % [LifeEducation.weekday_name(day), day, hour, minute, day_kind_label()]
+
+## What kind of day this is for this Lifelet, in the player's own words.
+func day_kind_label() -> String:
+	if is_spirit():
+		return "At rest"
+	if str(character.get("life_stage","adult"))=="minor":
+		return "School day" if LifeEducation.weekday(day) else "Your day off"
+	# Adults are due at work on the weekdays their own career schedule names.
+	if LifeEducation.weekday(day) and not str(career.get("track","")).is_empty():
+		return "Your workday"
+	return "Your day off"
 
 
 func get_mood() -> Dictionary:
@@ -2818,7 +3045,7 @@ func get_mood() -> Dictionary:
 
 
 func get_state() -> Dictionary:
-	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "bladder_grace":bladder_grace, "starvation_minutes":starvation_minutes, "exhaustion_minutes":exhaustion_minutes, "deferred_passing_minutes":deferred_passing_minutes, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "wants": wants.duplicate(true), "whims": whims.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "last_bill_day": last_bill_day, "pending_bill":pending_bill.duplicate(true), "bills_paid_total":bills_paid_total, "bills_late":bills_late, "utilities_cut":utilities_cut, "insurance_policy_id":insurance_policy_id, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "routine_memory_days":routine_memory_days.duplicate(true)}
+	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "bladder_grace":bladder_grace, "starvation_minutes":starvation_minutes, "exhaustion_minutes":exhaustion_minutes, "deferred_passing_minutes":deferred_passing_minutes, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "wants": wants.duplicate(true), "whims": whims.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "second_wind":second_wind, "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "last_bill_day": last_bill_day, "pending_bill":pending_bill.duplicate(true), "bills_paid_total":bills_paid_total, "bills_late":bills_late, "utilities_cut":utilities_cut, "insurance_policy_id":insurance_policy_id, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "routine_memory_days":routine_memory_days.duplicate(true)}
 
 
 func save_game(world_data: Array = []) -> bool:
@@ -2884,6 +3111,9 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 	if is_spirit():
 		lifecycle["passed"] = true
 	needs = state["needs"].duplicate(true)
+	# Temporary energy is an optional pool: an older save has none, and a
+	# missing key means a Lifelet who has not had a coffee, not a broken save.
+	second_wind = clampf(float(state.get("second_wind", 0.0)), 0.0, SECOND_WIND_MAX)
 	bladder_grace=float(state.get("bladder_grace",0.0))
 	starvation_minutes=float(state.get("starvation_minutes",0.0))
 	exhaustion_minutes=float(state.get("exhaustion_minutes",0.0))
@@ -3055,6 +3285,7 @@ func _validate_autonomy_state(state:Dictionary) -> String:
 
 func _validate_away_state(state:Dictionary) -> String:
 	if not state.get("away_state",{}) is Dictionary:return "Save contains invalid away state."
+	if str(state.get("away_state",{}).get("activity",""))=="visit":return _validate_visit_away_state(state)
 	if str(state.get("away_state",{}).get("activity",""))=="career" or state.action_queue.any(func(action:Dictionary)->bool:return str(action.id)=="career_day"):
 		return _validate_career_away_state(state)
 	return _validate_school_away_state(state)
@@ -3151,6 +3382,9 @@ func _validate_state(state: Dictionary) -> String:
 	for need_name: String in NEED_NAMES:
 		if not _number_in_range(state["needs"].get(need_name), 0.0, 100.0):
 			return "Save contains an invalid need."
+	# Temporary energy is either absent (an older save) or one bounded pool.
+	if not _number_in_range(state.get("second_wind", 0.0), 0.0, SECOND_WIND_MAX):
+		return "Save contains invalid temporary energy."
 	if not _number_in_range(state.get("bladder_grace",0.0),0.0,BLADDER_GRACE_MINUTES):return "Save contains invalid bladder urgency."
 	for key: String in ["starvation_minutes", "exhaustion_minutes", "deferred_passing_minutes"]:
 		var limit: float = {"starvation_minutes":STARVATION_MINUTES, "exhaustion_minutes":EXHAUSTION_MINUTES, "deferred_passing_minutes":DEFERRED_PASSING_MINUTES}[key]
@@ -3283,6 +3517,11 @@ func _validate_state(state: Dictionary) -> String:
 				# session under their own id, and one of them owns the clock.
 				if not str(action.cooperation_id).begins_with(LifeBabyPlan.TOKEN_PREFIX) or not action.get("cooperation_role") is String or not action.get("cooperation_primary") is bool or str(action.get("seat_slot","")) not in ["left","right"]:
 					return "Save contains an invalid intimate action."
+			elif action_id == LifeDancePlan.ACTION_ID:
+				# A shared dance is symmetric too: every dancer carries the same
+				# token and their own standing spot, and one owns the clock.
+				if not str(action.cooperation_id).begins_with(LifeDancePlan.TOKEN_PREFIX) or str(action.get("cooperation_role","")) != LifeDancePlan.ROLE or not action.get("cooperation_primary") is bool or str(action.get("target_kind","")) != "stereo":
+					return "Save contains an invalid shared dance action."
 			elif str(action.get("cooperation_role","")) != ("helper" if action_id == "help_homework" else "learner") or action_id not in ["homework","help_homework"]:
 				return "Save contains an invalid cooperative action."
 			if action_id == "help_homework" and str(profile.get("life_stage","adult")) != "adult": return "Save contains a non-adult homework helper."
@@ -3885,7 +4124,7 @@ func _tick_career_away() -> void:
 		_gain_skill(career_skill,30.0*proportion)
 		var comfort:float=(float(needs.hunger)+float(needs.energy)+float(needs.fun))/3.0
 		career.performance=maxf(0.0,float(career.performance)+_career_performance_gain((18.0+comfort*.15+float(skills[career_skill].level)*2.0)*proportion)-late/20.0)
-		_emit_notice("Shift finished. Earned §%d for %d minutes at work%s."%[income,int(action.duration),"; arrived %d minutes late"%int(late) if late>0.0 else ""])
+		_emit_notice("Shift finished. Earned ℒ%d for %d minutes at work%s."%[income,int(action.duration),"; arrived %d minutes late"%int(late) if late>0.0 else ""])
 		_check_promotion();_activity_memory("job");_record_chapter_activity("job",income)
 		for want:Dictionary in wants:
 			if str(want.id)=="earn":want.progress=float(want.progress)+1.0

@@ -72,10 +72,10 @@ func _run() -> void:
 				break
 		var info: Dictionary = LifeCatalog.ITEMS[kind]
 		check(placed, "%s can be placed in the home." % str(info.label))
-		check(int(info.price) > 0, "%s has a price (§%d)." % [str(info.label), int(info.price)])
+		check(int(info.price) > 0, "%s has a price (ℒ%d)." % [str(info.label), int(info.price)])
 
 	check(int(LifeCatalog.ITEMS["cat_toy_box"].price) == 50 and int(LifeCatalog.ITEMS["dog_toy_box"].price) == 50,
-		"Both toy boxes cost §50.")
+		"Both toy boxes cost ℒ50.")
 	check(str(LifeCatalog.ITEMS["cat_toy_box"].label) == "Cat Toy Box" and str(LifeCatalog.ITEMS["dog_toy_box"].label) == "Dog Toy Box",
 		"The toy boxes are named Cat Toy Box and Dog Toy Box.")
 

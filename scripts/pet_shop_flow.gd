@@ -51,7 +51,7 @@ func show_shop() -> void:
 	choose.name = "PetShopAdopt"
 	choose.disabled = not reason.is_empty()
 	choose.tooltip_text = reason
-	app.paragraph("Choose the species, the sex, and a coat built from two natural colours. A cat costs §%d and a dog §%d." % [LifePets.price_for("cat"), LifePets.price_for("dog")], Vector2(307, 433), Vector2(806, 44), 16, P.INK, app.overlay)
+	app.paragraph("Choose the species, the sex, and a coat built from two natural colours. A cat costs ℒ%d and a dog ℒ%d." % [LifePets.price_for("cat"), LifePets.price_for("dog")], Vector2(307, 433), Vector2(806, 44), 16, P.INK, app.overlay)
 	if not pets.is_empty():
 		show_household_pets(pets, Vector2(302, 482))
 		show_accessories(Vector2(302, 560))
@@ -73,7 +73,7 @@ func show_accessories(at: Vector2) -> void:
 		var kind: String = str(kinds[index])
 		var price: int = int(LifeCatalog.ITEMS[kind].price)
 		var reason: String = app.household.accessory_availability(kind)
-		var button: Button = app.button("%s  ·  §%d" % [LifePets.ACCESSORY_LABELS[kind], price], at + Vector2(index * 268, 30), Vector2(258, 44), func(): buy_accessory(kind), false, app.overlay)
+		var button: Button = app.button("%s  ·  ℒ%d" % [LifePets.ACCESSORY_LABELS[kind], price], at + Vector2(index * 268, 30), Vector2(258, 44), func(): buy_accessory(kind), false, app.overlay)
 		button.name = "PetAccessory_" + kind
 		button.disabled = app.mode != "live" or not reason.is_empty()
 		button.tooltip_text = reason if not reason.is_empty() else "Places the %s through the ordinary furnishing placement." % str(LifePets.ACCESSORY_LABELS[kind]).to_lower()
@@ -111,7 +111,7 @@ func draw_picker() -> void:
 	app.small_caps("Species", Vector2(302, 296), Vector2(388, 23), app.overlay)
 	for index: int in range(LifePets.SPECIES.size()):
 		var option: String = LifePets.SPECIES[index]
-		var label_text: String = "%s  ·  §%d" % [LifePets.species_label(option), LifePets.price_for(option)]
+		var label_text: String = "%s  ·  ℒ%d" % [LifePets.species_label(option), LifePets.price_for(option)]
 		var reason: String = app.household.pet_availability(option)
 		var button: Button = app.button(label_text, Vector2(302 + index * 200, 324), Vector2(190, 44), func(): set_species(option), option == species, app.overlay)
 		button.name = "PetSpecies_" + option
@@ -172,7 +172,7 @@ func draw_picker() -> void:
 	app.button("Surprise me", Vector2(726, 684), Vector2(190, 40), surprise_pet, false, app.overlay)
 	app.button("Back to shop", Vector2(926, 684), Vector2(212, 40), show_shop, false, app.overlay)
 	var reason: String = app.household.pet_availability(str(draft.species))
-	var confirm: Button = app.button("Take %s home  ·  §%d" % [str(draft.name).strip_edges(), LifePets.price_for(str(draft.species))], Vector2(726, 738), Vector2(412, 44), confirm_pet, true, app.overlay)
+	var confirm: Button = app.button("Take %s home  ·  ℒ%d" % [str(draft.name).strip_edges(), LifePets.price_for(str(draft.species))], Vector2(726, 738), Vector2(412, 44), confirm_pet, true, app.overlay)
 	confirm.name = "PetShopConfirm"
 	confirm.disabled = not reason.is_empty()
 	confirm.tooltip_text = reason
@@ -277,7 +277,7 @@ func confirm_pet() -> void:
 	if bool(result.ok):
 		if not bool(result.get("duplicate", false)):
 			app.spawn_pet(str(result.pet.id), result.pet, spawn, destination)
-			app.show_notice("%s the %s has come home. −§%d" % [str(result.pet.name), LifePets.species_label(str(result.pet.species)).to_lower(), int(result.pet.fee)])
+			app.show_notice("%s the %s has come home. −ℒ%d" % [str(result.pet.name), LifePets.species_label(str(result.pet.species)).to_lower(), int(result.pet.fee)])
 		else:
 			app.show_notice("%s is already part of the household." % str(result.pet.name))
 		request.clear()

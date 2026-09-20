@@ -86,6 +86,12 @@ var oven_food_views:Dictionary={}
 ## the controller registers each picked body here and a click on one opens that
 ## pet's own card instead of falling through to a walk on the ground.
 var pick_extras:Dictionary={}
+## Solid bands contributed by something that is not a saved furnishing: the
+## weekly food truck, which parks on the sidewalk on its own schedule and must
+## still be walked around. Like `pick_extras`, this is a plain list the owning
+## service writes, so the van blocks routes without ever entering `items`, the
+## saved layout or the catalogue.
+var extra_obstacles:Array=[]
 
 func _ready() -> void:
 	rng.seed = 91517
@@ -357,7 +363,8 @@ func validate_home_layout(layout:Variant) -> String:
 		if not Building.number(entry.get("level",0),0,1,true):return "Invalid furnishing level."
 		for key:String in ["x","z","rotation"]:
 			if not Building.number(entry.get(key,0),-10000,10000):return "Invalid furnishing transform."
-		if not Building.LOT.encloses(furnishing_rect(entry)):return "A furnishing extends beyond the navigable lot."
+		for area:Rect2 in furnishing_panels(entry):
+			if not Building.LOT.encloses(area):return "A furnishing extends beyond the navigable lot."
 	# Align ingress with the detached graph's obstacle bound so a valid layout
 	# cannot replace the live scene and only then fail graph construction.
 	if ids.size()>512:return "Too many furnishings for this lot."
@@ -366,11 +373,16 @@ func validate_home_layout(layout:Variant) -> String:
 		var level:int=int(entry.get("level",0))
 		if level==1 and canonical.is_empty():return "Upper furniture needs a validated two-level building."
 		if canonical.is_empty():continue # Preserve old ground layout migration behavior.
-		var area:Rect2=furnishing_rect(entry)
-		# Level 0 may stand on the lot itself, so a kennel or garden bed belongs
-		# in the garden; an upper furnishing still needs real slab beneath it.
-		if not Building.footprint_supported(canonical,level,area,level==0):return "A furnishing crosses unsupported floor or a stair opening."
-		if not LifeCatalog.passable(str(entry.kind)) and Building.blocked_rect(canonical,level,area):return "A furnishing intersects a wall or stair run."
+		# Everything below is asked of each solid band rather than of the whole
+		# declared outline, so a kind with an open interior is judged on the
+		# floor it really covers. The roof test stays on the whole volume: the
+		# garage's roof slab is genuinely under the home's own roof and only the
+		# volume can say so.
+		for area:Rect2 in furnishing_panels(entry):
+			# Level 0 may stand on the lot itself, so a kennel or garden bed
+			# belongs in the garden; an upper furnishing still needs real slab.
+			if not Building.footprint_supported(canonical,level,area,level==0):return "A furnishing crosses unsupported floor or a stair opening."
+			if not LifeCatalog.passable(str(entry.kind)) and Building.blocked_rect(canonical,level,area):return "A furnishing intersects a wall or stair run."
 		if not canonical.roofs.is_empty():
 			var roof_error:String=RoofRules.obstruction(canonical,furnishing_volume(entry))
 			if not roof_error.is_empty():return roof_error
@@ -382,13 +394,74 @@ func load_home(layout:Variant) -> Dictionary:
 	create_home(layout)
 	return {"ok":last_layout_error.is_empty(),"error":last_layout_error}
 
-func furnishing_rect(entry:Dictionary) -> Rect2:
-	var size:Vector2=LifeCatalog.ITEMS[str(entry.kind)].size
-	var basis:=Basis(Vector3.UP,deg_to_rad(float(entry.get("rotation",0))))
+## The axis-aligned rectangle a local centre and size occupy once the entry's
+## yaw is applied. Every rectangle this file builds for a furnishing goes
+## through here, so an entry's outline, its solid bands and its collider can
+## never disagree about how a rotation maps one onto the world. The centre is a
+## floor-plan point — local x and local z — because a yaw moves only those.
+func _oriented_rect(origin:Vector2,basis:Basis,centre:Vector2,size:Vector2) -> Rect2:
+	var offset:Vector3=basis*Vector3(centre.x,0,centre.y)
 	var x_axis:Vector3=basis*Vector3(size.x*.5,0,0)
 	var z_axis:Vector3=basis*Vector3(0,0,size.y*.5)
 	var half:=Vector2(absf(x_axis.x)+absf(z_axis.x),absf(x_axis.z)+absf(z_axis.z))
-	return Rect2(Vector2(float(entry.get("x",0)),float(entry.get("z",0)))-half,half*2)
+	return Rect2(origin+Vector2(offset.x,offset.z)-half,half*2)
+
+func furnishing_rect(entry:Dictionary) -> Rect2:
+	var size:Vector2=LifeCatalog.ITEMS[str(entry.kind)].size
+	var origin:=Vector2(float(entry.get("x",0)),float(entry.get("z",0)))
+	return _oriented_rect(origin,_furnishing_basis(entry),Vector2.ZERO,size)
+
+func _furnishing_basis(entry:Dictionary) -> Basis:
+	return Basis(Vector3.UP,deg_to_rad(float(entry.get("rotation",0))))
+
+## The solid floor bands an entry really occupies. Most furnishings are one
+## solid box, so their outline is their blocker. A kind whose single box would
+## swallow a space the household uses — the garage, whose two side walls, back
+## wall and corner posts are thin bands around an open, roofed bay — lists its
+## own bands in its local metres, exactly as a staircase contributes `stair_rect`
+## plus its guard footprints rather than one solid volume. Nothing in the
+## obstacle, placement or collider code needs to know which kind it is holding.
+func furnishing_panels(entry:Dictionary) -> Array[Rect2]:
+	var origin:=Vector2(float(entry.get("x",0)),float(entry.get("z",0)))
+	var basis:Basis=_furnishing_basis(entry)
+	var result:Array[Rect2]=[]
+	for panel:Dictionary in LifeCatalog.local_panels(str(entry.get("kind",""))):
+		result.append(_oriented_rect(origin,basis,Vector2(float(panel.x),float(panel.z)),Vector2(float(panel.w),float(panel.d))))
+	return result
+
+## The same bands for a placed item, read off the node the live world owns.
+func item_panels(item:Dictionary) -> Array[Rect2]:
+	var source:Dictionary={"kind":str(item.kind),"x":item.node.position.x,"z":item.node.position.z,"rotation":item.node.rotation_degrees.y}
+	return furnishing_panels(source)
+
+## The navigation obstacle records an entry contributes: one per solid band, and
+## a band's record reuses the entry's own identity unless there are several, so
+## a single-box furnishing keeps exactly the obstacle identity it always had.
+func furnishing_obstacles(entry:Dictionary,level:int) -> Array:
+	var areas:Array[Rect2]=furnishing_panels(entry)
+	var result:Array=[]
+	var id:String=str(entry.get("id",""))
+	for index:int in range(areas.size()):
+		var area:Rect2=areas[index]
+		var identifier:String=id if areas.size()==1 else "%s_%d"%[id,index]
+		result.append({"id":identifier,"level":level,"x":area.get_center().x,"z":area.get_center().y,"w":area.size.x,"d":area.size.y})
+	return result
+
+## Repaint an authored surface by name, exactly as the character actor and the
+## pet actor repaint their own materials: the released glTF names the car's
+## paint surface "Body", so a chosen shade overrides that one surface and leaves
+## the glass, tyres, hubs and lamps at the finish they were authored with.
+func apply_paint(model:Node3D,shade:String) -> void:
+	if not is_instance_valid(model) or shade.length()!=6:return
+	for node:Node in model.find_children("*","MeshInstance3D",true,false):
+		var mesh:MeshInstance3D=node
+		if mesh.mesh==null:continue
+		for surface_index:int in range(mesh.mesh.get_surface_count()):
+			var original:Material=mesh.mesh.surface_get_material(surface_index)
+			if not original is StandardMaterial3D or str(original.resource_name)!="Body":continue
+			var material:StandardMaterial3D=original.duplicate() as StandardMaterial3D
+			material.albedo_color=Color(shade)
+			mesh.set_surface_override_material(surface_index,material)
 
 func _gather_visual_bounds(node:Node,transform:Transform3D,vertices:Array[Vector3])->void:
 	if node is Node3D:transform=transform*node.transform
@@ -606,6 +679,11 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 		_build_memorial(node)
 	node.position=Vector3(float(entry.get("x",0)),Building.level_y(level),float(entry.get("z",0)))
 	node.rotation_degrees.y=float(entry.get("rotation",0))
+	if LifeCatalog.paints(kind) and is_instance_valid(model):
+		# The chosen finish is repainted by surface name, exactly as the actor
+		# repaints a Lifelet's hair, skin or clothes: only the authored `Body`
+		# surface changes and the glass, tyres, hubs and lamps keep their own.
+		apply_paint(model,LifeCatalog.paint_of(entry))
 	if kind=="mirror" and is_instance_valid(model):_dress_mirror(node,model)
 	if kind=="floor_lamp":
 		# The arc lamp's warm pool of light is runtime state: the menu switch
@@ -638,12 +716,19 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	var body=StaticBody3D.new()
 	body.collision_layer=PICK_GROUND if level==0 else PICK_UPPER
 	node.add_child(body)
-	var shape=CollisionShape3D.new()
-	var bounds=BoxShape3D.new()
-	bounds.size=Vector3(data.size.x,data.height,data.size.y)
-	shape.shape=bounds
-	shape.position.y=float(data.height)/2
-	body.add_child(shape)
+	# One box per solid band, from the same catalogue data the placement, the
+	# navigation obstacle and the build quote read. The bands are local metres
+	# and the node already carries the placement's position and yaw, so an
+	# ordinary furnishing gets exactly the single box it always had while the
+	# garage gets a box on each wall and post and stays hollow — which is what
+	# lets the player click a wall to sell the building and walk in the doorway.
+	for panel:Dictionary in LifeCatalog.local_panels(kind):
+		var shape=CollisionShape3D.new()
+		var bounds=BoxShape3D.new()
+		bounds.size=Vector3(float(panel.w),data.height,float(panel.d))
+		shape.shape=bounds
+		shape.position=Vector3(float(panel.x),float(data.height)/2,float(panel.z))
+		body.add_child(shape)
 	body.set_meta("item_id",info.id)
 	items.append(info)
 	if rebuild:rebuild_navigation()
@@ -666,6 +751,7 @@ func serialize_items() -> Array:
 		if item_level(item)!=0:entry["level"]=item_level(item)
 		if str(item.kind)=="floor_lamp" and not bool(item.get("lit",true)):entry["lit"]=false
 		if str(item.kind)=="memorial" and str(item.get("for",""))!="":entry["for"]=str(item.get("for"))
+		if LifeCatalog.paints(str(item.kind)):entry["paint"]=LifeCatalog.paint_of(item)
 		out.append(entry)
 	if construction:out.append(construction.snapshot())
 	return out
@@ -678,25 +764,45 @@ func rebuild_navigation() -> void:
 	navigation.cell_size=Vector2(.25,.25)
 	navigation.diagonal_mode=AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
 	navigation.update()
+	# The compatibility grid is 73x65 cell positions, and it used to re-derive
+	# every furnishing's panels inside the cell loop: roughly five thousand
+	# allocations and kind checks per rebuild. The panels do not depend on the
+	# cell, so they are resolved once here. This rebuild runs on every build
+	# edit and on every home load, and it was the single largest stall in the
+	# game (about 1.1 s with a handful of furnishings).
+	var solid_panels:Array[Rect2]=[]
+	for item:Dictionary in items:
+		if item_level(item)!=0:continue
+		if str(item.kind) in ["meal","plate","puddle"] or bool(item.get("derived",false)) or LifeCatalog.passable(str(item.kind)):continue
+		for panel:Rect2 in item_panels(item):solid_panels.append(panel.grow(.16))
+	# A non-furnishing blocker (the parked food truck) contributes the same way.
+	for record:Dictionary in extra_obstacles:
+		if int(record.get("level",0))!=0:continue
+		var half:=Vector2(float(record.get("w",0)),float(record.get("d",0)))*.5
+		solid_panels.append(Rect2(Vector2(float(record.get("x",0)),float(record.get("z",0)))-half,half*2).grow(.16))
+	# `point_blocked` grows every wall rectangle by 0.15 m on each call, so it
+	# allocates a fresh Rect2 per wall per cell. The grown rectangles do not
+	# depend on the cell, so they are resolved once for the whole grid.
+	var solid_walls:Array[Rect2]=[]
+	for record:Dictionary in construction.records:
+		if int(record.get("level",0))==0:solid_walls.append(construction.wall_rect(record).grow(.15))
 	for x in range(-36,37):
 		for z in range(-28,37):
 			var p=Vector2(x*.25,z*.25)
-			var solid:bool = construction.point_blocked(p)
-			for item in items:
-				if item_level(item)!=0:continue
-				if item.kind in ["meal","plate","puddle"] or bool(item.get("derived",false)) or LifeCatalog.passable(str(item.kind)):continue
-				var local:Vector3=item.node.to_local(Vector3(p.x,.16,p.y))
-				var extent:Vector2=item.size*.5+Vector2(.16,.16)
-				if absf(local.x)<extent.x and absf(local.z)<extent.y:solid=true;break
+			var solid:=false
+			for wall:Rect2 in solid_walls:
+				if wall.has_point(p):solid=true;break
+			if not solid:
+				for panel:Rect2 in solid_panels:
+					if panel.has_point(p):solid=true;break
 			navigation.set_point_solid(Vector2i(x,z),solid)
 	var result:Dictionary=construction.validated_state()
 	if not bool(result.ok):last_layout_error=str(result.error);return
 	var obstacles:Array=[]
 	for item:Dictionary in items:
 		if str(item.kind) in ["meal","plate","puddle"] or bool(item.get("derived",false)) or LifeCatalog.passable(str(item.kind)):continue
-		var source:Dictionary={"kind":str(item.kind),"x":item.node.position.x,"z":item.node.position.z,"rotation":item.node.rotation_degrees.y}
-		var area:Rect2=furnishing_rect(source)
-		obstacles.append({"id":str(item.id),"level":item_level(item),"x":area.get_center().x,"z":area.get_center().y,"w":area.size.x,"d":area.size.y})
+		for record:Dictionary in furnishing_obstacles(item,item_level(item)):obstacles.append(record)
+	obstacles.append_array(extra_obstacles)
 	var built:Dictionary=lot_navigation.rebuild(result.state,obstacles)
 	if not bool(built.ok):last_layout_error=str(built.error)
 
@@ -717,9 +823,13 @@ func nearest_free(p:Vector3) -> Vector2i:
 	return cell
 
 func path_to(from:Vector3,to:Vector3) -> PackedVector3Array:
-	if not construction.building_state.is_empty():
-		var result:Dictionary=route_to(from,to)
-		return result.points if bool(result.ok) else PackedVector3Array()
+	# The floor graph is the authority a walker is held to: every cell carries
+	# the full body radius. The ground compatibility grid is a coarser model
+	# that can still admit a tile the walker is refused, so plan on the graph
+	# first and only fall back to the grid when the graph has no route at all.
+	var planned:Dictionary=route_to(from,to)
+	if bool(planned.ok):return planned.points
+	if not construction.building_state.is_empty():return PackedVector3Array()
 	var points:PackedVector3Array=[]
 	var cells=navigation.get_id_path(nearest_free(from),nearest_free(to))
 	for c in cells:points.append(Vector3(c.x*.25,.16,c.y*.25))
@@ -929,10 +1039,11 @@ func can_place(kind:String,p:Vector3,angle:float) -> bool:
 	for item in items:
 		if item_level(item)!=level:continue
 		if item.kind in ["meal","plate","puddle"] or bool(item.get("derived",false)) or LifeCatalog.passable(str(item.kind)):continue
-		var s:Vector2=item.size
-		if int(roundf(item.node.rotation_degrees.y/90))%2:s=Vector2(s.y,s.x)
-		var other=Rect2(Vector2(item.node.position.x,item.node.position.z)-s/2,s)
-		if rect.grow(.05).intersects(other):return false
+		# A candidate stands free when it misses every solid band of what is
+		# already there, so a car fits in the garage's hollow interior even
+		# though the building's own declared outline covers that floor.
+		for panel:Rect2 in item_panels(item):
+			if rect.grow(.05).intersects(panel):return false
 	return true
 
 func wall_snap(kind:String,p:Vector3,reach:float=1.0) -> Dictionary:
@@ -1252,9 +1363,8 @@ func _clear_coaching_space(at:Vector3) -> bool:
 	for other:Dictionary in items:
 		if item_level(other)!=level:continue
 		if str(other.kind)=="puddle" or LifeCatalog.passable(str(other.kind)):continue
-		var local:Vector3=other.node.to_local(at)
-		var extent:Vector2=other.size*.5+Vector2(.29,.29)
-		if absf(local.x)<extent.x and absf(local.z)<extent.y:return false
+		for panel:Rect2 in item_panels(other):
+			if panel.grow(.29).has_point(Vector2(at.x,at.z)):return false
 	return true
 
 func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -> Dictionary:

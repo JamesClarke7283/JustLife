@@ -6,13 +6,13 @@ Only the shared Fun recommendation changes. Existing controllers may ask for it 
 
 ## Observed day and tradeoffs
 
-The candidate loads the same actual Day 2 08:08.4 checkpoint as the current clock/courtesy baseline. Initial state, decoded save, nine inherited commands and the first 37 complete trace rows match. At 08:23.6 Rowan chooses Relax instead of Paint. Relax physically begins at 08:32.4 and completes at 09:12.4. After further recovery and travel, Rowan enters work at 11:56.4 and earns §114 at 17:00 for the remaining 303.6 minutes. This is genuine late attendance, not punctual arrival or a full-length shift. Both children still complete school.
+The candidate loads the same actual Day 2 08:08.4 checkpoint as the current clock/courtesy baseline. Initial state, decoded save, nine inherited commands and the first 37 complete trace rows match. At 08:23.6 Rowan chooses Relax instead of Paint. Relax physically begins at 08:32.4 and completes at 09:12.4. After further recovery and travel, Rowan enters work at 11:56.4 and earns ℒ114 at 17:00 for the remaining 303.6 minutes. This is genuine late attendance, not punctual arrival or a full-length shift. Both children still complete school.
 
 The day is not uniformly better. Rowan reaches zero Fun for 59.2 sampled game minutes, beginning during work at 16:23.6 and ending after return with painting at 17:22.8. A later paid painting session produces 22.8 minutes at zero Hygiene before Shower recovery, matching the same mechanism and timings previously observed in Ellis. Ellis instead has 40.8 minutes at zero Fun while waiting at home for occupied painting and eventually choosing Read; minimum Energy falls from 12.325 to 9.305. Casey's existing 36.4-minute zero-Fun episode remains.
 
 Some journeys also take longer: Ellis's sampled approach time rises from 160.8 to 194.4 game minutes and Casey's from 81.2 to 162.8, including 39.2 minutes in furnishing queues. Rowan's longest exactly stationary nonwaiting Paint approach grows from 21.2 to 40 minutes the next morning, then resolves and completes. These observations do not establish a navigation improvement.
 
-Final household funds rise from §1,741 to §2,060 in this one continuation. The §319 difference comprises §116 additional work pay, §35 net painting proceeds, §8 less snack expenditure and §160 other wallet income alongside two new Friend wants. Both ledgers reconcile; the whole difference is not a wage increase.
+Final household funds rise from ℒ1,741 to ℒ2,060 in this one continuation. The ℒ319 difference comprises ℒ116 additional work pay, ℒ35 net painting proceeds, ℒ8 less snack expenditure and ℒ160 other wallet income alongside two new Friend wants. Both ledgers reconcile; the whole difference is not a wage increase.
 
 ## Verification and scope
 

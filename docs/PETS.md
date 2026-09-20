@@ -4,7 +4,7 @@ Original household pets. A Lifelet household can adopt cats and dogs, shape them
 
 ## Buying a pet
 
-**Phone → Juniper Pet Shop** (or **Adopt a cat or dog**) opens the shop. A cat costs §320 and a dog §480. The price is charged once, at confirmation; canceling or closing the shop leaves the household and its funds exactly as they were, the same contract the phone's adoption flow uses.
+**Phone → Juniper Pet Shop** (or **Adopt a cat or dog**) opens the shop. A cat costs ℒ320 and a dog ℒ480. The price is charged once, at confirmation; canceling or closing the shop leaves the household and its funds exactly as they were, the same contract the phone's adoption flow uses.
 
 The shop reviews six candidates per visit (`LifePets.candidate(serial, choice)`), which always include both species and both sexes, so no visit hides a species behind a reroll. A review is reproducible: the same serial and choice always describe the same animal, so reopening the shop out of order never changes what is offered.
 
@@ -37,9 +37,9 @@ Accessories are ordinary catalogue furnishings under the **Pets** category, boug
 
 | Item | Price | Offered when |
 | --- | --- | --- |
-| Food & water bowl | §60 | the household owns any pet |
-| Climbing cat tree | §240 | the household owns a cat |
-| Garden dog kennel | §320 | the household owns a dog |
+| Food & water bowl | ℒ60 | the household owns any pet |
+| Climbing cat tree | ℒ240 | the household owns a cat |
+| Garden dog kennel | ℒ320 | the household owns a dog |
 
 The shop only offers what the household can use and refuses the rest with a reason (`LifePets.accessory_kind_error`).
 
@@ -48,6 +48,14 @@ The shop only offers what the household can use and refuses the rest with a reas
 Each pet gets a `LifePetActor` body in the world: its authored model, its mixed coat, and a small idle where the head turns, the tail sways and the legs stay planted, becoming a diagonal-pair trot while it walks in from the street. A paused household freezes its pets too. Clicking a pet opens its card with its species, sex, coat description and a live preview.
 
 The body is presentation. The household owns the saved record, the fee and the arrival policy, so a save always resumes the same animals in the same places — on load, `main.sync_pets()` rebuilds every body from `household.pets`.
+
+## Looking after itself
+
+A pet's own needs drain on the shared clock: hunger, thirst, energy, cleanliness, bladder and fun. When one falls under `LifePets.NEED_URGENT` the animal walks to what answers it — the food and water bowl for hunger and thirst, its own species bed for a nap — uses it until the need is comfortable, then walks back to its own spot in the house. A pet whose indoor needs are all comfortable takes itself outside through the front door: to a landscape tree for a wee, or onto the open garden for a wander and a play. Every errand is a real route on the authoritative floor graph, planned with other bodies treated as obstacles exactly as a Lifelet's own route is, and a refused step learns the corridor and replans rather than pushing at a wall.
+
+A cat keeps its own coat up by grooming (`LifePets.CAT_GROOM_PER_HOUR` outpaces the drain), so its cleanliness never needs help. A dog's coat does not, so a dog is bathed by a person — the pet card offers **Bathe** for a dog and refuses a cat with the reason that cats lick themselves clean. A **Tummy rub** is offered for a dog only. Both a bath and a tummy rub are remembered on the pet's own record (`last_bathed_by`, `last_affection_by`), and the card counts the cuddles.
+
+A pet with nothing to walk to simply waits: the need stays low until the household places a bowl or a bed, and its card says so. The card also offers teaching a trick; a trick is learned across several sessions (`LifePets.TRICK_SESSIONS`), and progress toward the next one is kept on the record.
 
 ## Save format
 

@@ -132,7 +132,7 @@ func _school_birthday() -> void:
 	await press("Celebrate a birthday")
 	check(_visible_text_contains("become a teen"),"Child birthday dialog names the next stage with correct wording.")
 	await screenshot("09_child_birthday_choice")
-	await press("Celebrate · §30")
+	await press("Celebrate · ℒ30")
 	await press("▶")
 	await wait_until(func()->bool:return active_is("birthday",.15),"actual child birthday begins",40)
 	await screenshot("10_child_birthday_active",true,false)
