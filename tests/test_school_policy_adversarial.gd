@@ -137,8 +137,11 @@ func _school_preparation_boundaries() -> void:
 		check(not sim.is_away() and sim.action_queue.is_empty(), "The departure arrival recheck refuses school while %s is critically low." % need)
 
 func _enrollment_cutoff() -> void:
-	for time: float in [720.0,720.001,780.0,840.0]:
+	# The class-start cutoff is the same 14:00 (840) the attendance window allows,
+	# so a birthday at the last legal class start still reaches that day's lesson
+	# and only a later one defers to the next school day.
+	for time: float in [720.0,720.001,780.0,840.0,840.001,900.0]:
 		var pupil: LifeSim = setup("child",time)
 		pupil.celebrate_birthday()
-		check(pupil.education.first_class_day==(1 if time<=720.0 else 2), "New term begins on an attendable campus day at %s." % time)
+		check(pupil.education.first_class_day==(1 if time<=840.0 else 2), "New term begins on an attendable campus day at %s." % time)
 		check(setup("teen").restore_state(snapshot(pupil)).ok, "Noon enrollment rollover remains saveable at %s." % time)
