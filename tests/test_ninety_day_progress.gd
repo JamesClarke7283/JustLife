@@ -242,11 +242,16 @@ func _report_progress(start: Dictionary) -> void:
 	await frames(2)
 
 func _save_ninety() -> void:
+	# `_compare_saved` reads the lot and the floor finish, so the checkpoint
+	# records them alongside the state it already kept.
 	var expected: Dictionary = {"state":app.sim.get_state(),"player":vec(app.player.position),
 		"world":app.world.serialize_items(),"selected_index":app.household.selected_index,
-		"members":[]}
+		"lot":app.selected_lot,"floor":app.floor_color,"members":[]}
 	for member: Dictionary in app.household.members:
-		expected.members.append({"id":member.id,"state":member.sim.get_state()})
+		# `_compare_saved` reads each member's body position too, so the
+		# checkpoint records it alongside the state.
+		expected.members.append({"id":member.id,"state":member.sim.get_state(),
+			"position":vec(app.world.actors[member.id].position)})
 	await _public_save("Reed family — ninety days")
 	var file: FileAccess = FileAccess.open("user://ninety_expected.json",FileAccess.WRITE)
 	file.store_string(JSON.stringify(expected));file.close()
