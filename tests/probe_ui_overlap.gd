@@ -231,14 +231,73 @@ func _run() -> void:
 		await measure(str(opener["name"]))
 		app.close_overlay()
 
+	# The panels this objective adds or touches, so a control that a real player
+	# has to press is measured for reachability like every older panel.
+	var mirror: Dictionary = app.world.closest_item("mirror", Vector3.ZERO)
+	if not mirror.is_empty():
+		for tab: String in ["clothes", "hair", "makeup", "jewelry"]:
+			app.show_wardrobe_panel(str(mirror.id), tab)
+			await measure("wardrobe_" + tab)
+			app.close_overlay()
+
+	var dressing: Dictionary = app.world.closest_item("dressing_table", Vector3.ZERO)
+	if not dressing.is_empty():
+		app.show_wardrobe_panel(str(dressing.id), "makeup")
+		await measure("dressing_table_makeup")
+		app.close_overlay()
+
+	var dining: Dictionary = app.world.closest_item("dining", Vector3.ZERO)
+	if not dining.is_empty():
+		var food: LifeMeals = app.household.meals
+		var now: float = app.meal_flow.now()
+		var batch: Dictionary = food.create_batch("garden_skillet", str(app.household.selected_id()), 2, app.current_venue, now)
+		food.set_batch_location(str(batch.id), "surface", str(dining.id), dining.node.global_position, now)
+		app.meal_flow.sync_world(true)
+		app.show_food_offers(str(batch.id))
+		await measure("food_offers")
+		app.close_overlay()
+		app.meal_flow.show_leftovers(str(batch.id))
+		await measure("leftovers")
+		app.close_overlay()
+
+	var stove: Dictionary = app.world.closest_item("stove", Vector3.ZERO)
+	if not stove.is_empty():
+		app.meal_flow.show_recipes(str(stove.id))
+		await measure("recipes")
+		app.close_overlay()
+
+	for kind: String in ["fridge", "rubbish_bin", "wardrobe", "mirror", "stove", "bed", "desk", "toybox"]:
+		var item: Dictionary = app.world.closest_item(kind, Vector3.ZERO)
+		if item.is_empty():
+			continue
+		app.show_interactions(item, app.get_viewport().get_visible_rect().size * 0.5)
+		await measure("interactions_" + kind)
+		app.close_overlay()
+
+	var owned: Array = app.household.pets.get("pets", [])
+	if not owned.is_empty():
+		app.show_pet_card(str(owned[0].id))
+		await measure("pet_card")
+		app.close_overlay()
+
 	app.set_build_mode(true)
 	await measure("build_catalog")
-	for category: String in ["Kitchen", "Bathroom", "Activities", "Decor", "Structure"]:
+	for category: String in LifeCatalog.CATEGORIES:
 		app.catalog_category = category
 		app.draw_live()
 		await measure("build_" + category.to_lower())
 	app.show_storage()
 	await measure("storage")
+	app.close_overlay()
+	# The variant picker: every style, size and colour button has to be reachable,
+	# and its wrapped swatch grid is exactly the shape that used to overlap.
+	for kind: String in ["pool", "tree_garden", "fence", "car", "game_trampoline"]:
+		app.pick_furnishing(kind)
+		await measure("variant_" + kind)
+		app.close_overlay()
+	# And the post box's own list.
+	app.show_post_box()
+	await measure("post_box")
 	app.close_overlay()
 
 	print("UI_OVERLAP_RESULT ", JSON.stringify({"screens": screens, "checks": checks, "failures": failures}))

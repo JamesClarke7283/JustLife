@@ -24,16 +24,31 @@ func _run()->void:
 	world.construction.set_roof_visibility(true)
 	check(world.construction.roof_nodes.size()==1 and world.construction.roof_nodes.values()[0].visible,"World renderer builds the parameterized roof from its persisted record.")
 	var scene_id:int=world.house.get_instance_id();var original:Array=world.serialize_items().duplicate(true)
+	# A home shifted as far toward the rim as its support footprint allows: the
+	# bearing walls still fit, but the roof's 28 cm eaves cross the lot edge.
+	# Derived from the lot, so a further garden enlargement keeps the fixture at
+	# the real rim instead of pinning a stale one.
+	var edge_delta:float=Building.lot().end.x-4.0-.08
 	var edge:Dictionary=base()
 	for group:String in ["walls","floors"]:
-		for entry:Dictionary in edge[group]:entry.x+=4.75
-	var record:Dictionary=roof_record();record.x+=4.75
+		for entry:Dictionary in edge[group]:entry.x+=edge_delta
+	var record:Dictionary=roof_record();record.x+=edge_delta
 	check(Building.validate(edge).is_empty(),"Edge fixture support footprint and bearing walls are valid inside the lot.")
 	var rejected:Dictionary=Building.propose(edge,{"op":"add","collection":"roofs","record":record},3000)
 	check(not bool(rejected.ok) and str(rejected.error).contains("eaves"),"A roof whose support fits but full eaves cross the lot edge is rejected.")
+	# The same home far enough inside that the eaves clear: this is a garden-room
+	# position the old 18x16 roof bound refused even though the lot had already
+	# grown to 24x18, so a legal roof out in the garden could not be bought.
+	var garden_delta:float=Building.lot().end.x-4.28-.02
+	var garden:Dictionary=base()
+	for group:String in ["walls","floors"]:
+		for entry:Dictionary in garden[group]:entry.x+=garden_delta
+	var garden_roof:Dictionary=roof_record();garden_roof.x+=garden_delta
+	var garden_quote:Dictionary=Building.propose(garden,{"op":"add","collection":"roofs","record":garden_roof},3000)
+	check(bool(garden_quote.ok),"A roof whose eaves stay inside the enlarged garden is accepted (offset %.2f)." % garden_delta)
 	var bad:Dictionary=quote.after.duplicate(true)
 	for group:String in ["walls","floors","roofs"]:
-		for entry:Dictionary in bad[group]:entry.x+=4.75
+		for entry:Dictionary in bad[group]:entry.x+=edge_delta
 	check(not bool(world.load_home([bad]).ok) and world.house.get_instance_id()==scene_id and world.serialize_items()==original,"Malformed roof ingress cannot replace the current home or its refrigerator.")
 	var slab:Dictionary=Building.propose(quote.after,{"op":"add","collection":"floors","record":{"level":1,"x":0.0,"z":0.0,"w":8.0,"d":10.0,"material":"cfa97e","supports":["west","east"]}},3000)
 	check(not bool(slab.ok) and str(slab.error).contains("height envelope"),"An upper slab cannot intersect an existing lower roof's full vertical extent.")

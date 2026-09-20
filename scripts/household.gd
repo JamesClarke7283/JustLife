@@ -16,6 +16,9 @@ signal member_passed_away(id: String, name: String, memorial_kind: String, payou
 
 const SAVE_PATH = "user://justlife_save.json"
 const MAX_MEMBERS = 8
+## Raised when the household's home cover changes, so the app can keep the
+## property record in step with the sims and the two can never disagree.
+signal insurance_changed(policy_id: String)
 var members: Array = []
 var selected_index: int = 0
 var funds: int = 2500
@@ -27,6 +30,10 @@ var restoring: bool = false
 var journeys: Dictionary = {}
 var physical_snapshot_provider:Callable=Callable()
 var extras_provider:Callable=Callable()
+## Where the household's post boxes stand. The controller owns the world's layout,
+## so it answers this; the household only asks whether there is anywhere to post
+## to, rather than reaching into the world itself.
+var post_box_provider:Callable=Callable()
 ## Reports what everything placed in the home is worth. Pulled when a bill is
 ## issued, so the amount always reflects the house the player has built.
 var home_value_provider:Callable=Callable()
@@ -34,9 +41,20 @@ var extras_restore_provider:Callable=Callable()
 var family_graph: Dictionary = LifeFamilyGraph.fresh()
 var adoptions: Dictionary = LifeAdoption.fresh()
 var pets: Dictionary = LifePets.fresh()
+## The household's post box. Letters and bills are filed here when the household
+## owns a post box; without one, bills arrive by notice exactly as before.
+var mail: Dictionary = LifeMail.fresh()
 var pregnancy: Dictionary = LifeBabyPlan.fresh()
 var _family_roles: Dictionary = {}
 var meals: LifeMeals = LifeMeals.new()
+## The household's kitchen: what is in the fridge, and the delivery on its way.
+## A household restocks by ordering from the computer rather than by cooking
+## straight out of the fridge, so this is real state rather than a convenience.
+var groceries: Dictionary = LifeGroceries.fresh()
+## What the household runs: the businesses it owns, who they employ, and what
+## they have paid and made. A business is bought at a high rung of the skill it
+## needs, so owning one is what a long career builds towards.
+var business: Dictionary = {}
 var sanitation: LifeSanitation = LifeSanitation.new()
 var cooperations: Array = []
 var cooperation_serial: int = 0
@@ -58,6 +76,7 @@ func new_household(profiles: Array) -> void:
 	journeys.clear()
 	adoptions=LifeAdoption.fresh()
 	pets=LifePets.fresh()
+	mail=LifeMail.fresh()
 	pregnancy=LifeBabyPlan.fresh()
 	meals.clear()
 	sanitation.clear()
@@ -116,10 +135,51 @@ func connect_member(id: String, sim: LifeSim) -> void:
 				var relationship:Dictionary=sim.relationships[str(action.target_id)].duplicate(true)
 				target.receive_social_result(id,str(sim.character.name),str(sim.character.life_stage),relationship,str(action.id),action.get("social_events",[]))
 				target.needs.social=minf(100,target.needs.social+16)
+			# Playing together in the garden is a shared moment: whoever else is
+			# at the same furnishing shares the fun and the friendship, which is
+			# what the swing, the sand pit and the garden swing are for.
+			if str(action.id) in [LifeOutdoorActs.ACTION_ID, LifeOutdoorActs.PUSH_ID]:
+				_credit_garden_company(id, action, sim)
 			_sync_social_context()
 			member_action_finished.emit(id,action))
 	sim.notice.connect(func(message:String):
 		if not restoring:notice.emit(message))
+
+## Share one garden activity with whoever else is standing at the same
+## furnishing: they gain the fun, and the two of them gain friendship with each
+## other. A push at the swings reaches the children on them, so the rule "an
+## adult pushes the children and it lifts their fun and friendship" is real.
+func _credit_garden_company(actor_id: String, action: Dictionary, actor: LifeSim) -> void:
+	var place: String = str(action.get("target_id", ""))
+	if place.is_empty(): return
+	var present: Array = []
+	for member: Dictionary in members:
+		if str(member.id) == actor_id: continue
+		var other: LifeSim = member.sim
+		var theirs: Dictionary = other.get_current_action()
+		if str(theirs.get("target_id", "")) != place: continue
+		present.append(member)
+	if present.is_empty(): return
+	var pushing: bool = str(action.id) == LifeOutdoorActs.PUSH_ID
+	for member: Dictionary in present:
+		var other: LifeSim = member.sim
+		other.needs["fun"] = minf(100.0, float(other.needs["fun"]) + LifeOutdoorActs.PUSH_CHILD_FUN)
+		other.needs["social"] = minf(100.0, float(other.needs["social"]) + LifeOutdoorActs.PUSH_CHILD_SOCIAL)
+		# Both directions of the friendship: the actor gains, and so does the one
+		# who was actually there.
+		for pair: Array in [[actor, other], [other, actor]]:
+			var from_sim: LifeSim = pair[0]
+			var to_sim: LifeSim = pair[1]
+			var to_id: String = str(to_sim.cooperation_member_id)
+			if not from_sim.relationships.has(to_id): continue
+			var rel: Dictionary = from_sim.relationships[to_id]
+			# A push is the deeper moment; playing alongside is a smaller one.
+			var lift: float = 14.0 if pushing else 8.0
+			rel["friendship"] = clampf(float(rel.friendship) + lift, -100.0, 100.0)
+			from_sim.relationships[to_id] = rel
+		if pushing:
+			other.add_moodlet("Pushed on the swings", "Happy", "%s pushed you on the swings." % str(actor.character.name), 120, 2)
+
 
 func selected() -> LifeSim:
 	return null if members.is_empty() else members[selected_index].sim
@@ -224,11 +284,34 @@ func tick(delta: float) -> void:
 			robber.robbery_check()
 			funds=robber.funds
 			_sync_wallet()
+		# Every Lifelet on the criminal line of work takes their own chance of
+		# being caught once a day, on the shared clock, so a practised thief's
+		# lower risk is something the player sees rather than reads about.
+		_criminal_tick()
+		# A sentence ends on the shared clock, so a Lifelet really comes home on
+		# the day their record says they are free.
+		_prison_release_tick()
+		# A bill that has reached its due day is settled from the shared purse, so
+		# the utilities are not lost for good while nobody is at the phone. A bill
+		# still inside its window stays the player's own decision.
+		if not bill().is_empty():
+			pay_due_bill()
+	# A grocery delivery arrives when its van does, on the shared clock, so a
+	# household that ordered one is restocked while the player simply plays.
+	_grocery_tick()
+	# An owned business pays its takings on the same shared clock.
+	_business_tick()
 	# Conception to birth runs on the shared game clock, so fast speed, pause
 	# and a save/load all agree about when the baby is due.
 	pregnancy_tick()
 	_caregiving_tick()
+	# A pet's own day runs on the same clock, so a paused household freezes its
+	# pets' needs exactly as it freezes its Lifelets.
+	# The clock wraps at midnight, so a tick that crosses a day boundary owes the
+	# pets the rest of the old day as well as the new one.
+	_tick_pet_care(float(minutes) - start_minutes + float(day - start_day) * 1440.0)
 	_sync_wallet()
+	_sync_grocery_service()
 	if paired:
 		_reconcile_cooperations()
 		_end_cooperation_change()
@@ -301,7 +384,7 @@ func get_state(world_data: Array = []) -> Dictionary:
 	adopt_selected_changes()
 	var states:Array=[]
 	for member in members:states.append({"id":member.id,"state":member.sim.get_state()})
-	var result:Dictionary={"household_version":2 if not journeys.is_empty() else 1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"pets":pets.duplicate(true),"pregnancy":pregnancy.duplicate(true),"birth_serial":birth_serial,"memorials":memorials.duplicate(true),"heirlooms":heirlooms.duplicate(true),"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state(),"sanitation":sanitation.get_state(),"extras":extras_provider.call() if extras_provider.is_valid() else {}}
+	var result:Dictionary={"household_version":2 if not journeys.is_empty() else 1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"pets":pets.duplicate(true),"mail":mail.duplicate(true),"pregnancy":pregnancy.duplicate(true),"birth_serial":birth_serial,"memorials":memorials.duplicate(true),"heirlooms":heirlooms.duplicate(true),"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state(),"groceries":groceries.duplicate(true),"business":business.duplicate(true),"sanitation":sanitation.get_state(),"extras":extras_provider.call() if extras_provider.is_valid() else {}}
 	if not journeys.is_empty():result.journeys=journeys.duplicate(true)
 	if physical_snapshot_provider.is_valid():
 		var physical:Dictionary=physical_snapshot_provider.call()
@@ -486,6 +569,10 @@ func restore_state(data: Dictionary) -> Dictionary:
 	if not pet_error_text.is_empty():
 		for candidate:Dictionary in candidates:candidate.sim.free()
 		return {"ok":false,"error":pet_error_text}
+	var mail_error:String=LifeMail.validate(data.get("mail",null))
+	if not mail_error.is_empty():
+		for candidate:Dictionary in candidates:candidate.sim.free()
+		return {"ok":false,"error":mail_error}
 	var pregnancy_data:Variant=data.get("pregnancy",null)
 	var pregnancy_error:String=LifeBabyPlan.validate(pregnancy_data,data)
 	if pregnancy_error.is_empty():pregnancy_error=LifeBabyPlan.validate_pending(pregnancy_data,data,pregnancy_data if pregnancy_data is Dictionary else {})
@@ -517,6 +604,16 @@ func restore_state(data: Dictionary) -> Dictionary:
 	var guest:Dictionary={}
 	var saved_visit:Variant=LifeHomeVisit.saved_visit(data)
 	if saved_visit!=null and not saved_visit.value.visit.is_empty():guest=saved_visit.value.visit
+	# The kitchen is validated before it is adopted, so a corrupt delivery
+	# cannot strand a household with food that never arrives.
+	var business_error: String = LifeBusiness.validate_owned(data.get("business"))
+	if not business_error.is_empty():
+		for c in candidates: c.sim.free()
+		return {"ok":false,"error":business_error}
+	var grocery_error: String = LifeGroceries.validate(data.get("groceries"))
+	if not grocery_error.is_empty():
+		for c in candidates: c.sim.free()
+		return {"ok":false,"error":grocery_error}
 	var meal_data: Variant = data.get("meals",LifeMeals.new().get_state())
 	var meal_error: String = LifeMeals.validate(meal_data,ids,(lead.day-1)*1440.0+lead.minutes,guest)
 	if meal_error.is_empty():meal_error=LifeMeals.validate_actions(meal_data,data.members,journey_result.get("custody",{}),str(journey_result.get("venue","")),guest)
@@ -544,9 +641,20 @@ func restore_state(data: Dictionary) -> Dictionary:
 				candidates[index].sim.action_queue[action_index].phase=data.members[index].state.action_queue[action_index].phase
 	adoptions=data.get("adoptions",LifeAdoption.fresh()).duplicate(true)
 	pets=LifePets.fresh() if not data.get("pets") is Dictionary else (data.get("pets") as Dictionary).duplicate(true)
+	# A household saved before it had a post box loads with an empty one rather
+	# than losing mail it never had.
+	mail=LifeMail.fresh() if not data.get("mail") is Dictionary else (data.get("mail") as Dictionary).duplicate(true)
+	# A pet saved before pets had a condition loads with a fresh one rather than
+	# being left without needs for the rest of the save's life.
+	for pet:Dictionary in pets.get("pets",[]):
+		if not pet.get("care") is Dictionary:pet["care"]=LifePetCare.fresh()
 	pregnancy=LifeBabyPlan.fresh() if pregnancy_data==null else (pregnancy_data as Dictionary).duplicate(true)
 	birth_serial=int(data.get("birth_serial",1))
 	meals.restore(meal_data)
+	groceries=LifeGroceries.from_save(data.get("groceries"))
+	# A household that owns no business holds no record at all; the validator
+	# above has already refused anything that does not agree with the table.
+	business=(data.get("business") as Dictionary).duplicate(true) if data.get("business") is Dictionary else {}
 	sanitation.restore(sanitation_data)
 	if extras_restore_provider.is_valid():extras_restore_provider.call(data.get("extras",null))
 	for old in members:old.sim.queue_free()
@@ -825,6 +933,36 @@ func pay_bill() -> Dictionary:
 	return result
 
 
+## Settle the outstanding bill from the shared purse.
+##
+## A player pays from the phone or by reading the bill's letter, and an
+## autonomous household must be able to do the same: a bill nobody ever settles
+## cuts the utilities for good, so a home with a full fridge and a healthy purse
+## can no longer cook, bathe or watch anything. That is what an unattended
+## ninety-day run found — the household ate snacks beside fourteen unused meals
+## for eighty-four days. Called on the household's own clock when a bill falls
+## due, so the upkeep a player would do is done rather than forgotten.
+func pay_due_bill() -> Dictionary:
+	var owner: LifeSim = bill_owner()
+	if owner == null:
+		return {"ok": false, "reason": "There is no household to bill."}
+	owner.funds = funds
+	var record: Dictionary = bill()
+	if record.is_empty():
+		return {"ok": false, "reason": "There is nothing due."}
+	# Only a bill that has actually fallen due is settled automatically. A bill
+	# still inside its payment window stays the player's own choice, which is the
+	# design: an unpaid bill is a decision until it comes due.
+	if day < int(record.get("due_day", 0)):
+		return {"ok": false, "reason": "The bill is not due yet."}
+	var result: Dictionary = owner.pay_bill()
+	if bool(result.get("ok", false)):
+		funds = owner.funds
+		_sync_bill_mirror()
+		_sync_wallet()
+	return result
+
+
 ## The household's home insurance, empty while uninsured. Mirrored from the
 ## owner so the phone shows the same cover whoever is selected.
 func insurance() -> Dictionary:
@@ -845,6 +983,7 @@ func buy_insurance(policy_id: String = "home") -> Dictionary:
 		funds = owner.funds
 		_sync_bill_mirror()
 		_sync_wallet()
+		insurance_changed.emit(policy_id)
 	else:
 		result["error"] = str(result.get("error", result.get("reason", "That policy could not be bought.")))
 	return result
@@ -857,7 +996,258 @@ func cancel_insurance() -> Dictionary:
 		return {"ok": false, "error": "There is no household to insure."}
 	var result: Dictionary = owner.cancel_insurance()
 	_sync_bill_mirror()
+	if bool(result.get("ok", false)): insurance_changed.emit("")
 	return result
+
+
+## Whether a Lifelet may cook right now, as the reason they may not. Empty means
+## the kitchen has food. The stove's menu and `begin_current_action` both read
+## this, so a greyed-out recipe and a refused cook never disagree.
+func cooking_availability(_sim: LifeSim, _target_id: String = "") -> String:
+	if not LifeGroceries.can_cook(groceries):
+		return "The kitchen is empty. Order a delivery from the computer, or from the fridge."
+	return ""
+
+
+## Whether a Lifelet may order right now, as the reason they may not. Empty means
+## the shop can be ordered: a delivery already on its way, a purse that cannot
+## afford the smallest basket, or a kitchen that is already stocked all refuse it
+## with their own reason, so a menu row and a refused order never disagree.
+func grocery_availability() -> String:
+	if LifeGroceries.has_order(groceries):
+		return LifeGroceries.order_error(groceries, "small", funds)
+	if not LifeGroceries.needs_restock(groceries):
+		return "The kitchen is stocked. A shop now would only spoil."
+	return LifeGroceries.order_error(groceries, "small", funds)
+
+
+## Order the largest basket the household can afford, for a Lifelet shopping from
+## the kitchen rather than from the computer. The smallest basket is the bar: a
+## household that cannot afford even that is refused and told why, exactly as the
+## computer's own panel refuses it.
+func order_groceries_best() -> Dictionary:
+	var basket_id: String = LifeGroceries.best_basket_for(groceries, funds)
+	if basket_id.is_empty():
+		return {"ok": false, "error": LifeGroceries.order_error(groceries, "small", funds)}
+	return order_groceries(basket_id)
+
+
+## Take one meal out of the kitchen for a recipe or a snack. Refused with a
+## reason when the kitchen is empty, so nothing is cooked from nothing.
+func take_meal_for(_sim: LifeSim, _action_id: String = "") -> Dictionary:
+	var result: Dictionary = LifeGroceries.take_meal(groceries)
+	if not bool(result.ok):
+		return result
+	groceries = result.state
+	_sync_grocery_mirror()
+	return result
+
+
+## Order a grocery delivery from the computer. The shared purse pays, and the van
+## is given its own arrival time; a household that orders and cooks in the same
+## minute has to wait for it like anybody else.
+func order_groceries(basket_id: String = "weekly") -> Dictionary:
+	var owner: LifeSim = bill_owner()
+	if owner == null:
+		return {"ok": false, "error": "There is no household to order for."}
+	var reason: String = LifeGroceries.order_error(groceries, basket_id, funds)
+	if not reason.is_empty():
+		return {"ok": false, "error": reason}
+	var placed_day: int = day if owner.day == day else day
+	var placed_minutes: float = minutes if absf(owner.minutes - minutes) < .0001 else minutes
+	var result: Dictionary = LifeGroceries.order(groceries, basket_id, funds, placed_day, placed_minutes)
+	if not bool(result.ok):
+		return result
+	groceries = result.state
+	funds = int(result.funds)
+	_sync_wallet()
+	owner.funds = funds
+	owner._emit_notice("Groceries ordered. A delivery of %d meals arrives %s." % [int(result.meals), "today" if int(result.day) == placed_day else "tomorrow"])
+	owner._emit_changed()
+	return result
+
+
+## What the van has brought, if anything is due. The household drives this from
+## its own clock, so a delivery arrives while the player simply plays.
+func collect_groceries() -> Dictionary:
+	var result: Dictionary = LifeGroceries.collect(groceries)
+	if not bool(result.ok):
+		return result
+	groceries = result.state
+	_sync_grocery_mirror()
+	var owner: LifeSim = bill_owner()
+	if owner != null:
+		owner._emit_notice("The organic delivery van arrived: %d meals into the kitchen." % int(result.meals))
+		owner._emit_changed()
+	return result
+
+
+## The kitchen as the player reads it.
+func kitchen() -> String:
+	return LifeGroceries.describe(groceries)
+
+
+## Every basket the computer may order, with its price and its own refusal.
+func grocery_offers() -> Array:
+	var result: Array = []
+	for basket_id: String in LifeGroceries.baskets():
+		var reason: String = LifeGroceries.order_error(groceries, basket_id, funds)
+		var data: Dictionary = LifeGroceries.basket(basket_id)
+		result.append({
+			"id": basket_id, "label": str(data.label), "meals": int(data.meals),
+			"price": int(data.price), "description": str(data.description),
+			"available": reason.is_empty(), "reason": reason,
+		})
+	return result
+
+
+## Whether the van has arrived, checked once a tick on the shared clock.
+func _grocery_tick() -> void:
+	if speed <= 0:
+		return
+	var owner: LifeSim = bill_owner()
+	if owner == null:
+		return
+	if LifeGroceries.arrival_due(groceries, day, minutes):
+		collect_groceries()
+
+
+func _sync_grocery_mirror() -> void:
+	for member in members:
+		member.sim.grocery_service = self
+
+
+## Hand every member this household as its kitchen, so the stove's menu and the
+## cook gate read the same fridge.
+func _sync_grocery_service() -> void:
+	for member in members:
+		member.sim.grocery_service = self
+
+
+## Buy a business. The skill and level the table demands are checked against the
+## Lifelet actually applying, and the purse pays, so owning a business is a real
+## achievement rather than a purchase.
+func buy_business(business_id: String, member_id: String = "") -> Dictionary:
+	var owner: LifeSim = member_sim(member_id) if not member_id.is_empty() else bill_owner()
+	if owner == null:
+		return {"ok": false, "error": "There is nobody to run a business."}
+	if not business.is_empty():
+		return {"ok": false, "error": "This household already runs a business. A second one is not supported yet."}
+	var reason: String = LifeBusiness.purchase_error(business_id, str(owner.character.life_stage), owner.skills, funds)
+	if not reason.is_empty():
+		return {"ok": false, "error": reason}
+	var cost: int = int(LifeBusiness.info(business_id).cost)
+	business = {"version": LifeBusiness.VERSION, "id": business_id, "staff": [], "invested": cost, "earned": 0}
+	funds -= cost
+	_sync_wallet()
+	owner._emit_notice("You now run the %s. Hire people to make it pay." % str(LifeBusiness.info(business_id).label))
+	owner._emit_changed()
+	return {"ok": true, "cost": cost, "funds": funds}
+
+
+## Hire one Lifelet as an employee. The hire fee is paid from the shared purse
+## and the employee joins the roster.
+func hire_employee(member_id: String) -> Dictionary:
+	if business.is_empty():
+		return {"ok": false, "error": "This household does not run a business."}
+	var employee: LifeSim = member_sim(member_id)
+	if employee == null:
+		return {"ok": false, "error": "That Lifelet is not in this household."}
+	var name: String = str(employee.character.name)
+	var roster: Array = business.get("staff", [])
+	var reason: String = LifeBusiness.hire_error(str(business.id), roster, funds)
+	if not reason.is_empty():
+		return {"ok": false, "error": reason}
+	if roster.has(name):
+		return {"ok": false, "error": "%s already works here." % name}
+	var cost: int = LifeBusiness.hire_cost(str(business.id))
+	business["staff"] = roster + [name]
+	funds -= cost
+	_sync_wallet()
+	var owner: LifeSim = bill_owner()
+	if owner != null:
+		owner._emit_notice("%s now works at the %s." % [name, str(LifeBusiness.info(str(business.id)).label)])
+		owner._emit_changed()
+	return {"ok": true, "cost": cost, "funds": funds, "staff": business.staff.duplicate()}
+
+
+## What the business pays a day, for the day boundary to credit.
+func business_income() -> int:
+	return LifeBusiness.daily_income(business) if not business.is_empty() else 0
+
+
+## Every business the household could run, with its requirement and its own
+## refusal, so the panel and the purchase agree.
+func business_offers(member_id: String = "") -> Array:
+	var owner: LifeSim = member_sim(member_id) if not member_id.is_empty() else bill_owner()
+	var result: Array = []
+	for business_id: String in LifeBusiness.ids():
+		var info: Dictionary = LifeBusiness.info(business_id)
+		var reason: String = "" if owner == null else LifeBusiness.purchase_error(business_id, str(owner.character.life_stage), owner.skills, funds)
+		if owner == null: reason = "There is nobody to run a business."
+		result.append({
+			"id": business_id, "label": str(info.label), "cost": int(info.cost),
+			"income": LifeBusiness.daily_income({"id": business_id, "staff": []}),
+			"staff": int(info.staff), "skill": str(info.skill), "level": int(info.level),
+			"requirements": LifeBusiness.requirement_text(business_id),
+			"available": reason.is_empty(), "reason": reason,
+			"owned": not business.is_empty() and str(business.get("id", "")) == business_id,
+		})
+	return result
+
+
+## The daily takings of an owned business, credited at the day boundary beside
+## the other household income.
+func _business_tick() -> void:
+	if business.is_empty() or speed <= 0:
+		return
+	var owner: LifeSim = bill_owner()
+	if owner == null:
+		return
+	var income: int = business_income()
+	if income <= 0:
+		return
+	business["earned"] = int(business.get("earned", 0)) + income
+	funds += income
+	_sync_wallet()
+	owner.funds = funds
+	owner._emit_notice("The %s took ℒ%d today." % [str(LifeBusiness.info(str(business.id)).label), income])
+	owner._emit_changed()
+
+
+## Every member on the criminal line of work takes one chance of being caught a
+## day, on the shared clock. It is rolled by the household rather than by the
+## Lifelet alone so that the odds apply while the player simply plays, exactly as
+## the burglar's night does.
+##
+## A Lifelet already inside serves their sentence and cannot be caught again
+## until they are out, and someone caught today is not re-rolled the same day.
+func _criminal_tick() -> void:
+	if speed <= 0:
+		return
+	for member: Dictionary in members:
+		var sim: LifeSim = member.sim
+		if not LifeCareers.is_criminal(str(sim.career.get("track", ""))):
+			continue
+		if sim.is_imprisoned():
+			continue
+		sim.funds = funds
+		var outcome: Dictionary = sim.criminal_day_check()
+		funds = sim.funds
+		if bool(outcome.get("ok", false)) and bool(outcome.get("caught", false)):
+			_sync_wallet()
+
+
+## Release every member whose sentence has run out, so being caught really ends
+## and a released Lifelet comes back to the household's lot.
+func _prison_release_tick() -> void:
+	for member: Dictionary in members:
+		var sim: LifeSim = member.sim
+		if not sim.is_at_prison():
+			continue
+		if sim.day < int(sim.criminal_record.get("prison_until_day", 0)):
+			continue
+		sim.prison_check()
 
 
 ## A break-in against the shared purse. The owner rolls it and the household
@@ -1832,6 +2222,164 @@ func commit_pet(request:Dictionary,spawn:Vector3) -> Dictionary:
 	pets.next_serial=int(pets.next_serial)+1
 	set_funds(funds-LifePets.price_for(str(record.species)))
 	return {"ok":true,"duplicate":false,"pet":record.duplicate(true),"spawn":spawn}
+
+## ---------------------------------------------------------- pet care
+
+## Advance every pet's own needs by a span of game minutes. A pet whose record
+## predates the condition block gains a fresh one rather than being skipped, so
+## an older save's animals start living on load.
+func _tick_pet_care(minutes: float) -> void:
+	if minutes <= 0.0: return
+	for pet: Dictionary in pets.get("pets", []):
+		if not pet.get("care") is Dictionary:
+			pet["care"] = LifePetCare.fresh()
+		LifePetCare.tick(pet.care, minutes)
+
+## One pet's condition record, created on first use so a caller never has to
+## check whether an older save carried one.
+func pet_care(id: String) -> Dictionary:
+	var pet: Dictionary = pet_record(id)
+	if pet.is_empty(): return {}
+	if not pet.get("care") is Dictionary:
+		pet["care"] = LifePetCare.fresh()
+	return pet.care
+
+func pet_record(id: String) -> Dictionary:
+	for pet: Dictionary in pets.get("pets", []):
+		if str(pet.id) == id: return pet
+	return {}
+
+## What one Lifelet may do with one pet, in the order the card shows them. The
+## list is filtered by the actor's own life stage and availability, so the
+## offered options and a refused call agree.
+func pet_actions(pet_id: String, member_id: String) -> Array:
+	var pet: Dictionary = pet_record(pet_id)
+	if pet.is_empty(): return []
+	var sim: LifeSim = member_sim(member_id)
+	if sim == null: return []
+	var away: bool = sim.is_away()
+	var out: Array = []
+	for interaction: Dictionary in LifePetCare.INTERACTIONS:
+		var reason: String = LifePetCare.interaction_error(str(interaction.id), str(sim.character.age_stage), away)
+		out.append({
+			"id": str(interaction.id),
+			"label": str(interaction.label),
+			"duration": float(interaction.duration),
+			"available": reason.is_empty(),
+			"unavailable_reason": reason,
+			"description": _pet_action_description(str(interaction.id), pet),
+		})
+	return out
+
+## What one interaction does, said in terms of what the player will actually
+## see: which need it lifts, which trick it may teach, and what the actor learns.
+func _pet_action_description(id: String, pet: Dictionary) -> String:
+	var entry: Dictionary = LifePetCare.interaction(id)
+	if entry.is_empty(): return ""
+	var care: Dictionary = pet.get("care", LifePetCare.fresh())
+	var parts: Array[String] = []
+	if id == "pet_feed": parts.append("Fill the bowl and let %s eat their fill." % str(pet.get("name", "your pet")))
+	if id == "pet_pet": parts.append("A quiet fuss. %s warms to you." % str(pet.get("name", "your pet")).capitalize())
+	if id == "pet_play": parts.append("Play until you are both out of breath. Builds Agility.")
+	if id == "pet_teach_trick":
+		var next: Dictionary = LifePetCare.next_trick(care)
+		parts.append("Teach the next trick: %s." % str(next.get("label", "something new")) if not next.is_empty() else "%s already knows every trick you can teach." % str(pet.get("name", "your pet")).capitalize())
+	if id == "pet_train": parts.append("Patient repetition. Builds Obedience and your own Parenting.")
+	var teaches: String = str(entry.get("teaches", ""))
+	if not teaches.is_empty(): parts.append("You build %s too." % teaches.capitalize())
+	return " ".join(parts)
+
+## Do one interaction, on the household's side of the ledger: the pet's needs and
+## skill move, its bond with this person deepens, and the person's own skill
+## grows by what the interaction teaches. Returns what changed.
+func do_pet_interaction(pet_id: String, member_id: String, interaction_id: String) -> Dictionary:
+	var pet: Dictionary = pet_record(pet_id)
+	if pet.is_empty(): return {"ok": false, "error": "That pet is no longer here."}
+	var sim: LifeSim = member_sim(member_id)
+	if sim == null: return {"ok": false, "error": "That Lifelet is no longer here."}
+	var reason: String = LifePetCare.interaction_error(interaction_id, str(sim.character.age_stage), sim.is_away())
+	if not reason.is_empty(): return {"ok": false, "error": reason}
+	var care: Dictionary = pet_care(pet_id)
+	var result: Dictionary = LifePetCare.apply_interaction(care, interaction_id, member_id)
+	# The actor's own skill grows by what this interaction teaches, which is how
+	# a child teaching a trick also becomes more logical.
+	var teaches: String = str(result.get("teaches", ""))
+	var teach_xp: float = float(result.get("teach_xp", 0.0))
+	if not teaches.is_empty() and teach_xp > 0.0:
+		sim.gain_skill(teaches, teach_xp)
+	return {"ok": true, "pet": pet.duplicate(true), "care": care.duplicate(true), "result": result}
+
+## ---------------------------------------------------------------- post box
+
+## Whether the household owns a post box. Without one, bills arrive by notice
+## and are paid from the phone exactly as they always did; the box adds a place,
+## not a rule.
+func owns_post_box() -> bool:
+	return not _post_box_ids().is_empty()
+
+## The identities of every placed post box, so one is enough however many are
+## bought and a sold box stops delivering.
+func _post_box_ids() -> Array[String]:
+	var out: Array[String] = []
+	if not post_box_provider.is_valid(): return out
+	for id: Variant in post_box_provider.call():
+		out.append(str(id))
+	return out
+
+## File one letter in the box, if the household has one. Returns the letter that
+## was filed, or {} when there is nowhere to post it.
+func deliver_mail(value: Dictionary) -> Dictionary:
+	if not owns_post_box() or value.is_empty(): return {}
+	var serial: int = int(mail.get("next_serial", 1))
+	var filed: Dictionary = value.duplicate(true)
+	filed["id"] = "mail_%d" % serial
+	filed["serial"] = serial
+	var delivered: Dictionary = LifeMail.deliver(mail, filed)
+	notice.emit("The post has arrived: %s." % str(delivered.get("title", "a letter")))
+	return delivered
+
+
+## A letter for one of the household's own milestones. Written once per event,
+## so a reload never re-posts the same school place.
+func post_milestone(reason: String, who: String) -> Dictionary:
+	if not LifeMail.LETTERS.has(reason): return {}
+	for entry: Dictionary in mail.get("letters", []):
+		if str(entry.get("subject", "")) == who and str(entry.get("title", "")) == str(LifeMail.LETTERS[reason].title):
+			return {}
+	var serial: int = int(mail.get("next_serial", 1))
+	return deliver_mail(LifeMail.milestone(serial, reason, who, day))
+
+
+## Post the household's outstanding bill, so the box can show what is owed. One
+## bill is posted at a time; a reload of the same bill does not post a second.
+func post_bill() -> Dictionary:
+	if not owns_post_box(): return {}
+	var record: Dictionary = bill()
+	if record.is_empty(): return {}
+	for entry: Dictionary in mail.get("letters", []):
+		if LifeMail.is_bill(entry) and not bool(entry.get("read", false)):
+			return {}
+	return deliver_mail(LifeMail.bill_letter(int(mail.get("next_serial", 1)), int(record.amount) + int(record.get("late_fee", 0)), day, int(record.due_day)))
+
+## Read one letter, which is what settles a bill the box is holding.
+func read_mail(id: String) -> Dictionary:
+	var letter: Dictionary = {}
+	for entry: Dictionary in mail.get("letters", []):
+		if str(entry.id) == id: letter = entry
+	if letter.is_empty(): return {"ok": false, "error": "That letter is no longer in the box."}
+	if LifeMail.is_bill(letter) and not bool(letter.get("read", false)):
+		var settlement: Dictionary = pay_bill()
+		if not bool(settlement.ok): return {"ok": false, "error": str(settlement.get("error", settlement.get("reason", "The bill could not be paid.")))}
+		LifeMail.mark_read(mail, id)
+		return {"ok": true, "paid": int(settlement.paid), "letter": letter}
+	LifeMail.mark_read(mail, id)
+	return {"ok": true, "paid": 0, "letter": letter}
+
+## Whether the post box can deliver its own mail rather than the phone doing it.
+func mail_availability() -> String:
+	if not owns_post_box(): return "Place a post box in the garden and the post will be delivered there."
+	if mail.get("letters", []).is_empty(): return "Nothing has been posted yet."
+	return ""
 
 ## Buying a pet accessory is an ordinary furnishing purchase: the caller places
 ## it through the same build path, so support, doorway and reach checks apply.

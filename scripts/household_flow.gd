@@ -50,6 +50,23 @@ func _init(owner_app: Node = null) -> void:
 	app = owner_app
 
 
+# ---------------------------------------------------------------- ownership
+
+## Whether the household owns a placed bicycle helmet. Riding is refused without
+## one, so this is the rule rather than a suggestion.
+func owns_helmet() -> bool:
+	return not helmet_ids().is_empty()
+
+## The identities of every placed helmet, so one is enough however many are
+## bought and a sold helmet no longer permits a ride.
+func helmet_ids() -> Array[String]:
+	var out: Array[String] = []
+	if app == null or not is_instance_valid(app.world): return out
+	for item: Dictionary in app.world.items:
+		if str(item.get("kind", "")) == "helmet": out.append(str(item.id))
+	return out
+
+
 # ---------------------------------------------------------------- persistence
 
 func get_state() -> Dictionary:
@@ -444,11 +461,17 @@ func bathe_pet(pet_id: String, bather: String) -> Dictionary:
 	var record: Dictionary = _pet_record(pet_id)
 	if record.is_empty():
 		return {"ok":false, "error":"That pet is not part of this household."}
-	var needs: Dictionary = record.get("needs", {})
-	if not needs is Dictionary or (needs as Dictionary).is_empty():
-		needs = LifePets.fresh_needs()
-	needs["cleanliness"] = 100.0
-	record["needs"] = needs
+	# A bath restores the animal's own coat in the condition record the HUD draws
+	# and the household clock drains, exactly as a meal restores hunger.
+	var care: Dictionary = record.get("care", {})
+	if not care is Dictionary or care.is_empty():
+		care = LifePetCare.fresh()
+	var needs: Dictionary = care.get("needs", {})
+	if not needs is Dictionary or needs.is_empty():
+		needs = LifePetCare.FRESH_NEEDS.duplicate(true)
+	needs["hygiene"] = 100.0
+	care["needs"] = needs
+	record["care"] = care
 	record["last_bathed_by"] = bather
 	return {"ok":true}
 

@@ -39,15 +39,54 @@ Accessories are ordinary catalogue furnishings under the **Pets** category, boug
 | --- | --- | --- |
 | Food & water bowl | ℒ60 | the household owns any pet |
 | Climbing cat tree | ℒ240 | the household owns a cat |
-| Garden dog kennel | ℒ320 | the household owns a dog |
+| Garden dog kennel | ℒ320 | the household owns a dog (and stands in the garden, see below) |
+| Cosy cat bed | ℒ120 | the household owns a cat |
+| Cushioned dog bed | ℒ160 | the household owns a dog |
+| Feather mouse toy | ℒ25 | the household owns a cat |
+| Knotted rope bone | ℒ30 | the household owns a dog |
+| Cat Toy Box | ℒ50 | the household owns a cat |
+| Dog Toy Box | ℒ50 | the household owns a dog |
+
+An indoor bed is sold for each species, and the two toys are the single pieces a toy box already holds six of. Both toy boxes cost ℒ50, are named **Cat Toy Box** and **Dog Toy Box**, and are painted with a paw print on the front — a neat cat pad with four small toe beans for the cat box, a broader pad with taller, blunter toes for the dog box, so the two read apart at a glance. Each box is sold full: buying it places the box and its six toys as one set.
 
 The shop only offers what the household can use and refuses the rest with a reason (`LifePets.accessory_kind_error`).
 
+## Collar and leash colours
+
+A pet's collar and leash are its own, chosen in the picker beside the coat and kept in the save, so a household can tell two animals apart at a glance. The collar draws from a 16-tone set; the leash from a shorter, calmer 10-tone set that always contrasts with the collar it hangs beside. Both tint the pet's authored `Collar` accessory surface, so the choice is visible on the model rather than only in the record. Older saves without the fields load with the authored defaults (`LifePets.DEFAULT_COLLAR`, `DEFAULT_LEASH`).
+
 ## In the home
 
-Each pet gets a `LifePetActor` body in the world: its authored model, its mixed coat, and a small idle where the head turns, the tail sways and the legs stay planted, becoming a diagonal-pair trot while it walks in from the street. A paused household freezes its pets too. Clicking a pet opens its card with its species, sex, coat description and a live preview.
+Each pet gets a `LifePetActor` body in the world: its authored model, its mixed coat, and a small idle where the head turns, the tail sways and the legs stay planted, becoming a diagonal-pair trot while it walks in from the street. A paused household freezes its pets too.
 
-The body is presentation. The household owns the saved record, the fee and the arrival policy, so a save always resumes the same animals in the same places — on load, `main.sync_pets()` rebuilds every body from `household.pets`.
+A pet also lives in the life box: the household switcher shows a chip per pet, wearing the animal itself, and clicking one opens its card. **Control this pet** makes that body the one the camera and HUD follow — a pet is not a Lifelet and keeps no action queue, so every interaction still runs through the selected Lifelet.
+
+The body is presentation. The household owns the saved record, its condition, the fee and the arrival policy, so a save always resumes the same animals in the same places — on load, `main.sync_pets()` rebuilds every body from `household.pets`.
+
+## A pet's own day
+
+A pet is not a Lifelet and does not share its simulation, but it still has needs the household can watch. `scripts/pet_care.gd` (`LifePetCare`) owns them as pure static policy:
+
+* **Needs** — the same six keys a Lifelet's own panel draws (hunger, energy, hygiene, bladder, fun, social), so one set of rows renders either. They fall on the household's own clock, so a paused household freezes them with its Lifelets.
+* **Skills** — **Tricks**, **Agility** and **Obedience**, each levelling at the same experience cost a Lifelet's skill does.
+* **Tricks** — ten, learned in order as the Tricks skill climbs: sit, shake a paw, come when called, roll over, fetch, speak, spin around, take a bow, jump through a hoop, fetch the lead.
+* **Bonds** — the friendship a pet has with each person it lives with, from *Wary* through *Friendly* to *Inseparable*. This is what a pet's own relationships are.
+
+## What you can do with a pet
+
+Click a pet for its card: its needs, its skills, the trick it is working towards, its bond with the selected Lifelet, and everything that Lifelet may do. A pet's card portraits the animal itself, drawn from its own coat.
+
+| Interaction | Lifts | Teaches the pet | Teaches you |
+| --- | --- | --- | --- |
+| Pet | Fun, Social | Obedience | — |
+| Feed | Hunger, Social | Obedience | — |
+| Play together | Fun, Social | Agility | Fitness |
+| Teach a trick | Fun, Social | Tricks | **Logic** |
+| Train obedience | Fun, Social | Obedience | Parenting |
+
+**A child can teach a trick, and the child grows too.** That is the whole point of the logic level in this system: teaching a pet a trick is a real lesson for the teacher, so a child who works with the family dog builds their own Logic while the dog learns. A baby may not handle a pet at all — the options are withheld with a reason rather than silently refused — and training obedience is offered from adult upward.
+
+The gate reads the lifecycle's own stage order (`LifeLifecycle.STAGES`), so a stage added there cannot silently lock a whole age out of the garden.
 
 ## Looking after itself
 
@@ -65,11 +104,13 @@ Pets ride the household save as an optional `pets` record beside `adoptions` and
 "pets": {"version": 1, "next_serial": 2, "pets": [
   {"id":"pet_1","serial":1,"species":"cat","sex":"female","name":"Willow",
    "coat_color":"3a2b23","mark_color":"f2ece0","gradient":0.7,
-   "coat_length":"medium","marking":"bicolor","day":1,"fee":320}
+   "coat_length":"medium","marking":"bicolor","day":1,"fee":320,
+   "collar_color":"be5a4b","leash_color":"4a4f55",
+   "care": {"version":1, "needs":{...}, "skills":{...}, "bonds":{...}, "tricks":[]}}
 ]}
 ```
 
-An absent record means a household that owns no pets, so older saves load unchanged. `LifePets.validate` rejects a damaged record — a duplicate identity, an out-of-order serial, an unknown species, sex, coat length or marking, an impossible gradient, or a price that does not match the shop — rather than silently dropping it.
+A pet carries **fifteen** fields: its identity and appearance, and its own `care` record. An absent record means a household that owns no pets, so older saves load unchanged; a pet saved before pets had needs (fourteen fields) also loads, gaining a fresh condition rather than being refused. `LifePets.validate` rejects a damaged record — a duplicate identity, an out-of-order serial, an unknown species, sex, coat length or marking, an impossible gradient, an impossible need or bond, an unknown trick, or a price that does not match the shop — rather than silently dropping it.
 
 ## Files
 
@@ -77,10 +118,18 @@ An absent record means a household that owns no pets, so older saves load unchan
 | --- | --- |
 | `scripts/pets.gd` | `LifePets`: prices, candidate rolls, appearance normalisation, accessory policy and save validation. Pure static policy. |
 | `scripts/pet_actor.gd` | `LifePetActor`: the world body, mixed coat and idle animation. |
+| `scripts/pet_care.gd` | `LifePetCare`: a pet's needs, skills, tricks, bonds and the interactions that move them. Pure static policy. |
 | `scripts/pet_shop_flow.gd` | `LifePetShopFlow`: the phone shop, the picker and the arrival confirmation. |
 | `assets/shaders/pet_coat.gdshader` | The mixed-coat gradient. |
-| `assets/models/pet_cat.glb`, `pet_dog.glb`, `pet_bowl.glb`, `cat_tree.glb`, `kennel.glb` | The original exported models. |
-| `tools/create_pets.py` | Regenerates all five models. |
+| `assets/models/pet_cat.glb`, `pet_dog.glb`, `pet_bowl.glb`, `cat_tree.glb`, `kennel.glb`, `pet_bed_cat.glb`, `pet_bed_dog.glb`, `pet_toy_cat.glb`, `pet_toy_dog.glb`, `cat_toy_box.glb`, `dog_toy_box.glb` | The original exported models. |
+| `tools/create_pets.py` | Regenerates every model above. |
 | `tests/test_music_and_pets.gd` | 105 checks covering the music switch and the whole pet path. |
+| `tests/test_pet_care.gd` | 48 checks covering a pet's own day: its needs falling on the household clock, each interaction's effect, a child teaching a trick and growing in Logic, the save round trip, and the fifty garden games. |
 
 Both animals expose the same named parts — `Body`, `Head`, `Tail`, `Ear_L`, `Ear_R` and the four legs — with the `Head` and `Tail` origins at their pivots, plus the materials `Fur`, `Fur_Mark`, `Nose`, `Eyes`, `Paw_Pads` and `Collar`. `tools/create_pets.py` regenerates them with `blender -b --python tools/create_pets.py`.
+
+## The garden
+
+The dog kennel belongs outdoors. The navigable lot is **36×21 m** (was 24×18, and 18×16 before that), and its size is owned by a single constant — `LifeRoofRules.LOT`, which `LifeBuildingState.LOT` aliases — so building validation, floor support, the navigation graph, the camera pan bound and the roof-eave rule all agree on how far the ground reaches. The lot is *derived*, not saved with a household, so both current saves and future ones grow the garden the next time their world is built.
+
+Level-0 placement stands on the lot itself rather than requiring a built floor slab, so a kennel, a garden bed or a toy box can be placed in the garden outside the house; an upper furnishing still needs real slab beneath it. A roof out in the garden is bounded by the same constant, so enlarging the garden did not leave the roof rule refusing a legal garden roof.

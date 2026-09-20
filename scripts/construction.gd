@@ -233,7 +233,7 @@ func valid_record(e: Variant) -> bool:
 	if not e is Dictionary:return false
 	for key in ["x","z","w","d"]:
 		if not e.has(key) or not (e[key] is float or e[key] is int):return false
-	return absf(float(e.x))<9 and absf(float(e.z))<8 and float(e.w)>0 and float(e.d)>0 and float(e.w)<=18 and float(e.d)<=16
+	return absf(float(e.x))<Building.Land.MAX_SPAN*.5 and absf(float(e.z))<Building.Land.MAX_SPAN*.5 and float(e.w)>0 and float(e.d)>0 and float(e.w)<=Building.Land.MAX_SPAN and float(e.d)<=Building.Land.MAX_SPAN
 
 func update_cutaway(value: bool) -> void:
 	cutaway=value
@@ -432,7 +432,7 @@ func _nearest_valid_stair(state:Dictionary,p:Vector3)->Dictionary:
 				# Reject the impossible spots with two rectangle tests before
 				# paying for a full structural proposal (about 2.5 ms each).
 				var stair:Dictionary={"x":record.x,"z":record.z,"rotation":rotation,"lower":0,"upper":1}
-				if not Building.LOT.encloses(Building.stair_rect(stair)) or not Building.LOT.encloses(Building.landing_rect(stair,false)) or not Building.LOT.encloses(Building.landing_rect(stair,true)):
+				if not Building.lot().encloses(Building.stair_rect(stair)) or not Building.lot().encloses(Building.landing_rect(stair,false)) or not Building.lot().encloses(Building.landing_rect(stair,true)):
 					_note_stair_refusal(distance,examined_distance,"The staircase and both its landings have to fit inside the lot. Point further in.")
 					examined_distance=minf(examined_distance,distance)
 					continue

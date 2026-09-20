@@ -11,6 +11,16 @@ const LINE = Color("dbe2d7")
 const CORAL = Color("cd8069")
 const GOLD = Color("bf9757")
 
+## The household's money, and what it is called. The body face carries no script
+## L, so the displayed symbol falls back to the display face, which does — the
+## same fallback the engine applies inside a Label is set up here once, on the
+## shared fonts, so every screen renders the symbol instead of a blank box.
+const CURRENCY_NAME: String = "Lifeons"
+const CURRENCY_SYMBOL: String = "ℒ"
+
+static func display_font() -> FontFile:
+	return load("res://assets/fonts/Display.otf")
+
 static func panel(color: Color = WHITE, radius: int = 18, border: Color = Color.TRANSPARENT, width: int = 0) -> StyleBoxFlat:
 	var s = StyleBoxFlat.new()
 	s.bg_color = color

@@ -15,12 +15,22 @@ func run() -> void:
 	main=MainScript.new()
 	root.add_child(main)
 	main.set_process(false)
+	# The app opens on the main menu now, so the creator's studio and its preview
+	# Lifelet only exist once a new game is begun — the same public path a player
+	# takes. Without this the preview below is null.
+	main.new_game()
 	main.set_body_scale(1.15)
 	_check(main.preview.scale.is_equal_approx(Vector3.ONE),"Creator body slider keeps the navigation root at unit scale.")
 	main.refresh_preview()
 	_check(is_equal_approx(main.preview.visual.scale.x,1.15),"Appearance refresh must not square the selected body scale.")
 	main.start_household()
 	main.sim.autonomy=false
+	# Cooking draws a meal out of the kitchen, so this fixture stocks it through
+	# the household's own order before it queues any recipe.
+	var ordered:Dictionary=main.household.order_groceries("weekly")
+	var collected:Dictionary=main.household.collect_groceries()
+	_check(bool(ordered.ok) and bool(collected.ok),"The fixture stocks its own kitchen through the household's order.")
+	main.sim.funds=main.household.funds
 	await process_frame
 	_test_pause_ownership()
 	_test_cancellation()
@@ -52,6 +62,29 @@ func _key(code:Key) -> void:
 	main._unhandled_input(event)
 
 
+## Walk the current action to arrival through the app's own frame, so the
+## activity begins where the Lifelet actually is. Returns whether it started.
+func _walk_until_active() -> bool:
+	main.household.set_speed(3)
+	for i:int in 900:
+		main._process(.05)
+		if str(main.sim.get_current_action().get("phase",""))=="active":break
+	main.household.set_speed(0)
+	main.sim.speed=0
+	return str(main.sim.get_current_action().get("phase",""))=="active"
+
+
+## Advance the game clock the way the running app does — through the household —
+## so every member and the shared clock stay in step. Ticking a member directly
+## leaves the household and its members disagreeing about the time, which the
+## save validator then rightly refuses.
+func _advance(minutes: float) -> void:
+	main.household.set_speed(1)
+	main.household.tick(minutes)
+	main.household.set_speed(0)
+	main.sim.speed = 0
+
+
 func _cancel_all() -> void:
 	while not main.sim.action_queue.is_empty():main.cancel_current_action()
 
@@ -63,10 +96,23 @@ func _item(kind:String) -> Dictionary:
 
 
 func _free_position(kind:String,away_from:Vector3=Vector3(100,0,100)) -> Vector3:
+	# Placement is refused when it would seal a Lifelet's own standing space, and
+	# `can_place` alone does not ask that question — the build transaction does.
+	# A helper that offered a spot the game then refuses made a move look broken,
+	# so this asks exactly what the player's own click asks, including the live
+	# layout the move is proposed against.
+	var moving_id:String=""
+	if not main.pending_move.is_empty():moving_id=str(main.pending_move.entry.id)
 	for x:int in range(-10,11):
 		for z:int in range(-8,9):
 			var point:Vector3=Vector3(float(x)*.5,.16,float(z)*.5)
-			if point.distance_to(away_from)>1.0 and main.world.can_place(kind,point,0.0):return point
+			if point.distance_to(away_from)<=1.0 or not main.world.can_place(kind,point,0.0):continue
+			if moving_id.is_empty():return point
+			var proposed:Array=[]
+			for entry:Dictionary in main.world.serialize_items():
+				if str(entry.get("id",""))!=moving_id:proposed.append(entry)
+			proposed.append({"id":moving_id,"kind":kind,"x":point.x,"z":point.z,"rotation":0.0})
+			if main.build_transactions.furnishing_error(proposed).is_empty():return point
 	return Vector3(100,0,100)
 
 
@@ -180,7 +226,7 @@ func _test_target_rebinding() -> void:
 	var easel_id:String=str(easel.id)
 	main.queue_interaction(easel,"paint")
 	main.sim.begin_current_action()
-	main.sim.tick(2.0)
+	_advance(2.0)
 	var progress_before:float=float(main.sim.get_current_action().elapsed)
 	main.set_build_mode(true)
 	var old_position:Vector3=easel.node.position
@@ -201,8 +247,11 @@ func _test_construction_undo() -> void:
 	var construction:LifeConstruction=main.world.construction
 	var count_before:int=construction.records.size()
 	var funds_before:int=main.sim.funds
-	var proposal:Dictionary={"op":"wall","walls":[{"x":-7.0,"z":0.0,"w":.14,"d":1.0,"cut":true}],"floors":[],"cost":55,"valid":true}
-	main.on_construction(proposal)
+	# A structure is previewed and then confirmed, which is the path a player
+	# takes: the preview carries the authenticated quote the confirm commits.
+	main.begin_construction("wall")
+	var quote:Dictionary=main.build_transactions.prepare({"op":"structure","tool":"wall","level":0,"ax":-7.0,"az":0.0,"bx":-7.0,"bz":1.0})
+	main.on_construction({"valid":true,"build_quote":quote})
 	_check(construction.records.size()==count_before+1 and main.sim.funds==funds_before-55,"Construction commits structure and its cost together.")
 	main.undo_build()
 	_check(construction.records.size()==count_before and main.sim.funds==funds_before,"Construction marker snapshots restore walls and money on undo.")
@@ -215,8 +264,11 @@ func _test_construction_undo() -> void:
 func _test_save_load() -> void:
 	_cancel_all()
 	main.queue_interaction(_item("fridge"),"cook")
-	main.sim.begin_current_action()
-	main.sim.tick(2.0)
+	# Walk there for real before the activity begins. Beginning an action the
+	# Lifelet has not reached leaves it both traveling and active at once, which
+	# the journey validator rightly refuses to save.
+	_check(_walk_until_active(),"The Lifelet reaches the kitchen and starts cooking.")
+	_advance(2.0)
 	var saved_elapsed:float=float(main.sim.get_current_action().elapsed)
 	main.player.position=main.world.approach(_item("shower"))
 	main.player.rotation.y=1.12
@@ -239,7 +291,13 @@ func _test_save_load() -> void:
 	await process_frame
 	_check(main.mode=="live" and main.sim.speed==3,"Loading a menu save restores the intended Live speed.")
 	_check(main.player.position.is_equal_approx(saved_position) and is_equal_approx(main.player.rotation.y,1.12),"Save/load restores Lifelet position and facing.")
-	_check(main.world.camera_target.is_equal_approx(Vector3(-1,.8,2)) and is_equal_approx(main.world.camera.size,13),"Save/load restores camera framing.")
+	# The camera's height is owned by the floor being viewed — loading restores
+	# the ground floor, so the target's y is that floor's own height rather than
+	# the value that happened to be saved. Its position on the lot, the orbit and
+	# the zoom are the saved ones.
+	_check(is_equal_approx(main.world.camera_target.x,-1) and is_equal_approx(main.world.camera_target.z,2)
+		and is_equal_approx(main.world.camera_target.y,0.0)
+		and is_equal_approx(main.world.camera.size,13),"Save/load restores camera framing.")
 	_check(main.floor_color=="896953" and main.selected_lot==1 and not main.sound_enabled,"Save/load restores floor finish, selected lot and sound preference.")
 	_check(main.sim.action_queue.size()==1 and is_equal_approx(float(main.sim.get_current_action().elapsed),saved_elapsed),"Loading does not cancel the front activity through an old-world callback.")
 	main.sim.begin_current_action()
@@ -251,6 +309,9 @@ func _test_save_load() -> void:
 func _test_career_ui() -> void:
 	_cancel_all()
 	main.set_game_speed(3)
+	# The office asks for Logic 3, so the skill is earned before the picker is
+	# asked to take the job; the picker's own pausing is what is being checked.
+	main.sim.skills.logic.level = 3
 	main.show_careers()
 	_check(main.sim.speed==0 and main.overlay_pauses_sim,"Career choices pause the household while being reviewed.")
 	main._select_career("technology")

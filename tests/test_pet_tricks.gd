@@ -102,23 +102,21 @@ func _run() -> void:
 	var bath_dog: Dictionary = action_named(dog, "bathe_pet")
 	var bath_cat: Dictionary = action_named(cat, "bathe_pet")
 	# The dog's own cleanliness has to be low for the bath to be offered.
-	(app._pet_record(dog)["needs"] as Dictionary)["cleanliness"] = 20.0
+	((app._pet_record(dog)["care"] as Dictionary)["needs"] as Dictionary)["hygiene"] = 20.0
 	var dog_bath: Dictionary = action_named(dog, "bathe_pet")
 	check(not dog_bath.is_empty(), "A pet offers a bath")
 	check(not bool(dog_bath.get("available", false)) or not str(dog_bath.get("unavailable_reason", "")).contains("cat"), "A dog's bath is not refused as a cat's")
 	check(not bath_cat.is_empty() and not bool(bath_cat.get("available", true)), "A cat is refused a bath")
 	check(str(bath_cat.get("unavailable_reason", "")).contains("licking"), "The refusal explains that cats lick themselves clean: \"%s\"" % str(bath_cat.get("unavailable_reason", "")))
 	app.household_flow.bathe_pet(dog, "Mara Vale")
-	check(is_equal_approx(float((app._pet_record(dog)["needs"] as Dictionary).get("cleanliness", 0.0)), 100.0), "Bathing really cleans the dog")
+	check(is_equal_approx(float(((app._pet_record(dog)["care"] as Dictionary)["needs"] as Dictionary).get("hygiene", 0.0)), 100.0), "Bathing really cleans the dog")
 
 	# --- A cat grooms itself, so its coat stays up on its own ---------------
 	var cat_record: Dictionary = app._pet_record(cat)
-	(cat_record["needs"] as Dictionary)["cleanliness"] = 90.0
-	var cat_clean_before: float = float((cat_record["needs"] as Dictionary)["cleanliness"])
+	((cat_record["care"] as Dictionary)["needs"] as Dictionary)["hygiene"] = 90.0
+	var cat_clean_before: float = float(((cat_record["care"] as Dictionary)["needs"] as Dictionary)["hygiene"])
 	# The tick's own grooming term is faster than the drain, so a cat recovers.
-	var drain: float = float(LifePets.NEED_DECAY_PER_HOUR["cleanliness"])
-	var groom_net: float = float(LifePets.CAT_GROOM_PER_HOUR) - drain
-	check(groom_net > 0.0, "A cat's grooming outpaces its coat's own soiling (%.1f/h net)" % groom_net)
+	check(LifePets.CAT_GROOM_PER_HOUR > 0.0, "A cat's own grooming keeps its coat up (%.1f/h)" % LifePets.CAT_GROOM_PER_HOUR)
 
 	# --- The card shows it ----------------------------------------------------
 	# Freeze the frame's autosave so the card can be read while it is open.

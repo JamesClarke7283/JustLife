@@ -2,6 +2,7 @@ extends Node3D
 class_name LifeWorld
 const Building=preload("res://scripts/building_state.gd")
 const RoofRules=preload("res://scripts/roof_rules.gd")
+const Variants=preload("res://scripts/catalog_variants.gd")
 const LotNavigation=preload("res://scripts/lot_navigation.gd")
 const VIEW_ENVIRONMENT:int=1
 const VIEW_GROUND:int=2
@@ -24,7 +25,7 @@ const PICK_SURFACE:int=64
 
 signal object_clicked(info: Dictionary, screen_position: Vector2)
 signal ground_clicked(world_position: Vector3)
-signal placement_requested(kind: String, world_position: Vector3, angle: float)
+signal placement_requested(kind: String, world_position: Vector3, angle: float, style: String, size: String)
 signal construction_requested(data: Dictionary)
 
 ## Camera limits, in one place so the wheel, the HUD buttons, the drag handlers
@@ -44,6 +45,9 @@ var sun: DirectionalLight3D
 var environment: Environment
 var house: Node3D
 var furniture: Node3D
+## The ground and its dressing (lawn, hedge, street, trees), kept apart from the
+## house so buying a neighbouring plot redraws only the land.
+var ground_node: Node3D
 var walls: Array[Node3D] = []
 var items: Array[Dictionary] = []
 var _furnishing_volume_cache:Dictionary={}
@@ -63,10 +67,17 @@ var camera_distance: float = 23.0
 var live_enabled: bool = false
 var build_enabled: bool = false
 var placement_kind: String = ""
+## The style and size being placed, so the ghost, the validity check and the
+## committed record all describe the same object the player is buying.
+var placement_style: String = ""
+var placement_size: String = ""
 var placement_angle: float = 0.0
 var ghost: Node3D
 var ghost_valid: bool = false
 var placement_reach_check: Callable  # set by the app: (kind, position, angle) -> bool, the same doorway rule a click applies
+## The world owns the ghost's own style and size in `placement_style` and
+## `placement_size`, so a check that only knows a kind still describes the object
+## actually being placed.
 var ghost_position = Vector3.ZERO
 var cutaway: bool = true
 var grid: Node3D
@@ -263,8 +274,13 @@ func create_home(layout: Array = []) -> void:
 	house.add_child(furniture)
 	items.clear()
 	walls.clear()
-	box(house,Vector3(0,-.3,0),Vector3(120,.3,120),"b8cdaa")
-	box(house,Vector3(0,-.17,0),Vector3(17,.15,17),"a8c191")
+	# The ground and everything dressing it live in their own node, so buying a
+	# neighbouring plot redraws only the land without disturbing the house, the
+	# furnishings or the actors standing on it.
+	ground_node=Node3D.new()
+	ground_node.name="Ground"
+	house.add_child(ground_node)
+	draw_ground()
 	var surface_start:int=house.get_child_count()
 	box(house,Vector3(0,-.025,0),Vector3(12.35,.25,10.35),"d3c9b6")
 	box(house,Vector3(0,.105,0),Vector3(12,.045,10),"cfa97e").set_meta("starter_wood_finish",true)
@@ -310,14 +326,9 @@ func create_home(layout: Array = []) -> void:
 	side_skirting.set_meta("wall_decoration",true);side_skirting.set_meta("wall_support_normal",Vector3.LEFT)
 	box(house,Vector3(0,.02,5.72),Vector3(2.4,.2,1.35),"c7bea9")
 	box(house,Vector3(0,-.025,7.1),Vector3(1.75,.08,1.8),"dcd5be")
-	box(house,Vector3(0,-.02,8.5),Vector3(75,.10,1.25),"e0d9c7")
-	box(house,Vector3(0,-.07,11.0),Vector3(100,.12,3.7),"798781")
-	for x in range(-30,31,5): box(house,Vector3(x,.003,11),Vector3(2,.009,.08),"e6ddbc")
-	for x in [-7.55,7.55]:
-		for z in [-6.8,-1.2,5.9]: tree(Vector3(x,-.10,z),rng.randf_range(.8,1.1) if z<0 else .55)
-	for x in [-10.5,10.6,16,-17]:tree(Vector3(x,-.12,-8),rng.randf_range(1.0,1.6))
-	for z in [-7.4,-6.8]:
-		for x in range(-7,8):sphere(house,Vector3(x,.25,z),Vector3(1.0,.64,.80),"71945e")
+	# The house's own foundation beds and doorstep flowers stay beside the
+	# building; the lawn, hedges, street and trees belong to draw_ground(), which
+	# is redrawn whenever the household buys a neighbouring plot.
 	for x in [-6.85,6.85]:
 		for z in range(-5,5):
 			if z%2==0:sphere(house,Vector3(x,.16,z),Vector3(.68,.34,.65),"84a366").set_meta("garden_decoration",true)
@@ -325,11 +336,6 @@ func create_home(layout: Array = []) -> void:
 		for i in range(12):
 			var p=Vector3(x+rng.randf_range(-.9,.9),-.09,6.8+rng.randf_range(-.45,.45))
 			flower_clump(p, rng, "d4868e" if i%2 else "f5e5ad")
-	for x in [-19,20]: neighbor_home(Vector3(x,0,-1))
-	# A simple open mailbox with a brass house number plate.
-	box(house,Vector3(2,.52,7.8),Vector3(.10,1.1,.10),"ab7951")
-	box(house,Vector3(2,1.06,7.8),Vector3(.45,.35,.33),"397e70")
-	box(house,Vector3(2,1.07,7.98),Vector3(.26,.05,.008),"c8a562")
 	grid = Node3D.new()
 	house.add_child(grid)
 	for i in range(-12,13):box(grid,Vector3(i*.5,.17,0),Vector3(.012,.005,10),"a6bca9")
@@ -363,8 +369,7 @@ func validate_home_layout(layout:Variant) -> String:
 		if not Building.number(entry.get("level",0),0,1,true):return "Invalid furnishing level."
 		for key:String in ["x","z","rotation"]:
 			if not Building.number(entry.get(key,0),-10000,10000):return "Invalid furnishing transform."
-		for area:Rect2 in furnishing_panels(entry):
-			if not Building.LOT.encloses(area):return "A furnishing extends beyond the navigable lot."
+		if not Building.lot().encloses(furnishing_rect(entry)):return "A furnishing extends beyond the navigable lot."
 	# Align ingress with the detached graph's obstacle bound so a valid layout
 	# cannot replace the live scene and only then fail graph construction.
 	if ids.size()>512:return "Too many furnishings for this lot."
@@ -394,22 +399,14 @@ func load_home(layout:Variant) -> Dictionary:
 	create_home(layout)
 	return {"ok":last_layout_error.is_empty(),"error":last_layout_error}
 
-## The axis-aligned rectangle a local centre and size occupy once the entry's
-## yaw is applied. Every rectangle this file builds for a furnishing goes
-## through here, so an entry's outline, its solid bands and its collider can
-## never disagree about how a rotation maps one onto the world. The centre is a
-## floor-plan point — local x and local z — because a yaw moves only those.
-func _oriented_rect(origin:Vector2,basis:Basis,centre:Vector2,size:Vector2) -> Rect2:
-	var offset:Vector3=basis*Vector3(centre.x,0,centre.y)
+func furnishing_rect(entry:Dictionary) -> Rect2:
+	var data:Dictionary=LifeCatalog.get_item(str(entry.kind))
+	var size:Vector2=Variants.footprint(data, str(entry.get("size","")))
+	var basis:=Basis(Vector3.UP,deg_to_rad(float(entry.get("rotation",0))))
 	var x_axis:Vector3=basis*Vector3(size.x*.5,0,0)
 	var z_axis:Vector3=basis*Vector3(0,0,size.y*.5)
 	var half:=Vector2(absf(x_axis.x)+absf(z_axis.x),absf(x_axis.z)+absf(z_axis.z))
-	return Rect2(origin+Vector2(offset.x,offset.z)-half,half*2)
-
-func furnishing_rect(entry:Dictionary) -> Rect2:
-	var size:Vector2=LifeCatalog.ITEMS[str(entry.kind)].size
-	var origin:=Vector2(float(entry.get("x",0)),float(entry.get("z",0)))
-	return _oriented_rect(origin,_furnishing_basis(entry),Vector2.ZERO,size)
+	return Rect2(Vector2(float(entry.get("x",0)),float(entry.get("z",0)))-half,half*2)
 
 func _furnishing_basis(entry:Dictionary) -> Basis:
 	return Basis(Vector3.UP,deg_to_rad(float(entry.get("rotation",0))))
@@ -426,8 +423,20 @@ func furnishing_panels(entry:Dictionary) -> Array[Rect2]:
 	var basis:Basis=_furnishing_basis(entry)
 	var result:Array[Rect2]=[]
 	for panel:Dictionary in LifeCatalog.local_panels(str(entry.get("kind",""))):
-		result.append(_oriented_rect(origin,basis,Vector2(float(panel.x),float(panel.z)),Vector2(float(panel.w),float(panel.d))))
+		result.append(_oriented_panel(origin,basis,panel))
 	return result
+
+## The axis-aligned rectangle a band's local centre and size occupy once the
+## entry's yaw is applied. Every rectangle this file builds for a furnishing goes
+## through here, so an entry's outline, its solid bands and its collider can
+## never disagree about how a rotation maps one onto the world. The centre is a
+## floor-plan point — local x and local z — because a yaw moves only those.
+func _oriented_panel(origin:Vector2,basis:Basis,panel:Dictionary) -> Rect2:
+	var offset:Vector3=basis*Vector3(float(panel.x),0,float(panel.z))
+	var x_axis:Vector3=basis*Vector3(float(panel.w)*.5,0,0)
+	var z_axis:Vector3=basis*Vector3(0,0,float(panel.d)*.5)
+	var half:=Vector2(absf(x_axis.x)+absf(z_axis.x),absf(x_axis.z)+absf(z_axis.z))
+	return Rect2(origin+Vector2(offset.x,offset.z)-half,half*2)
 
 ## The same bands for a placed item, read off the node the live world owns.
 func item_panels(item:Dictionary) -> Array[Rect2]:
@@ -474,16 +483,34 @@ func _gather_visual_bounds(node:Node,transform:Transform3D,vertices:Array[Vector
 
 func furnishing_volume(entry:Dictionary)->AABB:
 	var kind:String=str(entry.kind)
-	if not _furnishing_volume_cache.has(kind):
-		var scene:Node3D=load("res://assets/models/%s.glb"%kind).instantiate();var vertices:Array[Vector3]=[]
-		_gather_visual_bounds(scene,Transform3D.IDENTITY,vertices);scene.free()
-		var data:Dictionary=LifeCatalog.ITEMS[kind]
+	var style:String=Variants.style_or_default(str(entry.get("style","")),LifeCatalog.get_item(kind))
+	var cache_key:String=kind+"|"+style
+	if not _furnishing_volume_cache.has(cache_key):
+		var data:Dictionary=LifeCatalog.get_item(kind)
+		# The authored mesh is measured once at its own size; the declared box is
+		# the authored footprint and height, and the size choice scales both, so
+		# the envelope follows the size the player actually bought.
 		var box:=AABB(Vector3(-data.size.x*.5,0,-data.size.y*.5),Vector3(data.size.x,data.height,data.size.y))
-		for point:Vector3 in vertices:box=box.expand(point)
-		_furnishing_volume_cache[kind]=box
-	var local:AABB=_furnishing_volume_cache[kind]
+		var path:String=Variants.model_path(kind,style)
+		if ResourceLoader.exists(path):
+			var scene:Node3D=load(path).instantiate();var vertices:Array[Vector3]=[]
+			_gather_visual_bounds(scene,Transform3D.IDENTITY,vertices);scene.free()
+			for point:Vector3 in vertices:box=box.expand(point)
+		_furnishing_volume_cache[cache_key]=box
+	var local:AABB=_scaled_volume(_furnishing_volume_cache[cache_key],Variants.size_scale(str(entry.get("size",""))))
 	var transform:=Transform3D(Basis(Vector3.UP,deg_to_rad(float(entry.get("rotation",0)))),Vector3(float(entry.get("x",0)),Building.level_y(int(entry.get("level",0))),float(entry.get("z",0))))
 	return transform*local
+
+## An authored envelope scaled by a size choice, about its own origin.
+##
+## Godot 4 removed `AABB * float`, so the envelope is rebuilt from its two
+## corners instead: the origin scales with the box, because the authored model is
+## centred on its own footprint and a larger table grows outward from the middle.
+static func _scaled_volume(box:AABB,scale:float) -> AABB:
+	if is_equal_approx(scale,1.0):
+		return box
+	var scaled:=AABB(box.position*scale,box.size*scale)
+	return scaled
 
 func set_starter_floor_visible(value:bool) -> void:
 	for node:Node3D in starter_floor_nodes:
@@ -587,12 +614,13 @@ func window_panel(p: Vector3, side: bool) -> void:
 	for x in [-1.0,1.0]:box(root,Vector3(x,.03,.12),Vector3(.18,1.6,.09),"d9cbb2")
 	assign_structure_layer(root,clampi(floori((p.y-Building.GROUND_Y)/Building.RISE),0,1))
 
-func tree(p: Vector3, s: float) -> void:
+func tree(p: Vector3, s: float, parent: Node3D = null) -> void:
 	# Coordinate-only variation preserves the world's shared random stream.
 	var key:int=(roundi(p.x*100.0)*73856093) ^ (roundi(p.z*100.0)*19349663)
 	var variant:String="a" if posmod(key,5)<3 else "b"
 	var tree_root:Node3D=load("res://assets/models/tree_field_maple_%s.glb"%variant).instantiate()
-	house.add_child(tree_root)
+	if parent == null: parent = house
+	parent.add_child(tree_root)
 	tree_root.position=p
 	# The imported scene has two immediate meshes. Keep the same root transform
 	# and immediate GeometryInstance3D contract used by camera transparency.
@@ -604,6 +632,54 @@ func tree(p: Vector3, s: float) -> void:
 		var tree_material:StandardMaterial3D=mesh.get_active_material(0)
 		tree_material.vertex_color_use_as_albedo=true
 	landscape_trees.append(tree_root)
+
+## Draw the household's land: the lawn it covers, the boundary hedges on its own
+## outer edges, the street in front and the trees behind.
+##
+## Everything here is derived from `Building.lot()`, so it is drawn again from
+## scratch whenever the land grows. Redrawing is cheap and complete, which is
+## what keeps a bought plot from leaving the old hedge standing in the middle of
+## the new lawn.
+func draw_ground() -> void:
+	if not is_instance_valid(ground_node):
+		return
+	for child:Node in ground_node.get_children():
+		ground_node.remove_child(child)
+		child.queue_free()
+	# The camera's transparency list must not keep trees that have been redrawn.
+	landscape_trees = landscape_trees.filter(func(node: Node3D) -> bool: return is_instance_valid(node) and node.get_parent() != null)
+	ground_node.position=Vector3.ZERO
+	var ground:Rect2=Building.lot()
+	var parent:Node3D=ground_node
+	box(parent,Vector3(ground.get_center().x,-.3,ground.get_center().y),Vector3(ground.size.x+80,.3,ground.size.y+80),"b8cdaa")
+	# Trees behind the house, kept clear of the lawn the household can walk on by
+	# sitting them beyond the lot's own back edge.
+	for x in [-7.55,7.55]:
+		for z in [-6.8,-1.2,5.9]: tree(Vector3(x,-.10,z),0.55,parent)
+	var back_edge:float=ground.position.y
+	for x in [-10.5,10.6,16,-17]:tree(Vector3(x,-.12,back_edge+4.0),1.0,parent)
+	# The boundary hedges sit on the garden's own edges, so a deeper or wider
+	# garden moves them rather than leaving them standing in the middle of the
+	# lawn. The frontage is left open for the street.
+	var west_edge:float=ground.position.x
+	var east_edge:float=ground.end.x
+	for z in [back_edge+.6, back_edge+1.2]:
+		for x in range(int(west_edge)+1,int(east_edge)):sphere(parent,Vector3(x,.25,z),Vector3(1.0,.64,.80),"71945e")
+	for side_x:float in [west_edge+.85, east_edge-.85]:
+		var span:int=int(maxf(1.0,(ground.end.y-2.0)-back_edge))
+		for step:int in range(span):
+			var z:float=back_edge+1.0+float(step)
+			sphere(parent,Vector3(side_x,.25,z),Vector3(.9,.5,.80),"71945e")
+	# The street stays where it is: the lot grows away from the frontage.
+	box(parent,Vector3(0,-.02,8.5),Vector3(75,.10,1.25),"e0d9c7")
+	box(parent,Vector3(0,-.07,11.0),Vector3(100,.12,3.7),"798781")
+	for x in range(-30,31,5): box(parent,Vector3(x,.003,11),Vector3(2,.009,.08),"e6ddbc")
+	for x in [-23,25]: neighbor_home(Vector3(x,0,-1))
+	# A simple open mailbox with a brass house number plate.
+	box(parent,Vector3(2,.52,7.8),Vector3(.10,1.1,.10),"ab7951")
+	box(parent,Vector3(2,1.06,7.8),Vector3(.45,.35,.33),"397e70")
+	box(parent,Vector3(2,1.07,7.98),Vector3(.26,.05,.008),"c8a562")
+
 
 func neighbor_home(p: Vector3) -> void:
 	var cottage:bool=p.x<0
@@ -653,6 +729,11 @@ func _dress_mirror(node:Node3D,model:Node3D) -> void:
 	node.add_child(probe)
 
 func refresh_mirror_reflections() -> void:
+	# A world exists before a home does — the construction it always owns says so
+	# — so a rebuild with no furniture container yet simply has no mirror to
+	# refresh rather than failing on a missing node.
+	if not is_instance_valid(furniture):
+		return
 	# Furnishings and walls changed: capture the rooms again for every mirror.
 	for probe:ReflectionProbe in furniture.find_children("MirrorReflection","ReflectionProbe",true,false):
 		probe.update_mode=ReflectionProbe.UPDATE_ALWAYS
@@ -665,7 +746,8 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	var level:int=int(entry.get("level",0))
 	if level==1 and (not is_instance_valid(construction) or construction.building_state.is_empty()):return
 	var data:Dictionary=LifeCatalog.get_item(kind)
-	var path="res://assets/models/%s.glb" % kind
+	var variant:Dictionary=Variants.resolve(data,entry)
+	var path:String=Variants.model_path(kind,str(variant.style))
 	var has_model:bool=ResourceLoader.exists(path)
 	if not has_model and kind!="memorial":return
 	var node=Node3D.new()
@@ -675,15 +757,15 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	if has_model:
 		model=load(path).instantiate()
 		node.add_child(model)
+		# A size choice scales the whole authored model uniformly, so a large
+		# table is the same object made bigger rather than a stretched one.
+		var scale:float=Variants.size_scale(str(variant.size))
+		if not is_equal_approx(scale,1.0):model.scale=Vector3.ONE*scale
 	else:
 		_build_memorial(node)
 	node.position=Vector3(float(entry.get("x",0)),Building.level_y(level),float(entry.get("z",0)))
 	node.rotation_degrees.y=float(entry.get("rotation",0))
-	if LifeCatalog.paints(kind) and is_instance_valid(model):
-		# The chosen finish is repainted by surface name, exactly as the actor
-		# repaints a Lifelet's hair, skin or clothes: only the authored `Body`
-		# surface changes and the glass, tyres, hubs and lamps keep their own.
-		apply_paint(model,LifeCatalog.paint_of(entry))
+	if is_instance_valid(model):_apply_variant_colour(model,data,variant)
 	if kind=="mirror" and is_instance_valid(model):_dress_mirror(node,model)
 	if kind=="floor_lamp":
 		# The arc lamp's warm pool of light is runtime state: the menu switch
@@ -710,7 +792,15 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	var info:Dictionary=entry.duplicate(true)
 	info["node"]=node
 	info["label"]=data.label
-	info["size"]=data.size
+	# A live item's `size` is its real footprint, which every placement, seat and
+	# approach calculation reads; the player's choice rides beside it under
+	# `variant` so the two meanings never collide. The variant is stored as the
+	# record — only the axes this family actually offers — so an unsized kind
+	# carries no size key and two saves describing the same object compare equal.
+	info.erase("style");info.erase("color");info.erase("size")
+	info["variant"]=Variants.record(data, str(variant.style), str(variant.color), str(variant.size))
+	info["size"]=Variants.footprint(data,str(variant.size))
+	info["height"]=Variants.height(data,str(variant.size))
 	info["level"]=level
 	assign_structure_layer(node,level)
 	var body=StaticBody3D.new()
@@ -719,19 +809,46 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	# One box per solid band, from the same catalogue data the placement, the
 	# navigation obstacle and the build quote read. The bands are local metres
 	# and the node already carries the placement's position and yaw, so an
-	# ordinary furnishing gets exactly the single box it always had while the
-	# garage gets a box on each wall and post and stays hollow — which is what
-	# lets the player click a wall to sell the building and walk in the doorway.
+	# ordinary furnishing gets exactly the single box it always had while a
+	# kind with an open interior keeps its bays walkable — which is what lets a
+	# car park inside the two-car garage and the player click its wall to sell it.
 	for panel:Dictionary in LifeCatalog.local_panels(kind):
 		var shape=CollisionShape3D.new()
 		var bounds=BoxShape3D.new()
-		bounds.size=Vector3(float(panel.w),data.height,float(panel.d))
+		bounds.size=Vector3(float(panel.w),info.height,float(panel.d))
 		shape.shape=bounds
-		shape.position=Vector3(float(panel.x),float(data.height)/2,float(panel.z))
+		shape.position=Vector3(float(panel.x),float(info.height)/2,float(panel.z))
 		body.add_child(shape)
 	body.set_meta("item_id",info.id)
 	items.append(info)
 	if rebuild:rebuild_navigation()
+
+## Paint a placed furnishing's own colour choice onto the authored surface the
+## model reserves for it. A model with no such surface — every older furnishing
+## — is left exactly as authored, so this is additive rather than a rewrite of
+## the existing artwork.
+func _apply_variant_colour(model:Node3D,data:Dictionary,variant:Dictionary) -> void:
+	if Variants.colors(data).size()<=1:return
+	var tint:Color=Color(str(variant.color))
+	for node:Node in model.find_children("*","MeshInstance3D",true,false):
+		var mesh_node:MeshInstance3D=node
+		if not Variants.is_tint(mesh_node.name):continue
+		var painted:=StandardMaterial3D.new()
+		painted.albedo_color=tint
+		painted.roughness=.62
+		painted.metallic=.04
+		mesh_node.material_override=painted
+
+## A live world body's own colour, so the ghost, the placement preview and the
+## placed furnishing agree.
+func item_colour(entry:Dictionary) -> Color:
+	var data:Dictionary=LifeCatalog.get_item(str(entry.get("kind","")))
+	return Color(str(Variants.resolve(data,entry).color))
+
+## A model path for a variant entry, used by the placement ghost and the
+## catalogue thumbnail so both draw the style the player is about to buy.
+func variant_model_path(kind:String,style:String="") -> String:
+	return Variants.model_path(kind,style)
 
 func remove_item(id: String) -> Dictionary:
 	for i in range(items.size()):
@@ -749,6 +866,13 @@ func serialize_items() -> Array:
 		if bool(item.get("transient_food",false)) or bool(item.get("transient_puddle",false)) or bool(item.get("derived",false)):continue
 		var entry:Dictionary={"id":item.id,"kind":item.kind,"x":item.node.position.x,"z":item.node.position.z,"rotation":item.node.rotation_degrees.y}
 		if item_level(item)!=0:entry["level"]=item_level(item)
+		# The chosen style, colour and size ride the layout record, so a save
+		# resumes the same object rather than the family's first choice. Only the
+		# axes the entry offers are written, so an unsized furnishing stores no
+		# size key and old and new saves of it compare equal.
+		var variant:Dictionary=item.get("variant",Variants.resolve(LifeCatalog.get_item(item.kind),item))
+		for key:String in variant:
+			entry[key]=variant[key]
 		if str(item.kind)=="floor_lamp" and not bool(item.get("lit",true)):entry["lit"]=false
 		if str(item.kind)=="memorial" and str(item.get("for",""))!="":entry["for"]=str(item.get("for"))
 		if LifeCatalog.paints(str(item.kind)):entry["paint"]=LifeCatalog.paint_of(item)
@@ -764,12 +888,10 @@ func rebuild_navigation() -> void:
 	navigation.cell_size=Vector2(.25,.25)
 	navigation.diagonal_mode=AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
 	navigation.update()
-	# The compatibility grid is 73x65 cell positions, and it used to re-derive
-	# every furnishing's panels inside the cell loop: roughly five thousand
-	# allocations and kind checks per rebuild. The panels do not depend on the
-	# cell, so they are resolved once here. This rebuild runs on every build
-	# edit and on every home load, and it was the single largest stall in the
-	# game (about 1.1 s with a handful of furnishings).
+	# The solid walls and panels do not depend on the cell, and this loop runs on
+	# every build edit and every home load. They used to be re-derived inside it:
+	# roughly five thousand allocations of cell-independent work, which was the
+	# single largest stall in the game (about 1.1 s with a handful of furnishings).
 	var solid_panels:Array[Rect2]=[]
 	for item:Dictionary in items:
 		if item_level(item)!=0:continue
@@ -786,8 +908,13 @@ func rebuild_navigation() -> void:
 	var solid_walls:Array[Rect2]=[]
 	for record:Dictionary in construction.records:
 		if int(record.get("level",0))==0:solid_walls.append(construction.wall_rect(record).grow(.15))
-	for x in range(-36,37):
-		for z in range(-28,37):
+	# Walk exactly the region the graph uses. These bounds were once hardcoded
+	# narrower than `cell_range()`, so the outer strip of the lot was never
+	# marked or cleared as solid — invisible while the lot was small, and a real
+	# hole the moment the garden grew.
+	var grid_region:Rect2i=navigation.region
+	for x in range(grid_region.position.x,grid_region.end.x):
+		for z in range(grid_region.position.y,grid_region.end.y):
 			var p=Vector2(x*.25,z*.25)
 			var solid:=false
 			for wall:Rect2 in solid_walls:
@@ -932,9 +1059,63 @@ func clear_actor_preview(id:String) -> void:
 	if saved is Dictionary:actor.apply_wardrobe(saved)
 
 
+## The organic delivery van, parked outside while a grocery order is dropped off.
+##
+## It is scenery with the household's own sign on it: three leaves on a cream
+## panel, so a player sees which van the order came in. It is created when the
+## delivery is on its way and removed once it has been taken in.
+var delivery_van: Node3D
+
+
+## Bring the delivery van onto the street with its organic sign. Called when a
+## delivery is due, so the arrival the notice describes is a thing the player
+## can actually see.
+func show_delivery_van() -> void:
+	if is_instance_valid(delivery_van):
+		return
+	if not is_instance_valid(house):
+		return
+	var van: Node3D = load("res://assets/models/car_van.glb").instantiate()
+	van.name = "OrganicDeliveryVan"
+	house.add_child(van)
+	van.position = Vector3(0, 0, 10.6)
+	van.rotation.y = PI * .5
+	assign_structure_layer(van, 0)
+	# The sign: a cream panel on each flank with three leaves, so the van reads
+	# as the organic grocer rather than any other vehicle.
+	for sx: float in [-1.0, 1.0]:
+		var panel: MeshInstance3D = box(van, Vector3(sx * .98, 1.35, -.3), Vector3(.04, .62, 1.5), "f4efe0")
+		panel.set_meta("delivery_sign", true)
+		for leaf: int in range(3):
+			var offset: float = (float(leaf) - 1.0) * .42
+			sphere(van, Vector3(sx * 1.01, 1.42, -.3 + offset), Vector3(.20, .26, .16), "5f8f52").set_meta("delivery_leaf", true)
+		var word: Label3D = Label3D.new()
+		word.text = "ORGANIC"
+		word.font_size = 96
+		word.pixel_size = .0032
+		word.modulate = Color("3f6b3a")
+		word.position = Vector3(sx * 1.04, 1.14, -.3)
+		word.rotation.y = PI * .5 if sx > 0 else -PI * .5
+		van.add_child(word)
+	delivery_van = van
+
+
+## Take the van away once the shopping has been carried in.
+func hide_delivery_van() -> void:
+	if is_instance_valid(delivery_van):
+		delivery_van.queue_free()
+	delivery_van = null
+
+
 func set_actor_away(id:String,away:bool,unavailable:bool) -> bool:
 	var actor:LifeActor=actors.get(id)
 	if not is_instance_valid(actor):return false
+	# A Lifelet left off this lot by a partial trip is not shown again by an
+	# unrelated away-state refresh: the trip's own left-behind list owns them
+	# until the party comes home.
+	if bool(actor.get_meta("left_behind",false)):
+		actor.visible=false
+		return false
 	var changed:bool=bool(actor.get_meta("away",false))!=unavailable
 	actor.set_meta("away",unavailable)
 	actor.visible=not away
@@ -979,12 +1160,18 @@ func set_build(enabled:bool) -> void:
 	if grid:grid.visible=enabled
 	if not enabled:clear_placement()
 
-func begin_placement(kind:String) -> void:
+func begin_placement(kind:String,style:String="",size:String="") -> void:
 	if construction:construction.cancel()
 	clear_placement()
 	placement_kind=kind
+	placement_style=style
+	placement_size=size
 	placement_angle=0
-	ghost=load("res://assets/models/%s.glb" % kind).instantiate()
+	var path:String=Variants.model_path(kind,style)
+	if not ResourceLoader.exists(path):path="res://assets/models/%s.glb" % kind
+	ghost=load(path).instantiate()
+	var scale:float=Variants.size_scale(size)
+	if not is_equal_approx(scale,1.0):ghost.scale=Vector3.ONE*scale
 	add_child(ghost)
 	for n in ghost.find_children("*","MeshInstance3D",true,false):
 		var m=StandardMaterial3D.new()
@@ -995,6 +1182,8 @@ func begin_placement(kind:String) -> void:
 
 func clear_placement() -> void:
 	placement_kind=""
+	placement_style=""
+	placement_size=""
 	if is_instance_valid(ghost):ghost.queue_free()
 	ghost=null
 	if construction:construction.cancel()
@@ -1009,17 +1198,22 @@ func begin_construction(tool:String) -> void:
 func grounds(point:Vector2,level:int) -> bool:
 	if construction.floor_contains(point,level):return true
 	if level!=0:return false
-	return Building.LOT.has_point(point)
+	return Building.lot().has_point(point)
 
-func can_place(kind:String,p:Vector3,angle:float) -> bool:
+## Whether this style and size of a kind may stand here. `style` and `size`
+## default to the family's own first choice, so every existing caller that knows
+## only a kind keeps the behaviour it had.
+func can_place(kind:String,p:Vector3,angle:float,style:String="",size_choice:String="") -> bool:
 	if not LifeCatalog.ITEMS.has(kind) or not p.is_finite():return false
 	var level:int=point_level(p)
 	if level<0:return false
-	var size:Vector2=LifeCatalog.ITEMS[kind].size
+	var data:Dictionary=LifeCatalog.get_item(kind)
+	var variant:Dictionary=Variants.resolve(data,{"style":style,"size":size_choice})
+	var size:Vector2=Variants.footprint(data,str(variant.size))
 	var depth:float=size.y
 	if int(roundf(angle/90))%2:size=Vector2(size.y,size.x)
 	var rect=Rect2(Vector2(p.x,p.z)-size/2,size)
-	if kind in LifeCatalog.WALL_MOUNTED:
+	if LifeCatalog.wall_mounted(kind):
 		# Wall decor sits flush against a wall, so only its room-facing half must
 		# lie on the floor; the shift uses the unrotated depth at every angle.
 		var forward:Vector3=Basis(Vector3.UP,deg_to_rad(angle))*Vector3(0,0,1)
@@ -1029,10 +1223,10 @@ func can_place(kind:String,p:Vector3,angle:float) -> bool:
 		# upper furnishing still needs real slab beneath it.
 		if not Building.footprint_supported(construction.building_state,level,rect,level==0):return false
 		if Building.blocked_rect(construction.building_state,level,rect):return false
-		if not construction.building_state.roofs.is_empty() and not RoofRules.obstruction(construction.building_state,furnishing_volume({"kind":kind,"x":p.x,"z":p.z,"rotation":angle,"level":level})).is_empty():return false
+		if not construction.building_state.roofs.is_empty() and not RoofRules.obstruction(construction.building_state,furnishing_volume({"kind":kind,"x":p.x,"z":p.z,"rotation":angle,"level":level,"style":variant.style,"size":variant.size})).is_empty():return false
 	for corner in [rect.position,rect.end,Vector2(rect.position.x,rect.end.y),Vector2(rect.end.x,rect.position.y)]:
 		if not grounds(corner,level):return false
-	if kind in LifeCatalog.WALL_MOUNTED and not wall_behind(kind,p,angle):return false
+	if LifeCatalog.wall_mounted(kind) and not wall_behind(kind,p,angle,variant.size):return false
 	if LifeCatalog.passable(kind):return true
 	# Interior walls and doorways stay usable.
 	if construction.rect_blocked(rect,level):return false
@@ -1046,9 +1240,9 @@ func can_place(kind:String,p:Vector3,angle:float) -> bool:
 			if rect.grow(.05).intersects(panel):return false
 	return true
 
-func wall_snap(kind:String,p:Vector3,reach:float=1.0) -> Dictionary:
+func wall_snap(kind:String,p:Vector3,reach:float=1.0,size_choice:String="") -> Dictionary:
 	if not is_instance_valid(construction) or not LifeCatalog.ITEMS.has(kind):return {}
-	var size:Vector2=LifeCatalog.ITEMS[kind].size
+	var size:Vector2=Variants.footprint(LifeCatalog.get_item(kind),size_choice)
 	var level:int=point_level(p)
 	var best:Dictionary={};var best_distance:float=reach
 	for e in construction.records:
@@ -1069,10 +1263,10 @@ func wall_snap(kind:String,p:Vector3,reach:float=1.0) -> Dictionary:
 			best={"position":Vector3(cx+side*(w*.5+size.y*.5+.01),p.y,clampf(p.z,cz-d*.5+size.x*.5+.3,cz+d*.5-size.x*.5-.3)),"angle":90.0 if side>0 else -90.0}
 	return best
 
-func wall_behind(kind:String,p:Vector3,angle:float) -> bool:
+func wall_behind(kind:String,p:Vector3,angle:float,size_choice:String="") -> bool:
 	# Wall-mounted decor needs a wall directly behind its back face on the same floor.
 	if not is_instance_valid(construction) or not LifeCatalog.ITEMS.has(kind):return false
-	var size:Vector2=LifeCatalog.ITEMS[kind].size
+	var size:Vector2=Variants.footprint(LifeCatalog.get_item(kind),size_choice)
 	var forward:Vector3=Basis(Vector3.UP,deg_to_rad(angle))*Vector3(0,0,1)
 	var back:Vector3=p-forward*(size.y*.5+.06)
 	var level:int=point_level(p)
@@ -1128,7 +1322,7 @@ func pick(screen:Vector2) -> void:
 		if not proposal.is_empty():construction_requested.emit(proposal)
 		return
 	if build_enabled and placement_kind!="":
-		if ghost_valid:placement_requested.emit(placement_kind,ghost_position,placement_angle)
+		if ghost_valid:placement_requested.emit(placement_kind,ghost_position,placement_angle,placement_style,placement_size)
 		return
 	var origin=camera.project_ray_origin(screen)
 	refresh_actor_layers()
@@ -1237,14 +1431,14 @@ func _process(delta:float) -> void:
 	if build_enabled and is_instance_valid(ghost):
 		var p=floor_point(get_viewport().get_mouse_position())
 		p.x=snappedf(p.x,.25);p.z=snappedf(p.z,.25)
-		if placement_kind in LifeCatalog.WALL_MOUNTED:
+		if LifeCatalog.wall_mounted(placement_kind):
 			# Wall decor slides along the nearest wall and faces into the room.
-			var snap:Dictionary=wall_snap(placement_kind,p)
+			var snap:Dictionary=wall_snap(placement_kind,p,1.0,placement_size)
 			if not snap.is_empty():p=snap.position;placement_angle=float(snap.angle)
 		ghost.position=p
 		ghost.rotation_degrees.y=placement_angle
 		ghost_position=p
-		ghost_valid=can_place(placement_kind,p,placement_angle)
+		ghost_valid=can_place(placement_kind,p,placement_angle,placement_style,placement_size)
 		# The preview turns red for a spot the purchase would refuse for sealing a way.
 		if ghost_valid and placement_reach_check.is_valid():ghost_valid=bool(placement_reach_check.call(placement_kind,p,placement_angle))
 		for n in ghost.find_children("*","MeshInstance3D",true,false):n.material_override.albedo_color=Color(.4,.85,.6,.48) if ghost_valid else Color(.9,.3,.25,.48)
@@ -1296,16 +1490,44 @@ func _desk_surface(node:Node3D) -> Dictionary:
 		"desk_front_edge":node.to_global(Vector3(0,.87,.385)),
 		"desk_forward":-node.global_basis.z.normalized()}
 
-const TWO_SEATERS: Array[String] = ["loveseat"]
 ## Beds a partnered pair shares: the left and right halves of the mattress.
 const SHARED_BEDS: Array[String] = ["bed"]
 
+## How many people one placed furnishing really seats. The catalogue declares it
+## per size, so a large garden table that advertises ten places really holds ten
+## and a loveseat holds two; everything else holds one.
+func seat_capacity(item:Dictionary) -> int:
+	var data:Dictionary=LifeCatalog.get_item(str(item.get("kind","")))
+	if data.is_empty():return 1
+	if str(item.kind) in SHARED_BEDS:return 2
+	var variant:Dictionary=item.get("variant",{})
+	var size:String=str(variant.get("size",""))
+	return maxi(1,Variants.seats(data,size))
+
+## The names of a furnishing's own places, in the order they are offered. A bed
+## keeps its named halves, because a save and the intimacy action both name them;
+## every other multi-seat furnishing numbers its places along its own width.
+func seat_slots(item:Dictionary) -> Array[String]:
+	if str(item.kind) in SHARED_BEDS:return ["left","right"]
+	var count:int=seat_capacity(item)
+	if count<=1:return [""]
+	var out:Array[String]=[]
+	for index:int in range(count):out.append("seat_%d" % index)
+	return out
+
+## The local offset of one place on a furnishing, spread evenly across its own
+## footprint so the seats sit where the model's seats are.
 func seat_slot_offset(item:Dictionary,slot:String) -> Vector3:
-	# Local offset of a named slot on a two-seater or shared bed; single seats
-	# return zero.
 	if str(item.kind) in SHARED_BEDS:return Vector3(-.42 if slot=="left" else .42,0,0)
-	if str(item.kind) not in TWO_SEATERS:return Vector3.ZERO
-	return Vector3(-.45 if slot=="left" else .45,0,0)
+	var count:int=seat_capacity(item)
+	if count<=1 or slot.is_empty():return Vector3.ZERO
+	var index:int=slot.trim_prefix("seat_").to_int()
+	index=clampi(index,0,count-1)
+	# Half the usable width per gap, inset by a quarter of the span at each end,
+	# so the outermost places stay on the model rather than at its edge.
+	var span:float=float(item.get("size",Vector2(.6,.6)).x)*.8
+	var step:float=span/float(maxi(1,count-1)) if count>1 else 0.0
+	return Vector3(-span*.5+step*float(index),0,0)
 
 func slot_approach(item:Dictionary,slot:String) -> Vector3:
 	var n:Node3D=item.node
@@ -1320,7 +1542,7 @@ func activity_resource_ids(item:Dictionary,slot:String="") -> Array[String]:
 		# A whole-bed claim plus the half: any second sleeper conflicts on the
 		# bed itself, and only a partner is allowed to overlap the halves.
 		return [str(item.id)+":"+slot,str(item.id)] if not slot.is_empty() else [str(item.id)]
-	var resources:Array[String]=[str(item.id)+(":"+slot if str(item.kind) in TWO_SEATERS and not slot.is_empty() else "")]
+	var resources:Array[String]=[str(item.id)+(":"+slot if seat_capacity(item)>1 and not slot.is_empty() else "")]
 	if str(item.kind) in ["desk","computer"]:
 		var chair:Dictionary=closest_item("chair",item.node.to_global(Vector3(0,0,.88)),1.25)
 		if not chair.is_empty():resources.append(str(chair.id))

@@ -14,6 +14,11 @@ func _food_setup()->void:
 	check(valid.is_empty(),"Complete meal fixture passes actual world layout validation: "+valid)
 	app.loading_game=true;app.setup_live(layout);app.loading_game=false
 	app.player.position=Vector3(-2,.16,-4)
+	# A recipe's ingredients come out of the kitchen rather than the purse, so the
+	# fixture stocks it through the household's own order before it cooks.
+	app.household.set_funds(app.household.funds+200)
+	app.household.order_groceries("weekly")
+	app.household.collect_groceries()
 	app.sim.needs.hunger=100.0;app._store_motion();app._refresh_sim_targets()
 
 func _food_record(id:String)->Dictionary:
@@ -35,7 +40,10 @@ func _food_produce()->void:
 	check(carried,"Actual paid cooking creates a serving batch and carries it onto the upstairs route.")
 	if not carried:
 		print("FOOD_DIAGNOSTIC ",JSON.stringify(LifeSaveLibrary._json_safe({"queue":app.sim.action_queue,"route":_route("player"),"ledger":app.household.meals.get_state(),"position":app.player.position}),"",true,true));return
-	check(app.household.funds==initial_funds-12 and app.household.meals.batches.size()==1 and app.household.meals.portions.is_empty(),"Actual garden skillet charges once and creates exactly four unclaimed servings.")
+	# Cooking takes a meal out of the kitchen rather than charging the purse, so
+	# what the fixture proves is that one meal was drawn and the dish really holds
+	# four unclaimed servings.
+	check(app.household.funds==initial_funds and app.household.meals.batches.size()==1 and app.household.meals.portions.is_empty(),"Actual garden skillet draws one meal from the kitchen and creates exactly four unclaimed servings.")
 	var batch:Dictionary=app.household.meals.batches[0]
 	check(int(batch.remaining)==4,"Cooked serving dish retains all four servings during transit.")
 	var held_id:String=str(batch.id)
@@ -79,6 +87,7 @@ func _food_produce()->void:
 	food_expected.slot=app.active_save_id
 	var read:Dictionary=LifeSaveLibrary.read_slot(str(food_expected.slot))
 	check(bool(read.ok),"Saved food crossing passes detached layout, action, journey and custody validation: "+str(read.get("error","valid")))
+	DirAccess.make_dir_recursive_absolute("user://regression/stair_save")
 	var file:=FileAccess.open("user://regression/stair_save/food_"+case_name+"_expected.json",FileAccess.WRITE)
 	file.store_string(JSON.stringify(LifeSaveLibrary._json_safe(food_expected),"  ",true,true));file.close()
 

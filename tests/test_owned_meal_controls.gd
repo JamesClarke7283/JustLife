@@ -40,7 +40,7 @@ func _explicit_approach_queue()->void:
 	check(is_same(f.sim.action_queue[0],first) and is_same(f.sim.action_queue[1],later) and f.sim.action_queue==queue,"Later player ownership keeps exact current and later action identities, contents and ordering.")
 	app.cancel_current_action()
 	check(not f.sim.action_queue.is_empty() and is_same(f.sim.get_current_action(),later) and str(f.plate.owner).is_empty(),"Direct player cancellation still releases the plate and starts the queued instruction.")
-	check(float(f.plate.progress)==.25 and app.household.funds==1000,"Direct cancellation retains actual partial progress and does not charge again.")
+	check(float(f.plate.progress)==.25 and app.household.funds==shop_funds,"Direct cancellation retains actual partial progress and draws no further meal.")
 func _invalid_endpoint()->void:
 	var f:Dictionary=_approach_fixture(true);f.action.meal_standing=true;f.action.meal_seat="";f.action.target_id=str(f.plate.id);f.action.target_position=Vector3(200,.16,200)
 	var progress:float=float(f.plate.progress);var funds:int=app.household.funds

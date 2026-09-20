@@ -53,6 +53,7 @@ func run()->void:
 			actor.present_stair(sample,true)
 			if actor._time!=before or not feet.L.is_equal_approx(actor._leg_rest.L.shoe.global_transform) or not feet.R.is_equal_approx(actor._leg_rest.R.shoe.global_transform):failures.append(age+" reconstruction changed time or shoe pose")
 		actor.queue_free();await process_frame
+	DirAccess.make_dir_recursive_absolute("user://regression/stair_motion")
 	var f:=FileAccess.open(OUT+"motion.json",FileAccess.WRITE)
 	f.store_string(JSON.stringify({"frames":frames,"max_contact_error":max_contact_error,"max_support_error":max_support_error,"failures":failures,"samples":evidence,"violation_counts":violations,"scope":"Actual-frame isolated adult/child ascent/descent; imported real soles/treads, deterministic zero-time pose. No controller routing/FIFO/cancel/save/public game evidence."},"  "));f.close()
 	space.queue_free();await process_frame

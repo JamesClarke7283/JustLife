@@ -4,6 +4,7 @@ class_name LifeJourneyState
 ## schedules, temporary graph indices and runtime node references are derived.
 const VERSION:int=2
 const Building=preload("res://scripts/building_state.gd")
+const LifeLand=preload("res://scripts/land.gd")
 const Navigation=preload("res://scripts/lot_navigation.gd")
 const Gait=preload("res://scripts/stair_gait.gd")
 const PHASES:Array[String]=["route","to_wait","waiting","entry","transit","clear"]
@@ -119,7 +120,14 @@ static func validate(data:Variant,household:Dictionary)->Dictionary:
 	if not context is Dictionary:return {"ok":false,"error":"Missing saved world context."}
 	var venue:Variant=context.get("venue","home")
 	if context.has("view_level") and not number(context.view_level,0,1,true):return {"ok":false,"error":"Invalid saved visible floor."}
-	if not venue is String or not LifeNeighborhood.PLACES.has(venue):return {"ok":false,"error":"Invalid saved venue."}
+	if not venue is String or not LifeNeighborhood.has(venue):return {"ok":false,"error":"Invalid saved venue."}
+	# The household's land is checked and applied before any layout is validated,
+	# because every rectangle in a layout is bounded by the lot the household
+	# actually owns — a layout saved on a bought plot cannot be judged against
+	# the starting plot.
+	var land_error:String=LifeLand.validate(context.get("land"))
+	if not land_error.is_empty():return {"ok":false,"error":land_error}
+	if venue=="home":Building.set_land(context.get("land"))
 	var checked:Dictionary=layout_context(household.world)
 	if not bool(checked.ok):return checked
 	var layouts:Dictionary={venue:household.world}
@@ -129,7 +137,7 @@ static func validate(data:Variant,household:Dictionary)->Dictionary:
 		var cached_home:Dictionary=layout_context(context.home_layout)
 		if not bool(cached_home.ok):return {"ok":false,"error":"Invalid cached home layout: "+str(cached_home.error)}
 	for key:Variant in context.get("venue_layouts",{}):
-		if not key is String or not LifeNeighborhood.PLACES.has(key) or key=="home" or not context.venue_layouts[key] is Array:return {"ok":false,"error":"Invalid cached venue layout."}
+		if not key is String or not LifeNeighborhood.has(key) or key=="home" or not context.venue_layouts[key] is Array:return {"ok":false,"error":"Invalid cached venue layout."}
 		var stored:Dictionary=layout_context(context.venue_layouts[key])
 		if not bool(stored.ok):return {"ok":false,"error":"Invalid cached "+str(key)+" layout: "+str(stored.error)}
 		if key!=venue:layouts[key]=context.venue_layouts[key]

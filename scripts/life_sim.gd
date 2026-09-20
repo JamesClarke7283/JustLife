@@ -8,6 +8,11 @@ signal action_finished(action: Dictionary)
 var meal_service: Node
 var sanitation_service: Node
 var household_service: Node
+## Optional live kitchen: answers whether the household has food, and takes a
+## meal out of the fridge when a recipe or a snack is cooked. A standalone
+## simulation without a household leaves it invalid and keeps the old behaviour
+## of paying for ingredients at the moment of cooking.
+var grocery_service: Node
 # Optional live resource admission; standalone simulations keep their old policy.
 var autonomy_activity_available: Callable
 ## Optional live witness test for group social actions (host_a_chat). Given two
@@ -49,6 +54,8 @@ const NEED_NAMES: Array[String] = ["hunger", "energy", "hygiene", "bladder", "fu
 ## continues where it stopped instead of restarting the whole shift.
 const RESUMABLE_BREAK_ACTIONS: Array[String] = ["job"]
 const LifeWantsManager = preload("res://scripts/wants_manager.gd")
+const LifeLand = preload("res://scripts/land.gd")
+const LifeProperties = preload("res://scripts/properties.gd")
 const TRAIT_NAMES: Array[String] = ["Creative", "Outgoing", "Active", "Bookworm", "Foodie", "Neat"]
 const ASPIRATION_NAMES: Array[String] = ["Maker", "Connected", "Successful", "Balanced"]
 const NEED_DECAY: Dictionary = {"hunger": 3.5, "energy": 3.0, "hygiene": 2.1, "bladder": 4.0, "fun": 2.5, "social": 2.0}
@@ -66,27 +73,13 @@ const SECOND_WIND_MAX: float = 100.0
 const SECOND_WIND_TOOLTIP: String = "Temporary energy from a coffee. It fades on its own at %d a game hour and cannot be topped up above %d; the ordinary Energy need is untouched by it." % [int(SECOND_WIND_DECAY_PER_HOUR), int(SECOND_WIND_MAX)]
 var second_wind: float = 0.0
 const SKILL_NAMES: Array[String] = ["cooking", "creativity", "charisma", "logic", "gardening", "parenting", "fitness", "music"]
-const CAREER_TRACKS: Dictionary = {
-	"studio":{"label":"Creative studio","skill":"creativity","base_salary":180,"titles":["Studio assistant","Project coordinator","Creative specialist","Studio lead","Creative director"]},
-	"culinary":{"label":"Culinary arts","skill":"cooking","base_salary":160,"titles":["Kitchen assistant","Prep cook","Line chef","Sous chef","Head chef"]},
-	"technology":{"label":"Technology","skill":"logic","base_salary":200,"titles":["Support specialist","Junior developer","Software engineer","Technical lead","Principal engineer"]},
-	"community":{"label":"Community work","skill":"charisma","base_salary":150,"titles":["Community assistant","Event organizer","Outreach specialist","Program manager","Community director"]},
-	"fitness":{"label":"Wellness club","skill":"fitness","base_salary":170,"titles":["Club assistant","Fitness coach","Personal trainer","Wellness lead","Body architect"]},
-	"botany":{"label":"Botany guild","skill":"gardening","base_salary":155,"titles":["Garden centre clerk","Plant technician","Botanist","Head horticulturist","Master gardener"]},
-	# The criminal track pays far better than honest work because the money is
-	# the reward for the risk. Anyone can walk into it: `entry` names no skill and
-	# no fee, so the only career a fresh Lifelet can always start is this one.
-	"criminal":{"label":"Criminal","skill":"charisma","base_salary":1000,"titles":["Lookout","Runner","Fence","Fixer","Kingpin"],
-		"entry":{"cost":0,"skill":"","level":0}},
-	# A technical trade is bought, not walked into: the household pays the ℒ900
-	# course fee and the Lifelet must already think in steps (Logic 8).
-	"technical":{"label":"Technical work","skill":"logic","base_salary":240,"titles":["Apprentice technician","Bench technician","Systems technician","Lead technician","Master technician"],
-		"entry":{"cost":900,"skill":"logic","level":8}}
-}
 ## What a home insurance policy is. The catalogue lives here so a save and the
 ## phone price the same product; the household owns the purchased record.
 const INSURANCE_POLICIES: Dictionary = {
-	"home":{"label":"Home insurance","premium":450}
+	"home":{"label":"Home insurance","premium":450,"payout_multiple":1.0},
+	# Higher cover on a bigger house: a larger premium, and a break-in is paid
+	# back with interest rather than merely made even.
+	"premium":{"label":"Premium home insurance","premium":900,"payout_multiple":1.5},
 }
 ## The nightly break-in that makes a policy worth buying: a real loss, capped at
 ## what the purse actually holds so funds can never go negative.
@@ -98,6 +91,13 @@ var character: Dictionary = {}
 var lifecycle: Dictionary = {}
 var education: Dictionary = {}
 var away_state: Dictionary = {}
+## The highest qualification this Lifelet has finished: no degree, a Bachelors,
+## a Masters or a PHD. A job that asks for one pays more for it, and a PHD is a
+## doctor whatever the job.
+var degree: String = "none"
+## The criminal record: how often this Lifelet has been caught, what that cost,
+## and the day they are free again. Empty for anybody who has never been inside.
+var criminal_record: Dictionary = {}
 var cooperation_owner: Node = null
 var cooperation_member_id: String = ""
 var _notification_depth: int = 0
@@ -184,10 +184,10 @@ const REWARDS: Dictionary = {
 const TRAIT_ACTIONS: Dictionary = {"sketch_for_fun":"Creative", "host_a_chat":"Outgoing", "morning_run":"Active", "deep_read":"Bookworm", "experiment_recipe":"Foodie", "deep_clean":"Neat"}
 # One opportunity per mood: only offered while that feeling is the strongest one.
 const EMOTION_ACTIONS: Dictionary = {"paint_masterpiece":"Inspired", "study_hard":"Focused", "playful_prank":"Playful", "push_through":"Energized", "bold_introduction":"Confident"}
-const AGE_GATED_ACTIONS: Array[String] = ["jog", "play_toys", "morning_run"]
+const AGE_GATED_ACTIONS: Array[String] = ["jog", "play_toys", "morning_run", LifeGardenGames.ACTION_ID]
 ## Built once from the skill roster: the computer's mastery actions, one per skill.
 const COMPUTER_MASTERY_ACTIONS: Array[String] = ["computer_cooking", "computer_creativity", "computer_charisma", "computer_logic", "computer_gardening", "computer_parenting", "computer_fitness", "computer_music"]
-const LEISURE_ACTIONS: Array[String] = ["paint", "read", "watch", "relax", "play_piano", "play_chess", "dance", "play_games", "practice_speech", "stretch", "warm_up", "jog", "play_toys", "sketch_for_fun", "deep_read", "experiment_recipe", "morning_run", "push_through"]
+const LEISURE_ACTIONS: Array[String] = ["paint", "read", "watch", "relax", "play_piano", "play_chess", "dance", "play_games", "practice_speech", "stretch", "warm_up", "jog", "play_toys", "sketch_for_fun", "deep_read", "experiment_recipe", "morning_run", "push_through", LifeGardenGames.ACTION_ID]
 const PRE_DUTY_LEISURE: Array[String] = ["relax", "read", "watch", "stretch", "warm_up", "paint"]  # brief pastimes before a school or work day; the short ones sit ahead of the canvas
 const DEPARTURE_WALK: float = 15.0  # game minutes allowed for the walk from a pastime to the lot exit in a busy home
 const LEISURE_APPROACH: float = 10.0  # game minutes allowed for the walk to a pastime before it starts
@@ -293,7 +293,14 @@ func new_household(profile: Dictionary) -> void:
 	_social_adults.clear()
 	_social_reciprocal.clear()
 	_social_family.clear()
-	career = {"schedule":LifeCareerSchedule.fresh(1),"track":"studio","title": "Studio assistant", "level": 1, "performance": 0.0, "salary": 180, "worked_day": 0}
+	# The default is the way into work: a Lifelet with no skills and no degree
+	# starts waiting tables, which is the lowest rung and the only one open to
+	# them. Everything above it asks for something they have not earned yet.
+	degree = "none"
+	criminal_record = {}
+	career = {"schedule":LifeCareerSchedule.fresh(1),"track":LifeCareers.DEFAULT_JOB,
+		"title":LifeCareers.title_at(LifeCareers.DEFAULT_JOB,1),"level":1,"performance":0.0,
+		"salary":LifeCareers.base_pay(LifeCareers.DEFAULT_JOB,1),"worked_day":0}
 	moodlets.clear();memories.clear()
 	aspiration_stage = 1
 	aspiration_next_day = 0
@@ -390,7 +397,18 @@ func _build_actions() -> void:
 	# dance's own, so every dancer gains exactly what dancing alone would give;
 	# the household binds up to five Lifelets to one shared clock.
 	_define("dance_together", "Dance together", 35.0, {"fun": 40.0, "energy": -8.0, "hygiene": -6.0}, 0, "fitness", 12.0, "Share one record with the household. Everyone dances, and everyone hears the same song.")
+
+	_define("read_post", "Read the post", 10.0, {"fun": 4.0}, 0, "", 0.0, "Open the post box and read what has arrived. A bill can be settled straight from its letter.")
+	# Every outdoor furnishing shares this one action; the placed object supplies
+	# the flavour, the gate and the skill, exactly as the garden games do.
+	_define(LifeOutdoorActs.ACTION_ID, "Enjoy the garden", 40.0, {}, 0, "", 0.0, "Use what is standing in the garden.")
+	_define(LifeOutdoorActs.PUSH_ID, "Push the children", LifeOutdoorActs.PUSH.duration, LifeOutdoorActs.PUSH.changes.duplicate(), 0, "", 0.0, "Push whoever is on the swings. Good fun for the pusher and the child alike.")
+	_define("ride_bike", "Go for a ride", 60.0, {"fun": 34.0, "energy": -16.0, "hygiene": -14.0, "social": 6.0}, 0, "fitness", 42.0, "Ride out along the lane and back. Needs a helmet, and builds Fitness fast.")
+	_define("wear_helmet", "Put on a helmet", 4.0, {}, 0, "", 0.0, "Strap on a bicycle helmet. Riding a bike needs one.")
 	_define("play_toys", "Play with toys", 45.0, {"fun": 42.0, "social": 4.0}, 0, "creativity", 14.0, "Imaginative play for children. Builds a little Creativity.")
+	# Every garden game shares this one action. The placed game supplies the
+	# flavour, so a new game model is playable the moment it is catalogued.
+	_define(LifeGardenGames.ACTION_ID, "Play", LifeGardenGames.DURATION, LifeGardenGames.CHANGES.duplicate(), 0, "", 0.0, "Have a proper go on a garden game. Builds the skill that game teaches.")
 	_define("change_outfit", "Change outfit", 4.0, {}, 0, "", 0.0, "Switch to the next saved outfit type in your wardrobe.")
 	_define("change_in_wardrobe", "Open the wardrobe…", 6.0, {}, 0, "", 0.0, "Browse your tops, hair, makeup and jewelry and see each one on before you keep it.")
 	_define("wear_everyday", "Wear everyday clothes", 4.0, {}, 0, "", 0.0, "Change into the Everyday look you designed.")
@@ -407,6 +425,7 @@ func _build_actions() -> void:
 	_define("mourn", "Mourn", 30.0, {"fun": -4.0}, 0, "", 0.0, "Spend a quiet moment in respectful silence. Shedding tears eases grief.")
 	_define("leave_flowers", "Leave fresh flowers", 15.0, {"fun": 10.0}, 15, "", 0.0, "Place fresh blooms (ℒ15) at the memorial to honour their memory.")
 	_define("remember_passed", "Reminisce", 25.0, {"fun": 14.0, "social": 4.0}, 0, "", 0.0, "Reflect on fond memories and wisdom shared with the departed.")
+	_define("order_groceries", "Order the weekly shop", 5.0, {}, 0, "", 0.0, "Order a grocery delivery from the computer. The van arrives later today, or tomorrow if it is already evening, and the kitchen is restocked when it does.")
 	_define("play_games", "Play video games", 45.0, {"fun": 40.0, "energy": -4.0}, 0, "logic", 10.0, "An hour of games at the computer. Great fun, a little Logic.")
 	_define("friendly", "Have a friendly chat", 25.0, {"social": 28.0, "fun": 6.0}, 0, "charisma", 18.0, "Say hello, catch up and grow your friendship.")
 	_define("joke", "Tell a joke", 20.0, {"social": 22.0, "fun": 16.0}, 0, "charisma", 16.0, "Share a laugh and strengthen your friendship.")
@@ -461,7 +480,7 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"lot_exit":
 			ids = ["school_day"] if str(character.age_stage) in LifeEducation.SCHOOL_STAGES else (["career_day"] if str(character.life_stage)=="adult" else [])
 			ids.append("morning_run")
-		"fridge": ids = ["cook", "snack", "birthday"]
+		"fridge": ids = ["cook", "snack", "order_groceries", "birthday"]
 		"stove", "kitchen": ids = ["cook", "experiment_recipe"]
 		"sink": ids = ["wash_hands", "brush_teeth", "deep_clean"]
 		"dining", "counter", "coffee_table": ids = ["clear_table", "deep_clean"]
@@ -476,7 +495,7 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"bookshelf", "book_nook": ids = ["read", "study", "study_book", "buy_book", "deep_read"]
 		"easel": ids = ["paint", "paint_masterpiece", "sketch_for_fun"]
 		"desk": ids = ["work", "study", "job", "study_hard"]
-		"computer": ids = ["work", "study", "job", "play_games", "study_hard"] + COMPUTER_MASTERY_ACTIONS
+		"computer": ids = ["order_groceries", "work", "study", "job", "play_games", "study_hard"] + COMPUTER_MASTERY_ACTIONS
 		"plant": ids = ["water","plant_wee"] if float(needs.bladder)<=BLADDER_DESPERATE else ["water"]
 		"puddle": ids = ["mop_puddle"]
 		"bathtub": ids = ["bath"]
@@ -501,10 +520,26 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 			for wear_id: String in WEAR_ACTIONS:
 				if int(WEAR_ACTIONS[wear_id]) != int(character.get("outfit", 0)): ids.append(wear_id)
 		"garden_bed": ids = ["water"]
+		# The post box is where the household's post arrives, so it offers its own
+		# box of letters rather than being decoration.
+		"post_box": ids = ["read_post"]
+		# A bicycle is ridden, not sat on: riding builds Fitness and needs a
+		# helmet, which the availability gate checks rather than the menu hiding.
+		"bike_adult", "bike_kids": ids = ["ride_bike"]
 		"fireplace": ids = ["warm_up"]
 		"urn", "tombstone", "memorial": ids = ["remember_life", "mourn", "leave_flowers", "remember_passed"]
 		"neighbor", "maya", "leo", "priya", "tom": ids = SOCIAL_ACTIONS
 		"pet": ids = ["teach_pet_trick", "pet_tummy_rub", "bathe_pet"]
+
+	if LifeGardenGames.is_game(kind): ids = [LifeGardenGames.ACTION_ID]
+	elif LifeOutdoorActs.is_outdoor_act(kind):
+		ids = [LifeOutdoorActs.ACTION_ID]
+		if LifeOutdoorActs.can_push(kind): ids.append(LifeOutdoorActs.PUSH_ID)
+	elif LifeOutdoorActs.is_leisure_only(kind):
+		# Bought garden furniture a Lifelet can simply enjoy: a seat, a plant to
+		# tend, a table to clear, a television to watch. Each reuses the one action
+		# the brief's own equivalent already has, rather than a second rule.
+		ids = LifeOutdoorActs.leisure_actions(kind, float(needs.bladder) <= BLADDER_DESPERATE)
 	if str(character.age_stage) in LifeEducation.SCHOOL_STAGES:
 		if kind in ["desk","computer"]: ids = ["school","homework","study","study_hard"] + (["play_games"] if kind == "computer" else [])
 		elif kind == "bookshelf": ids = ["read","homework","study","study_book","buy_book","deep_read"]
@@ -526,6 +561,63 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 
 func get_action_definition(id: String) -> Dictionary:
 	return _actions.get(id, {}).duplicate(true)
+
+
+## Why this Lifelet may not ride this bicycle, or "" when they may. The bicycle's
+## own catalogue entry names the ages that fit it, and a helmet must actually
+## stand in the home: the rule is that you must wear one to ride.
+func _ride_bike_error(target_id: String) -> String:
+	var kind: String = _target_kind_of(target_id)
+	var data: Dictionary = LifeCatalog.get_item(kind)
+	if data.is_empty(): return "Choose a bicycle to ride."
+	if is_away(): return "Wait until this Lifelet is home."
+	var stage: String = str(character.age_stage)
+	var from: String = str(data.get("ride_from", ""))
+	var until: String = str(data.get("ride_until", ""))
+	if not from.is_empty() and not LifeLifecycle.at_least(stage, from):
+		return "That bike is too big for a %s. The kids' bike fits them." % str(LifeLifecycle.LABELS.get(stage, stage)).to_lower()
+	if not until.is_empty() and LifeLifecycle.at_least(stage, until):
+		return "That bike is too small for a %s now. An adult bike fits them." % str(LifeLifecycle.LABELS.get(stage, stage)).to_lower()
+	if not _helmet_available():
+		return "You must wear a helmet to ride. Buy one and place it in the home."
+	return ""
+
+
+## Whether the household owns a placed bicycle helmet. Riding is refused without
+## one, which is the rule rather than a suggestion.
+func _helmet_available() -> bool:
+	if is_instance_valid(household_service) and household_service.has_method("owns_helmet"):
+		return bool(household_service.call("owns_helmet"))
+	return true
+
+
+## Whether a pool stands in this home. The pool's own toys are used in one, so
+## they are refused with a reason rather than silently doing nothing.
+func _pool_present() -> bool:
+	for entry: Dictionary in _targets:
+		if str(entry.get("kind", "")) == "pool": return true
+	return false
+
+
+## How many other Lifelets are already using this furnishing. Playing together is
+## what makes a shared garden activity lift a friendship, so the count is read at
+## queue time and carried on the action.
+func _company_at(target_id: String) -> int:
+	if target_id.is_empty(): return 0
+	var count: int = 0
+	for member: Dictionary in _autonomy_household_members():
+		if member.sim == self: continue
+		var other: Dictionary = member.sim.get_current_action()
+		if str(other.get("target_id", "")) == target_id: count += 1
+	return count
+
+
+## The kind of the furnishing an action names. The garden games share one action
+## id, so the target's own kind is what tells one game from another.
+func _target_kind_of(target_id: String) -> String:
+	for target: Dictionary in _targets:
+		if str(target.get("id", "")) == target_id: return str(target.get("kind", ""))
+	return ""
 
 
 func is_away() -> bool:
@@ -590,11 +682,17 @@ func _tick_away(_game_minutes: float) -> void:
 	if str(away_state.activity)=="career":
 		_tick_career_away()
 		return
-	if str(away_state.activity)=="visit":
-		_tick_visit_away()
+	# A prison sentence is not a school day with a curriculum: the Lifelet is
+	# simply not here until the household's own release tick brings them home,
+	# so time passes without an action to progress.
+	if str(away_state.activity)=="prison":
 		return
 	if day != int(away_state.departure_day) or str(character.age_stage) != str(away_state.age_stage):
 		request_return_home()
+		return
+	if action_queue.is_empty():
+		# An absence with no action to progress cannot advance; the household
+		# owns the return, so nothing is silently stranded here.
 		return
 	var action: Dictionary = action_queue[0]
 	var elapsed: float = clampf(minutes-float(away_state.departure_minutes),0.0,float(action.duration))
@@ -789,6 +887,47 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 		var reason:String=LifeMeals.recipe_error(recipe,int(skills.cooking.level),str(character.age_stage),funds)
 		if not reason.is_empty():_emit_notice(reason);return false
 		definition=LifeMeals.cooking_definition(definition,recipe)
+	if id == LifeOutdoorActs.ACTION_ID:
+		var act_kind: String = _target_kind_of(target_id)
+		if not LifeOutdoorActs.is_outdoor_act(act_kind):
+			_emit_notice("Choose something in the garden to use.")
+			return false
+		var act_reason: String = LifeOutdoorActs.act_error(act_kind, str(character.age_stage), is_away(), _pool_present())
+		if not act_reason.is_empty():
+			_emit_notice(act_reason)
+			return false
+		definition = definition.duplicate(true)
+		definition["label"] = LifeOutdoorActs.act_label(act_kind)
+		definition["duration"] = float(LifeOutdoorActs.acts(act_kind).get("duration", 40.0))
+		definition["changes"] = LifeOutdoorActs.changes_for(act_kind, _company_at(target_id))
+		definition["skill"] = LifeOutdoorActs.skill_for(act_kind)
+		definition["xp"] = LifeOutdoorActs.xp_for(act_kind)
+		definition["description"] = str(LifeOutdoorActs.acts(act_kind).get("note", ""))
+	if id == LifeOutdoorActs.PUSH_ID:
+		var swing_kind: String = _target_kind_of(target_id)
+		var push_reason: String = LifeOutdoorActs.push_refusal(swing_kind, str(character.age_stage), is_away())
+		if not push_reason.is_empty():
+			_emit_notice(push_reason)
+			return false
+		definition = definition.duplicate(true)
+		definition["changes"] = LifeOutdoorActs.PUSH.changes.duplicate(true)
+	if id == LifeGardenGames.ACTION_ID:
+		# A garden game shares one action id, so the placed furnishing supplies the
+		# skill it builds and the flavour the player reads. Binding both at queue
+		# time keeps a save taken mid-game faithful to the game that was played.
+		var game_kind: String = _target_kind_of(target_id)
+		if not LifeGardenGames.is_game(game_kind):
+			_emit_notice("Choose a garden game to play on.")
+			return false
+		var game_reason: String = LifeGardenGames.play_error(game_kind, str(character.age_stage), is_away())
+		if not game_reason.is_empty():
+			_emit_notice(game_reason)
+			return false
+		definition = definition.duplicate(true)
+		definition["skill"] = LifeGardenGames.skill(game_kind)
+		definition["xp"] = LifeGardenGames.xp(game_kind)
+		definition["description"] = LifeGardenGames.blurb(game_kind)
+		definition["label"] = "Play on the %s" % str(LifeCatalog.get_item(game_kind).get("label", "garden game")).to_lower()
 	if id=="study_book" and is_instance_valid(household_service):
 		# The shelf owns which subject a session teaches. Bind it now so a save
 		# taken mid-read remembers what the Lifelet was actually studying, and so
@@ -804,7 +943,7 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 	if id in ["job","career_day"] and int(career["worked_day"]) == day:
 		_emit_notice("Today's shift is complete. You can work again tomorrow.")
 		return false
-	if id in SOCIAL_ACTIONS or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or COMPUTER_MASTERY_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "bin_meal", "jog", "play_toys", "put_in_fridge"]:
+	if id in SOCIAL_ACTIONS or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or COMPUTER_MASTERY_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "bin_meal", "jog", "play_toys", "put_in_fridge", LifeGardenGames.ACTION_ID, LifeOutdoorActs.ACTION_ID, LifeOutdoorActs.PUSH_ID]:
 		var availability: Dictionary = get_action_availability(id, target_id)
 		if not bool(availability.available):
 			_emit_notice(str(availability.reason))
@@ -873,8 +1012,15 @@ func begin_current_action() -> void:
 			cancel_action()
 			return
 	if str(action.id)=="cook":
-		var recipe_reason:String=LifeMeals.recipe_error(str(action.get("recipe","garden_skillet")),int(skills.cooking.level),str(character.age_stage),funds,bool(action.paid))
-		if not recipe_reason.is_empty():_emit_notice(recipe_reason);cancel_action();return
+		# With a live kitchen the ingredients come out of the fridge rather than
+		# being bought at the stove, so an empty kitchen is what stops a meal —
+		# not the household's purse. A standalone simulation keeps the old rule.
+		if is_instance_valid(grocery_service):
+			var kitchen_reason:String=str(grocery_service.cooking_availability(self,str(action.get("target_id",""))))
+			if not kitchen_reason.is_empty():_emit_notice(kitchen_reason);cancel_action();return
+		else:
+			var recipe_reason:String=LifeMeals.recipe_error(str(action.get("recipe","garden_skillet")),int(skills.cooking.level),str(character.age_stage),funds,bool(action.paid))
+			if not recipe_reason.is_empty():_emit_notice(recipe_reason);cancel_action();return
 	if str(action.id) in RELATIONSHIP_ACTIONS or str(action.id) in ["flirt", "birthday", "job", "work"]:
 		var availability: Dictionary = get_action_availability(str(action.id), str(action.target_id))
 		if not bool(availability.available):
@@ -896,16 +1042,29 @@ func begin_current_action() -> void:
 				_emit_notice("Taking care of the day before starting another responsibility.")
 				cancel_action()
 				return
-		if funds < cost:
-			_emit_notice("There isn't enough money for that activity anymore.")
-			cancel_action()
-			return
-		if str(action["id"]) == "job" and int(career["worked_day"]) == day:
-			_emit_notice("You have already worked today's shift.")
-			cancel_action()
-			return
-		funds -= cost
-		action["paid"] = true
+		# Cooking and snacking are paid for out of the kitchen, not the purse: a
+		# recipe takes one meal's ingredients from the fridge, and an empty kitchen
+		# refuses the action with the reason the kitchen itself gives.
+		var from_kitchen:bool=is_instance_valid(grocery_service) and str(action.id) in ["cook","snack"]
+		if from_kitchen:
+			var drawn:Dictionary=grocery_service.take_meal_for(self,str(action.id))
+			if not bool(drawn.get("ok",false)):
+				_emit_notice(str(drawn.get("error","The kitchen is empty. Order a delivery from the computer.")))
+				cancel_action()
+				return
+			action["paid"] = true
+			action["from_kitchen"] = true
+		else:
+			if funds < cost:
+				_emit_notice("There isn't enough money for that activity anymore.")
+				cancel_action()
+				return
+			if str(action["id"]) == "job" and int(career["worked_day"]) == day:
+				_emit_notice("You have already worked today's shift.")
+				cancel_action()
+				return
+			funds -= cost
+			action["paid"] = true
 	if not action.has("started_minutes"):
 		action["started_day"] = day
 		action["started_minutes"] = minutes
@@ -1083,6 +1242,8 @@ func _tick_bladder(game_minutes:float,bladder_before:float) -> void:
 
 func _sanitation_reason(id:String,target:String,resuming:bool=false) -> String:
 	if is_away():return "This Lifelet will be available after coming home."
+	if LifeOutdoorActs.is_not_a_toilet(_target_kind_of(target)):
+		return "A sand pit is for playing in, not for a toilet. Use an indoor toilet."
 	if id=="plant_wee":
 		if float(needs.bladder)>BLADDER_DESPERATE and not resuming:return "This emergency option is only available at 12 bladder or lower."
 		var found:bool=false
@@ -1164,6 +1325,15 @@ static func emotion_color(emotion: String) -> Color:
 	# One shared palette for the HUD pill, the moodlet tiles and the selection gem.
 	var colors: Dictionary = {"Happy":"65a68b","Energized":"c8aa5d","Confident":"6b9ac0","Focused":"629db3","Inspired":"9a85b3","Playful":"cf8aaa","Tense":"cf8669"}
 	return Color(colors.get(emotion,"7aaf89"))
+
+
+## Grow one skill from outside the action queue. A pet interaction credits the
+## person's own learning this way, so a child teaching a trick grows in Logic and
+## an adult training a pet grows in Parenting by exactly the advertised amount.
+func gain_skill(skill_name: String, amount: float) -> void:
+	if not SKILL_NAMES.has(skill_name) or amount <= 0.0: return
+	_gain_skill(skill_name, amount)
+	_emit_changed()
 
 
 func _gain_skill(skill_name: String, amount: float, practice: float = -1.0, book_limit: int = 0) -> void:
@@ -1261,8 +1431,22 @@ func _finish_front() -> void:
 		earned = income
 		career["worked_day"] = day
 		career.schedule=LifeCareerSchedule.attend(career.get("schedule",LifeCareerSchedule.fresh(day)),day,0.0)
+		# A home shift is the same work as the commute, so it trains the same
+		# skill and is judged by it — a trade with no skill of its own simply
+		# has none to raise.
+		var job_skill: String = str(LifeCareers.job(str(career.get("track", ""))).get("skill", ""))
+		var skill_rank: float = 0.0
+		if SKILL_NAMES.has(job_skill):
+			_gain_skill(job_skill, 24.0)
+			skill_rank = float(skills[job_skill].level)
 		var comfort: float = (float(needs["hunger"]) + float(needs["energy"]) + float(needs["fun"])) / 3.0
-		career["performance"] = float(career["performance"]) + _career_performance_gain(18.0 + comfort * 0.15 + float(skills["logic"]["level"]) * 2.0)
+		# At the top of the ladder there is no promotion left to spend performance
+		# on, so it would accumulate for ever — past the ceiling the save validator
+		# allows, which made a maxed career impossible to save. It is capped where
+		# the ladder ends, exactly as the freelance and scheduled work already cap
+		# theirs.
+		career["performance"] = minf(100.0 if int(career["level"]) >= LifeCareers.MAX_LEVEL else 1000.0,
+			float(career["performance"]) + _career_performance_gain(18.0 + comfort * 0.15 + skill_rank * 2.0))
 		_emit_notice("Shift finished. Earned ℒ%d." % income)
 		_check_promotion()
 	elif id in SOCIAL_ACTIONS:
@@ -1300,6 +1484,14 @@ func _finish_front() -> void:
 	elif id == "empty_bin":
 		if is_instance_valid(household_service):household_service.empty_bin(str(action.get("target_id","")))
 		_emit_notice("The rubbish is out. The kitchen smells fresher already.")
+	elif id == "order_groceries" and is_instance_valid(grocery_service):
+		# The computer's own panel places this order through the household when a
+		# player uses it. A Lifelet who reaches the kitchen's own order entry (the
+		# fridge) has nobody at the keyboard, so the shop is placed here: the
+		# largest basket the purse can afford, and the van is on its way.
+		var placed:Dictionary=grocery_service.order_groceries_best()
+		if not bool(placed.get("ok",false)):
+			_emit_notice(str(placed.get("error","The shop could not be ordered just now.")))
 	elif id == "watch_together":
 		pass
 	elif id == "teach_pet_trick":
@@ -1468,6 +1660,18 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 	if is_instance_valid(meal_service) and id in ["cook","eat_meal","store_meal","clean_plate","discard_meal","bin_meal","put_in_fridge"]:
 		reason=meal_service.action_availability(self,id,target_id)
 		if not reason.is_empty():return {"available":false,"reason":reason}
+	# A recipe and a snack both come out of the kitchen, so an empty fridge is
+	# what refuses them. The reason names the computer, which is where the
+	# household orders its delivery from.
+	if is_instance_valid(grocery_service) and id in ["cook","snack"]:
+		reason=str(grocery_service.cooking_availability(self,target_id))
+		if not reason.is_empty():return {"available":false,"reason":reason}
+	# An order is placed for the whole household, so whether one may be placed at
+	# all is the household's own answer: a delivery already on its way, a purse
+	# that cannot afford even the smallest basket, or a kitchen already stocked.
+	if is_instance_valid(grocery_service) and str(id) == "order_groceries":
+		reason=str(grocery_service.grocery_availability())
+		if not reason.is_empty():return {"available":false,"reason":reason}
 	if not _actions.has(id):
 		return {"available":false, "reason":"That activity is unavailable."}
 	# A mood or a trait can be the price of admission. This sits before every
@@ -1486,8 +1690,28 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 	var stage_reason: String = LifeStagePolicy.action_error(str(character.age_stage), str(character.life_stage), id)
 	if not stage_reason.is_empty():
 		return {"available":false, "reason":stage_reason}
+	# A garden game's own gate names the game, so the reason a player reads says
+	# which game is too old for them rather than naming only the action.
+	if id == LifeGardenGames.ACTION_ID:
+		var game_kind: String = _target_kind_of(target_id)
+		var game_reason: String = LifeGardenGames.play_error(game_kind, str(character.age_stage), is_away())
+		if not game_reason.is_empty():
+			return {"available":false, "reason":game_reason}
+	elif id == LifeOutdoorActs.ACTION_ID:
+		var act_kind: String = _target_kind_of(target_id)
+		var act_reason: String = LifeOutdoorActs.act_error(act_kind, str(character.age_stage), is_away(), _pool_present())
+		if not act_reason.is_empty():
+			return {"available":false, "reason":act_reason}
+	elif id == LifeOutdoorActs.PUSH_ID:
+		var push_reason: String = LifeOutdoorActs.push_refusal(_target_kind_of(target_id), str(character.age_stage), is_away())
+		if not push_reason.is_empty():
+			return {"available":false, "reason":push_reason}
 	if is_spirit() and (id in SPIRIT_BLOCKED or id == LifeBabyPlan.ACTION_ID):
 		return {"available":false, "reason":"A spirit has finished that chapter of life."}
+	# A bicycle's own entry names the ages that fit it, and a helmet must really
+	# stand in the home. The rule is stated plainly: you must wear one to ride.
+	if id == "ride_bike":
+		return {"available":false, "reason":_ride_bike_error(target_id)} if not _ride_bike_error(target_id).is_empty() else {"available":true, "reason":""}
 	if id=="career_day":
 		reason=_career_departure_error(target_id)
 	elif id == LifeBabyPlan.ACTION_ID:
@@ -1806,17 +2030,37 @@ func _update_relationship_status(person: Dictionary) -> void:
 		person["status"] = "Acquaintance"
 
 
+## The highest qualification this Lifelet holds.
+func _degree() -> String:
+	return LifeCareers.normalise_degree(degree)
+
+
+## This Lifelet's own pay at their current rung, including what their degree is
+## worth to this job. The single place a salary is worked out, so the ladder, the
+## notice and the save never disagree.
+func career_pay() -> int:
+	return LifeCareers.pay(str(career.get("track", LifeCareers.DEFAULT_JOB)), int(career.get("level", 1)), _degree())
+
+
+## The rung above this Lifelet, and what reaching it takes. A job's ladder runs
+## the whole ten levels the brief asks for: each step needs the job's own skill at
+## the level reached, so a career rewards learning all the way to the top.
 func promotion_requirement() -> Dictionary:
-	# Promotion to the next level needs the track's skill at the current level, so careers reward learning.
-	var track:Dictionary=CAREER_TRACKS.get(str(career.get("track","studio")),CAREER_TRACKS.studio)
-	if int(career["level"]) >= 5: return {}
+	var job_id: String = str(career.get("track", LifeCareers.DEFAULT_JOB))
+	if not LifeCareers.has(job_id): return {}
+	if int(career["level"]) >= LifeCareers.MAX_LEVEL: return {}
+	var next_level: int = int(career["level"]) + 1
+	var skill_name: String = str(LifeCareers.job(job_id).get("skill", ""))
+	# The skill is asked for at the rung being left, so the first step is open to
+	# a beginner and reaching the top really needs the trade learned to level 9.
 	var required: int = int(career["level"])
-	var skill_name: String = str(track.skill)
-	return {"skill":skill_name, "level":required, "met":int(skills.get(skill_name,{"level":1}).level) >= required, "next_title":str(track.titles[int(career["level"])])}
+	var have: int = int((skills.get(skill_name, {}) as Dictionary).get("level", 1))
+	return {"skill": skill_name, "level": required, "met": have >= required,
+		"next_title": LifeCareers.title_at(job_id, next_level)}
 
 
 func _check_promotion() -> void:
-	if float(career["performance"]) < 100.0 or int(career["level"]) >= 5:
+	if float(career["performance"]) < 100.0 or int(career["level"]) >= LifeCareers.MAX_LEVEL:
 		return
 	var requirement: Dictionary = promotion_requirement()
 	if not requirement.is_empty() and not bool(requirement.met):
@@ -1827,51 +2071,178 @@ func _check_promotion() -> void:
 		return
 	career["performance"] = float(career["performance"]) - 100.0
 	career["level"] = int(career["level"]) + 1
-	var track:Dictionary=CAREER_TRACKS.get(str(career.get("track","studio")),CAREER_TRACKS.studio)
-	var titles: Array = track.titles
-	career["title"] = titles[int(career["level"]) - 1]
-	career["salary"] = int(track.base_salary) + (int(career["level"]) - 1) * 110
+	var job_id: String = str(career["track"])
+	career["title"] = LifeCareers.title_at(job_id, int(career["level"]))
+	career["salary"] = LifeCareers.pay(job_id, int(career["level"]), _degree())
 	funds += 200
-	_emit_notice("Promotion! You are now a %s. ℒ200 bonus and a higher daily salary." % str(career["title"]).to_lower())
+	_emit_notice("Promotion! You are now a %s. ℒ200 bonus and ℒ%d a shift." % [str(career["title"]).to_lower(), int(career["salary"])])
 	add_moodlet("A step forward","Confident","Your hard work is paying off.",360,4)
 	remember("A promotion",str(career.title))
 
+## Take up a new line of work. The door is the job's own entry rule, so a job
+## that wants a skill, a degree or a course fee is refused here exactly as the
+## picker shows it — which is what makes moving between careers hard rather than
+## free. The ladder restarts at its first rung, because experience in one trade is
+## not experience in another.
 func choose_career(track_id:String) -> bool:
-	if str(character.life_stage) != "adult":
-		_emit_notice("Careers become available in young adulthood.");return false
-	if not CAREER_TRACKS.has(track_id):return false
-	if career.get("track","studio")==track_id:return true
-	# One gate for the picker, the queue and this entry point: a track that
-	# demands a fee or a skill level is refused here exactly as the menu shows it.
 	var entry_error:String=career_entry_error(track_id)
 	if not entry_error.is_empty():_emit_notice(entry_error);return false
+	if career.get("track",LifeCareers.DEFAULT_JOB)==track_id:return true
 	for action in action_queue:
 		if action.id in ["job","career_day"]:_emit_notice("Finish or cancel your shift before changing careers.");return false
-	var track:Dictionary=CAREER_TRACKS[track_id]
-	var entry_fee:int=int(track.get("entry",{}).get("cost",0))
+	var job:Dictionary=LifeCareers.job(track_id)
+	var entry:Dictionary=job.get("entry",{})
+	var entry_fee:int=int(entry.get("cost",0))
 	if entry_fee>0:funds-=entry_fee
-	career={"schedule":LifeCareerSchedule.fresh(day,day+1 if minutes>LifeCareerSchedule.CLOSE else day),"track":track_id,"title":track.titles[0],"level":1,"performance":0.0,"salary":track.base_salary,"worked_day":int(career.worked_day)}
-	remember("A new direction","Joined "+str(track.label))
+	career={"schedule":LifeCareerSchedule.fresh(day,day+1 if minutes>LifeCareerSchedule.CLOSE else day),
+		"track":track_id,"title":LifeCareers.title_at(track_id,1),"level":1,"performance":0.0,
+		"salary":LifeCareers.pay(track_id,1,_degree()),"worked_day":int(career.worked_day)}
+	remember("A new direction","Joined "+str(job.label))
 	add_moodlet("New possibilities","Inspired","A new career is a chance to grow.",240,2)
 	_emit_notice("Your new job: %s. ℒ%d per shift.%s" % [career.title,career.salary," ℒ%d course fee paid." % entry_fee if entry_fee>0 else ""])
 	_emit_changed()
 	return true
 
 
-## Whether this Lifelet may take up a track, as the player-readable reason it may
-## not. Empty means the door is open. The career picker and `choose_career` both
-## read this one answer, so a greyed-out button and a refused queue never disagree.
+## Whether this Lifelet may take up a job, as the player-readable reason they may
+## not. Empty means the door is open. The career picker, the queue and
+## `choose_career` all read this one answer, so a greyed-out button and a refused
+## call never disagree.
 func career_entry_error(track_id:String) -> String:
-	if not CAREER_TRACKS.has(track_id):return "That line of work is not offered here."
-	if str(character.life_stage)!="adult":return "Careers become available in young adulthood."
-	var entry:Dictionary=CAREER_TRACKS[track_id].get("entry",{})
-	var skill_name:String=str(entry.get("skill",""))
-	var required:int=int(entry.get("level",0))
-	if not skill_name.is_empty() and required>0 and int(skills.get(skill_name,{"level":1}).level)<required:
-		return "Requires %s level %d. This Lifelet is at %s level %d." % [skill_name.capitalize(),required,skill_name.capitalize(),int(skills.get(skill_name,{"level":1}).level)]
-	var fee:int=int(entry.get("cost",0))
-	if funds<fee:return "The ℒ%d course fee needs ℒ%d more." % [fee,fee-funds]
-	return ""
+	if is_imprisoned():
+		return "This Lifelet is serving a sentence until day %d." % int(criminal_record.get("prison_until_day", 0))
+	return LifeCareers.entry_error(track_id,str(character.life_stage),skills,_degree(),funds)
+
+
+## What a job asks for, as the picker's own line of text.
+func career_requirement_text(track_id:String) -> String:
+	return LifeCareers.requirement_text(track_id)
+
+
+## Every job offered to this Lifelet, in the order a picker should show them, with
+## the reason each is shut. One list, so the picker and the gate agree.
+func career_offers() -> Array:
+	var out:Array=[]
+	for job_id:String in LifeCareers.ordered():
+		var job:Dictionary=LifeCareers.job(job_id)
+		out.append({
+			"id":job_id,"label":str(job.label),"current":str(career.get("track",""))==job_id,
+			"first_title":LifeCareers.title_at(job_id,1),
+			"top_title":LifeCareers.title_at(job_id,LifeCareers.MAX_LEVEL),
+			"pay":LifeCareers.pay(job_id,1,_degree()),
+			"pay_at_top":LifeCareers.pay(job_id,LifeCareers.MAX_LEVEL,_degree()),
+			"requirements":LifeCareers.requirement_text(job_id),
+			"criminal":LifeCareers.is_criminal(job_id),
+			"detection":LifeCareers.detection_chance(job_id,1),
+			"reason":career_entry_error(job_id),
+		})
+	return out
+
+
+## Whether this Lifelet is inside today.
+func is_imprisoned() -> bool:
+	return int(criminal_record.get("prison_until_day",0))>day
+
+
+## Whether this Lifelet is inside at the prison right now, as opposed to having a
+## sentence they are serving at home. Being caught is a real absence: the Lifelet
+## is taken to Blackmoor and is not on the household's lot until they are free,
+## which is what makes visiting them there mean anything.
+func is_at_prison() -> bool:
+	return is_imprisoned() and not bool(criminal_record.get("serving_at_home",false))
+
+
+## The prison absence this sentence imposes, in the shape the away machine
+## already understands, so the body, the HUD and the save all agree about where
+## an incarcerated Lifelet is.
+func prison_away_state() -> Dictionary:
+	if not is_at_prison():return {}
+	return {"version":1,"activity":"prison","phase":"away","departure_day":day,
+		"departure_minutes":minutes,"return_day":int(criminal_record.get("prison_until_day",day)),
+		"return_minutes":480.0,"exit_id":"lot_exit","exit_position":Vector3.ZERO,
+		"age_stage":str(character.age_stage),"career_track":str(career.get("track","")),
+		"salary":0,"completed":true,"ended_at":0.0,"prison":true}
+
+
+## What being caught costs: the fine, the days inside, and the record of it. The
+## household purse pays, capped at what it holds, so a fine can never drive the
+## household into the negative.
+##
+## Being caught really takes the Lifelet away: `away_state` is set to the prison,
+## so they leave the household's lot and stay at Blackmoor until the sentence
+## ends. A Lifelet already away from home (at work, or on a trip) cannot be
+## arrested into a second absence, so their sentence is served from home instead —
+## the record is identical either way, and only the body differs.
+func serve_sentence(fine:int,days:int) -> Dictionary:
+	var paid:int=mini(maxi(fine,0),funds)
+	funds-=paid
+	var previous:int=int(criminal_record.get("caught_count",0))
+	var until:int=day+maxi(1,days)
+	var from_home:bool=is_away()
+	criminal_record={"version":1,"caught_count":previous+1,
+		"prison_until_day":until,
+		"fines_paid":int(criminal_record.get("fines_paid",0))+paid,
+		"serving_at_home":from_home}
+	if not from_home:
+		# The Lifelet is taken to Blackmoor; the household's own clock releases
+		# them, driven by `prison_check`.
+		away_state=prison_away_state()
+		_publish("away_changed",[get_away_state()])
+	add_moodlet("Behind bars","Tense","Caught, fined and locked up. That was the risk.",1440,4)
+	remember("Caught","A fine and %d days inside." % maxi(1,days))
+	_emit_notice("Caught! A ℒ%d fine and %d days inside at Blackmoor, free on day %d." % [paid,maxi(1,days),until])
+	_emit_changed()
+	return {"ok":true,"fine":paid,"days":maxi(1,days),"until":until,"at_prison":not from_home}
+
+
+## Release a Lifelet whose sentence has ended: they come home, and the record of
+## the sentence is cleared of the prison stay so a released Lifelet is simply a
+## Lifelet at home again.
+func prison_check() -> Dictionary:
+	if not is_at_prison():return {"ok":false,"reason":"Not inside."}
+	if day<int(criminal_record.get("prison_until_day",0)):return {"ok":false,"reason":"Still serving."}
+	criminal_record["serving_at_home"]=false
+	if str(away_state.get("activity",""))=="prison":
+		away_state={}
+		_publish("away_changed",[get_away_state()])
+	_emit_notice("%s has been released and is coming home." % str(character.name))
+	_emit_changed()
+	return {"ok":true,"released":true}
+
+
+## One day of criminal work, rolled once by the household on its own clock. A
+## working criminal risks being caught; a practised one risks far less. Returns
+## what happened so the household can report it.
+func criminal_day_check() -> Dictionary:
+	var job_id:String=str(career.get("track",LifeCareers.DEFAULT_JOB))
+	if not LifeCareers.is_criminal(job_id):return {"ok":false,"reason":"Not on that line of work."}
+	if is_imprisoned():return {"ok":false,"reason":"Already inside."}
+	var chance:float=LifeCareers.detection_chance(job_id,int(career.get("level",1)))
+	var roll:float=randf()
+	if roll>=chance:return {"ok":true,"caught":false,"chance":chance}
+	return serve_sentence(LifeCareers.fine(job_id,int(career.get("level",1))),LifeCareers.prison_days(job_id,int(career.get("level",1))))
+
+
+## Finish a degree. The qualification is the household's to pay for and the
+## Lifelet's to hold, and it rides the save so a doctor stays a doctor.
+func award_degree(value:String) -> Dictionary:
+	var step:Dictionary=LifeCareers.degree_step(value)
+	if step.is_empty():return {"ok":false,"error":"That is not a qualification on offer."}
+	degree=LifeCareers.normalise_degree(value)
+	# A degree is worth more to the job this Lifelet already holds, so the pay
+	# rises the moment it is awarded rather than only on the next promotion.
+	career["salary"]=career_pay()
+	add_moodlet("Graduated","Confident","A %s in hand and better paid for it." % LifeCareers.degree_label(degree),720,4)
+	remember("Graduated","Awarded a %s." % LifeCareers.degree_label(degree))
+	_emit_notice("%s graduated with a %s. Pay is now ℒ%d a shift." % [str(character.name),LifeCareers.degree_label(degree),int(career.salary)])
+	_emit_changed()
+	return {"ok":true,"degree":degree}
+
+
+## The professional name this Lifelet is addressed by: a PHD is a doctor.
+func honorific() -> String:
+	return LifeCareers.honorific(_degree())
+
 
 func add_moodlet(label:String,emotion:String,description:String,duration:float,strength:int=2) -> void:
 	for i in range(moodlets.size()-1,-1,-1):
@@ -2072,6 +2443,11 @@ func robbery() -> Dictionary:
 		return {"ok":true,"stolen":loss,"reimbursed":0,"insured":false}
 	_emit_notice("A burglar broke in and took ℒ%d. Home insurance paid it all back." % loss)
 	funds+=loss
+	var multiple:float=float(INSURANCE_POLICIES[insurance_policy_id].get("payout_multiple",1.0))
+	if multiple>1.0:
+		var extra:int=roundi(float(loss)*(multiple-1.0))
+		funds+=extra
+		_emit_notice("Premium cover paid a further ℒ%d on top." % extra)
 	_emit_changed()
 	return {"ok":true,"stolen":loss,"reimbursed":loss,"insured":true}
 
@@ -2169,7 +2545,7 @@ func _autonomy_duty_id() -> String:
 			id="school_day"
 		elif int(education.last_homework_day)!=day and (int(education.last_attendance_day)==day or minutes>=900.0) and minutes>=600.0 and minutes<=1320.0:
 			id="homework"
-	elif str(character.life_stage)=="adult" and str(career.get("track","studio")) in CAREER_TRACKS and int(career.worked_day)!=day:
+	elif str(character.life_stage)=="adult" and LifeCareers.has(str(career.get("track",""))) and int(career.worked_day)!=day:
 		if day>=int(career.get("schedule",LifeCareerSchedule.fresh(day)).first_day) and minutes>=LifeCareerSchedule.OPEN and minutes<=LifeCareerSchedule.CLOSE:id="career_day"
 	if not id.is_empty() and float(autonomy_state.deferred.get(id,-1.0))>_autonomy_now():return ""
 	return id
@@ -2182,7 +2558,7 @@ func _autonomy_preparation_duty_id() -> String:
 	var start:float=0.0
 	if str(character.age_stage) in LifeEducation.SCHOOL_STAGES and int(education.last_attendance_day)!=day and day>=int(education.first_class_day):
 		id="school_day";start=480.0
-	elif str(character.life_stage)=="adult" and str(career.get("track","studio")) in CAREER_TRACKS and int(career.worked_day)!=day:
+	elif str(character.life_stage)=="adult" and not is_imprisoned() and LifeCareers.has(str(career.get("track",""))) and int(career.worked_day)!=day:
 		id="career_day";start=LifeCareerSchedule.OPEN
 		if day<int(career.get("schedule",LifeCareerSchedule.fresh(day)).first_day):return ""
 	if id.is_empty() or minutes<start-180.0 or minutes>=start:return ""
@@ -2380,6 +2756,12 @@ func _brief_leisure_fits(duty:String,excluded_target_ids:Array=[]) -> bool:
 
 func _autonomy_need_choice(need:String,excluded_target_ids:Array=[],preparing:bool=false) -> Dictionary:
 	if need=="social":return _autonomy_social_choice(excluded_target_ids)
+	# A kitchen with nothing in it has no meal to choose, so the household's own
+	# shop is the recovery: a hungry Lifelet with an empty fridge and no delivery
+	# on its way orders one rather than queueing a meal it cannot cook.
+	if need=="hunger" and is_instance_valid(grocery_service) and str(grocery_service.grocery_availability()).is_empty():
+		var shopping:Dictionary=_autonomy_target_for("order_groceries",excluded_target_ids)
+		if not shopping.is_empty():return shopping
 	var candidates:Array[String]=[]
 	match need:
 		"hunger":candidates=["eat_meal","snack","cook"]
@@ -2779,7 +3161,11 @@ func _create_recurring_wants() -> void:
 				_chapter_want("chapter_listen", "The art of conversation", "Earn %d Charisma XP this chapter through conversation or learning." % (60 + difficulty * 15), 60 + difficulty * 15, reward, "practice", [], "charisma"),
 				_chapter_want("chapter_moments", "More than small talk", "Complete a friendly chat, a joke and a heartfelt talk.", 3, reward, "variety", social_actions)]
 		"Successful":
-			var career_skill: String = str(CAREER_TRACKS.get(str(career.get("track", "studio")), CAREER_TRACKS.studio).skill)
+			# An unskilled ladder names no skill of its own, and a chapter want
+			# must name one the skill table actually holds, so the service trades
+			# fall back to the Charisma every one of them works with.
+			var career_skill: String = str(LifeCareers.job(str(career.get("track", ""))).get("skill", ""))
+			if not SKILL_NAMES.has(career_skill): career_skill = "charisma"
 			wants = [
 				_chapter_want("chapter_income", "Build a cushion", "Earn ℒ%d from completed shifts, freelance work or paintings this chapter." % (200 + difficulty * 100), 200 + difficulty * 100, reward + 40, "income"),
 				_chapter_want("chapter_practice", "Invest in your craft", "Earn %d %s XP this chapter; practice still counts at level 10." % [100 + difficulty * 20, career_skill.capitalize()], 100 + difficulty * 20, reward, "practice", [], career_skill),
@@ -2846,8 +3232,10 @@ func _offer_daily_story() -> void:
 	# one slot per eight-day cycle, so kind and host pairings drift instead of
 	# locking one-to-one.
 	var neighbor: String = LifeResidentCatalogue.IDS[(((day - 2) * 3) + (day - 2) / 8) % LifeResidentCatalogue.IDS.size()]
-	var track: Dictionary = CAREER_TRACKS.get(str(career.get("track", "studio")), CAREER_TRACKS.studio)
-	story_events.append({"id":"story_day_%d" % day, "kind":kind, "day":day, "context":{"neighbor":neighbor, "skill":str(track.skill), "career_level":int(career.level), "creativity_level":int(skills.creativity.level)}})
+	var track: Dictionary = LifeCareers.job(str(career.get("track", "")))
+	var story_skill: String = str(track.get("skill", ""))
+	if not SKILL_NAMES.has(story_skill): story_skill = "charisma"
+	story_events.append({"id":"story_day_%d" % day, "kind":kind, "day":day, "context":{"neighbor":neighbor, "skill":story_skill, "career_level":int(career.level), "creativity_level":int(skills.creativity.level)}})
 	_emit_notice("A new story choice is waiting: %s." % _story_event(story_events.back()).title)
 
 
@@ -3045,7 +3433,7 @@ func get_mood() -> Dictionary:
 
 
 func get_state() -> Dictionary:
-	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "bladder_grace":bladder_grace, "starvation_minutes":starvation_minutes, "exhaustion_minutes":exhaustion_minutes, "deferred_passing_minutes":deferred_passing_minutes, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "wants": wants.duplicate(true), "whims": whims.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "second_wind":second_wind, "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "last_bill_day": last_bill_day, "pending_bill":pending_bill.duplicate(true), "bills_paid_total":bills_paid_total, "bills_late":bills_late, "utilities_cut":utilities_cut, "insurance_policy_id":insurance_policy_id, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "routine_memory_days":routine_memory_days.duplicate(true)}
+	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "bladder_grace":bladder_grace, "starvation_minutes":starvation_minutes, "exhaustion_minutes":exhaustion_minutes, "deferred_passing_minutes":deferred_passing_minutes, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "degree": degree, "criminal_record": criminal_record.duplicate(true), "wants": wants.duplicate(true), "whims": whims.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "last_bill_day": last_bill_day, "pending_bill":pending_bill.duplicate(true), "bills_paid_total":bills_paid_total, "bills_late":bills_late, "utilities_cut":utilities_cut, "insurance_policy_id":insurance_policy_id, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "routine_memory_days":routine_memory_days.duplicate(true)}
 
 
 func save_game(world_data: Array = []) -> bool:
@@ -3132,6 +3520,18 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 		entry.minutes = int(entry.minutes)
 	_recent_social_events.clear()
 	career = state["career"].duplicate(true)
+	degree = LifeCareers.normalise_degree(str(state.get("degree", "none")))
+	criminal_record = (state.get("criminal_record", {}) as Dictionary).duplicate(true)
+	# A save made before this ladder grew can carry a rung and a title from the
+	# old five-level table, so the record is rebuilt from the ladder it names.
+	var saved_track: String = str(career.get("track", LifeCareers.DEFAULT_JOB))
+	if not LifeCareers.has(saved_track):
+		saved_track = LifeCareers.DEFAULT_JOB
+	var saved_level: int = clampi(int(career.get("level", 1)), 1, LifeCareers.MAX_LEVEL)
+	career["track"] = saved_track
+	career["level"] = saved_level
+	career["title"] = LifeCareers.title_at(saved_track, saved_level)
+	career["salary"] = LifeCareers.pay(saved_track, saved_level, degree)
 	career["schedule"]=career.get("schedule",LifeCareerSchedule.fresh(int(state.day)))
 	wants = state["wants"].duplicate(true)
 	moodlets=state.get("moodlets",[]).duplicate(true)
@@ -3285,10 +3685,29 @@ func _validate_autonomy_state(state:Dictionary) -> String:
 
 func _validate_away_state(state:Dictionary) -> String:
 	if not state.get("away_state",{}) is Dictionary:return "Save contains invalid away state."
-	if str(state.get("away_state",{}).get("activity",""))=="visit":return _validate_visit_away_state(state)
+	# A prison sentence is its own absence, owned by the criminal record rather
+	# than by a queued action, so it is validated against that record.
+	if str(state.get("away_state",{}).get("activity",""))=="prison":
+		return _validate_prison_away_state(state)
 	if str(state.get("away_state",{}).get("activity",""))=="career" or state.action_queue.any(func(action:Dictionary)->bool:return str(action.id)=="career_day"):
 		return _validate_career_away_state(state)
 	return _validate_school_away_state(state)
+
+
+## Validate a saved prison sentence. The record is the authority: the absence
+## must agree with it, and a Lifelet who is not inside must not have one.
+func _validate_prison_away_state(state:Dictionary) -> String:
+	var record:Variant=state.get("criminal_record",{})
+	var record_error:String=LifeCareers.criminal_error(record)
+	if not record_error.is_empty():return record_error
+	if not record is Dictionary or record.is_empty():return "Save has a prison absence without a criminal record."
+	if not bool(record.get("serving_at_home",false))==false:return "Save serves a prison sentence at home and away at once."
+	var value:Dictionary=state.get("away_state",{})
+	if not _autonomy_integer(value.get("version"),1,1) or str(value.get("phase","")) not in ["away","returning"]:return "Save contains an unsupported prison absence."
+	if _autonomy_integer(value.get("departure_day"),1,int(state.day))==false:return "Save contains an invalid prison departure."
+	if not _autonomy_integer(value.get("return_day"),int(value.get("departure_day",0)),1000000):return "Save contains an invalid prison release day."
+	if int(value.get("return_day",0))!=int(record.get("prison_until_day",0)):return "Save disagrees about when the sentence ends."
+	return ""
 
 
 func _validate_school_away_state(state: Dictionary) -> String:
@@ -3379,6 +3798,19 @@ func _validate_state(state: Dictionary) -> String:
 	for trait_name: Variant in profile["traits"]:
 		if not trait_name is String or str(trait_name) not in TRAIT_NAMES:
 			return "Save contains an invalid trait."
+	# The household's land rides the world state. A corrupt plot count would
+	# otherwise ask for a lot no navigation grid can be built for.
+	var world_state: Variant = profile.get("world_state", {})
+	if world_state is Dictionary:
+		var land_error: String = LifeLand.validate(world_state.get("land"))
+		if not land_error.is_empty(): return land_error
+		var property_error: String = LifeProperties.validate(world_state.get("properties"))
+		if not property_error.is_empty(): return property_error
+		# The place the household is standing in must be one the town has, or a
+		# later load would build a lot that does not exist.
+		var saved_venue: Variant = world_state.get("venue")
+		if saved_venue != null and (not saved_venue is String or not LifeNeighborhood.has(str(saved_venue))):
+			return "Save contains an unknown venue."
 	for need_name: String in NEED_NAMES:
 		if not _number_in_range(state["needs"].get(need_name), 0.0, 100.0):
 			return "Save contains an invalid need."
@@ -3410,8 +3842,16 @@ func _validate_state(state: Dictionary) -> String:
 		if not person is Dictionary or not person.get("name") is String or not person.get("status") is String or not _number_in_range(person.get("friendship"), -100.0, 100.0) or not _number_in_range(person.get("romance"), 0.0, 100.0):
 			return "Save contains an invalid relationship."
 	var job: Dictionary = state["career"]
-	if not job.get("title") is String or not _number_in_range(job.get("level"), 1.0, 5.0) or not _number_in_range(job.get("performance"), 0.0, 1000.0) or not _number_in_range(job.get("salary"), 0.0, 1000000.0) or not _number_in_range(job.get("worked_day"), 0.0, 1000000.0):
+	# The career is validated by the policy that owns it, so a rung, a title and a
+	# salary that disagree are rejected here exactly as the ladder defines them.
+	if not job.get("title") is String or not _number_in_range(job.get("level"), 1.0, float(LifeCareers.MAX_LEVEL)) or not _number_in_range(job.get("performance"), 0.0, 1000.0) or not _number_in_range(job.get("salary"), 0.0, 1000000.0) or not _number_in_range(job.get("worked_day"), 0.0, 1000000.0):
 		return "Save contains an invalid career."
+	if not LifeCareers.has(str(job.get("track", ""))):
+		return "Save contains an unknown career track."
+	var degree_error: String = _validate_degree(state)
+	if not degree_error.is_empty(): return degree_error
+	var criminal_error: String = LifeCareers.criminal_error(state.get("criminal_record"))
+	if not criminal_error.is_empty(): return criminal_error
 	if job.has("schedule"):
 		var schedule_error:String=LifeCareerSchedule.validate(job.schedule,int(state.day),int(job.get("worked_day",0)))
 		if not schedule_error.is_empty():return schedule_error
@@ -3545,7 +3985,14 @@ func _validate_state(state: Dictionary) -> String:
 			if not recipe_error.is_empty():return recipe_error
 			var definition:Dictionary=LifeMeals.RECIPES[recipe]
 			if not _number_in_range(action.get("duration"),float(definition.duration),float(definition.duration)) or not _number_in_range(action.get("elapsed",0),0,float(definition.duration)):return "Save contains invalid recipe progress."
-			if action.get("cost")!=definition.cost or action.get("xp")!=definition.xp or not action.get("paid") is bool:return "Save contains invalid recipe ingredients or learning."
+			# The ingredients were paid at the counter when the dish was started, so
+			# the record is checked against the charge actually made rather than
+			# against today's price list: retuning a recipe's cost must not refuse a
+			# player's own in-progress meal (a bake charged 52 when the bake cost 52
+			# stopped loading the moment the recipe was retuned to 24). A charge that
+			# is not a whole, non-negative number of Lifeons is still impossible.
+			if not _number_in_range(action.get("cost"), 0.0, 1000000000.0) or not action.get("paid") is bool:return "Save contains invalid recipe ingredients or learning."
+			if not is_finite(float(action.get("xp", -1.0))) or float(action.get("xp", -1.0)) < 0.0:return "Save contains invalid recipe learning."
 			if str(action.get("phase","")) not in ["queued","approach","active"]:return "Save contains an invalid cooking phase."
 			if (float(action.get("elapsed",0))>0 or str(action.get("phase",""))=="active") and not bool(action.paid):return "Save contains cooking progress without paid ingredients."
 		if action_id == "birthday":
@@ -3693,7 +4140,7 @@ func _validate_progression(state: Dictionary) -> String:
 			return "Save contains an invalid story identity."
 		event_ids.append(str(ticket.id))
 		var context: Dictionary = ticket.context
-		if str(context.get("neighbor", "")) not in LifeResidentCatalogue.IDS or str(context.get("skill", "")) not in SKILL_NAMES or not _number_in_range(context.get("career_level"), 1, 5) or not _number_in_range(context.get("creativity_level"), 1, 10):
+		if str(context.get("neighbor", "")) not in LifeResidentCatalogue.IDS or str(context.get("skill", "")) not in SKILL_NAMES or not _number_in_range(context.get("career_level"), 1, LifeCareers.MAX_LEVEL) or not _number_in_range(context.get("creativity_level"), 1, 10):
 			return "Save contains an invalid story context."
 	for story: Variant in state.get("story_history", []):
 		if not story is Dictionary:
@@ -3854,6 +4301,17 @@ func _prune_school_actions() -> void:
 		if front_removed: _start_front()
 		for message: String in messages: _emit_notice(message)
 		_emit_changed()
+
+
+## Validate the qualification a save carries. An unknown degree would let a
+## corrupt save mint a raise it never studied for, so only the three the game
+## sells are accepted.
+func _validate_degree(state: Dictionary) -> String:
+	if not state.get("degree", "none") is String:
+		return "Save contains an invalid qualification."
+	if not LifeCareers.DEGREES.has(str(state.get("degree", "none"))):
+		return "Save contains an unknown qualification."
+	return ""
 
 
 func _validate_school_state(state: Dictionary) -> String:
@@ -4101,7 +4559,7 @@ func _begin_career_departure(action:Dictionary) -> void:
 	for need:String in action.changes:action.changes[need]=float(action.changes[need])*float(action.duration)/LifeCareerSchedule.LENGTH
 	away_state={"version":1,"activity":"career","phase":"away","departure_day":day,"departure_minutes":minutes,"return_day":day,"return_minutes":LifeCareerSchedule.END,"exit_id":str(action.target_id),"exit_position":action.target_position,"age_stage":str(character.age_stage),"career_track":str(career.get("track","studio")),"salary":int(career.salary),"completed":false,"ended_at":0.0}
 	_publish("away_changed",[get_away_state()]);_emit_changed()
-	_emit_notice("%s has left for work and will be home after 17:00."%str(character.name))
+	_emit_notice("%s has left for %s and will be home after 17:00."%[str(character.name),LifeCareers.workplace(str(career.get("track","")))])
 
 func _tick_career_away() -> void:
 	if day!=int(away_state.departure_day) or str(character.life_stage)!="adult":request_return_home();return
@@ -4120,10 +4578,20 @@ func _tick_career_away() -> void:
 		var income:int=roundi(float(away_state.salary)*proportion)
 		funds+=income;career.worked_day=day
 		career.schedule=LifeCareerSchedule.attend(career.get("schedule",LifeCareerSchedule.fresh(day)),day,late)
-		var career_skill:String=str(CAREER_TRACKS[str(away_state.career_track)].skill)
-		_gain_skill(career_skill,30.0*proportion)
+		var career_skill:String=str(LifeCareers.job(str(away_state.career_track)).get("skill",""))
+		# A service job trains no trade of its own, so a shift there still counts
+		# as a real day's work for performance but grows no skill.
+		var skill_rank:float=0.0
+		if SKILL_NAMES.has(career_skill):
+			_gain_skill(career_skill,30.0*proportion)
+			skill_rank=float(skills[career_skill].level)
 		var comfort:float=(float(needs.hunger)+float(needs.energy)+float(needs.fun))/3.0
-		career.performance=maxf(0.0,float(career.performance)+_career_performance_gain((18.0+comfort*.15+float(skills[career_skill].level)*2.0)*proportion)-late/20.0)
+		# The same ceiling as a shift worked from home. At the top of the ladder
+		# nothing spends the earned performance, so without this an ordinary
+		# working life banks past the limit a save may hold and the household
+		# becomes unsaveable.
+		career.performance=clampf(float(career.performance)+_career_performance_gain((18.0+comfort*.15+skill_rank*2.0)*proportion)-late/20.0,0.0,
+			100.0 if int(career.level)>=LifeCareers.MAX_LEVEL else 1000.0)
 		_emit_notice("Shift finished. Earned ℒ%d for %d minutes at work%s."%[income,int(action.duration),"; arrived %d minutes late"%int(late) if late>0.0 else ""])
 		_check_promotion();_activity_memory("job");_record_chapter_activity("job",income)
 		for want:Dictionary in wants:
@@ -4150,7 +4618,7 @@ func _validate_career_away_state(state:Dictionary) -> String:
 	if not _autonomy_integer(value.get("departure_day"),1,int(state.day)) or not _autonomy_integer(value.get("return_day"),int(value.departure_day),int(value.departure_day)) or not LifeEducation.weekday(int(value.departure_day)):return "Save contains an invalid work calendar."
 	if not state.career.has("schedule") or int(value.get("departure_day",0))<int(state.career.schedule.first_day):return "Save starts work before employment begins."
 	if not _number_in_range(value.get("departure_minutes"),LifeCareerSchedule.OPEN,LifeCareerSchedule.CLOSE) or not _number_in_range(value.get("return_minutes"),LifeCareerSchedule.END,LifeCareerSchedule.END) or not value.get("completed") is bool:return "Save contains invalid work departure or return times."
-	if LifeLifecycle.eligibility(str(value.get("age_stage","")))!="adult" or str(value.get("exit_id",""))!="lot_exit" or str(value.get("career_track","")) not in CAREER_TRACKS or str(value.career_track)!=str(state.career.get("track","studio")) or not _autonomy_integer(value.get("salary"),0,1000000):return "Save contains an invalid worker, salary or career."
+	if LifeLifecycle.eligibility(str(value.get("age_stage","")))!="adult" or str(value.get("exit_id",""))!="lot_exit" or not LifeCareers.has(str(value.get("career_track",""))) or str(value.career_track)!=str(state.career.get("track","")) or not _autonomy_integer(value.get("salary"),0,1000000):return "Save contains an invalid worker, salary or career."
 	if str(value.phase)=="away" and int(value.salary)!=int(state.career.salary):return "Save contains a changed salary during work."
 	var position:Variant=value.get("exit_position")
 	if position is Vector3:

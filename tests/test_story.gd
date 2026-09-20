@@ -97,9 +97,12 @@ func _test_four_day_story_and_chapters() -> void:
 	next_morning(sim)
 	check(sim.day == 3 and sim.get_story_events()[0].kind == "career_opportunity", "Day three must offer a different, career-focused story.")
 	money = sim.funds
-	var creative_xp: float = xp_total(sim, "creativity")
+	# Mentoring builds the skill the Lifelet's own job is plied with, so both the
+	# baseline and the assertion read that job's skill rather than assuming one.
+	var job_skill: String = str(LifeCareers.job(str(sim.career.get("track", ""))).get("skill", ""))
+	var career_xp: float = xp_total(sim, job_skill)
 	check(sim.choose_story_event("story_day_3", "mentoring"), "Career mentoring must be selectable.")
-	check(sim.funds == money - 30 and is_equal_approx(xp_total(sim, "creativity"), creative_xp + 65.0) and sim.career.performance == 6.0, "Mentoring must exchange funds for the offered career skill and performance.")
+	check(sim.funds == money - 30 and is_equal_approx(xp_total(sim, job_skill), career_xp + 65.0) and sim.career.performance == 6.0, "Mentoring must exchange funds for the offered career skill and performance.")
 	complete(sim, "deep_talk", "maya")
 	check(sim.aspiration_history.size() == 2 and sim.aspiration_next_day == 4, "Completing a second real chapter must archive it and schedule another.")
 	check(sim.satisfaction == 720, "Only the three stated recurring want rewards should be paid.")
@@ -148,6 +151,7 @@ func _test_pending_events_and_affordability() -> void:
 
 func _test_practice_at_skill_cap() -> void:
 	var sim: LifeSim = make_sim("Successful")
+	sim.skills.logic.level = 3
 	sim.choose_career("technology")
 	sim.aspiration_stage = 2
 	sim._create_recurring_wants()
@@ -228,9 +232,12 @@ func _test_later_choice_requirements() -> void:
 	check(sim.funds == money + 30 and sim.needs.energy == 38.0 and sim.needs.hygiene == 42.0, "Garden work must trade energy and hygiene for its stated payment.")
 	sim.day = 6
 	sim._offer_daily_story()
-	check(not sim.get_story_events()[0].choices[1].available and sim.get_story_events()[0].choices[1].unavailable_reason.contains("level 2"), "Teaching must explain its actual skill requirement.")
+	# Teaching is gated on the skill the Lifelet's own job is plied with.
+	var job_skill: String = str(LifeCareers.job(str(sim.career.get("track", ""))).get("skill", ""))
+	var reason: String = str(sim.get_story_events()[0].choices[1].unavailable_reason)
+	check(not sim.get_story_events()[0].choices[1].available and reason.contains("level 2") and reason.contains(job_skill.capitalize()), "Teaching must explain its actual skill requirement.")
 	check(not sim.choose_story_event("story_day_6", "teach"), "An unmet skill requirement must prevent the teaching choice.")
-	sim.skills.creativity.level = 2
+	sim.skills[job_skill].level = 2
 	check(sim.get_story_events()[0].choices[1].available and sim.choose_story_event("story_day_6", "teach"), "The pending teaching choice must unlock after skill improves.")
 	sim.day = 7
 	sim._offer_daily_story()

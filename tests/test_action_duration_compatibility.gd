@@ -76,5 +76,8 @@ func run()->void:
 	var clone:=LifeSim.new();root.add_child(clone);var restored:Dictionary=clone.restore_state(old)
 	check(bool(restored.ok) and clone.get_current_action().duration==60 and clone.get_current_action().elapsed==0 and not clone.get_current_action().paid,"legacy omitted generic defaults remain valid")
 	clone.free();sim.free();await process_frame
+	# The report's own folder is a precondition of writing it, so the suite
+	# creates it rather than failing on a null file handle when run directly.
+	DirAccess.make_dir_recursive_absolute("user://regression/evidence")
 	FileAccess.open("user://regression/evidence/duration_compatibility.json",FileAccess.WRITE).store_string(JSON.stringify({"checks":checks,"failures":failures,"cases":records},"  ",false,true))
 	print("DURATION_COMPATIBILITY ",checks," checks / ",failures," failures");quit(1 if failures else 0)

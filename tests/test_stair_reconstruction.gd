@@ -58,6 +58,7 @@ func run()->void:
 		check(not live.stair_pose_valid and not live.stair_pose_error.is_empty(),"Impossible foot contact reports invalid pose explicitly.")
 		live.queue_free();fresh.queue_free();await process_frame
 	flow.queue_free();await process_frame
+	DirAccess.make_dir_recursive_absolute("user://regression/stair_integration")
 	var file:=FileAccess.open(OUT+"reconstruction.json",FileAccess.WRITE)
 	file.store_string(JSON.stringify({"checks":checks,"failures":failures,"max_grip_error":max_grip_error,"max_transform_error":max_pose_error,"samples":samples,"scope":"Directed old/fresh actors with plate/platter; four profiles, seven distances, both directions; zero-time joint/bone/grip/dish/clock equality and paused exit. No controller, ledger custody, fresh-process save or geometry clearance."},"  "));file.close()
 	print("STAIR_RECONSTRUCTION checks=%d failures=%d max_grip=%.6f pose_error=%.8f"%[checks,failures.size(),max_grip_error,max_pose_error])

@@ -5,6 +5,14 @@ var failures: int = 0
 
 func _initialize() -> void: call_deferred("run")
 
+## The fixture drives whole days of clock with no recovery action, so hunger
+## reaches zero and the passing rule would end the pupil before the birthday
+## these cases are about. Hunger alone is lifted, and only when it would
+## otherwise starve, so the school calendar, attendance, records, skills, mood and
+## the purse all stay exactly as the real simulation produced them.
+func _prevent_starvation(sim: LifeSim) -> void:
+	if float(sim.needs.hunger) < 20.0: sim.needs.hunger = 100.0
+
 func check(ok: bool, message: String) -> void:
 	checks += 1
 	if not ok: failures += 1; push_error(message)
@@ -24,6 +32,7 @@ func advance_minutes(sim: LifeSim, amount: float) -> void:
 	while amount > .0001:
 		var step: float = minf(amount,minf(2400.0,60.0*rate))
 		sim.tick(step/rate)
+		_prevent_starvation(sim)
 		amount -= step
 
 func finish(sim: LifeSim, action: String, target: String = "desk") -> void:

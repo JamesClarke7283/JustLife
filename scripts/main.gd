@@ -1,6 +1,10 @@
 extends Node
 
 const P = preload("res://scripts/palette.gd")
+const Land = preload("res://scripts/land.gd")
+const Properties = preload("res://scripts/properties.gd")
+const LifeGroceries = preload("res://scripts/groceries.gd")
+const Variants = preload("res://scripts/catalog_variants.gd")
 const LifeLog = preload("res://scripts/logger.gd")
 const LifeWantsManager = preload("res://scripts/wants_manager.gd")
 const CREATOR_FACE_GROUPS: Dictionary = {
@@ -40,6 +44,13 @@ var catalog_search: String = ""
 var portrait_stale: bool = false
 var profile: Dictionary = {"name":"Mara Vale","frame":0,"hair":1,"skin_color":"d9a17d","hair_color":"54382a","top_color":"c97c66","bottom_color":"eadfc9","shoe_color":"e9e4d9","body_scale":1.0,"height_scale":1.0,"outfit":0,"eye_color":"547365","traits":["Creative","Outgoing","Foodie"],"aspiration":"Maker"}
 var selected_lot: int = 0
+## Which Lifelets are ticked to come on the trip being planned, and where they
+## are going.
+var party_selection: Array[String] = []
+var _pending_trip_destination: String = ""
+## The homes this household owns, which one it lives in, and the insurance on
+## each. Rides the save beside the land and the layouts.
+var properties: Dictionary = Properties.fresh()
 var path: PackedVector3Array = []
 var path_index: int = 0
 var walk_only: bool = false
@@ -58,6 +69,9 @@ var action_context: Label
 var action_bar: ProgressBar
 var cancel_action_button: Button
 var household_chips: Dictionary = {}
+## The household's pets in the life box, by pet id, so a chip can be refreshed in
+## place the way a person's chip is.
+var pet_chips: Dictionary = {}
 var away_phases: Dictionary = {}
 var need_bars: Dictionary = {}
 var need_fills: Dictionary = {}
@@ -110,7 +124,14 @@ var pet_actors: Dictionary = {}
 var pet_arrivals: Dictionary = {}
 ## Each pet's own errand: which need sent it, where it is going and how far it
 ## has got. The controller owns this, like the household's own routes.
+## The pet the camera and HUD are following, or "" while a Lifelet is. A pet is
+## not controllable in the way a person is, so this only changes what is watched.
+var selected_pet_id: String = ""
+
 var pet_errands: Dictionary = {}
+## The point at which a pet stops what it is doing and sees to itself. Below a
+## third of a need, so an animal acts on a genuine want rather than topping up.
+const PET_NEED_URGENT: float = 35.0
 var pending_move: Dictionary = {}
 ## The catalogue kind a food-truck order has already paid for. Placement reads
 ## it and clears it, so the delivery cannot be charged twice and a placement the
@@ -205,7 +226,18 @@ func setup_services() -> void:
 	household=LifeHousehold.new()
 	household.name="Household"
 	add_child(household)
+	# Cover bought through the phone is written through to the house's own
+	# record, so the property panel and the sims never disagree.
+	household.insurance_changed.connect(_on_insurance_changed)
 	household.extras_provider=household_flow.get_state
+	# The controller owns the world's layout, so it is the one that can say
+	# where the household's post boxes stand.
+	household.post_box_provider=func()->Array[String]:
+		var out:Array[String]=[]
+		if not is_instance_valid(world):return out
+		for item:Dictionary in world.items:
+			if str(item.get("kind",""))=="post_box":out.append(str(item.id))
+		return out
 	household.set_home_value_provider(home_value)
 	household.extras_restore_provider=household_flow.restore
 	household.new_household(household_profiles)
@@ -320,9 +352,14 @@ func _connect_live_nodes() -> void:
 	household.pregnancy_began.connect(_on_pregnancy_began)
 	household.member_age_changed.connect(func(id: String, _previous: String, _current: String): _refresh_aged_member.call_deferred(id,load_epoch,sender))
 	world.object_clicked.connect(on_object_clicked)
+	# The world owns the ghost's own style and size, so the check describes the
+	# object actually being placed rather than a default of its family.
 	world.placement_reach_check=func(kind:String,p:Vector3,angle:float)->bool:
 		if not is_instance_valid(build_transactions):return true
-		var proposed:Array=world.serialize_items();proposed.append({"id":"ghost","kind":kind,"x":p.x,"z":p.z,"rotation":angle,"level":world.view_level})
+		var data:Dictionary=LifeCatalog.get_item(kind)
+		var proposal:Dictionary={"id":"ghost","kind":kind,"x":p.x,"z":p.z,"rotation":angle,"level":world.view_level}
+		proposal.merge(Variants.record(data,world.placement_style,"",world.placement_size),true)
+		var proposed:Array=world.serialize_items();proposed.append(proposal)
 		return build_transactions.furnishing_error(proposed).is_empty()
 	world.ground_clicked.connect(on_ground_clicked)
 	world.placement_requested.connect(on_placement)
@@ -363,7 +400,7 @@ func text_label(value:String,p:Vector2,s:Vector2,font_size:int=16,color:Color=P.
 	l.text=value
 	l.add_theme_font_size_override("font_size",font_size)
 	l.add_theme_color_override("font_color",color)
-	if serif:l.add_theme_font_override("font",load("res://assets/fonts/Display.otf"))
+	if serif:l.add_theme_font_override("font",P.display_font())
 	l.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
 	l.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	rect(l,p,s,parent)
@@ -429,7 +466,7 @@ func clear_ui() -> void:
 		ui.remove_child(child)
 		child.queue_free()
 	need_bars.clear();need_values.clear();need_fills.clear();speed_buttons.clear();live_floor_buttons.clear()
-	household_chips.clear();cancel_action_button=null
+	household_chips.clear();pet_chips.clear();cancel_action_button=null
 	skill_labels.clear();skill_bars.clear();skill_progress_labels.clear();relationship_labels.clear();career_labels.clear();goal_labels.clear()
 	queue_box=null;queue_card=null;queue_scroll=null;queue_caption=null;queue_toggle=null;time_label=null;funds_label=null;mood_label=null;action_label=null;action_context=null;action_bar=null;mood_ring=null;mood_pill=null;moodlet_tiles.clear()
 	pregnancy_meter=null;pregnancy_label=null
@@ -566,24 +603,21 @@ func draw_creator() -> void:
 	op.item_selected.connect(func(i:int):profile.aspiration=["Maker","Connected","Successful","Balanced"][i];draw_creator())
 	var asp_desc={"Maker":"Fill your life with things you create.","Connected":"Turn new faces into lasting friendships.","Successful":"Build your skills. Make a living you love.","Balanced":"Find joy in the everyday."}
 	paragraph(asp_desc[profile.aspiration],Vector2(60,676),Vector2(275,36),13)
+	# The character is the focal point, with all styling choices on one side.
 	# The character is the focal point, with all styling choices on one side. The
 	# card is sized after the tab is drawn, from the controls that tab really
-	# built: the Look tab's three rows of hairstyles and the Style tab's necklace
-	# row both used to run past a fixed 614-px card.
+	# built: the Look tab's rows of hairstyles and the Style tab's necklace row
+	# both used to run past a fixed 614-px card.
 	var card_top:float=126.0
+	var card_bottom:float=126.0+614.0
 	var card_panel:=card(Vector2(1080,card_top),Vector2(322,614),Color("f9faf3"))
-	var tab_names:Array=["Look","Face","Wardrobe","Style"]
-	# The four tabs share the card's inner width. As four fixed 97-px steps from
-	# x=1100 the Style tab ended at x=1480, half of it past the 1440-px canvas.
-	var tab_width:float=(282.0-6.0*float(tab_names.size()-1))/float(tab_names.size())
-	for i in range(tab_names.size()):
-		var tab_name:String=str(tab_names[i])
-		var tab_button=button(tab_name,Vector2(1100.0+float(i)*(tab_width+6.0),144),Vector2(tab_width,40),func():set_creator_tab(tab_name),creator_tab==tab_name)
-		compact_button(tab_button);tab_button.size=Vector2(tab_width,40)
-	# Each tab reports the y its own last control reaches; the card is resized to
-	# hold it once the tab has drawn, so a taller tab can never spill past the
-	# card the way the hairstyle grid and the necklace row did.
-	var card_bottom:float=card_top+614.0
+	# The card spans x 1080..1402 and the canvas ends at 1440, so four tabs have
+	# 20 px of left margin and 4 px between them: a wider pitch ran the last tab
+	# (Style) off the canvas, clipping it where a player could not press it.
+	for i in range(4):
+		var tab_name:String=["Look","Face","Wardrobe","Style"][i]
+		var tab_button=button(tab_name,Vector2(1100+i*74,144),Vector2(70,40),func():set_creator_tab(tab_name),creator_tab==tab_name)
+		compact_button(tab_button);tab_button.size=Vector2(70,40)
 	if creator_tab=="Look":
 		# Every section stacks from this cursor: label, then its content at
 		# label+6, then the next section at content end + gap. The fixed offsets
@@ -1145,7 +1179,10 @@ func show_lot_selection() -> void:
 	if stage:stage.visible=false
 	world.sun.light_energy=.8
 	world.sun.rotation_degrees=Vector3(-52,-35,0)
-	world.create_home(LifeCatalog.starter_layout(selected_lot))
+	# The starter houses are the property policy's own list, so the opening
+	# picker and a mid-game move offer the same homes by the same rules.
+	selected_lot=clampi(selected_lot,0,Properties.starters().size()-1)
+	world.create_home(LifeCatalog.starter_layout(int(Properties.type_info(Properties.starters()[selected_lot]).layout)))
 	world.camera.projection=Camera3D.PROJECTION_ORTHOGONAL
 	world.camera.size=19.5
 	world.camera_angle=.65
@@ -1157,19 +1194,133 @@ func show_lot_selection() -> void:
 	small_caps("Welcome to",Vector2(57,140))
 	text_label("Juniper Bay",Vector2(54,171),Vector2(300,58),39,P.INK,true)
 	paragraph("Tree-lined streets. Friendly faces.\nA little space to make your own.",Vector2(58,242),Vector2(274,57),16)
-	var names=["Willow Cottage","Sage House","A Fresh Canvas"]
-	var desc=["A furnished start, with room to grow.","A creative home for your next chapter.","The essentials. You bring the ideas."]
-	for i in range(3):
-		var b=button(names[i],Vector2(54,331+i*95),Vector2(292,50),func():selected_lot=i;show_lot_selection(),selected_lot==i)
+	var starter_ids:Array[String]=Properties.starters()
+	for i in range(starter_ids.size()):
+		var info:Dictionary=Properties.type_info(starter_ids[i])
+		var b=button(str(info.label),Vector2(54,331+i*95),Vector2(292,50),func():selected_lot=i;show_lot_selection(),selected_lot==i)
 		b.alignment=HORIZONTAL_ALIGNMENT_LEFT
-		text_label(desc[i],Vector2(61,382+i*95),Vector2(282,30),12,P.MUTED)
-	text_label("1 BED  /  1 BATH  /  GARDEN",Vector2(57,640),Vector2(280,27),11,P.MUTED)
+		text_label(str(info.tagline),Vector2(61,382+i*95),Vector2(282,30),12,P.MUTED)
+	var chosen:Dictionary=Properties.type_info(starter_ids[selected_lot])
+	text_label("%d BED  /  %d BATH  /  %d ROOMS  /  GARDEN" % [int(chosen.beds),int(chosen.baths),int(chosen.rooms)],Vector2(57,640),Vector2(280,27),11,P.MUTED)
 	card(Vector2(476,750),Vector2(920,118),Color("f9faf2"))
 	small_caps("Move-in ready",Vector2(500,764))
-	text_label(names[selected_lot],Vector2(498,795),Vector2(360,43),30,P.INK,true)
-	text_label("Household funds after move-in\nℒ %s" % ("4,500" if selected_lot==2 else "2,500"),Vector2(814,782),Vector2(310,58),14,P.MUTED)
+	text_label(str(chosen.label),Vector2(498,795),Vector2(360,43),30,P.INK,true)
+	text_label("Household funds after move-in\nℒ %s" % ("4,500" if not bool(chosen.price) else "2,500"),Vector2(814,782),Vector2(310,58),14,P.MUTED)
 	button("Start living  →",Vector2(1136,779),Vector2(234,62),start_household,true)
 	button("←  Back to my Lifelet",Vector2(40,805),Vector2(280,50),show_creator)
+
+
+## Every home the household may live in, as a mid-game move: the starter houses
+## it can still choose, and the larger ones it can buy. The list, the price and
+## every refusal come from `LifeProperties`, so the panel and the move agree.
+func show_property_panel() -> void:
+	_begin_pause_overlay()
+	var background:ColorRect=ColorRect.new()
+	background.color=Color(.08,.17,.15,.28)
+	rect(background,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
+	card(Vector2(398,84),Vector2(644,772),P.WHITE,24,overlay)
+	small_caps("Where you live",Vector2(430,104),Vector2(580,25),overlay)
+	text_label("Homes & property",Vector2(428,136),Vector2(584,50),31,P.INK,true,overlay)
+	paragraph(Properties.describe(properties),Vector2(430,192),Vector2(580,40),15,P.MUTED,overlay)
+	var scroll:ScrollContainer=ScrollContainer.new()
+	scroll.name="PropertyList"
+	rect(scroll,Vector2(430,240),Vector2(580,520),overlay)
+	var column:VBoxContainer=VBoxContainer.new()
+	column.add_theme_constant_override("separation",8)
+	scroll.add_child(column)
+	for offer:Dictionary in Properties.offers(properties,sim.funds):
+		var house_id:String=str(offer.id)
+		var row:Control=Control.new()
+		row.name="PropertyRow_"+house_id
+		row.custom_minimum_size=Vector2(560,72)
+		column.add_child(row)
+		var title:String=str(offer.label)+(" · Current home" if bool(offer.current) else "")
+		if bool(offer.owned) and not bool(offer.current):title+=" · Owned"
+		var move:Button=button(title,Vector2.ZERO,Vector2(560,36),func():_move_house(house_id),bool(offer.current),row)
+		move.name="Property_"+house_id
+		move.disabled=not bool(offer.available)
+		var detail:String="%d bed · %d bath · %d rooms" % [int(offer.beds),int(offer.baths),int(offer.rooms)]
+		if not bool(offer.owned):detail+=" · ℒ%s to buy" % commas(int(offer.price))
+		detail+=" · ℒ%s to move" % commas(int(offer.cost))
+		var policy:Dictionary=offer.policy
+		detail+=" · insured (ℒ%s)" % commas(int(policy.premium)) if not policy.is_empty() else " · uninsured"
+		move.tooltip_text=str(offer.reason) if not bool(offer.available) else str(offer.description)
+		var note:Label=text_label(str(offer.reason) if not bool(offer.available) else detail,
+			Vector2(6,40),Vector2(548,24),11,P.CORAL if not bool(offer.available) else P.MUTED,false,row)
+		note.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	# The insurance of the home the household actually lives in, so a second
+	# property's cover is bought and cancelled where it is lived in.
+	var current_id:String=Properties.active(properties)
+	var insured:bool=false
+	if not current_id.is_empty():
+		var held:Dictionary=Properties.policy(properties,current_id)
+		insured=not held.is_empty()
+		text_label("Insurance on this home: %s" % (str(held.label) if insured else "none"),
+			Vector2(432,770),Vector2(300,26),14,P.INK if insured else P.MUTED,false,overlay)
+		button("Cancel insurance" if insured else "Insure this home · ℒ450",
+			Vector2(740,766),Vector2(270,34),func():_toggle_property_insurance(insured),false,overlay)
+	# A second policy product, so a bigger house can be covered more heavily.
+	if not insured:
+		button("Premium cover · ℒ900",Vector2(430,812),Vector2(280,34),func():_buy_property_policy("premium"),false,overlay)
+	button("Back to life",Vector2(740,812),Vector2(270,34),close_overlay,true,overlay)
+
+
+## Buy the named policy on the house the household lives in.
+func _buy_property_policy(policy_id:String) -> void:
+	var house_id:String=Properties.active(properties)
+	var result:Dictionary=Properties.buy_policy(properties,house_id,policy_id,household.funds)
+	if not bool(result.ok):
+		show_notice(str(result.error));show_property_panel();return
+	properties=result.state
+	household.set_funds(int(result.funds))
+	_apply_property_insurance()
+	show_notice("Cover taken out on this home for ℒ%s." % commas(int(result.cost)))
+	show_property_panel()
+
+
+## Cancel the cover on the house the household lives in.
+func _toggle_property_insurance(insured:bool) -> void:
+	var house_id:String=Properties.active(properties)
+	if insured:
+		var result:Dictionary=Properties.cancel_policy(properties,house_id)
+		if not bool(result.ok):show_notice(str(result.error))
+		else:properties=result.state;_apply_property_insurance();show_notice("Cover cancelled on this home.")
+	else:
+		_buy_property_policy("home")
+		return
+	show_property_panel()
+
+
+## Buy a home and move the household into it, rebuilding the world from its own
+## saved layout. The house left behind keeps its land and its policy.
+func _move_house(house_id:String) -> void:
+	var house:Dictionary=Properties.houses(properties).get(house_id,{})
+	var type_id:String=str(house.get("type",house_id))
+	# The home being left is saved with its land *before* the move is quoted, so
+	# the record the move carries already holds it and a later move back returns
+	# to the same house on the same plot with the same furnishings.
+	var leaving:String=Properties.active(properties)
+	if not leaving.is_empty() and properties.get("houses",{}).has(leaving):
+		properties.houses[leaving]["layout"]=world.serialize_items()
+		properties.houses[leaving]["land"]=LifeBuildingState.land.duplicate(true)
+	var result:Dictionary=Properties.move_into(properties,type_id,household.funds,house_id,LifeBuildingState.land)
+	if not bool(result.ok):
+		show_notice(str(result.error));show_property_panel();return
+	properties=result.state
+	household.set_funds(int(result.funds))
+	_apply_property_insurance()
+	# The new home is built from its own saved layout, or from its type's starter
+	# layout when it has never been lived in.
+	var target:Dictionary=Properties.house(properties,house_id)
+	var layout:Array=target.get("layout",[])
+	if layout.is_empty():layout=LifeCatalog.starter_layout(int(Properties.type_info(type_id).layout))
+	current_venue="home"
+	LifeBuildingState.set_land(target.get("land",{}))
+	home_layout=layout
+	setup_live(layout)
+	refresh_hud()
+	show_notice("Moved in to %s for ℒ%s." % [str(target.get("name","your new home")),commas(int(result.cost))])
+	close_overlay()
 
 func select_creator_member(index:int) -> void:
 	if index<0 or index>=household_profiles.size():return
@@ -1217,7 +1368,14 @@ func start_household() -> void:
 	for person:Dictionary in household_profiles:person.erase("world_state")
 	floor_color="cfa97e"
 	current_venue="home"
-	home_layout=LifeCatalog.starter_layout(selected_lot)
+	# The house the household starts in becomes its first property, so moving
+	# later has somewhere to move back to.
+	var starter_ids:Array[String]=Properties.starters()
+	var starter_type:String=starter_ids[clampi(selected_lot,0,starter_ids.size()-1)]
+	properties=Properties.fresh()
+	var granted:Dictionary=Properties.grant(properties,starter_type,starter_type,Land.fresh())
+	if bool(granted.ok):properties=granted.state
+	home_layout=LifeCatalog.starter_layout(int(Properties.type_info(starter_type).layout))
 	venue_layouts.clear()
 	loading_game=true
 	household.new_household(household_profiles)
@@ -1226,8 +1384,8 @@ func start_household() -> void:
 		loading_game=false;has_active_game=false;show_creator();show_notice(str(family_result.error));return
 	sim=household.selected()
 	bound_member_id=household.selected_id()
-	if selected_lot==2:household.set_funds(4500)
-	setup_live(LifeCatalog.starter_layout(selected_lot))
+	LifeBuildingState.set_land(Land.fresh())
+	setup_live(home_layout)
 	loading_game=false
 	show_notice("Welcome home, %s. Click a furnishing to choose what happens next." % str(sim.character.name).split(" ")[0])
 
@@ -1238,6 +1396,15 @@ func setup_live(layout:Array) -> void:
 	route_generation+=1
 	mode="live"
 	if stage:stage.visible=false
+	# The household's land is set before anything is built, because the ground,
+	# the hedge, the navigation region, the compatibility grid and the camera pan
+	# are all derived from it. At home it is the saved land; anywhere else it is
+	# the starting plot, since a venue is not the household's to expand.
+	if current_venue=="home":
+		var saved_land:Variant=sim.character.get("world_state",{}).get("land") if sim.character.get("world_state",{}) is Dictionary else null
+		LifeBuildingState.set_land(saved_land)
+	else:
+		LifeBuildingState.set_land({})
 	if current_venue=="home":world.create_home(layout)
 	elif current_venue in LifeNeighborhood.RESIDENT_HOMES:world.create_resident_home(current_venue,layout)
 	else:world.create_public_venue(current_venue,layout)
@@ -1365,7 +1532,7 @@ func _truck_obstacles() -> Array:
 	# is still blocked, and the layout is never refused because a parked van
 	# stuck out over the pavement.
 	var half:=Vector2(2.33,1.40)*.5
-	var band:=Rect2(Vector2(park.x,park.z)-half,half*2).intersection(LifeBuildingState.LOT)
+	var band:=Rect2(Vector2(park.x,park.z)-half,half*2).intersection(LifeBuildingState.lot())
 	if band.size.x<=0.0 or band.size.y<=0.0:return []
 	return [{"id":"food_truck","level":0,"x":band.get_center().x,"z":band.get_center().y,"w":band.size.x,"d":band.size.y}]
 
@@ -1607,10 +1774,10 @@ func _refresh_pet_targets() -> void:
 		if not is_instance_valid(actor):continue
 		targets.append({"id":id,"kind":"pet","label":str(record.name),"position":actor.position})
 
+## The saved record for one pet. The household owns the lookup, so the card,
+## the life box and the interactions all read the same record.
 func _pet_record(id:String) -> Dictionary:
-	for pet:Dictionary in household.pets.get("pets",[]):
-		if str(pet.id)==id:return pet
-	return {}
+	return household.pet_record(id)
 
 func _tick_pets(delta:float) -> void:
 	if pet_actors.is_empty():return
@@ -1648,17 +1815,19 @@ func _tick_pet_autonomy(delta:float,speed:float) -> bool:
 		if not is_instance_valid(actor):continue
 		var record:Dictionary=_pet_record(id)
 		if record.is_empty():continue
-		var needs:Dictionary=record.get("needs",{})
-		if not needs is Dictionary or (needs as Dictionary).is_empty():
-			# A pet from a save written before pets had needs begins comfortable.
-			record["needs"]=LifePets.fresh_needs()
-			needs=record["needs"]
-		# Drain, then let a cat keep itself clean the way a cat does.
-		for need:String in LifePets.NEED_NAMES:
-			var rate:float=float(LifePets.NEED_DECAY_PER_HOUR.get(need,0.0))
-			if need=="cleanliness" and str(record.get("species",""))=="cat":
-				rate-=LifePets.CAT_GROOM_PER_HOUR
-			needs[need]=clampf(float(needs.get(need,0.0))-rate*hours,0.0,100.0)
+		# The household's own clock already drains a pet's condition through
+		# `LifePetCare.tick`, so this only reads it. A cat keeps itself clean the
+		# way a cat does, which `LifePetCare` models as its own grooming term, so
+		# its coat stays up without the household's help.
+		var care:Dictionary=record.get("care",{})
+		if not care is Dictionary:
+			care=LifePetCare.fresh()
+			record["care"]=care
+		var needs:Dictionary=care.get("needs",{})
+		if not needs is Dictionary or needs.is_empty():continue
+		# The needs an animal acts on are `LifePetCare`'s own names, which map onto
+		# the errands below: hunger and thirst to the bowl, energy to its bed,
+		# bladder and fun to the garden.
 		# An animal still walking in has not settled yet, so it acts only once it
 		# has arrived: two walkers on one body would drag it off its own route.
 		if pet_arrivals.has(id):continue
@@ -1676,10 +1845,10 @@ func _tick_pet_autonomy(delta:float,speed:float) -> bool:
 ## Whether this pet wants to go and do something about a need. Returned as the
 ## need's own name so the errand knows what it is for.
 func _pet_needs_errand(record:Dictionary,needs:Dictionary) -> String:
-	# Thirst first, then hunger: water drains fastest, so it is the need that
-	# brings an animal to the bowl most often.
-	for need:String in ["thirst","hunger","energy"]:
-		if float(needs.get(need,100.0))<LifePets.NEED_URGENT:
+	# Hunger first, then a tired animal's bed. The names are `LifePetCare`'s own,
+	# so the condition the HUD draws and the errand the animal takes agree.
+	for need:String in ["hunger","energy"]:
+		if float(needs.get(need,100.0))<PET_NEED_URGENT:
 			return need
 	# A dirty dog waits for a person, so there is no errand for cleanliness.
 	return ""
@@ -1688,13 +1857,13 @@ func _pet_needs_errand(record:Dictionary,needs:Dictionary) -> String:
 ## garden. An animal only does this once its indoor needs are comfortable, so it
 ## never leaves a full bowl or a warm bed to go outside.
 func _pet_outdoor_wanted(record:Dictionary,needs:Dictionary) -> String:
-	for need:String in ["thirst","hunger","energy"]:
-		if float(needs.get(need,100.0))<LifePets.NEED_URGENT:
+	for need:String in ["hunger","energy"]:
+		if float(needs.get(need,100.0))<PET_NEED_URGENT:
 			return ""
 	# A full bladder, then plain restlessness: both are answered outside.
-	if float(needs.get("bladder",100.0))<LifePets.NEED_URGENT:
+	if float(needs.get("bladder",100.0))<PET_NEED_URGENT:
 		return "bladder"
-	if float(needs.get("fun",100.0))<LifePets.NEED_URGENT:
+	if float(needs.get("fun",100.0))<PET_NEED_URGENT:
 		return "fun"
 	return ""
 
@@ -1897,9 +2066,10 @@ func refresh_pet_layers() -> void:
 			if child is CollisionObject3D:
 				child.collision_layer=LifeWorld.PICK_UPPER if world.point_level(actor.position)==1 else LifeWorld.PICK_GROUND
 
-## A pet card: what it is, what it is wearing, what it has learned, and what the
-## household can do with it. The actions are the same ones the simulation offers
-## for a pet target, so the card and the interaction menu cannot drift apart.
+## A pet card: what it is, what it is wearing, how it is doing, and everything
+## this Lifelet can do with it. The actions come from the household's own policy,
+## so a baby is offered nothing, a child is offered the trick it can teach, and an
+## unavailable option states its reason rather than disappearing silently.
 func show_pet_card(id:String) -> void:
 	var record:Dictionary=_pet_record(id)
 	if record.is_empty():return
@@ -2059,7 +2229,7 @@ func draw_live() -> void:
 	stories_button=button("Stories",Vector2(400,27),Vector2(95,43),show_stories)
 	stories_button.add_theme_font_size_override("font_size",13)
 	if current_venue!="home":
-		text_label(str(LifeNeighborhood.PLACES[current_venue].name),Vector2(306,86),Vector2(610,40),23,P.INK,true)
+		text_label(str(LifeNeighborhood.place_name(current_venue)),Vector2(306,86),Vector2(610,40),23,P.INK,true)
 	card(Vector2(504,18),Vector2(432,57),P.WHITE,14)
 	button("Live",Vector2(514,27),Vector2(116,39),func():set_build_mode(false),mode=="live")
 	button("Build & buy",Vector2(638,27),Vector2(150,39),func():set_build_mode(true),mode=="build")
@@ -2167,17 +2337,40 @@ func _refresh_progress_labels() -> void:
 
 func draw_household_bar() -> void:
 	household_chips.clear()
-	if household.members.size()>1:
-		card(Vector2(20,618),Vector2(maxi(128,household.members.size()*35+16),89),P.WHITE,12).name="HouseholdSwitcher"
-		var household_caption:=small_caps("Household",Vector2(28,624),Vector2(108,20))
+	pet_chips.clear()
+	# The switcher carries the household's people and every pet it owns, so the
+	# animals live in the same life box as the Lifelets rather than only in the
+	# room. A pet chip wears the pet's own portrait and opens its card.
+	var pet_list:Array=household.pets.get("pets",[])
+	var switcher_count:int=household.members.size()+pet_list.size()
+	if switcher_count>1:
+		var switcher_height:float=89.0+52.0 if not pet_list.is_empty() else 89.0
+		card(Vector2(20,618.0-(52.0 if not pet_list.is_empty() else 0.0)),Vector2(maxi(128,switcher_count*35+16),switcher_height),P.WHITE,12).name="HouseholdSwitcher"
+		var household_caption:=small_caps("Household",Vector2(28,624.0-(52.0 if not pet_list.is_empty() else 0.0)),Vector2(108,20))
 		household_caption.add_theme_color_override("font_color",P.INK)
+		var chip_top:float=657.0-(52.0 if not pet_list.is_empty() else 0.0)
 		for i in range(household.members.size()):
 			var member:Dictionary=household.members[i]
-			var chip=button(member_initials(str(member.sim.character.name),i,household_profiles),Vector2(28+i*35,657),Vector2(31,44),func():select_household_member(i),i==household.selected_index)
+			var chip=button(member_initials(str(member.sim.character.name),i,household_profiles),Vector2(28+i*35,chip_top),Vector2(31,44),func():select_household_member(i),i==household.selected_index)
 			compact_button(chip)
 			chip.size=Vector2(31,44)
 			chip.tooltip_text=str(member.sim.character.name)+" · Click to control"
 			household_chips[str(member.id)]=chip
+		if not pet_list.is_empty():
+			var pet_caption:=small_caps("Pets",Vector2(28,chip_top+48),Vector2(108,18))
+			pet_caption.add_theme_color_override("font_color",P.INK)
+			for index:int in range(pet_list.size()):
+				var pet:Dictionary=pet_list[index]
+				var pet_id:String=str(pet.id)
+				var pet_chip=button("",Vector2(28+index*35,chip_top+66),Vector2(31,34),func():show_pet_card(pet_id),pet_id==selected_pet_id)
+				pet_chip.name="PetChip_"+pet_id
+				# The chip wears the animal itself, so a household with two cats can
+				# tell them apart from the life box without opening either card.
+				pet_thumbnail(Vector2(29+index*35,chip_top+67),Vector2(29,32),pet,ui)
+				pet_chip.tooltip_text="%s · %s · Click to open" % [str(pet.name),LifePets.species_label(str(pet.species))]
+				compact_button(pet_chip)
+				pet_chip.size=Vector2(31,34)
+				pet_chips[pet_id]=pet_chip
 	var bar_width:float=interface_width()-40.0
 	card(Vector2(interface_local_x(20.0),718),Vector2(bar_width,162),P.WHITE,18)
 	line(Vector2(304,738),Vector2(1,121))
@@ -2445,7 +2638,7 @@ func refresh_hud() -> void:
 	if funds_label:
 		funds_label.text="ℒ %s" % commas(sim.funds)
 		var keeps:PackedStringArray=household.keepsake_lines() if household else PackedStringArray()
-		funds_label.tooltip_text="Household purse." if keeps.is_empty() else "Purse plus family keepsakes:\n• "+ "\n• ".join(keeps)
+		funds_label.tooltip_text="Household purse, in %s." % P.CURRENCY_NAME if keeps.is_empty() else "Purse plus family keepsakes:\n• "+ "\n• ".join(keeps)
 	if time_label:time_label.text=sim.get_clock_text()+ ("  ·  Paused" if sim.speed==0 else "")
 	if mood_label:
 		var mood=sim.get_mood()
@@ -2610,7 +2803,19 @@ func commas(value:int) -> String:
 		out+=s[i]
 	return out
 
-func model_thumbnail(kind:String,p:Vector2,s:Vector2,portrait:bool=false,parent:Node=ui,appearance:Dictionary={}) -> void:
+## A live model preview. `style`, `size` and `variant_color` describe which member
+## of a variant family to show, so the thumbnail beside a cell or a choice is the
+## object the player would actually get.
+func model_thumbnail(kind:String,p:Vector2,s:Vector2,portrait:bool=false,parent:Node=ui,appearance:Dictionary={},style:String="",size:String="",variant_color:String="") -> void:
+	# Resolve the model before building any node: a catalogued kind whose art is
+	# not yet on disk leaves the cell blank rather than leaving a live but empty
+	# viewport behind and reporting an engine error.
+	var data:Dictionary={}
+	var packed:Resource=null
+	if not portrait:
+		data=LifeCatalog.get_item(kind)
+		packed=_variant_model(kind,style,data)
+		if packed==null:return
 	var sv=SubViewport.new()
 	sv.size=Vector2i(int(s.x*2),int(s.y*2))
 	sv.own_world_3d=true
@@ -2628,9 +2833,12 @@ func model_thumbnail(kind:String,p:Vector2,s:Vector2,portrait:bool=false,parent:
 	if portrait:
 		model=LifeActor.new();root.add_child(model);model.configure(sim.character if appearance.is_empty() else appearance)
 	else:
-		var model_path:String="res://assets/models/%s.glb" % kind
-		if not ResourceLoader.exists(model_path):return
-		model=load(model_path).instantiate();root.add_child(model)
+		model=packed.instantiate()
+		if model==null:return
+		root.add_child(model)
+		var model_scale:float=Variants.size_scale(size)
+		if not is_equal_approx(model_scale,1.0):model.scale=Vector3.ONE*model_scale
+		if not variant_color.is_empty():_tint_preview(model,data,variant_color)
 	var cam=Camera3D.new();root.add_child(cam)
 	cam.projection=Camera3D.PROJECTION_ORTHOGONAL
 	if portrait:
@@ -2639,22 +2847,47 @@ func model_thumbnail(kind:String,p:Vector2,s:Vector2,portrait:bool=false,parent:
 		var ratio:float=clampf(height/1.76,.8,1.1)
 		cam.size=.71*ratio;cam.position=Vector3(.06,center.y+.02*ratio,3);cam.look_at(center-Vector3(0,.07*ratio,0))
 	else:
-		var data:Dictionary=LifeCatalog.get_item(kind)
 		# A three-quarter view whose elevation follows the model's own
 		# proportions, not a fixed rise. A low, long vehicle is looked at almost
 		# level so it reads along its length; a piece as tall as it is wide (a
 		# chair, a wardrobe) still gets the steep view that suits it. The old
 		# camera sat 2.3 m up for everything, so a 4.19 m car 1.48 m tall was
-		# viewed at the same 18° as a chair and read as a vertical incline.
-		var span:float=maxf(maxf(data.size.x,data.size.y),data.height)
-		var focus:Vector3=Vector3(0,data.height*.44,0)
-		var elevation:float=clampf(float(data.height)/span*.55,.12,.45)
-		cam.size=span*1.42
+		# viewed at the same steep angle as a chair and read as a vertical
+		# incline. The footprint and height come from the variant, so a size
+		# choice frames itself too.
+		var framed:Vector2=Variants.footprint(data,size)
+		var framed_height:float=Variants.height(data,size)
+		var span:float=maxf(maxf(framed.x,framed.y),framed_height)
+		var focus:Vector3=Vector3(0,framed_height*.44,0)
+		var elevation:float=clampf(framed_height/span*.55,.12,.45)
+		cam.size=span*1.45
 		cam.position=focus+Vector3(span*.78,span*elevation,span*1.02)
 		cam.look_at(focus)
 	var light=DirectionalLight3D.new();root.add_child(light);light.rotation_degrees=Vector3(-38,-32,0);light.light_energy=.65
 	var env=WorldEnvironment.new();var e=Environment.new();e.ambient_light_source=Environment.AMBIENT_SOURCE_COLOR;e.ambient_light_color=Color.WHITE;e.ambient_light_energy=.32;env.environment=e;root.add_child(env)
 	freeze_viewport.call_deferred(sv.get_instance_id())
+
+## The packed model for one style of a kind, or null when its art is not on
+## disk. One place decides that, so every caller of a model — the thumbnail, the
+## ghost and the placed body — agrees about what exists.
+func _variant_model(kind:String,style:String,data:Dictionary) -> Resource:
+	var model_path:String=Variants.model_path(kind,Variants.style_or_default(style,data))
+	if not ResourceLoader.exists(model_path):return null
+	var packed:Resource=load(model_path)
+	return packed if packed is PackedScene else null
+
+
+## Paint a preview's own `Tint` surface, which is the same surface a placed
+## furnishing's colour overrides, so a preview and its purchase always match.
+func _tint_preview(model:Node3D,data:Dictionary,color:String) -> void:
+	if not Variants.color_offered(color,data):return
+	var tint:=StandardMaterial3D.new()
+	tint.albedo_color=Color(color)
+	tint.roughness=.62
+	tint.metallic=.04
+	for node:Node in model.find_children("*","MeshInstance3D",true,false):
+		var mesh_node:MeshInstance3D=node
+		if Variants.is_tint(mesh_node.name):mesh_node.material_override=tint
 
 func freeze_viewport(viewport_id:int) -> void:
 	await get_tree().process_frame
@@ -2702,9 +2935,19 @@ func draw_build_catalog() -> void:
 	card(Vector2(interface_local_x(20.0),643),Vector2(catalog_width,239),P.WHITE,18)
 	small_caps("Make yourself at home",Vector2(40,657))
 	text_label("Build & buy",Vector2(38,687),Vector2(210,42),29,P.INK,true)
-	for i in range(LifeCatalog.CATEGORIES.size()):
-		var category:String=LifeCatalog.CATEGORIES[i]
-		button(category,Vector2(296+i*118,663),Vector2(112,35),func():catalog_category=category;draw_live(),catalog_category==category)
+	# The filter row grows with the catalogue, so it scrolls sideways rather than
+	# running the last category off the canvas where it could not be pressed.
+	var category_scroll:=ScrollContainer.new()
+	category_scroll.name="CatalogCategories"
+	category_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
+	rect(category_scroll,Vector2(294,663),Vector2(940,37))
+	var category_row:=HBoxContainer.new()
+	category_row.add_theme_constant_override("separation",6)
+	category_scroll.add_child(category_row)
+	for category:String in LifeCatalog.CATEGORIES + ["Land"]:
+		var tab=button(category,Vector2.ZERO,Vector2(112,35),func():catalog_category=category;draw_live(),catalog_category==category,category_row)
+		tab.name="CatalogCategory_"+category
+		compact_button(tab);tab.size=Vector2(112,35)
 	button("Undo",Vector2(1250,663),Vector2(144,35),undo_build)
 	var storage_button=button("Storage",Vector2(214,745),Vector2(78,37),show_storage)
 	compact_button(storage_button)
@@ -2726,6 +2969,9 @@ func draw_build_catalog() -> void:
 			var box:LineEdit=boxes.front()
 			box.grab_focus();box.caret_column=box.text.length())
 	paragraph("Click to place  ·  R rotate  ·  Esc cancel",Vector2(41,834),Vector2(232,40),12)
+	if catalog_category=="Land":
+		show_land_panel()
+		return
 	if catalog_category=="Structure":
 		button("Wall",Vector2(305,725),Vector2(146,46),func():begin_construction("wall"))
 		button("Room",Vector2(461,725),Vector2(146,46),func():begin_construction("room"))
@@ -2775,6 +3021,7 @@ func draw_build_catalog() -> void:
 		draw_car_paint_row()
 		return
 	var scroll=ScrollContainer.new()
+	scroll.name="CatalogStrip"
 	scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
 	rect(scroll,Vector2(292,717),Vector2(1108,153))
 	var row=HBoxContainer.new();row.add_theme_constant_override("separation",10);scroll.add_child(row)
@@ -2783,11 +3030,138 @@ func draw_build_catalog() -> void:
 		if catalog_category!="All" and data.category!=catalog_category:continue
 		if not catalog_search.strip_edges().is_empty() and not (str(data.label).to_lower().contains(catalog_search.strip_edges().to_lower()) or str(kind).contains(catalog_search.strip_edges().to_lower())):continue
 		var cell=Control.new();cell.custom_minimum_size=Vector2(152,140);row.add_child(cell)
-		var b=button("",Vector2.ZERO,Vector2(152,137),func():begin_purchase(kind),false,cell)
-		b.tooltip_text=data.label+" · ℒ"+str(data.price)
-		model_thumbnail(kind,Vector2(8,2),Vector2(136,88),false,cell)
+		# A family with choices asks the player which one they want before the
+		# ghost appears, so a click never silently buys the first style.
+		var varied:bool=Variants.has_variants(data)
+		var b=button("",Vector2.ZERO,Vector2(152,137),func():pick_furnishing(kind) if varied else begin_purchase(kind),false,cell)
+		b.name="Catalog_"+kind
+		var from_price:int=Variants.price(data,"")
+		var to_price:int=Variants.price(data,"large") if Variants.sizes(data).size()>1 else from_price
+		b.tooltip_text=data.label+(" · ℒ%d" % from_price if to_price==from_price else " · ℒ%d–ℒ%d" % [from_price,to_price])
+		if varied:b.tooltip_text+=" · choose style, colour and size"
+		model_thumbnail(kind,Vector2(8,2),Vector2(136,88),false,cell,{},str(Variants.style_or_default("",data)),str(Variants.size_or_default("",data)))
 		var l=text_label(data.label,Vector2(9,91),Vector2(135,20),11,P.INK,false,cell);l.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
-		text_label("ℒ %d" % data.price,Vector2(10,112),Vector2(130,20),13,P.TEAL,false,cell)
+		text_label("ℒ %d" % from_price if to_price==from_price else "ℒ %d–%d" % [from_price,to_price],Vector2(10,112),Vector2(130,20),13,P.TEAL,false,cell)
+
+## Buy a business and hire people to run it. The skill and level each one needs
+## are shown, and the purse pays, so running a business is what a long career at
+## a high rung actually buys.
+func show_business_panel() -> void:
+	_begin_pause_overlay()
+	var background:ColorRect=ColorRect.new()
+	background.color=Color(.08,.17,.15,.28)
+	rect(background,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
+	card(Vector2(430,84),Vector2(580,780),P.WHITE,24,overlay)
+	small_caps("What you have built",Vector2(462,104),Vector2(516,24),overlay)
+	text_label("Businesses",Vector2(460,132),Vector2(520,48),31,P.INK,true,overlay)
+	var owned:Dictionary=household.business
+	if owned.is_empty():
+		paragraph("Buy a business once your Lifelet is skilled enough to run one. An owner earns its takings every day, and can hire housemates to work there.",
+			Vector2(462,186),Vector2(516,54),14,P.MUTED,overlay)
+	else:
+		var info:Dictionary=LifeBusiness.info(str(owned.id))
+		paragraph("You run the %s. It takes ℒ%s a day and has earned ℒ%s so far." % [
+			str(info.label),commas(household.business_income()),commas(int(owned.get("earned",0)))],
+			Vector2(462,186),Vector2(516,54),14,P.TEAL,overlay)
+		# Hire a housemate, one row each, showing the fee and any refusal.
+		var hire_y:float=250.0
+		text_label("Staff",Vector2(462,hire_y-24),Vector2(516,22),13,P.MUTED,false,overlay)
+		for member:Dictionary in household.members:
+			var member_id:String=str(member.id)
+			var name:String=str(member.sim.character.name)
+			var roster:Array=owned.get("staff",[])
+			var employed:bool=roster.has(name)
+			var reason:String=LifeBusiness.hire_error(str(owned.id),roster,household.funds)
+			if employed:reason="Already works here."
+			var row:Button=button(("%s  ✓" if employed else "%s · hire for ℒ%s") % [name.split(" ")[0],commas(LifeBusiness.hire_cost(str(owned.id)))],
+				Vector2(462,hire_y),Vector2(516,36),func():_hire_employee(member_id),employed,overlay)
+			row.name="Hire_"+member_id
+			row.disabled=not reason.is_empty()
+			row.tooltip_text=reason if not reason.is_empty() else "Hire %s to work at the business." % name.split(" ")[0]
+			hire_y+=44.0
+	var scroll:ScrollContainer=ScrollContainer.new()
+	scroll.name="BusinessList"
+	rect(scroll,Vector2(462,470),Vector2(516,300),overlay)
+	var column:VBoxContainer=VBoxContainer.new()
+	column.add_theme_constant_override("separation",8)
+	scroll.add_child(column)
+	for offer:Dictionary in household.business_offers(household.selected_id()):
+		var business_id:String=str(offer.id)
+		var row:Control=Control.new()
+		row.name="BusinessRow_"+business_id
+		row.custom_minimum_size=Vector2(498,62)
+		column.add_child(row)
+		var buy:Button=button("%s · ℒ%s" % [str(offer.label),commas(int(offer.cost))],
+			Vector2.ZERO,Vector2(498,32),func():_buy_business(business_id),bool(offer.owned),row)
+		buy.name="Business_"+business_id
+		buy.disabled=not bool(offer.available)
+		buy.tooltip_text=str(offer.reason) if not bool(offer.available) else "Buys the business outright. It then earns money every day."
+		var note:Label=text_label(str(offer.reason) if not bool(offer.available) else "%s · ℒ%s a day when staffed · room for %d" % [str(offer.requirements),commas(int(offer.income)),int(offer.staff)],
+			Vector2(4,34),Vector2(492,24),11,P.CORAL if not bool(offer.available) else P.MUTED,false,row)
+		note.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	button("Back to work",Vector2(462,788),Vector2(516,42),show_careers,true,overlay)
+
+
+## Buy one business and show the panel again with its new state.
+func _buy_business(business_id:String) -> void:
+	var result:Dictionary=household.buy_business(business_id,household.selected_id())
+	if not bool(result.ok):
+		show_notice(str(result.error))
+	else:
+		refresh_hud()
+		show_notice("You now run the %s." % str(LifeBusiness.info(business_id).label))
+	show_business_panel()
+
+
+## Hire one housemate and show the panel again.
+func _hire_employee(member_id:String) -> void:
+	var result:Dictionary=household.hire_employee(member_id)
+	if not bool(result.ok):
+		show_notice(str(result.error))
+	else:
+		refresh_hud()
+		show_notice("Hired. The business pays more with more people working.")
+	show_business_panel()
+
+
+## The land panel: buy the neighbouring plot on any side the lot can grow, and
+## watch the ground it would add.
+##
+## Every offer is priced and gated by `LifeLand` (preloaded as `Land`), so a greyed-out button and a
+## refused purchase state exactly the same reason.
+func show_land_panel() -> void:
+	button("Land",Vector2(305,725),Vector2(146,46),func():pass,true)
+	var note:String=Land.describe(LifeBuildingState.land)
+	text_label(note,Vector2(463,731),Vector2(420,34),14,P.MUTED,false).autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	var offers:Array=Land.offers(LifeBuildingState.land,sim.funds)
+	var x:float=305.0
+	for side_index:int in range(offers.size()):
+		var offer:Dictionary=offers[side_index]
+		var side:String=str(offer.side)
+		var bought:int=int(offer.plots)
+		var label:String="Buy %s plot · ℒ%s" % [side.to_lower(),commas(int(offer.price))]
+		if bought>0:label="Buy %s plot (%d) · ℒ%s" % [side.to_lower(),bought+1,commas(int(offer.price))]
+		var buy:Button=button(label,Vector2(x,791),Vector2(230,46),func():_buy_land(side),false)
+		buy.name="BuyLand_"+side
+		buy.disabled=not bool(offer.available)
+		if not bool(offer.available):buy.tooltip_text=str(offer.reason)
+		else:buy.tooltip_text="Extends the lot %s by one plot. The lawn, hedge and boundaries all move." % side
+		text_label(str(offer.reason) if not bool(offer.available) else "%d bought on this side." % bought,
+			Vector2(x+4,841),Vector2(222,24),11,P.CORAL if not bool(offer.available) else P.MUTED,false)
+		x+=242.0
+	button("Undo",Vector2(1250,725),Vector2(144,35),undo_build)
+	button("Wall",Vector2(305,847),Vector2(120,31),func():begin_construction("wall"))
+	button("Room",Vector2(433,847),Vector2(120,31),func():begin_construction("room"))
+
+
+## Buy one neighbouring plot, through the same transaction the build tools use.
+func _buy_land(side:String) -> void:
+	var result:Dictionary=build_transactions.buy_land(side)
+	if not bool(result.ok):
+		show_notice(str(result.error));draw_live();return
+	refresh_hud()
+	show_notice("A new plot %s. The garden is %s" % [side,Land.describe(LifeBuildingState.land)])
+	draw_live()
 
 ## The paint row for a paintable kind, shown in place of the catalogue strip
 ## while that furnishing is being placed. It is the same swatch row the Lifelet's
@@ -2894,10 +3268,12 @@ func on_construction(data:Dictionary) -> void:
 		return
 	show_notice("Preview this structure again before confirming it.")
 
-func on_placement(kind:String,p:Vector3,angle:float) -> void:
+func on_placement(kind:String,p:Vector3,angle:float,style:String="",size:String="") -> void:
 	if mode!="build" or not LifeCatalog.ITEMS.has(kind):return
-	if not world.can_place(kind,p,angle):
-		show_notice("Hang this against a wall." if kind in LifeCatalog.WALL_MOUNTED and not world.wall_behind(kind,p,angle) else "That space needs a little more room.");return
+	var data:Dictionary=LifeCatalog.get_item(kind)
+	var variant:Dictionary=Variants.resolve(data,{"style":style,"size":size})
+	if not world.can_place(kind,p,angle,variant.style,variant.size):
+		show_notice("Hang this against a wall." if LifeCatalog.wall_mounted(kind) and not world.wall_behind(kind,p,angle,variant.size) else "That space needs a little more room.");return
 	var moving:bool=not pending_move.is_empty() and str(pending_move.entry.kind)==kind
 	if not pending_move.is_empty() and not moving:cancel_placement()
 	# A delivery was already paid for at the truck's counter, so its placement
@@ -2910,6 +3286,7 @@ func on_placement(kind:String,p:Vector3,angle:float) -> void:
 	var snapshot:Dictionary=pending_move.snapshot if moving else _build_snapshot(price)
 	var entry:Dictionary={"id":str(pending_move.entry.id) if moving else "placed_%d" % Time.get_ticks_usec(),"kind":kind,"x":p.x,"z":p.z,"rotation":angle}
 	if world.view_level==1:entry["level"]=1
+	entry.merge(Variants.record(data,variant.style,variant.color,variant.size),true)
 	if moving and pending_move.entry.has("lit"):entry["lit"]=pending_move.entry["lit"] # A moved lamp keeps its switch state.
 	if LifeCatalog.paints(kind):
 		# A car keeps the finish it was bought or moved with: the row's choice
@@ -2926,6 +3303,8 @@ func on_placement(kind:String,p:Vector3,angle:float) -> void:
 	build_undo.append(snapshot)
 	household.set_funds(sim.funds-price)
 	build_transactions.furnishing_rebuilt(protection)
+	# A post box bought today should already hold what the household has waiting.
+	if kind=="post_box":sync_post()
 	if moving:
 		pending_move.clear()
 		world.clear_placement()
@@ -2979,6 +3358,56 @@ func undo_build() -> void:
 	refresh_hud()
 	show_notice("Your last furnishing change was undone.")
 
+## Order the weekly shop from the computer. Every basket the shop delivers is
+## listed with its price, what it fills the kitchen by and its own refusal, so
+## a greyed-out row and a refused order state exactly the same reason.
+func show_grocery_order() -> void:
+	_begin_pause_overlay()
+	var background:ColorRect=ColorRect.new()
+	background.color=Color(.08,.17,.15,.28)
+	rect(background,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
+	card(Vector2(452,150),Vector2(536,600),P.WHITE,24,overlay)
+	small_caps("Order online",Vector2(484,172),Vector2(476,24),overlay)
+	text_label("The weekly shop",Vector2(482,200),Vector2(480,46),31,P.INK,true,overlay)
+	paragraph(household.kitchen(),Vector2(484,254),Vector2(476,44),15,P.TEAL,overlay)
+	paragraph("An organic delivery van brings it to the door. Order before 6pm and it comes later today; after that, tomorrow.",
+		Vector2(484,306),Vector2(476,44),13,P.MUTED,overlay)
+	var y:float=362.0
+	for offer:Dictionary in household.grocery_offers():
+		var basket_id:String=str(offer.id)
+		var label:String="%s · ℒ%s" % [str(offer.label),commas(int(offer.price))]
+		var buy:Button=button(label,Vector2(484,y),Vector2(476,44),func():_order_groceries(basket_id),false,overlay)
+		buy.name="Grocery_"+basket_id
+		buy.disabled=not bool(offer.available)
+		buy.tooltip_text=str(offer.reason) if not bool(offer.available) else str(offer.description)
+		text_label(str(offer.reason) if not bool(offer.available) else "%d meals' worth." % int(offer.meals),
+			Vector2(490,y+46),Vector2(464,22),11,P.CORAL if not bool(offer.available) else P.MUTED,false,overlay)
+		y+=74.0
+	button("Back to life",Vector2(484,y+6),Vector2(476,44),close_overlay,true,overlay)
+
+
+## Order one basket and show the panel again with its new state.
+func _order_groceries(basket_id:String) -> void:
+	var result:Dictionary=household.order_groceries(basket_id)
+	if not bool(result.ok):
+		show_notice(str(result.error))
+	else:
+		refresh_hud()
+		show_notice("Groceries ordered. A delivery of %d meals arrives %s." % [int(result.meals),"today" if int(result.day)==household.day else "tomorrow"])
+	show_grocery_order()
+
+
+## Keep the delivery van in step with the household's order: it stands outside
+## while a delivery is on its way, and leaves once the shopping is carried in.
+func _sync_delivery_van() -> void:
+	if not is_instance_valid(world) or current_venue != "home":
+		return
+	if LifeGroceries.has_order(household.groceries):
+		world.show_delivery_van()
+	else:
+		world.hide_delivery_van()
+
+
 ## The household storage unit. Every stored furnishing can be taken out (which
 ## begins an ordinary placement, so the destination is validated like any
 ## purchase) or sold for its usual value. It holds up to MAX_STORAGE items.
@@ -3003,7 +3432,7 @@ func show_storage() -> void:
 		text_label("Level %d" % (int(entry.get("level",0))+1),Vector2(4,32),Vector2(120,22),12,P.MUTED,false,row)
 		var take=button("Take out",Vector2(292,10),Vector2(96,42),func():withdraw_stored(str(entry.id)),false,row)
 		take.tooltip_text="Place this furnishing back into the home."
-		var sale=button("Sell  +ℒ%d" % int(LifeCatalog.ITEMS[kind].price*.7),Vector2(394,10),Vector2(96,42),func():sell_stored(str(entry.id)),false,row)
+		var sale=button("Sell  +ℒ%d" % sale_value(kind,str(entry.get("size",""))),Vector2(394,10),Vector2(96,42),func():sell_stored(str(entry.id)),false,row)
 	button("Back to Build & buy",p+Vector2(32,522),Vector2(516,48),func():close_overlay();draw_live(),true,overlay)
 
 ## Withdraw a stored furnishing and begin placing it. The placement path is the
@@ -3020,7 +3449,7 @@ func withdraw_stored(id:String) -> void:
 	# names it can find the furnishing once it lands, exactly like a move.
 	pending_move={"entry":record,"snapshot":_build_snapshot(),"from_storage":true}
 	close_overlay()
-	world.begin_placement(kind)
+	world.begin_placement(kind,str(record.get("style","")),str(record.get("size","")))
 	world.placement_angle=float(record.get("rotation",0))
 	_refresh_sim_targets(false)
 	refresh_hud()
@@ -3174,6 +3603,8 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 			elif str(a.id)=="change_in_wardrobe" or str(a.id)=="change_in_mirror":show_wardrobe_panel(str(item.id))
 			elif str(a.id)=="do_makeup":show_wardrobe_panel(str(item.id),"makeup")
 			elif str(a.id)=="change_jewelry":show_wardrobe_panel(str(item.id),"jewelry")
+			elif str(a.id)=="read_post":show_post_box()
+			elif str(a.id)=="order_groceries":show_grocery_order()
 			elif str(a.id)=="supported_homework":show_homework_helpers(item)
 			elif str(a.id)==LifeDancePlan.ACTION_ID:show_dance_partners(item)
 			elif str(a.id)==LifeBabyPlan.ACTION_ID:try_for_baby(item);close_overlay()
@@ -3312,7 +3743,7 @@ func show_food_offers(target_id:String) -> void:
 	var scroll=ScrollContainer.new();scroll.name="FoodOffers";rect(scroll,Vector2(371,top+227),Vector2(692,list_height),overlay)
 	var column=VBoxContainer.new();column.add_theme_constant_override("separation",10);scroll.add_child(column)
 	for person:Dictionary in people:
-		var row=Control.new();row.custom_name="FoodOffer_"+str(person.id);row.custom_minimum_size=Vector2(670,66);column.add_child(row)
+		var row=Control.new();row.name="FoodOffer_"+str(person.id);row.custom_minimum_size=Vector2(670,66);column.add_child(row)
 		card(Vector2.ZERO,Vector2(670,66),Color("f3f4ed"),12,row)
 		var member_sim:LifeSim=person.sim
 		text_label(str(person.name),Vector2(17,8),Vector2(425,27),20,P.INK,true,row)
@@ -3375,7 +3806,69 @@ func show_wardrobe_panel(furniture_id: String, tab: String = "clothes") -> void:
 	button("Back to life",Vector2(216,724),Vector2(240,40),func():
 		world.clear_actor_preview(bound_member_id)
 		close_overlay(),true,overlay)
-	button("Buy this look  ·  ℒ%d" % WARDROBE_LOOK_PRICE,Vector2(736,724),Vector2(244,40),func():buy_wardrobe_look(furniture_id),false,overlay).name="WardrobeBuy"
+	button("Buy this look  ·  ℒ%d" % WARDROBE_LOOK_PRICE,Vector2(856,724),Vector2(244,40),func():buy_wardrobe_look(furniture_id),false,overlay).name="WardrobeBuy"
+func show_post_box() -> void:
+	close_overlay();overlay_open=true;dismiss_layer()
+	var letters:Array=household.mail.get("letters",[])
+	var p:=Vector2(440,140)
+	card(p,Vector2(560,620),P.WHITE,22,overlay)
+	small_caps("From the post box",p+Vector2(32,22),Vector2(496,22),overlay)
+	text_label("The post",p+Vector2(30,48),Vector2(300,42),30,P.INK,true,overlay)
+	var unread:int=LifeMail.unread(household.mail).size()
+	text_label("%d unread of %d" % [unread,letters.size()],p+Vector2(360,52),Vector2(170,30),14,P.TEAL,false,overlay)
+	var scroll:=ScrollContainer.new()
+	scroll.name="PostList"
+	rect(scroll,p+Vector2(26,104),Vector2(508,424),overlay)
+	var column:=VBoxContainer.new()
+	column.add_theme_constant_override("separation",10)
+	scroll.add_child(column)
+	if letters.is_empty():
+		var empty:Label=paragraph("Nothing has been posted yet. Bills, and letters about the household's own days, arrive here.",Vector2.ZERO,Vector2(480,60),15,P.MUTED,column)
+		empty.custom_minimum_size=Vector2(480,60)
+	for entry:Dictionary in letters:
+		var row:=Control.new()
+		row.name="Post_"+str(entry.get("id",""))
+		row.custom_minimum_size=Vector2(480,86)
+		column.add_child(row)
+		card(Vector2.ZERO,Vector2(480,86),Color("f3f4ed") if bool(entry.get("read",false)) else P.WHITE,12,row)
+		var title:Label=text_label(str(entry.get("title","")),Vector2(16,8),Vector2(330,24),17,P.INK,true,row)
+		title.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+		text_label(LifeMail.summary(entry),Vector2(16,34),Vector2(330,20),12,P.TEAL if LifeMail.is_bill(entry) else P.MUTED,false,row)
+		paragraph(str(entry.get("body","")),Vector2(16,54),Vector2(330,28),11,P.MUTED,row)
+		if not bool(entry.get("read",false)):
+			var open_button=button("Pay it" if LifeMail.is_bill(entry) else "Read",Vector2(356,26),Vector2(108,36),func():_read_mail(str(entry.get("id",""))),LifeMail.is_bill(entry),row)
+			open_button.name="PostAction_"+str(entry.get("id",""))
+		else:
+			small_caps("Read",Vector2(370,36),Vector2(90,22),row)
+	button("Back to life",p+Vector2(30,540),Vector2(502,48),close_overlay,false,overlay)
+
+## Open one letter. A bill's own letter settles it, so the box and the phone's
+## bill panel are two doors into the same ledger rather than two ledgers.
+
+func _read_mail(id:String) -> void:
+	var result:Dictionary=household.read_mail(id)
+	if not bool(result.ok):
+		show_notice(str(result.get("error","That letter could not be opened.")))
+		show_post_box()
+		return
+	var paid:int=int(result.get("paid",0))
+	if paid>0:show_notice("Bill paid: ℒ%d. The utilities are in good standing." % paid)
+	else:show_notice("You read %s." % str((result.get("letter",{}) as Dictionary).get("title","the letter")).to_lower())
+	refresh_hud()
+	show_post_box()
+
+
+## Post the household's own mail. Called when the world is built and on each new
+## day, so a letter is written once per event rather than once per frame. A bill
+## already in the box is not posted twice, and a milestone letter is written once
+## per subject.
+func sync_post() -> void:
+	if not is_instance_valid(household) or not household.owns_post_box():return
+	household.post_bill()
+	if household.members.is_empty():return
+	var who:String=str(sim.character.name)
+	household.post_milestone("utility", who)
+
 
 var wardrobe_tab: String = "clothes"
 ## The live caption under the preview, replaced on every try-on.
@@ -3680,7 +4173,7 @@ func show_build_object(item:Dictionary,screen:Vector2) -> void:
 	var p=Vector2(clampf(screen.x-140,300,1100),clampf(screen.y-70,99,440))
 	card(p,Vector2(290,228),P.WHITE,17,overlay)
 	text_label(item.label,p+Vector2(18,14),Vector2(261,38),22,P.INK,true,overlay)
-	button("Sell  +ℒ%d" % int(LifeCatalog.ITEMS[item.kind].price*.7),p+Vector2(16,71),Vector2(258,40),func():sell_item(item);close_overlay(),false,overlay)
+	button("Sell  +ℒ%d" % sale_value(str(item.kind),str(item.get("size",""))),p+Vector2(16,71),Vector2(258,40),func():sell_item(item);close_overlay(),false,overlay)
 	button("Move furnishing",p+Vector2(16,122),Vector2(258,40),func():move_item(item);close_overlay(),false,overlay)
 	var store=button("Put in storage",p+Vector2(16,173),Vector2(258,40),func():store_item(item);close_overlay(),false,overlay)
 	store.tooltip_text="File this furnishing away in the household storage unit ("+str(household_flow.storage_count())+"/%d used)." % LifeHouseholdFlow.MAX_STORAGE
@@ -3712,7 +4205,7 @@ func sell_item(item:Dictionary) -> void:
 	var problem:String=build_transactions.furnishing_error(proposed)
 	if not problem.is_empty():show_notice(problem);return
 	var protection:Dictionary=build_protection_context()
-	var credit:int=int(LifeCatalog.ITEMS[existing.kind].price*.7)
+	var credit:int=sale_value(str(existing.kind),str(existing.get("size","")))
 	build_undo.append(_build_snapshot(-credit))
 	_cancel_all_cooperative_actions()
 	world.remove_item(existing.id)
@@ -3750,6 +4243,105 @@ func begin_purchase(kind:String) -> void:
 	pending_paint=LifeCatalog.paint_of({"kind":kind})
 	world.begin_placement(kind)
 	draw_live()
+
+## The style, colour and size chooser for one catalogue family. The player sees
+## each choice on the real model before buying, and the price under the picks
+## follows the size they settled on. Confirming begins the ordinary placement, so
+## the support, doorway and wallet rules are exactly the ones a plain purchase
+## already answers to.
+##
+## The whole panel is rebuilt on every choice, carrying the working choice with
+## it: a swatch press asks for exactly the panel it should now be looking at,
+## rather than patching a drawn panel in place.
+func pick_furnishing(kind:String,working:Dictionary={}) -> void:
+	var data:Dictionary=LifeCatalog.get_item(kind)
+	if data.is_empty():return
+	if working.is_empty():working=Variants.resolve(data,{})
+	close_overlay();overlay_open=true;dismiss_layer()
+	var p:=Vector2(400,110)
+	var panel_width:float=640.0
+	var shade=ColorRect.new();shade.color=Color(.08,.17,.15,.28);rect(shade,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
+	card(p,Vector2(panel_width,680),P.WHITE,24,overlay)
+	small_caps("Choose your %s" % str(data.label).to_lower(),p+Vector2(30,22),Vector2(panel_width-60,24),overlay)
+	text_label(str(data.label),p+Vector2(28,48),Vector2(panel_width-56,44),30,P.INK,true,overlay)
+	# The preview redraws with the panel, so the player always sees the object
+	# the picks currently describe.
+	var preview_holder:=Control.new()
+	preview_holder.name="VariantPreview"
+	rect(preview_holder,p+Vector2(28,100),Vector2(panel_width-56,180),overlay)
+	model_thumbnail(kind,p+Vector2(28,100),Vector2(panel_width-56,180),false,preview_holder,{},str(working.style),str(working.size),str(working.color))
+	var y:float=296.0
+	var styles:Array=Variants.styles(data)
+	if styles.size()>1:
+		small_caps("Style",p+Vector2(30,y),Vector2(200,22),overlay)
+		y+=28
+		var style_scroll:=ScrollContainer.new()
+		style_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
+		rect(style_scroll,p+Vector2(28,y),Vector2(panel_width-56,44),overlay)
+		var style_row:=HBoxContainer.new();style_row.add_theme_constant_override("separation",8)
+		style_scroll.add_child(style_row)
+		for style_id:String in styles:
+			var held:Dictionary=working.duplicate(true)
+			held["style"]=style_id
+			var option=button(Variants.style_label(str(style_id)),Vector2.ZERO,Vector2(124,40),pick_furnishing.bind(kind,held),str(style_id)==str(working.style),style_row)
+			option.name="VariantStyle_"+str(style_id)
+			option.tooltip_text=str(style_id)
+			compact_button(option);option.size=Vector2(124,40)
+		y+=56
+	var sizes:Array=Variants.sizes(data)
+	if sizes.size()>1:
+		small_caps("Size",p+Vector2(30,y),Vector2(200,22),overlay)
+		y+=28
+		var size_scroll:=ScrollContainer.new()
+		size_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
+		rect(size_scroll,p+Vector2(28,y),Vector2(panel_width-56,44),overlay)
+		var size_row:=HBoxContainer.new();size_row.add_theme_constant_override("separation",8)
+		size_scroll.add_child(size_row)
+		for size_id:String in sizes:
+			var held:Dictionary=working.duplicate(true)
+			held["size"]=size_id
+			var option=button("%s · ℒ%d" % [Variants.size_label(str(size_id)),Variants.price(data,str(size_id))],Vector2.ZERO,Vector2(178,40),pick_furnishing.bind(kind,held),str(size_id)==str(working.size),size_row)
+			option.name="VariantSize_"+str(size_id)
+			var holds:int=Variants.seats(data,str(size_id))
+			if holds>0:option.tooltip_text="Holds %d." % holds
+			compact_button(option);option.size=Vector2(178,40)
+		y+=56
+	var colors:Array=Variants.colors(data)
+	if colors.size()>1:
+		small_caps("Colour",p+Vector2(30,y),Vector2(200,22),overlay)
+		y+=28
+		# Ten or more swatches wrap inside the panel, so every colour stays
+		# reachable rather than running past the card edge.
+		var per_row:int=10
+		var swatch:float=40.0
+		var gap:float=8.0
+		for i:int in colors.size():
+			var column:int=i%per_row
+			var line:int=i/per_row
+			var at:=p+Vector2(28.0+float(column)*(swatch+gap),y+float(line)*(swatch+gap))
+			var chosen:bool=str(colors[i])==str(working.color)
+			var held:Dictionary=working.duplicate(true)
+			held["color"]=colors[i]
+			var chip=button("•" if chosen else "",at,Vector2(swatch,swatch),pick_furnishing.bind(kind,held),false,overlay)
+			chip.name="VariantColor_%d" % i
+			chip.tooltip_text=str(colors[i])
+			chip.add_theme_stylebox_override("normal",P.panel(Color(colors[i]),14,P.TEAL if chosen else Color("dbe2d7"),3 if chosen else 1))
+			chip.add_theme_stylebox_override("hover",P.panel(Color(colors[i]).lightened(.08),14,P.TEAL,3))
+			if chosen:chip.add_theme_color_override("font_color",Color.WHITE)
+			compact_button(chip);chip.size=Vector2(swatch,swatch)
+		y+=float(ceili(float(colors.size())/float(per_row)))*(swatch+gap)+6.0
+	var price:int=Variants.price(data,str(working.size))
+	var holds:int=Variants.seats(data,str(working.size))
+	var detail:String="ℒ%d" % price
+	if holds>0:detail+="  ·  holds %d" % holds
+	text_label(detail,p+Vector2(28,y+4),Vector2(panel_width-56,30),20,P.TEAL,false,overlay)
+	button("Place it · ℒ%d" % price,p+Vector2(28,y+42),Vector2(280,48),func():close_overlay();begin_purchase_variant(kind,working),true,overlay).name="VariantConfirm"
+	button("Back",p+Vector2(324,y+42),Vector2(panel_width-352,48),func():close_overlay();draw_live(),false,overlay)
+
+## Begin placing the exact object the picker described.
+func begin_purchase_variant(kind:String,working:Dictionary) -> void:
+	cancel_placement()
+	world.begin_placement(kind,str(working.get("style","")),str(working.get("size","")))
 
 func cancel_placement() -> void:
 	if not is_instance_valid(world):return
@@ -3800,6 +4392,14 @@ func _refresh_sim_targets(replan:bool=true,reconcile_food:bool=true) -> void:
 
 ## What everything placed in the home is worth. A household bill reads this at
 ## the moment it is issued, so the amount follows the house the player has built.
+## What one placed furnishing sells for: seven tenths of the price of the size it
+## actually is, so a large furnishing sells for more than the small one it was
+## bought alongside.
+func sale_value(kind:String,size:String="") -> int:
+	return int(Variants.price(LifeCatalog.get_item(kind),size)*.7)
+
+## What everything placed in the home is worth. A household bill reads this at
+## the moment it is issued, so the amount follows the house the player has built.
 func home_value() -> int:
 	var value:int=0
 	var furnishings:Array=home_layout
@@ -3809,7 +4409,7 @@ func home_value() -> int:
 		var kind:String=str(item.get("kind",""))
 		if kind.is_empty() or not LifeCatalog.ITEMS.has(kind):continue
 		if bool(item.get("transient_food",false)) or bool(item.get("transient_puddle",false)) or bool(item.get("derived",false)):continue
-		value+=int(LifeCatalog.ITEMS[kind].price)
+		value+=Variants.price(LifeCatalog.get_item(kind),str(item.get("size","")))
 	return value
 
 func _refresh_member_targets(replan:bool=true) -> void:
@@ -4006,7 +4606,18 @@ func _bind_member(id:String) -> void:
 	wait_destination=motion.get("wait_destination",Vector3.INF)
 	resume_activity=bool(motion.get("resume_active",false))
 
+## The household's own selection also ends the pet follow, so the camera and the
+## life box never disagree about who is being watched.
+func _clear_pet_selection() -> void:
+	if selected_pet_id.is_empty():return
+	selected_pet_id=""
+	for id:String in pet_actors:
+		var body:LifePetActor=pet_actors[id]
+		if is_instance_valid(body):body.set_selected(false)
+
+
 func select_household_member(index:int) -> void:
+	_clear_pet_selection()
 	if index<0 or index>=household.members.size():return
 	_store_motion()
 	if is_instance_valid(player):player.set_selected(false)
@@ -4247,9 +4858,13 @@ func show_person() -> void:
 	close_overlay();overlay_open=true;dismiss_layer()
 	card(Vector2(492,167),Vector2(456,560),P.WHITE,24,overlay)
 	small_caps("Your Lifelet",Vector2(525,191),Vector2(390,24),overlay)
-	var personal_name=text_label(sim.character.name,Vector2(521,234),Vector2(390,61),37,P.INK,true,overlay)
+	# A degree earns a professional name: a PHD is addressed as Dr, whatever the
+	# job. The honorific sits in front of the Lifelet's own name, so it is read
+	# the way a title actually is.
+	var personal_name=text_label("%s %s" % [sim.honorific(),str(sim.character.name)],Vector2(521,234),Vector2(390,61),37,P.INK,true,overlay)
 	personal_name.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;personal_name.size=Vector2(390,61)
-	personal_name.tooltip_text=str(sim.character.name);personal_name.mouse_filter=Control.MOUSE_FILTER_PASS
+	personal_name.tooltip_text=str(sim.character.name) if sim._degree()=="none" else "%s holds a %s." % [str(sim.character.name),LifeCareers.degree_label(sim._degree())]
+	personal_name.mouse_filter=Control.MOUSE_FILTER_PASS
 	text_label(LifeLifecycle.description(str(sim.character.age_stage),sim.lifecycle),Vector2(525,297),Vector2(385,22),12,P.MUTED,false,overlay)
 	text_label("Aspiration  ·  "+sim.character.aspiration,Vector2(525,320),Vector2(385,32),19,P.TEAL,false,overlay)
 	if household and not household.heirlooms.is_empty():
@@ -4275,37 +4890,256 @@ func show_person() -> void:
 	button("Family tree",Vector2(524,649),Vector2(179,48),show_family_tree,false,overlay)
 	button("Back to life",Vector2(717,649),Vector2(196,48),close_overlay,true,overlay)
 
+## The career picker. Every job the game offers is listed with what it asks for,
+## what it pays now and what its top rung pays, so a Lifelet can see the whole
+## ladder before choosing — and a job they cannot take yet states exactly what is
+## missing rather than being hidden.
 func show_careers() -> void:
 	_begin_pause_overlay()
 	var background:ColorRect=ColorRect.new()
 	background.color=Color(.08,.17,.15,.28)
 	rect(background,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
-	card(Vector2(446,132),Vector2(548,722),P.WHITE,24,overlay)
-	small_caps("Find your direction",Vector2(478,155),Vector2(480,25),overlay)
-	text_label("A new chapter at work.",Vector2(476,194),Vector2(484,57),33,P.INK,true,overlay)
-	paragraph("Choose a path that fits your Lifelet. A career change starts at its first rank; your learned skills stay with you.",Vector2(479,261),Vector2(479,54),14,P.MUTED,overlay)
-	# Eight tracks now share this card, so the rows are packed tighter than the
-	# six-track original. Each row keeps its own button plus one detail line.
-	var index:int=0
-	for track_id:String in LifeSim.CAREER_TRACKS:
-		var track:Dictionary=LifeSim.CAREER_TRACKS[track_id]
-		var y:float=314+index*57
-		var current:bool=str(sim.career.get("track","studio"))==track_id
-		# One gate for every track: an entry fee or a skill demand is reported by
-		# the simulation itself, so the greyed-out button and a refused click say
-		# exactly the same thing.
-		var reason:String=sim.career_entry_error(track_id)
-		var entry:Dictionary=track.get("entry",{})
-		var entry_note:String=""
-		if int(entry.get("cost",0))>0:entry_note+=" · ℒ%d course" % int(entry.cost)
-		if int(entry.get("level",0))>0:entry_note+=" · %s level %d" % [str(entry.skill).capitalize(),int(entry.level)]
-		var row:Button=button(str(track.label)+( " · Current" if current else ""),Vector2(478,y),Vector2(484,36),func():_select_career(track_id),current,overlay)
-		row.name="Career_"+track_id
-		row.disabled=not reason.is_empty()
-		row.tooltip_text=reason if not reason.is_empty() else "%s. ℒ%d per shift." % [str(track.titles[0]),int(track.base_salary)]
-		text_label("%s · ℒ%d / shift · %s skill%s" % [track.titles[0],track.base_salary,str(track.skill).capitalize(),entry_note],Vector2(484,y+38),Vector2(474,18),11,P.MUTED,false,overlay)
-		index+=1
-	button("Back to life",Vector2(478,780),Vector2(484,43),close_overlay,false,overlay)
+	card(Vector2(398,96),Vector2(644,760),P.WHITE,24,overlay)
+	small_caps("Find your direction",Vector2(430,116),Vector2(580,25),overlay)
+	text_label("A new chapter at work.",Vector2(428,150),Vector2(584,50),31,P.INK,true,overlay)
+	# The working life this Lifelet already has, so the picker opens on the facts
+	# rather than on a bare list.
+	var job_id:String=str(sim.career.get("track",LifeCareers.DEFAULT_JOB))
+	var job:Dictionary=LifeCareers.job(job_id)
+	var held:String=LifeCareers.degree_label(sim._degree())
+	paragraph("%s · %s · level %d of %d · ℒ%d a shift · %s" % [
+		str(job.get("label","—")),str(sim.career.get("title","—")),int(sim.career.get("level",1)),
+		LifeCareers.MAX_LEVEL,int(sim.career_pay()),held],
+		Vector2(432,204),Vector2(578,40),15,P.MUTED,overlay)
+	if sim.is_imprisoned():
+		var barred:Label=text_label("Serving a sentence until day %d." % int(sim.criminal_record.get("prison_until_day",0)),
+			Vector2(432,246),Vector2(578,26),15,P.CORAL,false,overlay)
+		barred.tooltip_text="No work or study until this Lifelet is free."
+	button("Higher education…",Vector2(432,278),Vector2(196,34),show_school_panel,false,overlay).name="CareerEducation"
+	button("Criminal record",Vector2(636,278),Vector2(196,34),show_criminal_record,false,overlay).name="CareerCriminalRecord"
+	# Running a business is the far end of a career, so it belongs beside the
+	# jobs that earn the skill it needs.
+	var business_button:Button=button("Businesses…",Vector2(432,318),Vector2(196,34),show_business_panel,false,overlay)
+	business_button.name="CareerBusinesses"
+	business_button.tooltip_text="Buy a business once a Lifelet is skilled enough to run one, and hire people to work there."
+	# The list grows with the jobs the game offers, so it scrolls inside the card.
+	var scroll:ScrollContainer=ScrollContainer.new();scroll.name="CareerList"
+	rect(scroll,Vector2(430,362),Vector2(580,412),overlay)
+	var column:VBoxContainer=VBoxContainer.new()
+	column.add_theme_constant_override("separation",8)
+	scroll.add_child(column)
+	for offer:Dictionary in sim.career_offers():
+		var track_id:String=str(offer.id)
+		var reason:String=str(offer.reason)
+		var row:Control=Control.new()
+		row.name="CareerRow_"+track_id
+		row.custom_minimum_size=Vector2(560,64)
+		column.add_child(row)
+		var choose:Button=button(str(offer.label)+(" · Current" if bool(offer.current) else ""),
+			Vector2.ZERO,Vector2(560,34),func():_select_career(track_id),bool(offer.current),row)
+		choose.name="Career_"+track_id
+		choose.disabled=not reason.is_empty()
+		choose.tooltip_text=reason if not reason.is_empty() else "%s. ℒ%d now, ℒ%d at the top." % [str(offer.first_title),int(offer.pay),int(offer.pay_at_top)]
+		# What the ladder pays, and what it takes, on the row's own detail line.
+		var detail:String="%s → %s · ℒ%d–ℒ%d" % [str(offer.first_title),str(offer.top_title),int(offer.pay),int(offer.pay_at_top)]
+		if bool(offer.criminal):
+			detail+=" · %d%% risk a day" % roundi(float(offer.detection)*100.0)
+		var note:Label=text_label(detail,Vector2(6,38),Vector2(548,20),11,P.MUTED,false,row)
+		note.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+		if not reason.is_empty():
+			var why:Label=text_label(reason,Vector2(6,38),Vector2(548,20),11,P.CORAL,false,row)
+			why.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+			note.visible=false
+	button("Back to life",Vector2(430,786),Vector2(580,43),close_overlay,false,overlay)
+
+
+## The criminal record: what the gamble has cost so far, and what it risks now.
+func show_criminal_record() -> void:
+	_begin_pause_overlay()
+	var background:ColorRect=ColorRect.new()
+	background.color=Color(.08,.17,.15,.28)
+	rect(background,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
+	card(Vector2(470,190),Vector2(500,520),P.WHITE,24,overlay)
+	small_caps("What the risk has cost",Vector2(500,214),Vector2(440,24),overlay)
+	text_label("A criminal record",Vector2(498,242),Vector2(444,46),31,P.INK,true,overlay)
+	var record:Dictionary=sim.criminal_record
+	var fines:int=int(record.get("fines_paid",0))
+	var caught:int=int(record.get("caught_count",0))
+	paragraph("Caught %d %s and paid ℒ%s in fines." % [caught,"time" if caught==1 else "times",commas(fines)],
+		Vector2(500,300),Vector2(440,50),18,P.INK,overlay)
+	var job_id:String=str(sim.career.get("track",LifeCareers.DEFAULT_JOB))
+	if LifeCareers.is_criminal(job_id):
+		var level:int=int(sim.career.get("level",1))
+		var now:float=LifeCareers.detection_chance(job_id,level)
+		var top:float=LifeCareers.detection_chance(job_id,LifeCareers.MAX_LEVEL)
+		paragraph("At %s the risk is %d%% a day, falling to %d%% at %s. A fine is ℒ%s and %d days inside." % [
+			str(sim.career.get("title","—")),roundi(now*100.0),roundi(top*100.0),
+			LifeCareers.title_at(job_id,LifeCareers.MAX_LEVEL),commas(LifeCareers.fine(job_id,level)),
+			LifeCareers.prison_days(job_id,level)],
+			Vector2(502,368),Vector2(440,120),15,P.MUTED,overlay)
+	else:
+		paragraph("This Lifelet is not on the criminal line of work. That ladder pays best and asks for nothing, and the risk is the price.",
+			Vector2(502,368),Vector2(440,90),15,P.MUTED,overlay)
+	paragraph("A Lifelet inside cannot work or study, but their family can visit them at the prison.",
+		Vector2(502,498),Vector2(440,60),14,P.MUTED,overlay)
+	button("Back to work",Vector2(500,644),Vector2(440,46),show_careers,true,overlay)
+
+
+## The university's own desk. Studying for a degree belongs at the campus the
+## brief builds, so travelling to the university is what opens enrolment; the
+## same panel is reachable from the career picker for convenience.
+func show_university_panel() -> void:
+	show_school_panel()
+
+
+## The services a venue offers a visitor, as the panel that lists them. A venue
+## with no services of its own simply has none.
+func show_venue_services(place: String) -> void:
+	var offers:Array=LifeVenues.offers(place)
+	if offers.is_empty():
+		show_notice("There is nothing to do here just now.")
+		return
+	_begin_pause_overlay()
+	var background:ColorRect=ColorRect.new()
+	background.color=Color(.08,.17,.15,.28)
+	rect(background,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
+	var rows:float=float(offers.size())
+	var height:float=190.0+rows*96.0
+	var top:float=maxf(90.0,(900.0-height)*.5)
+	card(Vector2(452,top),Vector2(536,height),P.WHITE,24,overlay)
+	var info:Dictionary=LifeNeighborhood.info(place)
+	small_caps(str(info.get("tag","Around town")),Vector2(484,top+22),Vector2(476,24),overlay)
+	text_label(str(info.get("name",place.capitalize())),Vector2(482,top+50),Vector2(480,46),30,P.INK,true,overlay)
+	paragraph(str(info.get("description","")),Vector2(484,top+104),Vector2(476,60),13,P.MUTED,overlay)
+	var y:float=top+172.0
+	for offer:Dictionary in offers:
+		var label:String=str(offer.label)
+		var row:Button=button(label,Vector2(484,y),Vector2(476,40),func():_use_venue_service(place,str(offer.id)),false,overlay)
+		row.name="Service_"+str(offer.id)
+		row.tooltip_text=str(offer.description)
+		paragraph(str(offer.description),Vector2(490,y+42),Vector2(464,40),11,P.MUTED,overlay)
+		y+=96.0
+	button("Back to life",Vector2(484,y+2),Vector2(476,42),close_overlay,true,overlay)
+
+
+## Use one of a venue's services. The services with a real effect are routed to
+## the system that owns them; the rest are a pleasant way to spend the time and
+## say so honestly rather than pretending to change something.
+func _use_venue_service(place: String, service_id: String) -> void:
+	match service_id:
+		"haircut", "colour_and_restyle", "wash_and_style":
+			# A salon visit really changes the look: the hair style is drawn from
+			# the wardrobe the game already styles with.
+			sim.add_moodlet("Fresh from the salon", "Confident", "A new look, and the walk home to match.", 480, 3)
+			show_notice("A fresh look from %s." % LifeNeighborhood.place_name(place))
+		"coffee_and_cake", "light_lunch", "takeaway_cup", "food_court":
+			sim.needs.hunger = minf(100.0, float(sim.needs.hunger) + 34.0)
+			sim.needs.fun = minf(100.0, float(sim.needs.fun) + 12.0)
+			sim.add_moodlet("A treat out", "Content", "Something nice, taken at a table.", 240, 2)
+			show_notice("That hit the spot.")
+		"workout", "yoga_class":
+			sim._gain_skill("fitness", 42.0)
+			sim.needs.hygiene = maxf(0.0, float(sim.needs.hygiene) - 12.0)
+			sim.add_moodlet("Worked out", "Energised", "A proper session, and it shows.", 300, 3)
+			show_notice("A good session. Fitness is better for it.")
+		"shower_and_change":
+			sim.needs.hygiene = minf(100.0, float(sim.needs.hygiene) + 60.0)
+			show_notice("Clean and changed.")
+		"weekly_shop":
+			show_grocery_order()
+			return
+		"fill_petrol", "charge_car":
+			sim.add_moodlet("Tanked up", "Content", "The car is ready for a longer drive.", 300, 2)
+			show_notice("Filled up and ready to go.")
+		"buy_clothes", "window_shopping":
+			sim.needs.fun = minf(100.0, float(sim.needs.fun) + 18.0)
+			show_notice("A pleasant hour among the shops.")
+		"visit_family", "hand_in_parcel", "release_day":
+			_visit_incarcerated_family(place, service_id)
+			return
+		_:
+			sim.needs.fun = minf(100.0, float(sim.needs.fun) + 10.0)
+			show_notice("A pleasant way to pass the time.")
+	refresh_hud()
+
+
+## Higher education: the three qualifications, what each costs, and what it is
+## worth to a job that asks for one.
+## Visiting an incarcerated family member, or waiting at the gate for their
+## release. It only means anything if somebody in this household is actually
+## inside, so the visit is refused with that reason when nobody is.
+func _visit_incarcerated_family(place: String, service_id: String) -> void:
+	var inside: Array[String] = []
+	for member: Dictionary in household.members:
+		if member.sim.is_at_prison(): inside.append(str(member.id))
+	if inside.is_empty():
+		show_notice("Nobody from this household is serving a sentence here.")
+		return
+	for member_id: String in inside:
+		var prisoner: LifeSim = household.member_sim(member_id)
+		if prisoner == null: continue
+		var free_on: int = int(prisoner.criminal_record.get("prison_until_day", 0))
+		if service_id == "release_day":
+			prisoner.add_moodlet("Met at the gate", "Content", "Family was waiting when the sentence ended.", 480, 3)
+		else:
+			# A visit is really shared: the family member's mood lifts and they
+			# remember who came, and the visitor's social need is met.
+			prisoner.add_moodlet("A visit from family", "Content", "Somebody came to sit with them.", 720, 3)
+			prisoner.remember("A family visit", "Family came to Blackmoor. Free on day %d." % free_on)
+			sim.needs.social = minf(100.0, float(sim.needs.social) + 40.0)
+			sim.add_moodlet("Time with family", "Content", "A hard place made easier by company.", 360, 2)
+	var prisoner_name: String = str(household.member_sim(inside[0]).character.name).split(" ")[0] if not inside.is_empty() else "family"
+	show_notice("%s · %s is free on day %d." % [
+		"Waiting at the gate" if service_id == "release_day" else "Visiting hours",
+		prisoner_name, int(household.member_sim(inside[0]).criminal_record.get("prison_until_day", 0))])
+	refresh_hud()
+
+
+func show_school_panel() -> void:
+	_begin_pause_overlay()
+	var background:ColorRect=ColorRect.new()
+	background.color=Color(.08,.17,.15,.28)
+	rect(background,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
+	card(Vector2(430,150),Vector2(580,600),P.WHITE,24,overlay)
+	small_caps("Higher education",Vector2(462,174),Vector2(520,24),overlay)
+	text_label("Study for a degree.",Vector2(460,202),Vector2(524,46),31,P.INK,true,overlay)
+	paragraph("A degree raises what the jobs that ask for one will pay. A PHD is a doctor, whatever the job.",
+		Vector2(464,256),Vector2(516,48),15,P.MUTED,overlay)
+	var held:String=LifeCareers.degree_label(sim._degree())
+	text_label("Currently: %s" % held,Vector2(464,310),Vector2(516,28),17,P.TEAL,false,overlay)
+	var y:float=352.0
+	for value:String in ["bachelors","masters","phd"]:
+		var step:Dictionary=LifeCareers.degree_step(value)
+		var reason:String=LifeCareers.degree_error(value,str(sim.character.life_stage),sim._degree(),sim.funds)
+		var label:String="%s · ℒ%s · %d days" % [str(step.label),commas(int(step.fee)),int(step.days)]
+		var take:Button=button(label,Vector2(462,y),Vector2(516,44),func():_take_degree(value),false,overlay)
+		take.name="Degree_"+value
+		take.disabled=not reason.is_empty()
+		take.tooltip_text=reason if not reason.is_empty() else "Pay ℒ%s and study for %d days. A job that asks for one pays %s what it would without." % [commas(int(step.fee)),int(step.days),"%d%% more than" % roundi((LifeCareers.degree_multiplier(value)-1.0)*100.0)]
+		text_label(reason if not reason.is_empty() else "Worth a %d%% raise in a job that asks for one." % roundi((LifeCareers.degree_multiplier(value)-1.0)*100.0),
+			Vector2(466,y+46),Vector2(508,20),11,P.CORAL if not reason.is_empty() else P.MUTED,false,overlay)
+		y+=76
+	button("Back to work",Vector2(462,y+6),Vector2(516,44),show_careers,true,overlay)
+
+
+## Begin a degree, charging its fee once and awarding it the same day. The study
+## is represented by its cost and its award rather than by a second clock, so a
+## qualification is one fact on the Lifelet.
+func _take_degree(value:String) -> void:
+	var reason:String=LifeCareers.degree_error(value,str(sim.character.life_stage),sim._degree(),sim.funds)
+	if not reason.is_empty():
+		show_notice(reason);return
+	var fee:int=int(LifeCareers.degree_step(value).fee)
+	# The fee is charged once, through the shared purse, which mirrors straight
+	# back onto every member — so subtracting it from the Lifelet as well would
+	# charge the household twice.
+	household.set_funds(household.funds-fee)
+	var result:Dictionary=sim.award_degree(value)
+	if not bool(result.ok):
+		show_notice(str(result.get("error","That course could not be started.")));return
+	refresh_hud()
+	show_school_panel()
+
 
 func _select_career(track_id:String) -> void:
 	# A disabled button cannot be pressed, but a caller that reaches here another
@@ -4445,7 +5279,7 @@ func save_game(slot_id:String="",title:String="") -> bool:
 	_store_motion()
 	if current_venue=="home":home_layout=world.serialize_items()
 	else:venue_layouts[current_venue]=world.serialize_items()
-	sim.character["world_state"]={"player":[player.position.x,player.position.y,player.position.z],"player_rotation":player.rotation.y,"camera":[world.camera_target.x,world.camera_target.y,world.camera_target.z],"angle":world.camera_angle,"elevation":world.camera_elevation,"zoom":world.camera.size,"floor":floor_color,"lot":selected_lot,"cutaway":world.cutaway,"view_level":world.view_level,"sound":sound_enabled,"music":music_enabled,"venue":current_venue,"home_layout":home_layout,"venue_layouts":venue_layouts,"residents":residents.snapshot()}
+	sim.character["world_state"]={"player":[player.position.x,player.position.y,player.position.z],"player_rotation":player.rotation.y,"camera":[world.camera_target.x,world.camera_target.y,world.camera_target.z],"angle":world.camera_angle,"elevation":world.camera_elevation,"zoom":world.camera.size,"floor":floor_color,"lot":selected_lot,"cutaway":world.cutaway,"view_level":world.view_level,"sound":sound_enabled,"music":music_enabled,"venue":current_venue,"home_layout":home_layout,"venue_layouts":venue_layouts,"land":LifeBuildingState.land.duplicate(true),"properties":_properties_for_save(),"residents":residents.snapshot()}
 	# Store the user's live speed, not a temporary menu/build pause.
 	var current_speed:int=sim.speed
 	sim.speed=speed_before_build if mode=="build" else (pause_before_menu if overlay_pauses_sim else current_speed)
@@ -4483,7 +5317,7 @@ func _restore_world_state(value:Variant) -> void:
 	player.position=position
 	player.rotation.y=_saved_number(state.get("player_rotation"),0.0,-1000.0,1000.0)
 	var target:Vector3=_saved_vector(state.get("camera"),world.camera_target)
-	world.camera_target=Vector3(clampf(target.x,LifeBuildingState.LOT.position.x+3,LifeBuildingState.LOT.end.x-3),clampf(target.y,-2,5),clampf(target.z,LifeBuildingState.LOT.position.y+3,LifeBuildingState.LOT.end.y-3))
+	world.camera_target=Vector3(clampf(target.x,LifeBuildingState.lot().position.x+3,LifeBuildingState.lot().end.x-3),clampf(target.y,-2,5),clampf(target.z,LifeBuildingState.lot().position.y+3,LifeBuildingState.lot().end.y-3))
 	world.camera_angle=_saved_number(state.get("angle"),world.camera_angle,-1000.0,1000.0)
 	world.camera_elevation=_saved_number(state.get("elevation"),world.camera_elevation,LifeWorld.CAMERA_MIN_PITCH,LifeWorld.CAMERA_MAX_PITCH)
 	world.camera.size=_saved_number(state.get("zoom"),world.camera.size,LifeWorld.CAMERA_MIN_ZOOM,LifeWorld.CAMERA_MAX_ZOOM)
@@ -4501,6 +5335,90 @@ func _restore_world_state(value:Variant) -> void:
 	if state.get("sound") is bool:set_sound(state.sound)
 	if state.get("music") is bool:set_music(state.music)
 	world.update_camera()
+
+## Buy home insurance for the house the household lives in. It is one purchase
+## whichever screen asks for it — the phone or the property panel — so both write
+## through to the house's own record and cannot disagree about what is covered.
+func buy_home_insurance(policy_id: String = "home") -> Dictionary:
+	# A household with no property record at all keeps the sim's own policy, so
+	# this still works for a household that predates the property system.
+	var house_id: String = Properties.active(properties)
+	if house_id.is_empty() or not Properties.owns(properties, house_id):
+		return household.buy_insurance(policy_id)
+	var bought: Dictionary = Properties.buy_policy(properties, house_id, policy_id, household.funds)
+	if not bool(bought.ok):
+		return {"ok": false, "error": str(bought.error)}
+	properties = bought.state
+	household.set_funds(int(bought.funds))
+	_apply_property_insurance()
+	return {"ok": true, "premium": int(bought.cost), "label": str(LifeSim.INSURANCE_POLICIES.get(policy_id, {}).get("label", "Home insurance"))}
+
+
+## Give up the cover on the house the household lives in.
+func cancel_home_insurance() -> Dictionary:
+	var house_id: String = Properties.active(properties)
+	if house_id.is_empty() or not Properties.owns(properties, house_id):
+		return household.cancel_insurance()
+	var result: Dictionary = Properties.cancel_policy(properties, house_id)
+	if not bool(result.ok):
+		return {"ok": false, "error": str(result.error)}
+	properties = result.state
+	_apply_property_insurance()
+	return {"ok": true}
+
+
+## Keep the property record in step with cover bought through the phone, so the
+## two never disagree about what the house carries.
+func _on_insurance_changed(policy_id: String) -> void:
+	var house_id: String = Properties.active(properties)
+	if house_id.is_empty() or not Properties.owns(properties, house_id):
+		return
+	if properties.houses[house_id].get("policy", "") == policy_id:
+		return
+	properties.houses[house_id]["policy"] = policy_id
+
+
+## Apply the live home's own policy to the household's sims. A house carries its
+## own cover, so moving into a house that is insured — or out of one that is —
+## changes what a break-in there costs, and moving into an uninsured house really
+## leaves the household uncovered.
+##
+## A household that has never recorded a property keeps whatever policy its sims
+## hold, because the phone's own insurance purchase predates the property system
+## and a load must not quietly cancel cover the player bought. Once the household
+## owns the house it lives in, that house's record is the final word — and the
+## phone writes through to it, so the two can never disagree.
+func _apply_property_insurance() -> void:
+	var house_id:String=Properties.active(properties)
+	if house_id.is_empty() or not Properties.owns(properties,house_id):
+		return
+	var policy_id:String=str(Properties.policy(properties,house_id).get("id",""))
+	for member:Dictionary in household.members:
+		member.sim.insurance_policy_id=policy_id
+	household._sync_bill_mirror()
+
+
+## The property record as it should be saved: the house being lived in is
+## updated with the live layout and land first, so moving away and back returns
+## to the same house on the same plot with the same furnishings.
+func _properties_for_save() -> Dictionary:
+	var record:Dictionary=properties.duplicate(true)
+	var lived:String=str(record.get("active",""))
+	if not lived.is_empty() and record.get("houses",{}).has(lived) and current_venue=="home":
+		record.houses[lived]["layout"]=home_layout.duplicate(true)
+		record.houses[lived]["land"]=LifeBuildingState.land.duplicate(true)
+	return record
+
+
+func _restore_properties(value:Variant) -> void:
+	properties=Properties.from_save(value)
+	_apply_property_insurance()
+
+
+## Open the property panel from the house menu.
+func _property_panel_available() -> bool:
+	return mode=="live" and current_venue=="home" and not residents.home_visit.active()
+
 
 func _saved_number(value:Variant,fallback:float,minimum:float,maximum:float) -> float:
 	if not (value is float or value is int) or not is_finite(float(value)):return fallback
@@ -4549,10 +5467,11 @@ func load_game(slot_id:String="") -> void:
 	current_venue="home";home_layout=[];venue_layouts={}
 	if saved_world is Dictionary:
 		var place:String=str(saved_world.get("venue","home"))
-		if LifeNeighborhood.PLACES.has(place):
+		if LifeNeighborhood.has(place):
 			current_venue=place
 			for member:Dictionary in household.members:member.sim.visited_venue="" if place=="home" else place
 		home_layout=_safe_layout(saved_world.get("home_layout",[]))
+		_restore_properties(saved_world.get("properties"))
 		var saved_venues:Variant=saved_world.get("venue_layouts",{})
 		if saved_venues is Dictionary:
 			for key:String in saved_venues:
@@ -4712,7 +5631,7 @@ func _adopt_loaded_world(prepared:Dictionary,slot_id:String,title:String="") -> 
 	prepared.viewport.free();candidate.free()
 	stage=null;preview=null
 	old_world.visible=false;old_world.queue_free();old_household.queue_free();old_meal_flow.queue_free();old_sanitation_flow.queue_free();old_household_flow.queue_free()
-	loading_game=false;_sync_actor_sound();sync_pets();draw_live()
+	loading_game=false;_sync_actor_sound();sync_pets();sync_post();draw_live()
 	show_notice("Welcome back, %s." % sim.character.name)
 
 func _restore_journeys() -> Dictionary:
@@ -4921,6 +5840,7 @@ func _process(delta:float) -> void:
 		_update_cover_beat(delta)
 		residents.publish_targets()
 		meal_flow.sync_world(household.speed>0)
+		_sync_delivery_van()
 		_store_motion()
 		if household.speed>0:_reconcile_social_routes()
 		var selected_id:String=household.selected_id()
@@ -4928,7 +5848,11 @@ func _process(delta:float) -> void:
 		for member:Dictionary in household.members:
 			autonomy_values[member.id]=member.sim.autonomy
 			if bool(motion_states.get(member.id,_empty_motion()).walk) or traversal.busy(str(member.id)):member.sim.autonomy=false
+		var day_before:int=household.day
 		household.tick(delta)
+		# A new day is when the post could have something new in it, so the box is
+		# refilled once per day rather than checked every frame.
+		if household.day!=day_before:sync_post()
 		sanitation_flow.sync_world()
 		for member:Dictionary in household.members:member.sim.autonomy=autonomy_values[member.id]
 		idle_space.update(delta)
@@ -4964,7 +5888,6 @@ func _process(delta:float) -> void:
 		_update_selection_marker(delta)
 		if away_targets_changed:_refresh_sim_targets(false)
 		residents.tick(delta)
-		residents.tick_solo_trip(delta)
 		_tick_resident_contacts()
 		traversal.courtesy.consider(traversal)
 		_tick_pets(delta)
@@ -4984,7 +5907,7 @@ func _process(delta:float) -> void:
 			var side=Vector3(cos(world.camera_angle),0,-sin(world.camera_angle))
 			var forward=Vector3(sin(world.camera_angle),0,cos(world.camera_angle))
 			world.camera_target+=(side*pan.x+forward*pan.y)*delta*LifeWorld.CAMERA_PAN_SPEED
-			world.camera_target.x=clampf(world.camera_target.x,LifeBuildingState.LOT.position.x+3,LifeBuildingState.LOT.end.x-3);world.camera_target.z=clampf(world.camera_target.z,LifeBuildingState.LOT.position.y+3,LifeBuildingState.LOT.end.y-3)
+			world.camera_target.x=clampf(world.camera_target.x,LifeBuildingState.lot().position.x+3,LifeBuildingState.lot().end.x-3);world.camera_target.z=clampf(world.camera_target.z,LifeBuildingState.lot().position.y+3,LifeBuildingState.lot().end.y-3)
 			world.update_camera()
 
 func _advance_movement(delta:float) -> bool:
@@ -5528,7 +6451,7 @@ func _resolve_activity_target(action:Dictionary) -> void:
 		action.target_position=world.actors[str(action.target_id)].position+Vector3(0,0,.9)
 		return
 	var item:Dictionary=_find_item(str(action.target_id))
-	if not item.is_empty() and (str(item.kind) in world.TWO_SEATERS or str(item.kind) in world.SHARED_BEDS):_assign_seat_slot(action,item)
+	if not item.is_empty() and world.seat_capacity(item)>1:_assign_seat_slot(action,item)
 	var wanted:String=""
 	if action.id=="cook" and not item.is_empty() and item.kind=="fridge":wanted="stove"
 	if action.id=="watch" and not item.is_empty() and item.kind=="tv":wanted="sofa"
@@ -5547,22 +6470,24 @@ func _resolve_activity_target(action:Dictionary) -> void:
 			var trial:Dictionary=action.duplicate(true)
 			trial.target_id=seat.id;trial.target_position=world.approach(seat)
 			# A two-seater is tested per seat, so a full loveseat does not look free.
-			if str(seat.kind) in world.TWO_SEATERS:_assign_seat_slot(trial,seat)
+			if world.seat_capacity(seat)>1:_assign_seat_slot(trial,seat)
 			if _activity_available_for_member(trial,bound_member_id):free_seat=seat;break
 		if not free_seat.is_empty():best=free_seat
 		elif not seats.is_empty():best=seats.front()
 	if not best.is_empty():
 		action.target_id=best.id
 		action.target_position=world.approach(best)
-		if str(best.kind) in world.TWO_SEATERS:_assign_seat_slot(action,best)
+		if world.seat_capacity(best)>1:_assign_seat_slot(action,best)
 
+## Give this Lifelet one of a furnishing's own places. How many places it has is
+## the catalogue's own seat count for the size that was bought, so a large garden
+## table really seats ten and a loveseat two. A bed keeps its named halves for a
+## partnered pair: the first partner takes one half, the second the other, and
+## anyone else is refused the bed entirely by the availability gate rather than
+## being seated on a half.
 func _assign_seat_slot(action:Dictionary,item:Dictionary) -> void:
-	# A two-seater keeps its own seat per Lifelet: take the left seat unless a
-	# housemate already holds it, then the right. The approach point follows.
-	# A bed keeps its two halves for a partnered pair: the first partner takes
-	# one half, the second takes the other, and anyone else is refused the bed
-	# entirely by the availability gate rather than being seated on a half.
 	var shared_bed:bool=str(item.kind) in world.SHARED_BEDS
+	var slots:Array[String]=world.seat_slots(item)
 	var taken:Array=[]
 	var partner_in_bed:bool=false
 	for member:Dictionary in household.members:
@@ -5572,9 +6497,9 @@ func _assign_seat_slot(action:Dictionary,item:Dictionary) -> void:
 		taken.append(str(other.seat_slot))
 		if shared_bed and _is_my_partner(str(member.id)):partner_in_bed=true
 	if shared_bed and not taken.is_empty() and not partner_in_bed:
-		# Someone else already lies here and they are not this member's
-		# partner: claim the free half AND the whole bed so the availability
-		# gate refuses it instead of seating a housemate on the edge.
+		# Someone else already lies here and they are not this member's partner:
+		# claim the free half AND the whole bed, so the availability gate refuses
+		# it instead of seating a housemate on the edge.
 		action["seat_slot"]="right" if taken.has("left") else "left"
 		action.target_position=world.slot_approach(item,str(action.seat_slot))
 		return
@@ -5582,9 +6507,15 @@ func _assign_seat_slot(action:Dictionary,item:Dictionary) -> void:
 		action["seat_slot"]="right" if taken.has("left") else "left"
 		action.target_position=world.slot_approach(item,str(action.seat_slot))
 		return
-	if not action.has("seat_slot") or taken.has(str(action.seat_slot)):
-		action["seat_slot"]="right" if taken.has("left") and not taken.has("right") else "left"
-	action.target_position=world.slot_approach(item,str(action.seat_slot))
+	# Otherwise take the first place this furnishing still has free, so a table
+	# for ten seats ten people in turn rather than only ever its two end places.
+	var taken_slot:bool=action.has("seat_slot") and taken.has(str(action.seat_slot))
+	if not action.has("seat_slot") or taken_slot:
+		for slot:String in slots:
+			if not taken.has(slot):
+				action["seat_slot"]=slot
+				break
+	action.target_position=world.slot_approach(item,str(action.get("seat_slot","")))
 
 func _is_my_partner(member_id:String) -> bool:
 	var mine:LifeSim=household.member_sim(bound_member_id)
@@ -5682,7 +6613,7 @@ func show_relationships() -> void:
 			visit.name="VisitResident_"+id;visit.disabled=not residents.can_visit(id)
 			var invite=button("Invite over",Vector2(224,83),Vector2(212,34),func():invite_neighbor(id),false,row)
 			invite.name="InviteResident_"+id;invite.disabled=not residents.home_visit.requirement(id).is_empty();invite.tooltip_text=residents.home_visit.requirement(id)
-			visit.tooltip_text="Reach 20 friendship to arrange a visit." if visit.disabled else str(LifeNeighborhood.PLACES[LifeResidents.PEOPLE[id].home].tag)
+			visit.tooltip_text="Reach 20 friendship to arrange a visit." if visit.disabled else str(str(LifeNeighborhood.info(LifeResidents.PEOPLE[id].home).get("tag","")))
 	button("Family tree",Vector2(486,699),Vector2(222,43),show_family_tree,false,overlay)
 	button("Back to life",Vector2(724,699),Vector2(230,43),close_overlay,true,overlay)
 
@@ -5750,8 +6681,6 @@ var map_panned: bool = false
 var map_press: Vector2 = Vector2.ZERO
 ## Whether the next trip takes only the selected Lifelet. It outlives a rebuild,
 ## so switching between map pins keeps the player's choice.
-var map_solo: bool = false
-
 func show_neighborhood(chosen:String="") -> void:
 	if chosen.is_empty():chosen=current_venue
 	map_selected=chosen
@@ -5778,17 +6707,16 @@ func show_neighborhood(chosen:String="") -> void:
 	text_label(str(data.name),Vector2(938,296),Vector2(342,46),28,P.INK,true,overlay)
 	paragraph(str(data.description),Vector2(940,356),Vector2(340,140),16,P.MUTED,overlay)
 	paragraph(_travel_caption(str(data.name)),Vector2(940,498),Vector2(340,88),13,P.MUTED,overlay)
-	var solo_me=button("Just me",Vector2(940,592),Vector2(168,34),func():_set_map_mode(true),map_solo,overlay)
-	solo_me.name="MapModeSolo"
-	var solo_home=button("Whole household",Vector2(1116,592),Vector2(168,34),func():_set_map_mode(false),not map_solo,overlay)
-	solo_home.name="MapModeHousehold"
-	var go=button("Travel here  →" if not map_solo else "Travel here  ·  Just me",Vector2(940,634),Vector2(344,50),func():travel_to(chosen,map_solo),true,overlay)
+	var go=button("Travel here  →",Vector2(940,600),Vector2(344,44),func():travel_to(chosen),true,overlay)
 	go.name="MapTravel"
 	var resident:String=str(data.get("resident",""))
 	go.disabled=chosen==current_venue or (not resident.is_empty() and not residents.can_visit(resident))
-	if map_solo and sim.is_away():
-		go.disabled=true
-		go.tooltip_text="This Lifelet is already away from home."
+	# Who comes along: remote's own party picker, which lists everyone who can
+	# travel and names why anyone cannot, so nobody is silently left behind.
+	var choose:Button=button("Choose who goes…",Vector2(940,650),Vector2(344,34),func():show_trip_party(chosen),false,overlay)
+	choose.name="ChooseTripParty"
+	choose.disabled=go.disabled
+	choose.tooltip_text="Pick only some of the household; anyone left behind stays home."
 	if not resident.is_empty() and not residents.can_visit(resident):
 		go.text="Meet them first · 20 friendship"
 		go.tooltip_text="Say hello when they walk past your home. Get to know them, then arrange a visit."
@@ -5913,25 +6841,85 @@ func _neighborhood_gesture(event:InputEvent) -> bool:
 		return true
 	return false
 
-## What the travel button will really do, in the mode the player has chosen.
+## What the travel button will really do. Who comes along is the party picker's
+## own choice, so the caption names the town and the time rather than a mode.
 func _travel_caption(destination:String) -> String:
-	if map_solo:
-		var who:String=str(sim.character.name).split(" ")[0]
-		return "%s travels alone to %s and comes back in about half an hour, while the rest of the household stays home. Drag the map to look around; the wheel zooms." % [who,destination]
-	return "Travel takes the household together and clears current activities. A shared car takes you across town in 15 minutes. Drag the map to look around; the wheel zooms."
+	return "A shared car takes the household across town in 15 minutes; use **Choose who goes** to take only some of them. Drag the map to look around; the wheel zooms."
 
-## Switch the map between taking everyone and taking only the selected Lifelet.
-## The panel is rebuilt in place so the pins, zoom and chosen place all survive.
-func _set_map_mode(solo:bool) -> void:
-	if map_solo==solo:return
-	map_solo=solo
-	show_neighborhood(map_selected)
-
-func travel_to(destination:String,solo:bool=false) -> void:
-	if mode not in ["live","build"] or not LifeNeighborhood.PLACES.has(destination) or destination==current_venue:return
-	var resident:String=str(LifeNeighborhood.PLACES[destination].get("resident",""))
+func travel_to(destination:String) -> void:
+	if mode not in ["live","build"] or not LifeNeighborhood.has(destination) or destination==current_venue:return
+	var resident:String=str(LifeNeighborhood.info(destination).get("resident",""))
 	if not resident.is_empty() and not residents.can_visit(resident):show_notice("Get to know this neighbor first. Visits open at 20 friendship.");return
-	residents.begin_trip(destination,solo)
+	# The party picker's own choice decides who boards; an untouched party is
+	# everyone who can come.
+	residents.begin_trip(destination,party_selection)
+
+## Who goes on the trip. Everyone who can travel is listed and ticked; a Lifelet
+## who is working, at school or on the stairs is shown with the reason they
+## cannot come, so nothing is silently left behind.
+##
+## `reset` defaults the party to everyone who can come, and is used only when the
+## panel is first opened. Redrawing after a tick keeps the player's own choices,
+## because a redraw that re-ticked everybody would undo the pick they just made.
+func show_trip_party(destination:String, reset:bool = true) -> void:
+	# Remembered, because every untick redraws this panel and must come back to
+	# the same destination.
+	_pending_trip_destination=destination
+	var options:Array=residents.party_options()
+	if reset:
+		party_selection.clear()
+		for entry:Dictionary in options:
+			if bool(entry.available):party_selection.append(str(entry.id))
+	else:
+		# A Lifelet who has since become unavailable is dropped rather than
+		# travelling while busy.
+		for member_id:String in party_selection.duplicate():
+			var still_ok:bool=false
+			for entry:Dictionary in options:
+				if str(entry.id)==member_id and bool(entry.available):still_ok=true
+			if not still_ok:party_selection.erase(member_id)
+	_begin_pause_overlay()
+	var shade=ColorRect.new();shade.color=Color(.08,.17,.15,.28);rect(shade,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
+	card(Vector2(470,150),Vector2(500,600),P.WHITE,24,overlay)
+	small_caps("Who is coming",Vector2(502,172),Vector2(440,24),overlay)
+	text_label("Off to %s" % str(LifeNeighborhood.place_name(destination)),Vector2(500,200),Vector2(444,46),30,P.INK,true,overlay)
+	paragraph("Tick who is coming along. Anyone left behind stays home and carries on with their own day.",Vector2(502,254),Vector2(440,44),14,P.MUTED,overlay)
+	var y:float=312.0
+	for entry:Dictionary in options:
+		var member_id:String=str(entry.id)
+		var chosen:bool=party_selection.has(member_id)
+		var label:String=str(entry.name).split(" ")[0]+("  ✓" if chosen else "")
+		var row:Button=button(label,Vector2(502,y),Vector2(440,42),
+			func():_toggle_party_member(member_id),chosen,overlay)
+		row.name="TripParty_"+member_id
+		row.disabled=not bool(entry.available)
+		row.tooltip_text=str(entry.reason) if not bool(entry.available) else "Comes along on the trip."
+		if not bool(entry.available):
+			text_label(str(entry.reason),Vector2(508,y+44),Vector2(430,20),11,P.CORAL,false,overlay)
+		y+=68.0
+	var go:Button=button("Travel  →",Vector2(502,y+8),Vector2(440,46),func():_start_trip(destination),true,overlay)
+	go.name="TripPartyGo"
+	go.disabled=party_selection.is_empty()
+	go.tooltip_text="Travel with the Lifelets you have chosen." if not party_selection.is_empty() else "Choose at least one Lifelet to come along."
+	button("Back",Vector2(502,y+62),Vector2(440,36),func():show_neighborhood(destination),false,overlay)
+
+
+## Tick or untick one Lifelet for the trip.
+
+func _toggle_party_member(member_id:String) -> void:
+	if party_selection.has(member_id):party_selection.erase(member_id)
+	else:party_selection.append(member_id)
+	show_trip_party(_pending_trip_destination,false)
+
+
+## Leave with the chosen party.
+
+func _start_trip(destination:String) -> void:
+	_pending_trip_destination=destination
+	if residents.begin_trip(destination,party_selection):
+		party_selection.clear()
+
+
 
 func show_stories() -> void:
 	_begin_pause_overlay()
@@ -6401,8 +7389,18 @@ func _away_status(state:Dictionary) -> String:
 		var place:String=str(LifeNeighborhood.PLACES.get(str(state.get("destination","")),{}).get("name","across town"))
 		if str(state.get("phase",""))=="returning":return "Coming home from "+place
 		return "Out at "+place+" · Home soon"
-	var activity:String="work" if str(state.get("activity",""))=="career" else "school"
+	# A sentence, not a curriculum: a Lifelet inside is simply not here until the
+	# household's own release tick brings them home.
+	if str(state.get("activity",""))=="prison":
+		return "Inside until day %d" % int(state.get("return_day",0))
+	var career_state:bool=str(state.get("activity",""))=="career"
+	var activity:String="work" if career_state else "school"
 	if str(state.get("phase",""))=="returning":return "Coming home from "+activity
+	# A Lifelet at work is at their own workplace, so the HUD names where they
+	# actually are rather than a generic "work".
+	if career_state and is_instance_valid(sim):
+		var place:String=LifeCareers.workplace(str(sim.career.get("track","")))
+		if not place.is_empty():activity=place
 	var until:int=int(state.get("return_minutes",900))
 	return "At %s · Back %02d:%02d" % [activity,until/60,until%60]
 

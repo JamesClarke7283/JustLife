@@ -33,11 +33,13 @@ func _run() -> void:
 
 	var sim: Object = app.sim
 	check(str(sim.character.age_stage) == "adult", "The adult can hold a career")
-	# Choose a career through the public picker.
-	sim.choose_career("studio")
+	# Choose a career through the public picker. Technology wants Logic 3, so the
+	# skill is earned first and the ladder this probe walks is a real trade.
+	sim.skills.logic.level = 3
+	sim.choose_career("technology")
 	await frames(6)
 	var track: String = str(sim.career.get("track", ""))
-	var skill_name: String = str(LifeSim.CAREER_TRACKS[track].skill)
+	var skill_name: String = str(LifeCareers.job(track).get("skill", ""))
 	var title_before: String = str(sim.career.title)
 	var level_before: int = int(sim.career.level)
 	var salary_before: int = int(sim.career.salary)

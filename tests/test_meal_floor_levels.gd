@@ -292,7 +292,10 @@ func _routed_selection()->void:
 func _legacy_ground_cases()->void:
 	var loaded:Dictionary=scene_world.load_home([])
 	check(bool(loaded.ok),"Legacy starter home loads for actual wood/lawn compatibility checks.")
-	for sample:Dictionary in [{"name":"wood","at":Vector3(-.75,.16,2.75),"height":.1295},{"name":"lawn","at":Vector3(7,.16,2),"height":-.093}]:
+	# The lawn is the land's own ground slab. It used to be a 17x17 garden pad
+	# whose top was -0.095; buying neighbouring plots replaced it with the lot's
+	# ground (top -0.148), so the authored top the dish measures is that one.
+	for sample:Dictionary in [{"name":"wood","at":Vector3(-.75,.16,2.75),"height":.1295},{"name":"lawn","at":Vector3(7,.16,2),"height":-.148}]:
 		var value:Dictionary=_floor_batch(sample.at)
 		check(flow.call("_settle_food",value,sample.at)==true and str(value.host).is_empty() and absf(_position(value).y-float(sample.height))<.00001,"Legacy "+str(sample.name)+" set-down measures its actual authored top.")
 		check(absf(flow._floor_support(_position(value),LifeMeals.PLATTER_HALF_SIZE)-float(sample.height))<.00001,"Saved physical "+str(sample.name)+" height retains floor identity below navigationY.")

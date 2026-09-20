@@ -1152,11 +1152,19 @@ func show_recipes(target_id:String) -> void:
 	app.card(Vector2(321,118),Vector2(798,664),app.P.WHITE,22,app.overlay)
 	app.text_label("What’s cooking?",Vector2(352,140),Vector2(720,51),34,app.P.INK,true,app.overlay)
 	app.paragraph("Cooking level %d · Choose a dish to share. Ingredients are paid for when cooking begins." % int(app.sim.skills.cooking.level),Vector2(355,206),Vector2(721,49),16,app.P.MUTED,app.overlay)
-	var index:int=0
+	# The list grows with the cookbook, so it lives in a scroll region inside the
+	# card rather than at absolute rows. A seventh recipe used to run the last
+	# rows past the panel and off the canvas, where they could not be chosen.
+	var scroll:ScrollContainer=ScrollContainer.new();scroll.name="RecipeList"
+	app.rect(scroll,Vector2(340,272),Vector2(760,420),app.overlay)
+	var column:VBoxContainer=VBoxContainer.new()
+	column.add_theme_constant_override("separation",13)
+	scroll.add_child(column)
 	for recipe:String in LifeMeals.RECIPES:
 		var definition:Dictionary=LifeMeals.RECIPES[recipe]
 		var row:Control=Control.new();row.name="RecipeRow_"+recipe
-		app.rect(row,Vector2(349,276+index*135),Vector2(742,122),app.overlay)
+		row.custom_minimum_size=Vector2(742,122)
+		column.add_child(row)
 		app.card(Vector2.ZERO,Vector2(742,122),Color("f3f4ed"),13,row)
 		_recipe_preview(recipe,row)
 		app.text_label(str(definition.label),Vector2(179,11),Vector2(533,30),23,app.P.INK,true,row)
@@ -1166,7 +1174,6 @@ func show_recipes(target_id:String) -> void:
 		app.paragraph(str(definition.description) if reason.is_empty() else reason,Vector2(181,79),Vector2(310,35),12,app.P.MUTED,row)
 		var choose:Button=app.button("Cook "+str(definition.label).to_lower(),Vector2(509,78),Vector2(218,34),queue_recipe.bind(target_id,recipe),true,row)
 		choose.name="Recipe_"+recipe;choose.disabled=not reason.is_empty();choose.tooltip_text=reason
-		index+=1
 	app.button("Back to life",Vector2(866,718),Vector2(221,39),app.close_overlay,false,app.overlay)
 
 func queue_recipe(target_id:String,recipe:String) -> void:

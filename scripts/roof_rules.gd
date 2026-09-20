@@ -4,7 +4,13 @@ class_name LifeRoofRules
 ## No Nodes, renderer, clock or wallet access. Attics/junctions are not implied.
 const EAVE:float=.28
 const SHELL:float=.10
-const LOT:=Rect2(-9,-7,18,16)
+## The navigable lot is the household's own land: the plot it started with plus
+## every neighbouring plot it has bought. It is owned by `LifeBuildingState`
+## (which derives it from `LifeLand`), so this file reads the one live value
+## rather than holding its own copy that could drift from it.
+static func lot() -> Rect2:
+	return LifeBuildingState.lot()
+
 static func parameters(record:Dictionary)->Dictionary:
 	var span:float=float(record.w) if int(record.rotation)==0 else float(record.d)
 	var length:float=float(record.d) if int(record.rotation)==0 else float(record.w)
@@ -25,7 +31,7 @@ static func validate(state:Dictionary)->String:
 	if state.roofs.size()>16:return "This home already has the maximum16 separate roof pieces."
 	for roof:Dictionary in state.roofs:
 		if float(roof.w)<1.5 or float(roof.d)<1.5:return "A gable roof must be at least1.5 metres wide and deep."
-		if not LOT.encloses(support_rect(roof).grow(EAVE)):return "The roof's full28cm eaves must stay inside the lot."
+		if not lot().encloses(support_rect(roof).grow(EAVE)):return "The roof's full28cm eaves must stay inside the lot."
 		var volume:AABB=envelope(roof)
 		for other:Dictionary in state.roofs:
 			if str(roof.id)!=str(other.id) and volume.grow(.005).intersects(envelope(other)):return "Separate roofs need clear eaves. Intersecting roof junctions are not supported yet."

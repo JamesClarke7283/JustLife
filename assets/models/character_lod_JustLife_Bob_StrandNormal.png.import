@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cp423c83i1lbe"
-path="res://.godot/imported/character_lod_JustLife_Bob_StrandNormal.png-f9ee3c19926e9e64db3873bacd5cfb87.ctex"
+path.s3tc="res://.godot/imported/character_lod_JustLife_Bob_StrandNormal.png-f9ee3c19926e9e64db3873bacd5cfb87.s3tc.ctex"
+path.etc2="res://.godot/imported/character_lod_JustLife_Bob_StrandNormal.png-f9ee3c19926e9e64db3873bacd5cfb87.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "5a9576f71b0a4581fbea2530f4dda71e"
@@ -14,22 +16,22 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/character_lod_JustLife_Bob_StrandNormal.png"
-dest_files=["res://.godot/imported/character_lod_JustLife_Bob_StrandNormal.png-f9ee3c19926e9e64db3873bacd5cfb87.ctex"]
+dest_files=["res://.godot/imported/character_lod_JustLife_Bob_StrandNormal.png-f9ee3c19926e9e64db3873bacd5cfb87.s3tc.ctex", "res://.godot/imported/character_lod_JustLife_Bob_StrandNormal.png-f9ee3c19926e9e64db3873bacd5cfb87.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=0
+compress/normal_map=1
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
-roughness/mode=0
-roughness/src_normal=""
+roughness/mode=1
+roughness/src_normal="res://assets/models/character_lod_JustLife_Bob_StrandNormal.png"
 process/channel_remap/red=0
 process/channel_remap/green=1
 process/channel_remap/blue=2
@@ -40,4 +42,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

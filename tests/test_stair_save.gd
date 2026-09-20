@@ -44,6 +44,7 @@ func _run()->void:
 		check(app.world.actors.player.position.distance_to(Vector3(2,3.16,4))<.001 and app.world.actors.housemate_1.position.distance_to(Vector3(-2,.16,-4))<.001,"Both restored opposing journeys finish on the requested supported floors.")
 		check(app.traversal.stairs.values().all(func(lock:Dictionary)->bool:return str(lock.owner).is_empty() and lock.queue.is_empty()),"Both restored crossings release their queue and exit reservations.")
 	var report:Dictionary={"checks":checks,"failures":failures,"before":before,"slot":slot,"scope":"Actual main named save/load on one live process, pause and later crossing completion; no fresh-process or food custody claim."}
+	DirAccess.make_dir_recursive_absolute("user://regression/stair_save")
 	var file:=FileAccess.open("user://regression/stair_save/save_03.json",FileAccess.WRITE);file.store_string(JSON.stringify(report,"  ",true,true));file.close()
 	print("STAIR_SAVE checks=%d failures=%d"%[checks,failures.size()])
 	app.queue_free();await process_frame;await process_frame;await create_timer(.2).timeout

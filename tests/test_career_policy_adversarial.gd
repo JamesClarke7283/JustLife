@@ -48,9 +48,52 @@ func _birthdays_and_promotions() -> void:
 	promoted.begin_current_action()
 	var before: int = promoted.funds
 	advance(promoted, 480.0)
-	check(promoted.career.level == 2 and promoted.funds == before + 180 + 200, "Off-lot completion pays the captured salary and one promotion bonus.")
-	check(promoted.away_state.salary == 180 and promoted.career.salary == 290, "Paid return keeps pre-promotion shift salary distinct from new salary.")
+	var start_pay: int = LifeCareers.base_pay(LifeCareers.DEFAULT_JOB, 1)
+	check(promoted.career.level == 2 and promoted.funds == before + start_pay + 200, "Off-lot completion pays the captured salary and one promotion bonus.")
+	check(promoted.away_state.salary == start_pay and promoted.career.salary == LifeCareers.pay(LifeCareers.DEFAULT_JOB, 2), "Paid return keeps pre-promotion shift salary distinct from new salary.")
 	check(worker().restore_state(snapshot(promoted)).ok, "A promotion during the completion callback remains loadable.")
+
+	# At the top of the ladder there is no promotion left to spend performance on,
+	# so it must not accumulate past what a save may hold. It used to: a Lifelet
+	# who reached rung ten and kept working banked performance for ever, and once
+	# it passed the validator's ceiling the household could no longer be saved at
+	# all. Ninety days of ordinary work reproduced it (1023.8) — the save was
+	# refused with "Save contains an invalid career".
+	var topped: LifeSim = worker("adult", 540.0)
+	topped.career.level = LifeCareers.MAX_LEVEL
+	topped.career.title = LifeCareers.title_at(str(topped.career.track), LifeCareers.MAX_LEVEL)
+	topped.career.performance = 99.0
+	observe(topped)
+	topped.queue_action("job", "desk")
+	check(not topped.action_queue.is_empty(), "A top-rung Lifelet can still queue a home shift.")
+	topped.begin_current_action()
+	advance(topped, 361.0)
+	# There is no promotion left at the top of the ladder, so nothing spends the
+	# earned performance. It must stop at the promotion threshold rather than
+	# climbing for ever: unbounded, it passed the validator's ceiling and the
+	# household could no longer be saved at all. Ninety days of ordinary work
+	# produced 1023.8 and the save was refused with "Save contains an invalid
+	# career".
+	check(int(topped.career.level) == LifeCareers.MAX_LEVEL, "A top-rung Lifelet stays at the top of the ladder.")
+	check(float(topped.career.performance) <= 100.0,
+		"Performance at the top of the ladder stops at the promotion threshold (%.1f)." % float(topped.career.performance))
+	check(worker().restore_state(snapshot(topped)).ok,
+		"A maxed career that kept working is still saveable.")
+
+	# The same must hold for the ordinary commute, which is how most of a working
+	# life's performance is earned.
+	var commuter: LifeSim = worker("adult", 540.0)
+	commuter.career.level = LifeCareers.MAX_LEVEL
+	commuter.career.title = LifeCareers.title_at(str(commuter.career.track), LifeCareers.MAX_LEVEL)
+	commuter.career.performance = 99.0
+	observe(commuter)
+	commuter.queue_action("career_day", "lot_exit")
+	commuter.begin_current_action()
+	advance(commuter, 481.0)
+	check(float(commuter.career.performance) <= 100.0,
+		"A top-rung Lifelet's commute stops performance at the threshold too (%.1f)." % float(commuter.career.performance))
+	check(worker().restore_state(snapshot(commuter)).ok,
+		"A maxed career that commuted daily is still saveable.")
 
 func _career_changes() -> void:
 	var sim: LifeSim = worker()
@@ -62,12 +105,17 @@ func _career_changes() -> void:
 	sim.request_return_home()
 	check(not sim.choose_career("technology"), "Returning workers retain their original track until actual home arrival.")
 	sim.complete_away_return()
+	# The office asks for Logic 3, which is the point of a career being harder to
+	# move into; the skill is earned here so the move itself is what is proven.
+	sim.skills.logic.level = 3
 	check(sim.choose_career("technology") and sim.career.track == "technology", "Changing career is valid once the worker arrives home.")
-	check(sim.choose_career("botany") and sim.career.track == "botany" and int(sim.career.salary) == 155, "The sixth track (botany) is selectable with its own salary.")
-	check(str(sim.career.title) == "Garden centre clerk" and sim.career.level == 1, "The botany track starts at its first rank.")
+	sim.skills.gardening.level = 1
+	check(sim.choose_career("gardener") and sim.career.track == "gardener" and int(sim.career.salary) == LifeCareers.pay("gardener", 1), "The gardening ladder is selectable with its own salary.")
+	check(str(sim.career.title) == LifeCareers.title_at("gardener", 1) and sim.career.level == 1, "The gardening ladder starts at its first rank.")
 	check(worker().restore_state(snapshot(sim)).ok, "An early return followed by a career change is loadable.")
 	for adulthood: bool in [false, true]:
 		var late: LifeSim = worker("teen" if adulthood else "adult", 780.0)
+		late.skills.logic.level = 3
 		observe(late)
 		check(late.celebrate_birthday() if adulthood else late.choose_career("technology"), "Afternoon adulthood or career start succeeds.")
 		check(late.career.schedule.first_day == 2 and not late.queue_action("career_day", "lot_exit") and not late.queue_action("job", "desk"), "Afternoon new workers cannot begin office or remote duties before their first day.")
@@ -77,6 +125,7 @@ func _career_changes() -> void:
 		check(worker().restore_state(snapshot(late)).ok, "First working day after afternoon enrollment is loadable.")
 
 func _office_remote_reward() -> void:
+	var start_pay: int = LifeCareers.base_pay(LifeCareers.DEFAULT_JOB, 1)
 	var remote: LifeSim = worker("adult", 540.0)
 	remote.autonomy = false
 	observe(remote)
@@ -85,7 +134,7 @@ func _office_remote_reward() -> void:
 	check(not remote.queue_action("career_day", "lot_exit"), "Office departure cannot overlap active remote work.")
 	var before: int = remote.funds
 	advance(remote, float(remote.get_current_action().duration))
-	check(remote.career.schedule.attended == 1 and remote.funds == before + 180, "Remote completion updates the shared once-per-day payment marker.")
+	check(remote.career.schedule.attended == 1 and remote.funds == before + start_pay, "Remote completion updates the shared once-per-day payment marker.")
 	remote.minutes = 700.0
 	check(not remote.queue_action("career_day", "lot_exit") and not remote.queue_action("job", "desk"), "Same-day office and remote repeats are both refused.")
 	var office: LifeSim = worker("adult", 540.0)
@@ -98,7 +147,8 @@ func _office_remote_reward() -> void:
 	advance(office, 480.0)
 	office.complete_away_return()
 	office.begin_current_action()
-	check(office.action_queue.is_empty() and office.funds == before + 180 and office.career.schedule.attended == 1, "Queued remote instruction rechecks earned office pay on arrival and cannot duplicate it.")
+	check(office.action_queue.is_empty() and office.funds == before + start_pay and office.career.schedule.attended == 1, "Queued remote instruction rechecks earned office pay on arrival and cannot duplicate it.")
+	office.skills.logic.level = 3
 	check(office.choose_career("technology") and not office.queue_action("job", "desk"), "A same-day career change cannot reset the shared paid marker.")
 
 func _queue_and_urgent_edges() -> void:

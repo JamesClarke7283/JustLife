@@ -37,6 +37,7 @@ func _produce()->void:
 	var read:Dictionary=LifeSaveLibrary.read_slot(expected.slot)
 	check(bool(read.ok),"Written slot passes detached public validation: "+str(read.get("error","valid")))
 	if bool(read.ok):expected.household=read.data
+	DirAccess.make_dir_recursive_absolute("user://regression/stair_save")
 	var file:=FileAccess.open("user://regression/stair_save/fresh_"+case_name+"_expected.json",FileAccess.WRITE);file.store_string(JSON.stringify(expected,"  ",true,true));file.close()
 
 func _consume()->void:

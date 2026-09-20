@@ -41,6 +41,7 @@ func _run()->void:
 	check(not app.traversal.safety("player") and str(plate.owner).is_empty() and float(plate.progress)==float(food_expected.eaten_progress),"Real set-down succeeds after refusal ends and preserves the actual eaten fraction.")
 	check(app.traversal.stairs.values().all(func(lock:Dictionary)->bool:return str(lock.owner).is_empty()),"Successful retry releases the previous owner's stair reservation.")
 	var report:Dictionary={"checks":checks,"failures":failures,"process_id":OS.get_process_id(),"slot":clear_slot,"scope":"Actual loaded cooking/eating history and main stair exit with an explicitly injected false placement callback; real clear-phase save/load and normal-placement retry. Does not claim a naturally overcrowded landing."}
+	DirAccess.make_dir_recursive_absolute("user://regression/stair_save")
 	var file:=FileAccess.open("user://regression/stair_save/food_clear_failure.json",FileAccess.WRITE);file.store_string(JSON.stringify(report,"  ",true,true));file.close()
 	print("FOOD_CLEAR_FAILURE ",JSON.stringify(report))
 	app.queue_free();await process_frame;await process_frame;await create_timer(.3).timeout

@@ -2,6 +2,7 @@ extends RefCounted
 class_name LifeBuildingState
 ## Detached building data, support and transactions. No Nodes, wallet or save writes.
 const RoofRules=preload("res://scripts/roof_rules.gd")
+const Land=preload("res://scripts/land.gd")
 const VERSION:int=2
 const GROUND_Y:float=.16
 const RISE:float=3.0
@@ -12,13 +13,26 @@ const STAIR_STEPS:int=15
 const GUARD_EDGE:float=.68
 const GUARD_HALF:float=.043
 const EPS:float=.000001
-## The navigable lot: the house plus its garden. One constant, so building
-## validation, floor support, the navigation graph and the camera pan all agree
-## on how far the ground reaches. The garden is deliberately generous — a kennel,
-## a garden bed and room to walk between them — and it is not saved with a
-## household, so enlarging it here grows the garden of current saves and future
-## ones alike the next time their world is built.
-const LOT:=Rect2(-12,-9,24,18)
+## The navigable lot: the household's own land, which is the starting plot plus
+## every neighbouring plot it has bought. `LifeLand` owns the arithmetic; this is
+## the one live copy the building rules, the navigation graph, the compatibility
+## grid and the camera pan all read, so buying a plot moves the boundary for all
+## of them at once.
+##
+## The land is set by the world when a household's layout is restored, and is not
+## part of the construction record: it belongs to the household, not to the house
+## standing on it.
+static var land: Dictionary = Land.fresh()
+
+## Set the household's land. Everything derived from the lot is rebuilt by the
+## caller after this, because the navigation region and the grid both change.
+static func set_land(value: Variant) -> void:
+	land = Land.from_save(value)
+
+## The whole lot as a rectangle.
+static func lot() -> Rect2:
+	return Land.rect(land)
+
 ## Half a navigation cell, so a derived grid always contains the whole lot.
 const LOT_MARGIN:float=.25
 const GROUPS:Array[String]=["walls","floors","stairs","openings","roofs"]
@@ -37,20 +51,24 @@ static func identifier(value:Variant) -> bool:
 	return true
 
 static func level_y(level:int) -> float:return GROUND_Y+RISE*level
-## The whole lot in navigation cells, derived from LOT so a larger garden is
-## never half-covered by the graph, the compatibility grid or a pan clamp.
+## The whole lot in navigation cells, derived from the live land so a larger lot
+## is never half-covered by the graph, the compatibility grid or a pan clamp.
 static func cell_range() -> Rect2i:
-	var low:=Vector2i(floori(LOT.position.x/CELL)-1,floori(LOT.position.y/CELL)-1)
-	var high:=Vector2i(ceili(LOT.end.x/CELL)+1,ceili(LOT.end.y/CELL)+1)
+	var bounds:Rect2=lot()
+	var low:=Vector2i(floori(bounds.position.x/CELL)-1,floori(bounds.position.y/CELL)-1)
+	var high:=Vector2i(ceili(bounds.end.x/CELL)+1,ceili(bounds.end.y/CELL)+1)
 	return Rect2i(low,high-low)
 static func rect(record:Dictionary) -> Rect2:return Rect2(float(record.x)-float(record.w)/2,float(record.z)-float(record.d)/2,float(record.w),float(record.d))
 static func _error(message:String) -> Dictionary:return {"ok":false,"error":message}
 static func fingerprint(state:Dictionary) -> String:return JSON.stringify(state).sha256_text()
 
 static func _rect_error(record:Dictionary) -> String:
+	# The real bound is the household's own lot, which grows as plots are bought;
+	# the numeric guard only keeps a hostile value out of the arithmetic, so it
+	# must not be tighter than the largest lot a household can own.
 	for key:String in ["x","z","w","d"]:
-		if not number(record.get(key),-18,18):return "A building rectangle has invalid numbers."
-	if float(record.w)<=0 or float(record.d)<=0 or not LOT.encloses(rect(record)):return "A building rectangle is outside the lot."
+		if not number(record.get(key),-Land.MAX_SPAN,Land.MAX_SPAN):return "A building rectangle has invalid numbers."
+	if float(record.w)<=0 or float(record.d)<=0 or not lot().encloses(rect(record)):return "A building rectangle is outside the lot."
 	return ""
 
 static func _material(value:Variant) -> bool:
@@ -135,10 +153,10 @@ static func _covered(bounds:Rect2,surfaces:Array,holes:Array=[]) -> bool:
 	return bounds.size.x>0 and bounds.size.y>0
 
 static func footprint_supported(state:Dictionary,level:int,bounds:Rect2,include_terrain:bool=false) -> bool:
-	if level not in [0,1] or not LOT.encloses(bounds):return false
+	if level not in [0,1] or not lot().encloses(bounds):return false
 	var surfaces:Array=_rects(state,"floors",level)
 	surfaces.append_array(_wall_bearing_rects(state,level))
-	if level==0 and include_terrain:surfaces.append(LOT)
+	if level==0 and include_terrain:surfaces.append(lot())
 	return _covered(bounds,surfaces,_rects(state,"openings",level))
 
 static func _wall_bearing_rects(state:Dictionary,level:int) -> Array:
@@ -257,8 +275,8 @@ static func validate(state:Variant) -> String:
 			if group=="stairs":
 				if not number(value.get("lower"),0,0,true) or not number(value.get("upper"),1,1,true) or not number(value.get("rotation"),0,270,true) or int(value.rotation)%90!=0:return "A stair must join adjacent supported levels with a right-angle rotation."
 				for key:String in ["x","z"]:
-					if not number(value.get(key),-18,18) or not is_equal_approx(snappedf(float(value[key]),CELL),float(value[key])):return "A stair has an invalid grid position."
-				if not identifier(value.get("opening")) or not LOT.encloses(stair_rect(value)) or not LOT.encloses(landing_rect(value,false)) or not LOT.encloses(landing_rect(value,true)):return "A stair or landing extends beyond the lot."
+					if not number(value.get(key),-Land.MAX_SPAN,Land.MAX_SPAN) or not is_equal_approx(snappedf(float(value[key]),CELL),float(value[key])):return "A stair has an invalid grid position."
+				if not identifier(value.get("opening")) or not lot().encloses(stair_rect(value)) or not lot().encloses(landing_rect(value,false)) or not lot().encloses(landing_rect(value,true)):return "A stair or landing extends beyond the lot."
 			else:
 				if not number(value.get("level"),0,1,true):return "A record has an invalid level."
 				var error:String=_rect_error(value)
@@ -366,7 +384,7 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant) -> Dicti
 		record["id"]=_new_id(after,group)
 		if group=="stairs":
 			for key:String in ["x","z","rotation"]:
-				if not number(record.get(key),-18 if key!="rotation" else 0,18 if key!="rotation" else 270):return _error("Invalid new stair position.")
+				if not number(record.get(key),-Land.MAX_SPAN if key!="rotation" else 0,Land.MAX_SPAN if key!="rotation" else 270):return _error("Invalid new stair position.")
 			record["lower"]=0;record["upper"]=1;record["opening"]=_new_id(after,"openings")
 			var hole:Rect2=stair_rect(record)
 			after.openings.append({"id":record.opening,"stair":record.id,"level":1,"x":hole.get_center().x,"z":hole.get_center().y,"w":hole.size.x,"d":hole.size.y})

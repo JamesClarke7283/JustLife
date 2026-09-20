@@ -60,6 +60,11 @@ func _run()->void:
 	if sofa.is_empty() or fridge.is_empty():print("DOORWAY_YIELD %d checks, %d failures" % [checks,failures.size()+1]);quit(1);return
 	app.set_build_mode(false)
 	for member:Dictionary in app.household.members:member.sim.autonomy=false
+	# A snack comes out of the kitchen, so the fixture stocks it through the
+	# household's own order before either Lifelet walks in for one.
+	var ordered:Dictionary=app.household.order_groceries("weekly")
+	var collected:Dictionary=app.household.collect_groceries()
+	check(bool(ordered.ok) and bool(collected.ok),"The fixture stocks its own kitchen through the household's order.")
 	app.household.set_speed(3)
 	var ids:Array=[]
 	for member:Dictionary in app.household.members:ids.append(str(member.id))

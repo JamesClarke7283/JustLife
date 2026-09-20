@@ -45,6 +45,7 @@ func _run()->void:
 	var painted:Dictionary=app.traversal.reconstruct()
 	check(not bool(painted.ok) and not app.player.stair_pose_valid,"Actual zero-time pose failure returns a failed reconstruction result.")
 	var report:Dictionary={"checks":checks,"failures":failures}
+	DirAccess.make_dir_recursive_absolute("user://regression/stair_save")
 	var file:=FileAccess.open("user://regression/stair_save/rejections_01.json",FileAccess.WRITE);file.store_string(JSON.stringify(report,"  "));file.close()
 	print("STAIR_SAVE_REJECTIONS checks=%d failures=%d"%[checks,failures.size()])
 	app.queue_free();await process_frame;await process_frame;await create_timer(.5).timeout

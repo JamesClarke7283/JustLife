@@ -4,6 +4,9 @@ extends SceneTree
 var app: Node
 var checks: int = 0
 var failures: Array[String] = []
+## The purse after the fixture's own grocery order, so the cases below can prove
+## nothing else charges the household for food.
+var shop_funds: int = 0
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -25,6 +28,14 @@ func _fixture() -> Dictionary:
 	sim.household_bills_enabled=false;sim.wants.clear();sim.autonomy=true
 	for need: String in LifeSim.NEED_NAMES:sim.needs[need]=70.0
 	app.household.set_funds(1000);app.household.set_speed(1)
+	# A snack is drawn from the kitchen, so the fixture stocks it through the
+	# household's own order before the spoiled-food case asks for one.
+	var ordered:Dictionary=app.household.order_groceries("weekly")
+	var collected:Dictionary=app.household.collect_groceries()
+	check(bool(ordered.ok) and bool(collected.ok),"The fixture stocks its own kitchen through the household's order.")
+	# The one shop the fixture itself placed is the only money the purse should
+	# ever lose, so the cases below compare against that rather than a bare 1000.
+	shop_funds=int(app.household.funds)
 	var batch: Dictionary=app.household.meals.create_batch("garden_skillet","player",1,"home",sim._autonomy_now())
 	var table: Dictionary=app.world.closest_item("dining",Vector3.ZERO)
 	var at: Vector3=table.node.to_global(Vector3(0,LifeMeals.SURFACE_HEIGHTS.dining,0))
@@ -57,7 +68,7 @@ func _fresh_food_recovery() -> void:
 	check(int(f.batch.served)==1 and app.household.meals.portions.size()==1,"Urgent replanning does not claim extra servings.")
 	var expected: float=5.0+70.0-float(LifeSim.NEED_DECAY.hunger)*32.0/60.0
 	check(absf(float(sim.needs.hunger)-expected)<.00001,"The recipe grants precisely one portion's nutrition, minus actual decay.")
-	check(app.household.funds==1000,"Eating and replanning do not recharge ingredients or buy snacks.")
+	check(app.household.funds==shop_funds,"Eating and replanning do not recharge ingredients or buy snacks.")
 	sim._choose_autonomous_action()
 	check(str(sim.get_current_action().get("id",""))in ["nap","sleep"],"The still-urgent second need receives recovery after eating.")
 	app.household.begin_action("player");var before: float=float(sim.needs.energy);_advance(1)
@@ -83,14 +94,14 @@ func _expired_food() -> void:
 	check(str(f.plate.owner).is_empty(),"Canceling spoiled eating releases the diner ownership.")
 	sim.cancel_action();sim.needs.energy=70;sim._choose_autonomous_action()
 	check(str(sim.get_current_action().get("id",""))=="snack","Hunger falls back to an available snack when all prepared food is spoiled.")
-	check(int(f.batch.served)==1 and app.household.funds==1000,"Spoilage/replanning does not double-claim or charge before arrival.")
+	check(int(f.batch.served)==1 and app.household.funds==shop_funds,"Spoilage/replanning does not double-claim or charge before arrival.")
 
 func _missing_portion() -> void:
 	var f: Dictionary=_fixture();var sim: LifeSim=f.sim
 	app.household.meals.portions.clear()
 	sim.needs.hunger=5;sim.needs.energy=4;_advance(1)
 	check(not is_same(sim.get_current_action(),f.action) and str(sim.get_current_action().get("id",""))in ["nap","sleep"],"An absent portion cannot shield a stale eating action from recovery.")
-	check(float(sim.needs.hunger)<5 and app.household.funds==1000,"A missing portion gives neither phantom nutrition nor an extra charge.")
+	check(float(sim.needs.hunger)<5 and app.household.funds==shop_funds,"A missing portion gives neither phantom nutrition nor an extra charge.")
 
 func _cancel_and_resume() -> void:
 	var f: Dictionary=_fixture();var sim: LifeSim=f.sim
@@ -106,7 +117,7 @@ func _cancel_and_resume() -> void:
 	resumed.autonomous=true;_advance(24)
 	check(float(f.plate.progress)==1.0 and int(f.batch.served)==1 and app.household.meals.portions.size()==1,"Resumed eating completes without creating another serving.")
 	var expected: float=5.0+70.0-float(LifeSim.NEED_DECAY.hunger)*32.0/60.0
-	check(absf(float(sim.needs.hunger)-expected)<.00001 and app.household.funds==1000,"Cancel/resume grants exactly the remaining nutrition and no new charge.")
+	check(absf(float(sim.needs.hunger)-expected)<.00001 and app.household.funds==shop_funds,"Cancel/resume grants exactly the remaining nutrition and no new charge.")
 
 func _run() -> void:
 	app=load("res://scenes/main.tscn").instantiate();root.add_child(app)

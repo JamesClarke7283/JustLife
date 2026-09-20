@@ -11,6 +11,25 @@ class_name LifePets
 const VERSION: int = 1
 const MAX_PETS: int = 6
 
+## A stored pet carries its identity and appearance, plus its own condition —
+## needs, learned tricks and the bond it has with each person it lives with.
+## `PET_FIELDS_LEGACY` is the count before a pet had a condition, so a save
+## written then still loads and simply gains a fresh one.
+const PET_FIELDS: int = 15
+const PET_FIELDS_LEGACY: int = 14
+## Every field a stored pet may carry, across every version the game has shipped.
+## Validation checks that each field PRESENT is one of these rather than that the
+## record has an exact number of them: the record is additive, and an exact count
+## refused the older saves that predate collars, the condition record or the
+## tricks and affection a pet picks up over its life.
+const PET_FIELDS_KNOWN: Array[String] = [
+	"id", "serial", "species", "sex", "name", "coat_color", "mark_color",
+	"gradient", "coat_length", "marking", "collar_color", "leash_color",
+	"day", "fee", "care",
+	"tricks", "trick_progress", "affection", "taught_by",
+	"last_affection_by", "last_bathed_by", "needs",
+]
+
 ## Species. The keys are also the model file stems and the save values.
 const SPECIES: Array[String] = ["cat", "dog"]
 const SPECIES_LABELS: Dictionary = {"cat": "Cat", "dog": "Dog"}
@@ -293,10 +312,9 @@ static func record_from(review: Dictionary, id: String, day: int) -> Dictionary:
 		"leash_color": normalised_colour(review.get("leash_color", ""), DEFAULT_LEASH),
 		"day": day,
 		"fee": price_for(str(review.species)),
-		"tricks": [],
-		"trick_progress": {},
-		"affection": 0,
-		"needs": fresh_needs(),
+		# A pet that has just come home starts content, fed and rested, and its
+		# own condition record travels with it from the first save.
+		"care": LifePetCare.fresh(),
 	}
 
 ## The optional fields a pet acquires over its life with the household: the
@@ -334,14 +352,17 @@ static func pet_error(value: Variant, index: int, known: Dictionary) -> String:
 	if not value is Dictionary:
 		return "Save contains an invalid pet."
 	var pet: Dictionary = value
-	# The base record plus the optional life-with-the-household fields a pet
-	# acquires: its tricks, teaching progress, affection and needs.
-	var base_fields:int=14
-	var optional:Array[String]=["tricks","trick_progress","affection","taught_by","last_affection_by","last_bathed_by","needs"]
-	for key:String in optional:
-		if pet.has(key):base_fields+=1
-	if pet.size()!=base_fields:
-		return "Save contains a pet with unexpected fields."
+	# A pet record is additive: collars and leashes, then a condition, then the
+	# tricks and affection a pet picks up over its life were each added after
+	# saves already existed. Counting fields exactly refused every save written
+	# before the newest addition — a real saved household simply stopped loading
+	# ("a pet with unexpected fields") because it had twelve fields rather than
+	# fifteen. What matters is that every field a record DOES carry is one this
+	# build knows and can validate, so an unknown extra is still refused while an
+	# older, genuinely-known record loads and gains its defaults.
+	for key: String in pet:
+		if not key in PET_FIELDS_KNOWN:
+			return "Save contains a pet with unexpected fields."
 	var id: String = str(pet.get("id", ""))
 	if id.is_empty() or known.has(id):
 		return "Save contains a duplicate pet identity."
@@ -362,19 +383,20 @@ static func pet_error(value: Variant, index: int, known: Dictionary) -> String:
 		return "Save contains an unknown coat length."
 	if not MARKINGS.has(str(pet.get("marking", ""))):
 		return "Save contains an unknown marking."
-	if not colour(pet.get("collar_color", "")) or not colour(pet.get("leash_color", "")):
-		return "Save contains an invalid collar or leash colour."
+	# Collars and leashes were added after pets already existed, so an older
+	# record carries neither and is filled with the authored defaults on load.
+	if pet.has("collar_color") and not colour(pet.get("collar_color", "")):
+		return "Save contains an invalid collar colour."
+	if pet.has("leash_color") and not colour(pet.get("leash_color", "")):
+		return "Save contains an invalid leash colour."
 	if not integer(pet.get("day", 0), 1, 1000000) or not integer(pet.get("fee", 0), 0, 1000000):
 		return "Save contains an invalid pet purchase record."
 	if int(pet.fee) != price_for(str(pet.species)):
 		return "A saved pet price does not match the shop price."
-	var optional_error:String=optional_fields_error(pet)
-	if not optional_error.is_empty():
-		return optional_error
-	if pet.has("needs"):
-		var needs_problem:String=needs_error(pet.get("needs"))
-		if not needs_problem.is_empty():
-			return needs_problem
+	if pet.size() == PET_FIELDS:
+		var care_error: String = LifePetCare.validate(pet.get("care", null), [])
+		if not care_error.is_empty():
+			return care_error
 	return ""
 
 
