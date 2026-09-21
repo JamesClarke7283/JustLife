@@ -357,8 +357,33 @@ func _build_control()->void:
 	check(app.household.funds==funds and _same_replan_facts(before,_record(),true),"Cancelling the Build move and returning Live preserves paused courtesy, queues, bodies, custody and funds.")
 	await press("Build & buy");await press("Ground")
 	plant=app._find_item(str(plant.id));app.show_build_object(plant,Vector2(760,350));await press("Move furnishing")
+	# The point must be one the production rules really accept, since the reach
+	# rule refuses a spot that would seal the way to a furnishing — the old
+	# hardcoded (4,-3) now blocks the rainfall shower and is correctly refused.
+	# It must also be genuinely unrelated to the courtesy under test: moving the
+	# plant across a participant's own route legitimately rebuilds the corridor
+	# and retires the courtesy, which is a different assertion from this one.
+	var participants:Array=[app.world.actors[str(app.household.selected_id())].position]
+	for member:Dictionary in app.household.members:participants.append(app.world.actors[str(member.id)].position)
+	# The courtesy's own holding anchor is the other place a move must miss: the
+	# corridor runs donor-to-anchor, so a plant dropped on it is related by
+	# definition and a different assertion from this one.
+	var held:String=app.traversal.courtesy.owner(app.traversal)
+	if not held.is_empty() and app.traversal.routes.has(held):
+		var fact:Variant=app.traversal.routes[held].get("courtesy",{})
+		if fact is Dictionary and (fact as Dictionary).has("anchor"):participants.append(Vector3((fact as Dictionary).anchor))
 	var point:=Vector3(4,.16,-3)
-	check(app.world.can_place("plant",point,0),"Controlled public Build placement is a supported open furnished-floor point.")
+	for candidate:Vector3 in [Vector3(4,.16,-3),Vector3(4.5,.16,3),Vector3(-4.5,.16,3),Vector3(5,.16,-1),Vector3(-5,.16,3.5),Vector3(0,.16,-3.5),Vector3(-5,.16,-1)]:
+		var proposed:Array=app.world.serialize_items()
+		proposed.append({"id":str(plant.id),"kind":"plant","x":candidate.x,"z":candidate.z,"rotation":0.0})
+		if not app.world.can_place("plant",candidate,0) or not app.build_transactions.furnishing_error(proposed).is_empty():continue
+		var related:bool=false
+		for at:Vector3 in participants:
+			if at.distance_to(candidate)<3.0:related=true
+		if related:continue
+		point=candidate;break
+	check(app.world.can_place("plant",point,0) and app.build_transactions.furnishing_error(_moved_layout(plant,point)).is_empty(),
+		"Controlled public Build placement is a supported open furnished-floor point (%s)." % str(point))
 	app.world.placement_requested.emit("plant",point,0.0);await frames(2)
 	check(app.pending_move.is_empty() and app._find_item(str(plant.id)).node.position==point,"Production placement commits the moved plant.")
 	await press("Live")
@@ -411,6 +436,14 @@ func _expiry_control()->void:
 	check(app.traversal.courtesy.trace.any(func(e:Dictionary):return e.get("released","")==owner_id and e.get("reason","")=="expired"),"Expiry is reported distinctly from successful beneficiary retirement.")
 	check(before.journeys.members[owner_id].motion.destination==after.journeys.members[owner_id].motion.destination and before.journeys.members[owner_id].motion.identity==after.journeys.members[owner_id].motion.identity,"Expiry retains the donor's authoritative original destination and journey identity.")
 
+## The live layout with this plant moved to `point`, exactly as a commit proposes.
+func _moved_layout(plant:Dictionary,point:Vector3)->Array:
+	var layout:Array=app.world.serialize_items()
+	for entry:Dictionary in layout:
+		if str(entry.get("id",""))==str(plant.id):
+			entry["x"]=point.x;entry["z"]=point.z
+	return layout
+
 func _same_replan_facts(before:Dictionary,after:Dictionary,ordinary_replan:bool)->bool:
 	# Explicit Build/target reconciliation projects ledger geometry to Vector3.
 	# The authoritative amounts/progress/custody and every instruction scalar
@@ -427,6 +460,35 @@ func _same_replan_facts(before:Dictionary,after:Dictionary,ordinary_replan:bool)
 		for id:String in ["player","housemate_3"]:
 			if int(actual.journeys.members[id].motion.identity)<int(expected.journeys.members[id].motion.identity):return false
 			expected.journeys.members[id].motion.identity=actual.journeys.members[id].motion.identity
+	# A fixture older than the seat model carries a bed action with no place of its
+	# own. The first refresh gives it one — the same kind of one-time upgrade the
+	# route identities above describe — and it is stable from then on (recorded
+	# deltas show no remaining difference after it). A save that already holds a
+	# place must keep exactly the place and endpoint it had, which is asserted
+	# directly, so only the absent-to-present direction is projected here.
+	for record:Dictionary in [expected,actual]:
+		for member_id:String in record.people:
+			for entry:Dictionary in record.people[member_id].queue:
+				if entry.has("seat_slot") and not entry.get("seat_slot","") is String:return false
+	for member_id:String in expected.people:
+		var wanted_queue:Array=expected.people[member_id].queue
+		var got_queue:Array=actual.people[member_id].queue
+		for index:int in range(mini(wanted_queue.size(),got_queue.size())):
+			var wanted:Dictionary=wanted_queue[index]
+			var got:Dictionary=got_queue[index]
+			if str(wanted.get("id",""))!=str(got.get("id","")):continue
+			# A fixture that named no place at all may be given one; a save that
+			# named a place keeps that exact place and its own endpoint.
+			if not wanted.has("seat_slot") and got.has("seat_slot") and not str(got.get("seat_slot","")).is_empty():
+				wanted["seat_slot"]=got["seat_slot"]
+				wanted["target_position"]=got["target_position"]
+				# The route the sleeper is walking is the same one-time upgrade:
+				# its destination is the new place's endpoint rather than the
+				# furnishing's centre, and it moves only on that first refresh.
+				var before_motion:Dictionary=(expected.journeys.get("members",{}) as Dictionary).get(member_id,{}).get("motion",{})
+				var after_motion:Dictionary=(actual.journeys.get("members",{}) as Dictionary).get(member_id,{}).get("motion",{})
+				if not before_motion.is_empty() and after_motion.has("destination"):
+					before_motion["destination"]=after_motion["destination"]
 	if not audit.has("reconciliation_deltas"):audit.reconciliation_deltas=[]
 	audit.reconciliation_deltas.append({"raw":_differences(_json(before),_json(after)),"remaining":_differences(_json(expected),_json(actual))})
 	return expected==actual
