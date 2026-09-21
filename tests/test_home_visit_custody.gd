@@ -8,6 +8,11 @@ func _run()->void:
 	app=MainScene.instantiate();root.add_child(app);app.set_process(false);app.set_sound(false);_setup()
 	app.household.member_action_finished.connect(func(id:String,action:Dictionary):
 		if id=="player":finished.append(str(action.id)))
+	# A recipe's ingredients come out of the kitchen rather than the purse, so
+	# the fixture stocks it through the household's own order before it cooks.
+	app.household.set_funds(app.household.funds+200)
+	app.household.order_groceries("weekly")
+	app.household.collect_groceries()
 	app.queue_interaction(_item("stove"),"cook")
 	for index:int in 500:
 		if str(app.sim.get_current_action().get("phase",""))=="active":break

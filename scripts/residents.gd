@@ -345,7 +345,11 @@ func snapshot() -> Dictionary:
     captured[active_place][id].position=[actor.position.x,actor.position.y,actor.position.z]
     captured[active_place][id].rotation=actor.rotation.y
  var result:Dictionary={"version":1,"locations":captured}
- if home_visit.active() or home_visit.next_serial>1:result.home_visit=home_visit.snapshot()
+ # A ringing doorbell is its own record with no visit yet, so it must be reason
+ # enough to write the home-visit envelope: keyed only on an active visit, a
+ # caller waiting on the doorstep was silently dropped from the save and the
+ # household forgot them on the next load.
+ if home_visit.active() or home_visit.ringing() or home_visit.next_serial>1:result.home_visit=home_visit.snapshot()
  return result
 
 func restore(value:Variant) -> void:
