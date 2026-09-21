@@ -64,7 +64,13 @@ func run() -> void:
  before=maya.position
  await advance(1)
  check(maya.position==before,"The neighbor waits while the player approaches to chat")
- app.cancel_current_action();await advance(.5)
+ app.cancel_current_action()
+ # A full second, matching the sibling "does not freeze the walker" window above.
+ # Half a second was a razor-thin rate proxy: the van parks its obstacle band
+ # (z 7.8-9.0) across the resident sidewalk lanes (z 7.8-8.8), so a released
+ # walker first steps around it and covers only ~0.33 m in that first half
+ # second while still plainly resuming the walk.
+ await advance(1)
  check(maya.position.distance_to(before)>.4,"Canceling chat releases the resident to walk again")
  var home:Array=app.world.serialize_items()
  app.travel_to("maya_home")
