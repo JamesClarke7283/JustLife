@@ -66,6 +66,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument('--group', choices=('all', 'stair', 'walk'), default='all')
+    parser.add_argument('--timeout', type=int, default=420,
+                        help='Per-process cap in seconds. Since the iteration-50 clock the walk-controls phase needs about '
+                             '250 s on an idle machine and more on a loaded one; the former 180 s cap killed it mid-run.')
     args = parser.parse_args()
     if not sys.platform.startswith('linux'):
         parser.error('This runner requires Linux XDG isolation and never uses player data.')
@@ -137,11 +140,11 @@ def main():
         error = ''
         try:
             with (evidence / 'run.log').open('w') as log:
-                result = subprocess.run(command, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=180)
+                result = subprocess.run(command, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=args.timeout)
             code = result.returncode
         except subprocess.TimeoutExpired:
             code = 124
-            error = 'Owned subprocess reached its 180-second cap and was killed and reaped.'
+            error = 'Owned subprocess reached its %d-second cap and was killed and reaped.' % args.timeout
         except OSError as exc:
             code, error = 127, str(exc)
         output = (evidence / 'run.log').read_text()

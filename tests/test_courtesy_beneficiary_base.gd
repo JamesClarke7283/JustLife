@@ -74,8 +74,21 @@ func _project_journeys(data:Dictionary)->Dictionary:
 	return projected
 
 func _project_queue(queue:Array)->Array:
+	# The loader rebuilds each stored action from the live definition table (with
+	# the recipe's own definition for a cook) and then adopts the saved progress,
+	# so a definition-derived field (`label`, `changes`, `cost`, `description`,
+	# `skill`, `xp`) reflects today's code rather than the text that was saved —
+	# which is what lets a retuned activity load. The saved duration, elapsed,
+	# identity and ownership are what a fresh load must preserve.
 	var result:Array=queue.duplicate(true)
-	for action:Dictionary in result:action.progress=clampf(float(action.elapsed)/float(action.duration),0.0,1.0)
+	for action:Dictionary in result:
+		action.progress=clampf(float(action.elapsed)/float(action.duration),0.0,1.0)
+		var definition:Dictionary=app.sim._actions.get(str(action.get("id","")),{})
+		if definition.is_empty():continue
+		var rebuilt:Dictionary=definition.duplicate(true)
+		if str(action.get("id",""))=="cook":rebuilt=LifeMeals.cooking_definition(rebuilt,str(action.get("recipe","garden_skillet")))
+		for key:String in ["label","changes","cost","description","skill","xp"]:
+			if rebuilt.has(key):action[key]=rebuilt[key]
 	return result
 
 func _physical_facts()->Dictionary:

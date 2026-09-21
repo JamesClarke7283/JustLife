@@ -463,9 +463,15 @@ func snapshot()->Dictionary:
 		if not saved.get("meal",{}).is_empty():saved.meal.target=_packed(saved.meal.target)
 	var saved_bell:Dictionary=bell.duplicate(true)
 	if not saved_bell.is_empty():
+		# The doorstep is a Vector3 in memory and must be packed like every other
+		# point the save carries: `_point` validates an Array, so an unpacked
+		# doorstep made the game refuse its own save ("Save contains an invalid
+		# doorstep position") for as long as a caller stood at the door.
+		if saved_bell.get("doorstep") is Vector3:saved_bell.doorstep=_packed(saved_bell.doorstep)
 		var bell_actor:LifeActor=_body(str(saved_bell.guest))
 		if is_instance_valid(bell_actor):
 			saved_bell.position=_packed(bell_actor.position);saved_bell.rotation=bell_actor.rotation.y
+		elif saved_bell.get("position") is Vector3:saved_bell.position=_packed(saved_bell.position)
 	return {"version":2,"next_serial":next_serial,"visit":saved,"doorbell":saved_bell,"next_bell_serial":next_bell_serial}
 
 func restore(value:Dictionary)->void:

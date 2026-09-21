@@ -60,7 +60,7 @@ func _fresh_immediate()->void:
 		check(_same(_project_journeys(disk.journeys),app.traversal.snapshot()),"Fresh "+str(entry.label)+" retains exact decoded authoritative journeys with explicit typed vectors/yaw only.")
 		for saved:Dictionary in disk.members:
 			var id:String=str(saved.id);var sim:LifeSim=app.household.member_sim(id)
-			check(_same(_project_queue(saved.state.action_queue),sim.action_queue) and sim.needs==saved.state.needs and sim.career==saved.state.career,"Fresh exact decoded queue/paid/progress, needs and career: "+id)
+			check(_same(_project_queue(saved.state.action_queue),sim.action_queue) and sim.needs==saved.state.needs and sim.career==_decoded_integer_fields(saved.state.career,["level","salary"],id+".career"),"Fresh exact decoded queue/paid/progress, needs and career: "+id)
 			check(sim.education==_decoded_integer_fields(saved.state.education,["attended","enrolled_day","first_class_day","homework","last_attendance_day","last_day","last_homework_day","last_prepared_homework_day","missed","prepared","version"],id+".education"),"Fresh education retains all decoded values with only existing explicit integer fields: "+id)
 			check(app.world.actors[id].position==LifeJourneyState.vector(disk.journeys.members[id].position),"Fresh exact canonical typed body: "+id)
 		check(app.household.meals.get_state()==_decoded_integer_fields(disk.meals,["version","serial"],"food"),"Fresh authoritative food exact to decoded bytes except existing version/serial integer fields.")

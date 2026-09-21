@@ -5,7 +5,7 @@ Run `python tests/run_courtesy_beneficiaries.py` on Linux. `--group stair` and
 explicit runtime manifest and named tests into a new private project, disables
 autoload/editor integrations there, isolates XDG/config/cache/tmp/saves, retains
 each log and receipt, and rejects errors, source drift or overwritten existing
-saves. Each owned process has a 180-second cap. No renderer or native pointer is
+saves. Each owned process has a 420-second cap (`--timeout`), raised from 180 s after the iteration-50 clock change made the walk-controls phase exceed the old limit. No renderer or native pointer is
 used; synthetic public buttons/signals and ordinary `.05` controller calls are
 labeled in the evidence. There is one yielded engine frame per controller step.
 

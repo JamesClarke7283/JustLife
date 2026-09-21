@@ -47,10 +47,25 @@ func _project_journeys(data:Dictionary)->Dictionary:
 		if motion.has("courtesy"):motion.courtesy.anchor=LifeJourneyState.packed(LifeJourneyState.vector(motion.courtesy.anchor))
 	return projected
 
+
 func _project_queue(queue:Array)->Array:
+	# The loader rebuilds each stored action from the live definition table (with
+	# the recipe's own definition for a cook) and then adopts the saved progress,
+	# so a definition-derived field (`label`, `changes`, `cost`, `description`,
+	# `skill`, `xp`) reflects today's code rather than the text that was saved —
+	# which is what lets a retuned activity load. The saved duration, elapsed,
+	# identity and ownership are what a fresh load must preserve.
 	var result:Array=queue.duplicate(true)
-	for action:Dictionary in result:action.progress=clampf(float(action.elapsed)/float(action.duration),0.0,1.0)
+	for action:Dictionary in result:
+		action.progress=clampf(float(action.elapsed)/float(action.duration),0.0,1.0)
+		var definition:Dictionary=app.sim._actions.get(str(action.get("id","")),{})
+		if definition.is_empty():continue
+		var rebuilt:Dictionary=definition.duplicate(true)
+		if str(action.get("id",""))=="cook":rebuilt=LifeMeals.cooking_definition(rebuilt,str(action.get("recipe","garden_skillet")))
+		for key:String in ["label","changes","cost","description","skill","xp"]:
+			if rebuilt.has(key):action[key]=rebuilt[key]
 	return result
+
 
 func _decoded_integer_fields(decoded:Dictionary,fields:Array,scope:String)->Dictionary:
 	var result:Dictionary=decoded.duplicate(true)
@@ -102,7 +117,11 @@ func compare_loaded(disk:Dictionary)->void:
 	for saved:Dictionary in disk.members:
 		var sim:LifeSim=app.household.member_sim(str(saved.id))
 		check(_same(_project_queue(saved.state.action_queue),sim.action_queue),"Complete fresh queue/paid/duration/target and elapsed-derived progress: "+str(saved.id))
-		check(sim.needs==saved.state.needs and sim.career==saved.state.career,"Exact fresh needs and career: "+str(saved.id))
+		check(sim.needs==saved.state.needs,"Exact fresh needs: "+str(saved.id))
+		# A career's level and salary are whole numbers the game stores as ints,
+		# so JSON hands them back as floats. They are compared through the same
+		# named integer projection the education and food identities use.
+		check(sim.career==_decoded_integer_fields(saved.state.career,["level","salary"],str(saved.id)+".career"),"Exact fresh career with its existing integer level and salary identities: "+str(saved.id))
 		check(sim.education==_decoded_integer_fields(saved.state.education,["attended","enrolled_day","first_class_day","homework","last_attendance_day","last_day","last_homework_day","last_prepared_homework_day","missed","prepared","version"],str(saved.id)+".education"),"Exact education with existing nominated integer identities: "+str(saved.id))
 	check(app.household.meals.get_state()==_decoded_integer_fields(disk.meals,["version","serial"],"food"),"Exact fresh food with only existing version/serial integer identities")
 

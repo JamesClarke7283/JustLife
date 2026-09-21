@@ -5589,6 +5589,17 @@ func _prepare_loaded_world(data:Dictionary) -> Dictionary:
 		candidate.world.set_actor_away(id,str(away.get("phase",""))=="away",not away.is_empty())
 	candidate.residents.attach(candidate.current_venue)
 	candidate._bind_member(candidate.household.selected_id())
+	# The weekly van's obstacle is part of the walkable graph, so the candidate
+	# must present and sync it before any route is restored: `_sync_food_truck`
+	# rebuilds navigation when the van's presence changes, and a rebuild after
+	# restore bumps the graph generation and orphans every restored route with it
+	# (the next live frame then re-plans a donor and mints a new identity). Doing
+	# it here keeps the candidate's graph and routes on one generation. The
+	# service is the controller's own, which `_ready` has not yet created
+	# off-tree, so the candidate makes its own.
+	candidate.food_truck=LifeFoodTruck.new(candidate)
+	candidate.add_child(candidate.food_truck)
+	candidate._sync_food_truck()
 	var restored:Dictionary=candidate._restore_journeys()
 	if not bool(restored.ok):viewport.free();candidate.free();return restored
 	var guest_error:String=candidate.residents.home_visit.physical_error()
@@ -5597,7 +5608,7 @@ func _prepare_loaded_world(data:Dictionary) -> Dictionary:
 	candidate.meal_flow.sync_world(false)
 	candidate._reconstruct_paused_cooking()
 	candidate._reconstruct_paused_rest()
-	return {"ok":true,"candidate":candidate,"viewport":viewport}
+	return {"ok":true,"candidate":candidate,"viewport":viewport,"truck_parked":candidate._truck_parked,"truck_seen_day":candidate._truck_seen_day}
 
 func _adopt_loaded_world(prepared:Dictionary,slot_id:String,title:String="") -> void:
 	var candidate:Node=prepared.candidate
@@ -5610,6 +5621,17 @@ func _adopt_loaded_world(prepared:Dictionary,slot_id:String,title:String="") -> 
 	world.reparent(self,false);household.reparent(self,false)
 	traversal=candidate.traversal;traversal.app=self
 	residents=candidate.residents;residents.app=self
+	# The candidate presented the weekly van and synced its obstacle into the
+	# graph it restored routes against, so the adopting controller takes both the
+	# service and its parked state: rebuilding the same graph here would bump the
+	# generation and orphan every route that was just restored.
+	if is_instance_valid(candidate.food_truck):
+		if is_instance_valid(food_truck):food_truck.queue_free()
+		food_truck=candidate.food_truck
+		food_truck.app=self
+		food_truck.reparent(self,false)
+	_truck_parked=bool(prepared.get("truck_parked",false))
+	_truck_seen_day=int(prepared.get("truck_seen_day",-1))
 	meal_flow=candidate.meal_flow;meal_flow.app=self;meal_flow.reparent(self,false)
 	sanitation_flow=candidate.sanitation_flow;sanitation_flow.app=self;sanitation_flow.reparent(self,false)
 	household_flow=candidate.household_flow;household_flow.app=self;household_flow.reparent(self,false)

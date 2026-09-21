@@ -264,8 +264,11 @@ func tick(delta:float) -> void:
   # The morning jog plays on the home lot's lane: at other venues the
   # resident keeps their normal presence rhythm.
   var morning_on:bool=not home_visit.owns(id) and active_place=="home" and LifeResidentCatalogue.routine_morning_active(person,LifeEducation.weekday(app.sim.day),app.sim.minutes)
-  if morning_on and str(state.phase)!="walking":
-   # The second beat: a morning spent out on the lane before the routine.
+  if speed>0 and morning_on and str(state.phase)!="walking":
+   # The second beat: a morning spent out on the lane before the routine. This
+   # is a presence transition like the routine ones below, so a paused household
+   # keeps it: without the clock guard a paused save load flipped a neighbour
+   # from home to walking and made him visible with no frames advanced.
    state.phase="walking";state.routine_away=false
    actor.visible=true
    app.world.set_actor_away(id,false,false);sidewalk_routes.erase(id)
