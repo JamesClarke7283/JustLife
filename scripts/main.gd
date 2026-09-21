@@ -3283,7 +3283,10 @@ func on_placement(kind:String,p:Vector3,angle:float,style:String="",size:String=
 	# costs the purse exactly once and an abandoned placement does not re-charge.
 	var delivered:bool=not pending_delivery.is_empty() and str(pending_delivery.kind)==kind
 	if not pending_delivery.is_empty():pending_delivery={}
-	var price:int=0 if (moving or delivered) else int(LifeCatalog.ITEMS[kind].price)
+	# The family's own price, resolved the way the catalogue quotes it: a fence
+	# prices from the footprint it covers and a sized family from its size table,
+	# so a bare `.price` read crashed on every family that sells either way.
+	var price:int=0 if (moving or delivered) else Variants.price(data,variant.size)
 	if sim.funds<price:show_notice("You need ℒ%d for this furnishing." % price);return
 	var snapshot:Dictionary=pending_move.snapshot if moving else _build_snapshot(price)
 	var entry:Dictionary={"id":str(pending_move.entry.id) if moving else "placed_%d" % Time.get_ticks_usec(),"kind":kind,"x":p.x,"z":p.z,"rotation":angle}
@@ -4232,7 +4235,11 @@ func move_item(item:Dictionary) -> void:
 	pending_move={"entry":original,"snapshot":snapshot}
 	world.remove_item(str(original.id))
 	build_transactions.furnishing_rebuilt(protection)
-	world.begin_placement(str(original.kind))
+	# A move must ghost the object the player actually picked up: a family whose
+	# art is styled (shrubs, fences, hot tubs, pools, trees) ships no base model,
+	# so asking for the bare kind loaded a missing path and `instantiate()` on
+	# the null resource crashed the game every time the player moved one.
+	world.begin_placement(str(original.kind),str(original.get("style","")),str(original.get("size","")))
 	world.placement_angle=float(original.get("rotation",0))
 	# Keep actions attached to this ID until the move is committed or canceled.
 	_refresh_sim_targets(false)

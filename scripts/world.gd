@@ -1169,7 +1169,24 @@ func begin_placement(kind:String,style:String="",size:String="") -> void:
 	placement_angle=0
 	var path:String=Variants.model_path(kind,style)
 	if not ResourceLoader.exists(path):path="res://assets/models/%s.glb" % kind
-	ghost=load(path).instantiate()
+	# A family whose art is styled may ship no base model at all, and a caller
+	# that names no style would then load a missing path. Fall back to a model
+	# the family really ships, and refuse the placement cleanly rather than
+	# instancing a null resource and taking the game down with it.
+	if not ResourceLoader.exists(path):
+		for candidate:String in Variants.model_paths(kind,LifeCatalog.get_item(kind)):
+			if ResourceLoader.exists(candidate):path=candidate;break
+	if not ResourceLoader.exists(path):
+		clear_placement()
+		return
+	var resource:Resource=load(path)
+	if resource==null:
+		clear_placement()
+		return
+	ghost=resource.instantiate()
+	if ghost==null:
+		clear_placement()
+		return
 	var scale:float=Variants.size_scale(size)
 	if not is_equal_approx(scale,1.0):ghost.scale=Vector3.ONE*scale
 	add_child(ghost)
