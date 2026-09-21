@@ -51,13 +51,20 @@ func _producer()->void:
 	app.world.actors.player.position=Vector3(-2,.16,-4);app.world.actors.housemate_1.position=Vector3(2,3.16,4);app.world.actors.housemate_2.position=Vector3(-2,.16,-2)
 	app.select_household_member(2);app.sim.skills.cooking.level=5
 	var money:int=app.household.funds
+	# A recipe's ingredients come out of the kitchen rather than the purse, so
+	# the fixture stocks it through the household's own order before it bakes.
+	app.household.set_funds(app.household.funds+200)
+	app.household.order_groceries("weekly")
+	app.household.collect_groceries()
+	money=app.household.funds
+	var stock_before:int=LifeGroceries.stock(app.household.groceries)
 	app.meal_flow.queue_recipe("ground_oven","harvest_bake")
 	var cooking:bool=false
 	for frame:int in 1200:
 		_step()
 		var action:Dictionary=app.sim.get_current_action()
 		if str(action.get("id",""))=="cook" and bool(action.paid) and float(action.elapsed)>8:cooking=true;break
-	check(cooking and app.household.funds==money-24,"Explicit skill-unlock fixture actually approaches its oven and pays exactly ℒ24 for a progressing bake.")
+	check(cooking and app.household.funds==money and LifeGroceries.stock(app.household.groceries)==stock_before-1,"Explicit skill-unlock fixture actually approaches its oven and draws one meal from a stocked kitchen for a progressing bake.")
 	if not cooking:return
 	app.household.set_speed(0);app.overlay_open=true
 	check(app.save_game("","Before household expansion"),"Named positive save includes the actual paid oven before the later adoption.")
