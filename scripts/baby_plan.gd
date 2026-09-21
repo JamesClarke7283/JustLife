@@ -18,7 +18,8 @@ const MAX_BIRTHS: int = 8
 const SLEEP_ACTIONS: Array[String] = ["sleep", "nap"]
 
 const FIRST_NAMES: Array[String] = ["Wren","Finley","Kit","Rowan","Sage","Remy","Jules","Noa","Alex","Robin","Avery","Marin"]
-const LAST_NAMES: Array[String] = ["Vale","Avery","Brook","Solis","Finch","Ellis","Moss","Linden","Reed","Ash","Woods","Bell"]
+## A baby's surname is not drawn from a pool: it inherits the family's own name
+## from its parents, so a child is never named after a stranger. See `surname_of`.
 const SKIN_TONES: Array[String] = ["f2d1b1","e7b98f","d9a17d","b77e58","925c40","613e30"]
 const HAIR_COLORS: Array[String] = ["2a2420","54382a","89563a","c2a16b","dfccb0","784e49"]
 const EYE_COLORS: Array[String] = ["547365","55738f","704b36","b18d54","77797c"]
@@ -136,6 +137,13 @@ static func mother_of(a: LifeSim, a_id: String, b: LifeSim, b_id: String) -> Arr
 
 ## Decide the baby at conception, exactly once. Appearance leans on the
 ## parents and the rest is a seeded, reproducible roll of the creator palette.
+static func surname_of(profile: Dictionary) -> String:
+	# A Lifelet's surname is the last word of their own name. The household has no
+	# separate family-name field, so the parents' names are what the child inherits
+	# from: a baby shares the family name rather than drawing a stranger's.
+	var parts:PackedStringArray=str(profile.get("name","")).strip_edges().split(" ",false)
+	return str(parts[parts.size()-1]) if parts.size()>1 else ""
+
 static func roll(mother: Dictionary, father: Dictionary, serial: int) -> Dictionary:
 	var rng:=RandomNumberGenerator.new()
 	rng.seed = abs(str(mother.get("name","Mother")).hash()*31 + str(father.get("name","Father")).hash()*17 + clampi(serial,1,1000000)*7919)
@@ -149,8 +157,14 @@ static func roll(mother: Dictionary, father: Dictionary, serial: int) -> Diction
 	var aspiration:String = str([mother,father][rng.randi()%2].get("aspiration","Balanced"))
 	if not aspiration in ASPIRATIONS:
 		aspiration = "Balanced"
+	# The child takes the father's surname when he has one, otherwise the
+	# mother's, so a single-parent household still names the baby after its
+	# family rather than after nobody.
+	var family:String = surname_of(father)
+	if family.is_empty():family = surname_of(mother)
+	var first:String = FIRST_NAMES[rng.randi()%FIRST_NAMES.size()]
 	var profile:Dictionary = {
-		"name": "%s %s" % [FIRST_NAMES[rng.randi()%FIRST_NAMES.size()],LAST_NAMES[rng.randi()%LAST_NAMES.size()]],
+		"name": (first+" "+family) if not family.is_empty() else first,
 		"age_stage":"baby", "life_stage":"minor", "gender":gender, "frame":frame_for(gender),
 		"hair": BABY_HAIR_STYLES[rng.randi()%BABY_HAIR_STYLES.size()], "skin_color":skin, "hair_color":hair_color, "eye_color":eye,
 		"top_color":top, "bottom_color":bottom, "outfit":0, "bottom":0,
