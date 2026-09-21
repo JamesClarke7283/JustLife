@@ -1255,6 +1255,12 @@ func can_place(kind:String,p:Vector3,angle:float,style:String="",size_choice:Str
 		# though the building's own declared outline covers that floor.
 		for panel:Rect2 in item_panels(item):
 			if rect.grow(.05).intersects(panel):return false
+	# The app's own reach rule (set by `main.gd`) refuses a spot that would seal a
+	# doorway or cut off a furnishing the household still needs to walk to. The
+	# ghost preview and the click both apply it, so this preview must too: without
+	# it `can_place` answered true for a point the commit then refused, and a
+	# caller could show a green ghost, accept the click and silently not place.
+	if placement_reach_check.is_valid() and not bool(placement_reach_check.call(kind,p,angle)):return false
 	return true
 
 func wall_snap(kind:String,p:Vector3,reach:float=1.0,size_choice:String="") -> Dictionary:

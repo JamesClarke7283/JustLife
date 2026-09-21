@@ -117,6 +117,17 @@ var ambience_player: AudioStreamPlayer
 var music_player: AudioStreamPlayer
 var sound_enabled: bool = true
 var music_enabled: bool = true
+## Automatic saving. The player chooses the interval; the default is five
+## minutes. `autosave_wait` counts real seconds of play since the last write, and
+## only advances while the household is actually living, so a paused menu or a
+## build session never spends the interval.
+const AUTOSAVE_CHOICES: Array[int] = [0, 1, 2, 5, 10, 15, 20, 30, 45, 60]
+const AUTOSAVE_DEFAULT_MINUTES: int = 5
+var autosave_minutes: int = AUTOSAVE_DEFAULT_MINUTES
+var autosave_wait: float = 0.0
+## The slot an autosave writes to, so repeated writes update one file instead of
+## filling the picker. Empty means no autosave slot has been made yet.
+var autosave_slot: String = ""
 ## Pets: the live bodies the household owns. `pets` is the shop view; the saved
 ## record lives in the household, so a load always rebuilds the same animals.
 var pet_shop: LifePetShopFlow
@@ -5289,7 +5300,7 @@ func save_game(slot_id:String="",title:String="") -> bool:
 	_store_motion()
 	if current_venue=="home":home_layout=world.serialize_items()
 	else:venue_layouts[current_venue]=world.serialize_items()
-	sim.character["world_state"]={"player":[player.position.x,player.position.y,player.position.z],"player_rotation":player.rotation.y,"camera":[world.camera_target.x,world.camera_target.y,world.camera_target.z],"angle":world.camera_angle,"elevation":world.camera_elevation,"zoom":world.camera.size,"floor":floor_color,"lot":selected_lot,"cutaway":world.cutaway,"view_level":world.view_level,"sound":sound_enabled,"music":music_enabled,"venue":current_venue,"home_layout":home_layout,"venue_layouts":venue_layouts,"land":LifeBuildingState.land.duplicate(true),"properties":_properties_for_save(),"residents":residents.snapshot()}
+	sim.character["world_state"]={"player":[player.position.x,player.position.y,player.position.z],"player_rotation":player.rotation.y,"camera":[world.camera_target.x,world.camera_target.y,world.camera_target.z],"angle":world.camera_angle,"elevation":world.camera_elevation,"zoom":world.camera.size,"floor":floor_color,"lot":selected_lot,"cutaway":world.cutaway,"view_level":world.view_level,"sound":sound_enabled,"music":music_enabled,"autosave_minutes":autosave_minutes,"venue":current_venue,"home_layout":home_layout,"venue_layouts":venue_layouts,"land":LifeBuildingState.land.duplicate(true),"properties":_properties_for_save(),"residents":residents.snapshot()}
 	# Store the user's live speed, not a temporary menu/build pause.
 	var current_speed:int=sim.speed
 	sim.speed=speed_before_build if mode=="build" else (pause_before_menu if overlay_pauses_sim else current_speed)
@@ -5313,6 +5324,29 @@ func save_game(slot_id:String="",title:String="") -> bool:
 	if saved:show_notice("Your life is saved. See you right here.")
 	else:show_notice(str(result.get("error","The save could not be written.")))
 	return saved
+
+## Automatic saving, on the interval the player chose. It goes through
+## `save_game`, so an automatic write prepares the world exactly as a manual one
+## does, and it reuses one dedicated slot so repeated writes update a single file
+## rather than filling the picker.
+func tick_autosave(delta:float) -> void:
+	if autosave_minutes<=0 or delta<=0.0 or not is_finite(delta):return
+	# Only a living household spends the interval: a paused menu or a build
+	# session is not progress to save, and a creator or travel screen has no
+	# household at all.
+	if mode not in ["live","build"] or not is_instance_valid(household) or household.members.is_empty():return
+	if overlay_open or overlay_pauses_sim:return
+	autosave_wait+=delta
+	if autosave_wait<float(autosave_minutes)*60.0:return
+	autosave_wait=0.0
+	# `save_game` keeps `active_save_id` current, so the first automatic write
+	# creates a slot and every later one updates that same file. A named save the
+	# player made is therefore the one kept current, and a household that has
+	# never been named gets its own automatic slot.
+	var first:bool=active_save_id.is_empty()
+	var saved:bool=save_game("","Automatic save" if first else "")
+	if saved and first:autosave_slot=active_save_id
+	if saved:show_notice("Saved automatically.")
 
 func _restore_world_state(value:Variant) -> void:
 	if not value is Dictionary:return
@@ -5344,6 +5378,13 @@ func _restore_world_state(value:Variant) -> void:
 	if not household.journeys.is_empty():world.set_view_level(int(state.get("view_level",maxi(0,world.point_level(player.position)))))
 	if state.get("sound") is bool:set_sound(state.sound)
 	if state.get("music") is bool:set_music(state.music)
+	# The autosave interval is a player setting, so it rides the same record the
+	# sound and music choices do. An older save carries no key and keeps the
+	# default; JSON hands the number back as a float, and a key outside the
+	# offered choices is ignored rather than adopted.
+	if state.has("autosave_minutes"):
+		var restored:int=int(_saved_number(state.get("autosave_minutes"),float(AUTOSAVE_DEFAULT_MINUTES),0.0,1000000.0))
+		if restored in AUTOSAVE_CHOICES:autosave_minutes=restored
 	world.update_camera()
 
 ## Buy home insurance for the house the household lives in. It is one purchase
@@ -5924,6 +5965,7 @@ func _process(delta:float) -> void:
 		traversal.courtesy.consider(traversal)
 		_tick_pets(delta)
 		_tick_food_truck()
+		tick_autosave(delta)
 		hud_refresh+=delta
 		if hud_refresh>.25:hud_refresh=0;refresh_hud()
 	if mode=="build":
@@ -7218,25 +7260,34 @@ func _refresh_aged_member(id: String,epoch:int=-1,sender:LifeHousehold=null) -> 
 
 func show_life_settings() -> void:
 	_begin_pause_overlay();menus.shade()
-	card(Vector2(445,177),Vector2(550,546),P.WHITE,24,overlay)
-	text_label("Life at your pace",Vector2(476,207),Vector2(486,60),35,P.INK,true,overlay)
-	paragraph("Choose how quickly your household grows. Changing the pace keeps each Lifelet's progress through their current age.",Vector2(479,286),Vector2(478,75),17,P.MUTED,overlay)
-	small_caps("Lifespan",Vector2(480,389),Vector2(477,25),overlay)
+	card(Vector2(445,150),Vector2(550,620),P.WHITE,24,overlay)
+	text_label("Life at your pace",Vector2(476,180),Vector2(486,60),35,P.INK,true,overlay)
+	paragraph("Choose how quickly your household grows. Changing the pace keeps each Lifelet's progress through their current age.",Vector2(479,256),Vector2(478,75),17,P.MUTED,overlay)
+	small_caps("Lifespan",Vector2(480,345),Vector2(477,25),overlay)
 	var pace := OptionButton.new()
 	pace.name="LifespanSetting"
 	for label: String in ["Short", "Normal", "Long"]: pace.add_item(label)
 	pace.select(["short","normal","long"].find(str(sim.lifecycle.lifespan)))
-	rect(pace,Vector2(478,425),Vector2(480,43),overlay)
+	rect(pace,Vector2(478,381),Vector2(480,43),overlay)
 	var automatic := CheckButton.new()
 	automatic.name="AutomaticAgingSetting"
 	automatic.text="Automatic birthdays"
 	automatic.button_pressed=bool(sim.lifecycle.auto_age)
-	rect(automatic,Vector2(478,490),Vector2(480,42),overlay)
-	paragraph("With automatic birthdays off, Lifelets keep their age until you choose to celebrate a birthday.",Vector2(480,549),Vector2(474,65),14,P.MUTED,overlay)
-	button("Apply",Vector2(478,641),Vector2(230,44),func():
+	rect(automatic,Vector2(478,440),Vector2(480,42),overlay)
+	small_caps("Save automatically",Vector2(480,494),Vector2(477,25),overlay)
+	var autosave := OptionButton.new()
+	autosave.name="AutosaveSetting"
+	for minutes: int in AUTOSAVE_CHOICES:
+		autosave.add_item("Off" if minutes==0 else ("Every minute" if minutes==1 else "Every %d minutes" % minutes))
+	autosave.select(AUTOSAVE_CHOICES.find(autosave_minutes))
+	rect(autosave,Vector2(478,530),Vector2(480,43),overlay)
+	paragraph("Your life is written to its own save on this interval while the household is living. A menu or Build session pauses it.",Vector2(480,585),Vector2(474,52),14,P.MUTED,overlay)
+	button("Apply",Vector2(478,660),Vector2(230,44),func():
 		household.set_aging(["short","normal","long"][pace.selected],automatic.button_pressed)
+		autosave_minutes=AUTOSAVE_CHOICES[autosave.selected]
+		autosave_wait=0.0
 		close_overlay();refresh_hud(),true,overlay)
-	button("Cancel",Vector2(725,641),Vector2(233,44),close_overlay,false,overlay)
+	button("Cancel",Vector2(725,660),Vector2(233,44),close_overlay,false,overlay)
 
 func show_birthday() -> void:
 	_begin_pause_overlay();menus.shade()

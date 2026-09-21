@@ -89,7 +89,7 @@ const ITEMS = {
 	"garden_light": {"label":"Garden path light", "category":"Garden", "price":35, "size":Vector2(.22,.22), "height":.9, "color":"4a4f55", "tint":true,
 		"styles":["01","02","03","04","05","06","07","08","09","10"]},
 	"garden_light_wall": {"label":"Garden wall light", "category":"Garden", "price":30, "size":Vector2(.22,.30), "height":.42, "color":"4a4f55", "tint":true,
-		"styles":["01","02","03","04","05","06","07","08","09","10"]},
+		"styles":["01","02","03","04","05","06","07","08","09","10"], "wall_mounted":true},
 	"garden_table": {"label":"Garden table & chairs", "category":"Garden", "price":50, "size":Vector2(2.0,2.0), "height":2.3, "color":"d7ae7e", "tint":true,
 		"sizes":["small","medium","large"], "size_prices":{"small":50,"medium":70,"large":90}, "seats":{"small":4,"medium":8,"large":10}},
 	"bbq": {"label":"Barbecue", "category":"Garden", "price":100, "size":Vector2(.9,.7), "height":1.05, "color":"52555a", "tint":true,
