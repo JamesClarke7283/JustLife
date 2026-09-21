@@ -976,13 +976,22 @@ func _create_props() -> void:
 		_books.append(held_book)
 	# The pregnancy bump rides the torso model so it moves, sits and lies with
 	# the body. It is scaled up as the term advances and hidden when not expectant.
-	_bump = _sphere(_model, Vector3(.19,.21,.17), Color("e6c4ae"))
+	_bump = _sphere(_model, BUMP_SIZE, Color("e6c4ae"))
 	_bump.name = "PregnancyBump"
 	_bump.position = Vector3(0,1.02,.14) * _proportion
-	_bump.scale = Vector3.ONE * _proportion
+	# `_sphere` already scaled this mesh to the authored belly, so it is left
+	# alone here; `_update_bump` multiplies that size by the term's own growth.
+	# A bare `Vector3.ONE * _proportion` here threw the belly away and left the
+	# sphere at its one-metre mesh radius — the "giant bubble" a player sees.
 	_bump.visible = false
 	_update_bump()
 
+
+## The authored belly ellipsoid, in metres at full term. `_sphere` sets exactly
+## these dimensions, so the bump's own scale must multiply them rather than
+## replace them: a bare uniform scale left the sphere at its mesh radius and
+## drew a two-metre bubble around an expectant mother instead of a baby bump.
+const BUMP_SIZE: Vector3 = Vector3(.19, .21, .17)
 
 func _update_bump() -> void:
 	if not is_instance_valid(_bump):return
@@ -994,7 +1003,7 @@ func _update_bump() -> void:
 	# a floating prop.
 	var amount:float=clampf(pregnancy_bump,0.0,1.0)
 	var s:float=.55+.45*amount
-	_bump.scale=Vector3(s,s,s)*_proportion
+	_bump.scale=BUMP_SIZE*s*_proportion
 	_bump.position=Vector3(0.0,1.02-.05*amount,.14+.03*amount)*_proportion
 
 

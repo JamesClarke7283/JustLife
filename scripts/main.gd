@@ -4526,15 +4526,16 @@ func queue_interaction(item:Dictionary,id:String) -> void:
 	if sim.is_away():show_notice("This Lifelet will be available after coming home.");return
 	if str(item.id)==bound_member_id:return
 	if LifeResidents.PEOPLE.has(str(item.id)) and not residents.present(str(item.id)):show_notice("This neighbor has gone home. Catch them on their next walk, or visit their home.");return
-	var destination:Vector3=world.approach(item)
-	if item.kind=="neighbor":destination=item.node.position+Vector3(0,0,.8)
-	# A pet is not a placed furnishing, so its own body is the approach point.
+	# A pet is not a placed furnishing: it has no `node`, and its own living body
+	# is the approach point. It must be answered before `world.approach`, which
+	# reads `item.node` and crashed on the pet card's own action buttons.
 	if item.kind=="pet":
 		var body:LifePetActor=pet_actors.get(str(item.id))
 		if not is_instance_valid(body):show_notice("That pet is not here right now.");return
-		destination=body.position+Vector3(0,0,.8)
-		_queue_pet_beat(id,str(item.id),destination,str(item.get("label","your pet")))
+		_queue_pet_beat(id,str(item.id),body.position+Vector3(0,0,.8),str(item.get("label","your pet")))
 		return
+	var destination:Vector3=world.approach(item)
+	if item.kind=="neighbor":destination=item.node.position+Vector3(0,0,.8)
 	sim.queue_action(id,item.id,destination)
 	refresh_hud()
 
