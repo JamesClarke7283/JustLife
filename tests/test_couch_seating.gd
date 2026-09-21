@@ -180,7 +180,79 @@ func _run() -> void:
 		check(not app._activity_available_for_member(third, str(household.members[0].id)),
 			"A full loveseat refuses a third person.")
 
+	# The waiter at a full couch must really sit down once a cushion frees. It
+	# holds no place of its own while waiting and claims every place so it
+	# conflicts, so the admission path has to re-claim a freed cushion for it or
+	# it would test against its own claim forever and never sit.
+	await _waiter_takes_freed_cushion(sofa)
+
 	app.queue_free()
 	await process_frame
 	print("COUCH_SEATING %d checks, %d failures" % [checks, failures.size()])
 	quit(0 if failures.is_empty() else 1)
+
+
+## One Lifelet waits at the full couch, somebody stands up, and the waiter is
+## followed through the ordinary movement loop until it is seated on that cushion.
+func _waiter_takes_freed_cushion(sofa: Dictionary) -> void:
+	var household = app.household
+	for index: int in range(household.members.size()):
+		household.members[index].sim.cancel_action(0)
+	for i: int in range(6): await process_frame
+	var waiter: int = household.members.size() - 1
+	# Fill all three places through the public queue and settle each body exactly
+	# on its own cushion, so the seats are genuinely held.
+	for index: int in range(3): _queue(sofa, "relax", index)
+	for i: int in range(12): await process_frame
+	for index: int in range(3):
+		var action: Dictionary = household.members[index].sim.get_current_action()
+		if str(action.get("id", "")) != "relax": continue
+		var actor: LifeActor = app.world.actors.get(str(household.members[index].id))
+		if is_instance_valid(actor): actor.position = Vector3(action.get("target_position", actor.position))
+		app.household.begin_action(str(household.members[index].id))
+	for i: int in range(4): await process_frame
+	var held: int = 0
+	for index: int in range(3):
+		var a: Dictionary = household.members[index].sim.get_current_action()
+		if str(a.get("id", "")) == "relax" and str(a.get("phase", "")) == "active": held += 1
+	check(held == 3, "All three couch places are held before the waiter queues (%d)." % held)
+
+	_queue(sofa, "relax", waiter)
+	for i: int in range(10): await process_frame
+	var queued: Dictionary = household.members[waiter].sim.get_current_action()
+	check(str(queued.get("target_id", "")) == str(sofa.id) and str(queued.get("seat_slot", "")) == "",
+		"The waiter queues at the full couch holding no place (target %s, place %s)." % [str(queued.get("target_id", "<none>")), str(queued.get("seat_slot", "<none>"))])
+
+	# Stand the first occupant up, then run the real loop until the waiter sits.
+	household.members[0].sim.cancel_action(0)
+	household.set_speed(1)
+	var seated: Dictionary = {}
+	for i: int in range(900):
+		await process_frame
+		var now: Dictionary = household.members[waiter].sim.get_current_action()
+		if str(now.get("id", "")) == "relax" and str(now.get("phase", "")) == "active":
+			seated = now
+			break
+	check(not seated.is_empty(),
+		"The waiter is really seated once a cushion frees (phase %s)." % str(household.members[waiter].sim.get_current_action().get("phase", "<none>")))
+	if seated.is_empty():
+		return
+	var slot: String = str(seated.get("seat_slot", ""))
+	check(not slot.is_empty() and slot != "seat_1" and slot != "seat_2",
+		"The waiter took the cushion that actually freed (%s)." % slot)
+	# It stands on that cushion's own place rather than at the couch's centre:
+	# compare its horizontal offset from the cushion against the offset the
+	# cushion's own anchor defines for a body at the same floor height.
+	var waiter_actor: LifeActor = app.world.actors.get(str(household.members[waiter].id))
+	if is_instance_valid(waiter_actor):
+		var waiter_gap: float = _floor_gap(sofa, slot, waiter_actor)
+		var centre_gap: float = _floor_gap(sofa, "seat_1", waiter_actor)
+		check(waiter_gap < INF and waiter_gap < centre_gap,
+			"The waiter stands on its own cushion rather than the couch's centre (%.2f m from its place vs %.2f m from the middle)." % [waiter_gap, centre_gap])
+
+
+## How far a seated body is from its cushion's floor point, horizontally.
+func _floor_gap(sofa: Dictionary, slot: String, actor: LifeActor) -> float:
+	if slot.is_empty() or not is_instance_valid(actor): return INF
+	var anchor: Vector3 = Vector3(app.world.activity_anchor(sofa, "relax", {"seat_slot": slot}).position)
+	return Vector3(anchor.x, actor.position.y, anchor.z).distance_to(actor.position)

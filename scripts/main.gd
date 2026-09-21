@@ -5938,6 +5938,20 @@ func _advance_movement(delta:float) -> bool:
 		_clear_motion();return false
 	if waiting_for_target:
 		var action:Dictionary=sim.get_current_action()
+		# A waiter turned away by a full couch holds no place of its own, and it
+		# claims every place so that it really conflicts and waits. A cushion that
+		# has since freed must be re-claimed here, or the waiter would keep testing
+		# against its own all-places claim and never sit down. A shared bed keeps
+		# its own halved rule, where a partner may already share and a stranger
+		# waits on the whole-bed claim, so it is left alone.
+		if str(action.get("cooperation_id","")).is_empty() and str(action.get("seat_slot","")).is_empty() and not str(action.get("id","")) in LifeSim.SOCIAL_ACTIONS:
+			var held:Dictionary=_find_item(str(action.get("target_id","")))
+			if not held.is_empty() and world.seat_capacity(held)>1 and str(held.kind) not in world.SHARED_BEDS:
+				var reserved:Vector3=action.target_position
+				_assign_seat_slot(action,held)
+				# No place was free after all, so leave the instruction exactly
+				# as it was rather than moving a still-waiting Lifelet's target.
+				if str(action.get("seat_slot","")).is_empty():action.target_position=reserved
 		if _activity_available(action):
 			# Keep the arrived reservation until the Lifelet has walked back
 			# from their queue position. New arrivals cannot steal this turn.
