@@ -47,6 +47,12 @@ func _run() -> void:
 		if str(item.get("kind", "")) == "fridge": fridge = item
 	check(not fridge.is_empty(), "The home has a fridge to cook at")
 	sim.needs["hunger"] = 30.0
+	# A recipe's ingredients — and a snack — come out of the kitchen rather than
+	# the purse, so an empty fridge refuses the very action this check waits for.
+	# Stock it through the household's own order before autonomy runs.
+	app.household.set_funds(app.household.funds+200)
+	app.household.order_groceries("weekly")
+	app.household.collect_groceries()
 	app.household.set_speed(3)
 	if not fridge.is_empty() and sim.has_method("enqueue"):
 		print("available fridge actions: ", sim.get_actions_for("fridge", str(fridge.id)).size())
