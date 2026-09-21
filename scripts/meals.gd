@@ -35,6 +35,18 @@ const RECIPES := {
 }
 const QUALITY_LABELS := ["", "Homestyle", "Delicious", "Excellent"]
 
+## The most learning any one recipe can owe. A saved cook in progress carries the
+## `xp` its dish will grant on completion, so validation bounds that field by the
+## recipe table's own ceiling rather than by an arbitrary number: a retuned
+## recipe may leave a modest surplus, but a malformed save cannot mint skill.
+static func max_recipe_xp() -> float:
+	var highest: float = 0.0
+	for recipe: String in RECIPES:
+		highest = maxf(highest, float(RECIPES[recipe].get("xp", 0.0)))
+	# A retuned recipe's saved session may carry the older, larger value, so the
+	# ceiling leaves a single table's worth of headroom above today's maximum.
+	return maxf(1.0, highest * 2.0)
+
 static func recipe_error(recipe: String, level: int, age: String, money: int, paid: bool=false) -> String:
 	if not RECIPES.has(recipe):return "Choose a recipe from the cookbook."
 	if age=="child":return "Children can grab a snack. An older Lifelet can use the stove."

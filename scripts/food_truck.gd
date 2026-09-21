@@ -19,7 +19,14 @@ const OPEN_MINUTES: float = 8.0 * 60.0
 const CLOSE_MINUTES: float = 20.0 * 60.0
 ## Where the van parks: on the front sidewalk, west of the path, clear of the
 ## front door and the mailbox. The lot runs to z=9, so z=8.5 is street side.
-const PARK: Vector3 = Vector3(-3.6, 0.16, 8.5)
+##
+## Its own 2.33 m length lies along x when yawed a quarter turn, and the solid
+## band drawn around it is grown a further 0.16 m on every side. The eight
+## departure slots span x -2.625 … +2.625, which reaches x=-2.91 with that
+## growth, so parking at -3.6 put the van's band across the westmost slot and a
+## departure there was walked out to the next clear cell. The van now parks far
+## enough west that its band (x -5.765 … -3.435) clears every slot.
+const PARK: Vector3 = Vector3(-4.6, 0.16, 8.5)
 const PARK_ROTATION: float = 90.0
 ## The vans's own delivered menu. Each line is a real catalogue kind, priced at
 ## what the shop charges for it; the delivered article is placed through the

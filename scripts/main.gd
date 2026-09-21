@@ -3038,6 +3038,8 @@ func draw_build_catalog() -> void:
 		var from_price:int=Variants.price(data,"")
 		var to_price:int=Variants.price(data,"large") if Variants.sizes(data).size()>1 else from_price
 		b.tooltip_text=data.label+(" · ℒ%d" % from_price if to_price==from_price else " · ℒ%d–ℒ%d" % [from_price,to_price])
+		var seats:int=Variants.seats(data,str(Variants.size_or_default("",data)))
+		if seats>1:b.tooltip_text+=" · seats %d" % seats
 		if varied:b.tooltip_text+=" · choose style, colour and size"
 		model_thumbnail(kind,Vector2(8,2),Vector2(136,88),false,cell,{},str(Variants.style_or_default("",data)),str(Variants.size_or_default("",data)))
 		var l=text_label(data.label,Vector2(9,91),Vector2(135,20),11,P.INK,false,cell);l.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS

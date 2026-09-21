@@ -142,3 +142,14 @@ Saved food is validated with household queues before restoration: serving conser
 ### Combined progression saves
 
 Snapshots retain the weekly bill ledger alongside `whims`, wardrobe appearance, and the three passing-pressure timers (`starvation_minutes`, `exhaustion_minutes`, `deferred_passing_minutes`). Malformed supplied records are rejected before live state changes; older saves without these optional fields receive their defaults, and legacy `bills_paid` totals migrate to `bills_paid_total`. A spirit continues advancing the shared clock and household bill cycle, but no longer ages or celebrates birthdays. All memorial kinds offer remembrance, mourning, and flowers; mourning relief applies to both historical and current grief moodlets.
+
+## Shared seating
+
+A couch is genuinely shared furniture. `LifeWorld.seat_capacity(item)` reads the catalogue's own `seat_count` for the size that was bought, so the Sunday sofa seats **three** and the Two-together loveseat **two**; every other furnishing seats one, and a bed keeps its named `left`/`right` halves for a partnered pair.
+
+`seat_slots(item)` numbers a couch's places `seat_0`, `seat_1`, …, and `seat_slot_offset(item, slot)` returns each place's own local position. A family that authors `seat_offsets` — the sofa's three seat cushions at x = −0.70, 0 and +0.70, the loveseat's two at ±0.37 — is seated exactly on those authored cushions, scaled with a size choice; any other multi-seat family spreads its places evenly across the span between its arms.
+
+`activity_resource_ids(item, slot)` gives each place its own resource, so two Lifelets really share one couch: each holds `item:seat_N` and `activity_anchor` places their body on the matching cushion. A request that holds no place of its own (every cushion already taken) claims **all** of them, so it conflicts with the occupants and waits its turn rather than standing on somebody. A fourth Lifelet therefore queues at the couch and sits down the moment a cushion frees, and three people sit apart on one three-seater rather than stacked at its centre.
+
+`tests/test_couch_seating.gd` drives this headlessly through the household's own selection and interaction queue: three places held on one sofa, the three bodies genuinely apart, a fourth refused while all three cushions are taken and admitted once one frees, and a loveseat holding exactly two with a third refused. `tests/test_garden_catalogue.gd` cross-checks the catalogue capacity against the authored cushions.
+

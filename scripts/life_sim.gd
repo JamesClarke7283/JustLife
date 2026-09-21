@@ -3989,10 +3989,14 @@ func _validate_state(state: Dictionary) -> String:
 			# the record is checked against the charge actually made rather than
 			# against today's price list: retuning a recipe's cost must not refuse a
 			# player's own in-progress meal (a bake charged 52 when the bake cost 52
-			# stopped loading the moment the recipe was retuned to 24). A charge that
-			# is not a whole, non-negative number of Lifeons is still impossible.
-			if not _number_in_range(action.get("cost"), 0.0, 1000000000.0) or not action.get("paid") is bool:return "Save contains invalid recipe ingredients or learning."
-			if not is_finite(float(action.get("xp", -1.0))) or float(action.get("xp", -1.0)) < 0.0:return "Save contains invalid recipe learning."
+			# stopped loading the moment the recipe was retuned to 24). Every recipe
+			# charges something, so a zero or negative charge is still impossible.
+			if not _number_in_range(action.get("cost"), 1.0, 1000000000.0) or not action.get("paid") is bool:return "Save contains invalid recipe ingredients or learning."
+			# Learning is still owed when the dish finishes, so it is not a historical
+			# receipt like the charge: a retuned recipe may leave a modest surplus,
+			# but the field cannot grant arbitrary skill and must stay inside the
+			# band the recipe table itself uses.
+			if not _number_in_range(action.get("xp"), 0.0, LifeMeals.max_recipe_xp()):return "Save contains invalid recipe learning."
 			if str(action.get("phase","")) not in ["queued","approach","active"]:return "Save contains an invalid cooking phase."
 			if (float(action.get("elapsed",0))>0 or str(action.get("phase",""))=="active") and not bool(action.paid):return "Save contains cooking progress without paid ingredients."
 		if action_id == "birthday":

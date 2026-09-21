@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://3yycc7r3efs1"
-path="res://.godot/imported/garage.glb-6b4dfdbcd6934b7e94917d1eecd9ab6c.scn"
+uid="uid://dy35q8ucvlxdx"
+path="res://.godot/imported/car_garage.glb-cc8acd5d69bff82a33f6ef937fbb8264.scn"
 
 [deps]
 
-source_file="res://assets/models/garage.glb"
-dest_files=["res://.godot/imported/garage.glb-6b4dfdbcd6934b7e94917d1eecd9ab6c.scn"]
+source_file="res://assets/models/car_garage.glb"
+dest_files=["res://.godot/imported/car_garage.glb-cc8acd5d69bff82a33f6ef937fbb8264.scn"]
 
 [params]
 

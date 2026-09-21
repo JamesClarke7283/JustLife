@@ -1515,17 +1515,25 @@ func seat_slots(item:Dictionary) -> Array[String]:
 	for index:int in range(count):out.append("seat_%d" % index)
 	return out
 
-## The local offset of one place on a furnishing, spread evenly across its own
-## footprint so the seats sit where the model's seats are.
+## The local offset of one place on a furnishing. A family that authors its own
+## `seat_offsets` names where its seats physically are — the sofa's three seat
+## cushions, the loveseat's two — so those are used directly. Any other
+## multi-seat family spreads its places evenly across the span between its arms,
+## because the usable width is the footprint minus the two end margins.
 func seat_slot_offset(item:Dictionary,slot:String) -> Vector3:
 	if str(item.kind) in SHARED_BEDS:return Vector3(-.42 if slot=="left" else .42,0,0)
 	var count:int=seat_capacity(item)
 	if count<=1 or slot.is_empty():return Vector3.ZERO
 	var index:int=slot.trim_prefix("seat_").to_int()
 	index=clampi(index,0,count-1)
-	# Half the usable width per gap, inset by a quarter of the span at each end,
-	# so the outermost places stay on the model rather than at its edge.
-	var span:float=float(item.get("size",Vector2(.6,.6)).x)*.8
+	var authored:Array=LifeCatalog.get_item(str(item.kind)).get("seat_offsets",[])
+	if authored.size()==count:
+		# A size choice scales the whole authored model uniformly, so an
+		# authored cushion offset travels with it.
+		var base:float=float((LifeCatalog.get_item(str(item.kind)).get("size",Vector2.ONE) as Vector2).x)
+		var scale:float=float(item.get("size",Vector2.ONE).x)/maxf(.01,base)
+		return Vector3(float(authored[index])*scale,0,0)
+	var span:float=maxf(.1,float(item.get("size",Vector2(.6,.6)).x)*.8)
 	var step:float=span/float(maxi(1,count-1)) if count>1 else 0.0
 	return Vector3(-span*.5+step*float(index),0,0)
 
@@ -1542,7 +1550,19 @@ func activity_resource_ids(item:Dictionary,slot:String="") -> Array[String]:
 		# A whole-bed claim plus the half: any second sleeper conflicts on the
 		# bed itself, and only a partner is allowed to overlap the halves.
 		return [str(item.id)+":"+slot,str(item.id)] if not slot.is_empty() else [str(item.id)]
-	var resources:Array[String]=[str(item.id)+(":"+slot if seat_capacity(item)>1 and not slot.is_empty() else "")]
+	var capacity:int=seat_capacity(item)
+	var resources:Array[String]=[]
+	if capacity>1:
+		# Each place is its own resource, so two people really share one couch.
+		# A request that holds no place of its own — every seat already taken —
+		# claims all of them instead, so it conflicts with the occupants and
+		# waits its turn rather than standing on somebody's cushion.
+		if slot.is_empty():
+			for name:String in seat_slots(item):resources.append(str(item.id)+":"+name)
+		else:
+			resources.append(str(item.id)+":"+slot)
+	else:
+		resources.append(str(item.id))
 	if str(item.kind) in ["desk","computer"]:
 		var chair:Dictionary=closest_item("chair",item.node.to_global(Vector3(0,0,.88)),1.25)
 		if not chair.is_empty():resources.append(str(chair.id))
@@ -1625,7 +1645,7 @@ func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -
 		"armchair":
 			local=Vector3(0,.50,.06);yaw=node.rotation.y;kind="seat"
 		"loveseat":
-			local=Vector3(0,.62,.08)+seat_slot_offset(item,str(landmarks.get("seat_slot","left")));yaw=node.rotation.y;kind="seat"
+			local=Vector3(0,.62,.08);yaw=node.rotation.y;kind="seat"
 		"stool":
 			local=Vector3(0,.755,0);yaw=node.rotation.y;kind="seat"
 		"bathtub":
@@ -1661,6 +1681,15 @@ func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -
 	var anchor: Dictionary={"position":node.to_global(local),"yaw":yaw,"kind":kind}
 	if str(item.kind) in ["desk","computer"]:
 		anchor.merge(_desk_surface(node))
+	elif kind=="seat" and seat_capacity(item)>1:
+		# Every seated place on a multi-seat furnishing holds its own spot along
+		# the model's width, so three people share one couch without stacking.
+		# A caller that names no place is asking where the furnishing's seating
+		# is in general — the household's seat assignment always names one — so
+		# the centre stands rather than an arbitrary end cushion.
+		var slot:String=str(landmarks.get("seat_slot",""))
+		if not slot.is_empty():
+			anchor.position=node.to_global(local+seat_slot_offset(item,slot))
 	return anchor
 
 func oven_approach(item:Dictionary)->Vector3:

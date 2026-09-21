@@ -402,3 +402,34 @@ func _seat_capacity() -> void:
 	var bed: Dictionary = app.world.closest_item("bed", Vector3.ZERO)
 	check(bed.is_empty() or app.world.seat_slots(bed) == ["left", "right"],
 		"A bed still keeps its named halves (%s)." % str(app.world.seat_slots(bed)))
+	# A couch really holds the number of cushions it was authored with: the
+	# three-seater three and the loveseat two, on the cushions' own local centres
+	# rather than a spread invented from the footprint.
+	var sofa: Dictionary = app.world.closest_item("sofa", Vector3.ZERO)
+	if not sofa.is_empty():
+		check(app.world.seat_capacity(sofa) == 3,
+			"A three-seater really holds three places (%d)." % app.world.seat_capacity(sofa))
+		var sofa_offsets: Array = []
+		for slot: String in app.world.seat_slots(sofa):
+			sofa_offsets.append(app.world.seat_slot_offset(sofa, slot))
+		check(sofa_offsets.size() == 3 and (sofa_offsets[0] as Vector3).x < -0.4 and absf((sofa_offsets[1] as Vector3).x) < 0.01 and (sofa_offsets[2] as Vector3).x > 0.4,
+			"Its places sit on the authored cushions (%s)." % str(sofa_offsets))
+		var sofa_anchors: Array = []
+		for slot: String in app.world.seat_slots(sofa):
+			sofa_anchors.append(Vector3(app.world.activity_anchor(sofa, "relax", {"seat_slot": slot}).position))
+		var sofa_apart: bool = true
+		for i: int in sofa_anchors.size():
+			for j: int in range(i + 1, sofa_anchors.size()):
+				if (sofa_anchors[i] as Vector3).distance_to(sofa_anchors[j] as Vector3) < 0.5: sofa_apart = false
+		check(sofa_apart, "Three Lifelets sit apart on one couch rather than stacked (%s)." % str(sofa_anchors))
+	var loveseat: Dictionary = app.world.closest_item("loveseat", Vector3.ZERO)
+	if not loveseat.is_empty():
+		check(app.world.seat_capacity(loveseat) == 2,
+			"A loveseat really holds two places (%d)." % app.world.seat_capacity(loveseat))
+	# An over-capacity request claims every place, so a fourth person waits
+	# instead of standing on an occupied cushion.
+	var busy: Dictionary = {"id": "couch_probe", "kind": "sofa", "variant": {}, "size": Vector2(2.6, 1.0)}
+	check(app.world.activity_resource_ids(busy, "seat_1") == ["couch_probe:seat_1"],
+		"A seated request claims only its own place (%s)." % str(app.world.activity_resource_ids(busy, "seat_1")))
+	check(app.world.activity_resource_ids(busy, "") == ["couch_probe:seat_0", "couch_probe:seat_1", "couch_probe:seat_2"],
+		"A request with no free place claims all of them, so it conflicts and waits (%s)." % str(app.world.activity_resource_ids(busy, "")))

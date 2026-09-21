@@ -44,7 +44,7 @@ func _run() -> void:
 		await press("Ⅱ")
 		var action:Dictionary=app.sim.get_current_action()
 		if i<2:
-			check(str(action.get("target_id",""))==str(loveseat.id) and str(action.get("seat_slot",""))==["left","right"][i],"%s takes the %s seat of the loveseat (target %s, seat %s)." % [WATCHERS[i],["left","right"][i],str(action.get("target_id","")),str(action.get("seat_slot",""))])
+			check(str(action.get("target_id",""))==str(loveseat.id) and str(action.get("seat_slot",""))==["seat_0","seat_1"][i],"%s takes the %s seat of the loveseat (target %s, seat %s)." % [WATCHERS[i],["left","right"][i],str(action.get("target_id","")),str(action.get("seat_slot",""))])
 		else:
 			check(str(action.get("target_id",""))==str(armchair.id),"The third watcher takes the free armchair instead of queueing at the full loveseat (target %s)." % str(action.get("target_id","")))
 			check(not app.waiting_for_target,"The third watcher is seated, not waiting.")

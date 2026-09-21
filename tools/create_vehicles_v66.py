@@ -169,6 +169,10 @@ def electric_car():
     box('Car charge flap',(-.874,.800,-1.550),(.012,.17,.20),'graphite',.004)
     cyl('Car charge hinge',(-.876,.690,-1.550),.022,.014,'steel',axis='x',verts=12,bevel=.004)
 
+# The exported file name is the catalogue kind the game loads, so the two-car
+# garage ships as `car_garage.glb` rather than the internal name `garage`, which
+# is already taken by the older five-style garage family.
+EXPORT_NAME={'garage':'car_garage','electric_car':'electric_car'}
 catalog={'garage':garage,'electric_car':electric_car}
 parser=argparse.ArgumentParser()
 parser.add_argument('--only',choices=tuple(catalog))
@@ -183,8 +187,9 @@ for idx,(name,fn) in enumerate(catalog.items()):
     bpy.ops.object.select_all(action='DESELECT'); root.select_set(True)
     for o in active:o.select_set(True)
     bpy.context.view_layer.objects.active=root
-    bpy.ops.export_scene.gltf(filepath=str(ROOT/'assets/models'/f'{name}.glb'),export_format='GLB',use_selection=True,export_apply=True,export_animations=False)
-    print('JUSTLIFE_VEHICLES_EXPORT', name, (ROOT/'assets/models'/f'{name}.glb').stat().st_size)
+    out=ROOT/'assets/models'/f'{EXPORT_NAME[name]}.glb'
+    bpy.ops.export_scene.gltf(filepath=str(out),export_format='GLB',use_selection=True,export_apply=True,export_animations=False)
+    print('JUSTLIFE_VEHICLES_EXPORT', name, out.stat().st_size)
     root.location=((idx%6)*4,(idx//6)*4,0)
 
 # Review renders are not part of the exported assets: a studio of three area
