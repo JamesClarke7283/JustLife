@@ -41,7 +41,10 @@ func _run()->void:
 				if route[key]!=protected[key]:invalid=true
 			if lock.owner!=peer or lock.exit!=protected.exit or lock.clear!=protected.clear:invalid=true
 		else:retired=true
-		if not t.courtesy.owner(t).is_empty():
+		# The gate must ask about this donor's own courtesy, not about any owner:
+		# a different member owning one left `donor`'s route without a `courtesy`
+		# key and the read below aborted the phase.
+		if t.routes.has(donor) and t.routes[donor].has("courtesy"):
 			seen=true
 			var route:Dictionary=t.routes[donor];var fact:Dictionary=route.courtesy
 			if selected.is_empty():selected=fact.duplicate(true);audit["first_retreat"]=_record_clear()
