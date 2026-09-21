@@ -460,6 +460,15 @@ func _build_actions() -> void:
 	# A dog's coat needs washing. A cat looks after its own hygiene by licking,
 	# so this is offered for dogs only and the availability gate says why.
 	_define("bathe_pet", "Bathe the dog", 35.0, {"fun": 10.0, "hygiene": -6.0, "energy": -5.0}, 0, "parenting", 26.0, "Soap, warm water and a good towel. A clean coat, and a very happy dog afterwards.")
+	# ------------------------------------------------------------ baby care
+	# A caregiver does these for the baby, so the actions are offered to whoever
+	# the player is controlling and the target is the child. Each one answers a
+	# real need on the baby's own side, the way the needs panel shows it.
+	_define("feed_baby_bottle", "Feed the baby a bottle", 25.0, {"social": 8.0, "fun": 6.0, "energy": -3.0}, 0, "parenting", 18.0, "Sit the baby up and hold the bottle while they drink. Fills their hunger and settles them.")
+	_define("feed_baby_food", "Feed the baby food", 30.0, {"social": 10.0, "fun": 8.0, "energy": -4.0}, 0, "parenting", 24.0, "Spoon a jar of baby food, one mouthful at a time. A proper meal, and a messy face afterwards.")
+	_define("change_nappy", "Change the baby's nappy", 20.0, {"fun": 4.0, "hygiene": -6.0}, 0, "parenting", 16.0, "A clean nappy on the changing table. The baby's hygiene and bladder are seen to and they stop fussing.")
+	_define("cuddle_baby", "Pick the baby up for a cuddle", 20.0, {"social": 26.0, "fun": 14.0}, 0, "parenting", 14.0, "Carry the baby and talk to them quietly. Their social need fills and they feel safe.")
+	_define("play_with_baby", "Play with the baby", 30.0, {"fun": 20.0, "social": 16.0, "energy": -4.0}, 0, "parenting", 20.0, "Sit on the floor with the baby's toys and play together. Fun for both of you, and their social need too.")
 	_define("deep_clean", "Deep clean", 45.0, {"hygiene": 6.0, "fun": 10.0}, 0, "", 0.0, "Scrub the surfaces until the room sparkles. Slow, but oddly satisfying.")
 	_define("remember_life", "Remember a life", 20.0, {"social": 12.0, "fun": 6.0}, 0, "", 0.0, "Stand with the stone and remember who they were.")
 	# The computer is where a subject is truly mastered. A skill book stops at
@@ -480,7 +489,10 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"lot_exit":
 			ids = ["school_day"] if str(character.age_stage) in LifeEducation.SCHOOL_STAGES else (["career_day"] if str(character.life_stage)=="adult" else [])
 			ids.append("morning_run")
-		"fridge": ids = ["cook", "snack", "order_groceries", "birthday"]
+		"fridge":
+			ids = ["cook", "snack", "order_groceries", "birthday"]
+			# The bottle and the jar are fetched from the fridge.
+			if _has_baby(): ids.append_array(["feed_baby_bottle", "feed_baby_food"])
 		"stove", "kitchen": ids = ["cook", "experiment_recipe"]
 		"sink": ids = ["wash_hands", "brush_teeth", "deep_clean"]
 		"dining", "counter", "coffee_table": ids = ["clear_table", "deep_clean"]
@@ -530,6 +542,12 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"urn", "tombstone", "memorial": ids = ["remember_life", "mourn", "leave_flowers", "remember_passed"]
 		"neighbor", "maya", "leo", "priya", "tom": ids = SOCIAL_ACTIONS
 		"pet": ids = ["teach_pet_trick", "pet_tummy_rub", "bathe_pet"]
+		# Baby care. The changing table is where a nappy is changed, the toys are
+		# what play happens on, and the cot is where a cuddle happens without a
+		# toy in hand. Each is offered only when a baby is in the household.
+		"changing_table": ids = ["change_nappy"] if _has_baby() else []
+		"baby_toys": ids = ["play_with_baby"] if _has_baby() else []
+		"cot": ids = ["cuddle_baby", "sleep", "nap"] if _has_baby() else ["sleep", "nap"]
 
 	if LifeGardenGames.is_game(kind): ids = [LifeGardenGames.ACTION_ID]
 	elif LifeOutdoorActs.is_outdoor_act(kind):
@@ -1515,6 +1533,13 @@ func _finish_front() -> void:
 		if is_instance_valid(household_service):
 			household_service.bathe_pet(str(action.get("target_id","")),str(character.get("name","")))
 		_emit_notice("%s is clean and fluffy again." % str(action.get("pet_name","The dog")))
+	elif id in ["feed_baby_bottle", "feed_baby_food", "change_nappy", "cuddle_baby", "play_with_baby"]:
+		# The caregiver completes the action, but the need it answers is the
+		# baby's own: feeding fills their hunger, a nappy their hygiene and
+		# bladder, a cuddle and play their social and fun. The caregiver also
+		# gains a little Parenting, because caring for a child is how it is
+		# learned.
+		_care_for_baby(id)
 	_activity_memory(id)
 	_record_chapter_activity(id, earned, _social_target(str(action.get("target_id", ""))) if bool(action.get("social_accepted", false)) else "")
 	for want: Dictionary in wants:
@@ -1812,6 +1837,61 @@ func _pet_record_for(pet_id:String) -> Dictionary:
 	var record:Variant=household_service.call("pet_record",pet_id)
 	return record if record is Dictionary else {}
 
+## Whether this household has a baby to care for. The baby-care actions are only
+## offered when one is really here, so a household without a baby never sees a
+## button it cannot use.
+func _has_baby() -> bool:
+	return _baby_in_household() != null
+
+## The baby this caregiver is caring for, so a care action can answer the
+## child's own needs rather than the caregiver's. A baby is a household member
+## like any other, so this reads the household's own member list.
+func _baby_in_household() -> LifeSim:
+	var owner: Variant = cooperation_owner
+	if not is_instance_valid(owner) or not owner is Node: return null
+	var family: Variant = owner.get("members")
+	if not family is Array: return null
+	for entry: Variant in family:
+		if not entry is Dictionary: continue
+		var other: Variant = (entry as Dictionary).get("sim")
+		if other is LifeSim and is_instance_valid(other) and str(other.character.age_stage) == "baby":
+			return other
+	return null
+
+
+## Answer a baby's own needs for a care action the caregiver just finished. The
+## caregiver's own need changes ride the action definition; this is the child's
+## side of the same minute, and the notice names the baby so a player with two
+## children knows who was seen to.
+func _care_for_baby(action_id: String) -> void:
+	var baby: LifeSim = _baby_in_household()
+	if baby == null:
+		_emit_notice("There is no baby here to care for just now.")
+		return
+	var name: String = str(baby.character.name).split(" ")[0]
+	match action_id:
+		"feed_baby_bottle":
+			baby.needs["hunger"] = minf(100.0, float(baby.needs.get("hunger", 0.0)) + 42.0)
+			_emit_notice("%s finishes the bottle." % name)
+		"feed_baby_food":
+			baby.needs["hunger"] = minf(100.0, float(baby.needs.get("hunger", 0.0)) + 62.0)
+			baby.needs["fun"] = minf(100.0, float(baby.needs.get("fun", 0.0)) + 8.0)
+			_emit_notice("%s has had a proper meal." % name)
+		"change_nappy":
+			baby.needs["hygiene"] = minf(100.0, float(baby.needs.get("hygiene", 0.0)) + 55.0)
+			baby.needs["bladder"] = minf(100.0, float(baby.needs.get("bladder", 0.0)) + 70.0)
+			_emit_notice("%s is clean and comfortable again." % name)
+		"cuddle_baby":
+			baby.needs["social"] = minf(100.0, float(baby.needs.get("social", 0.0)) + 45.0)
+			baby.needs["fun"] = minf(100.0, float(baby.needs.get("fun", 0.0)) + 20.0)
+			_emit_notice("%s is happy in your arms." % name)
+		"play_with_baby":
+			baby.needs["fun"] = minf(100.0, float(baby.needs.get("fun", 0.0)) + 40.0)
+			baby.needs["social"] = minf(100.0, float(baby.needs.get("social", 0.0)) + 32.0)
+			_emit_notice("%s giggles through the whole game." % name)
+	# The baby remembers who looked after them, the way a pet remembers a cuddle.
+	baby.add_moodlet("Loved","Happy","Somebody took care of me just now.",120,2)
+	baby._emit_changed()
 
 func _try_for_baby_error(bed_id: String) -> String:
 	# The household owns the pair's identities and the family state; the
