@@ -45,14 +45,17 @@ func _run() -> void:
 	var salary_before: int = int(sim.career.salary)
 
 	# --- The first unmet requirement, walked up to honestly -------------------
-	# The level-1 requirement is already satisfied by a starting skill, so take
-	# the first promotion to reach a requirement that is genuinely unmet.
+	# Technology enters at Logic 3 and asks for the skill held at the rung being
+	# left, so a worker at the entry bar clears the early rungs outright; walk
+	# the ladder until a promotion really needs more than the skill in hand.
 	var requirement: Dictionary = sim.promotion_requirement()
 	check(not requirement.is_empty(), "A fresh career has a promotion requirement")
-	if bool(requirement.met):
+	var walked: int = 0
+	while not requirement.is_empty() and bool(requirement.met) and walked < LifeCareers.MAX_LEVEL:
 		sim.career["performance"] = 100.0
 		sim._check_promotion()
 		await frames(4)
+		walked += 1
 		requirement = sim.promotion_requirement()
 	check(not requirement.is_empty(), "The promoted career still has a next requirement")
 	check(not bool(requirement.met), "A requirement is genuinely unmet at %s level %d (skill is %d)" % [skill_name, int(requirement.level), int(sim.skills[skill_name].level)])
