@@ -219,6 +219,15 @@ func _walk(id:String,route:Dictionary,time:float,consider_courtesy:bool=true)->D
 				# Even without any body nearby this step is refused by walls,
 				# furniture or floors: the planned corridor is not truly
 				# walkable. Learn the edge so the planner routes around it.
+				#
+				# This refusal still counts as a block for the courtesy selector.
+				# Before this branch existed the step fell through to
+				# `_observe_replan`, which noted it; returning here without noting
+				# dropped a structurally-refused donor out of `blocked`, so a
+				# stair-clear beneficiary waiting on that donor saw only one
+				# blocked candidate and no courtesy was ever selected (the
+				# landing checkpoint regressed 19/0 to 19/4).
+				if consider_courtesy:courtesy.note_block(self,id,time,moved)
 				route.structure_refusals=int(route.get("structure_refusals",0))+1
 				if int(route.structure_refusals)>=4:
 					route.structure_refusals=0

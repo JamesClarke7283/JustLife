@@ -52,7 +52,12 @@ func _fresh()->void:
 		check(_same(_project_journeys(disk.journeys),app.traversal.snapshot()),"Fresh authoritative "+str(entry.phase)+" journey scalars match disk with exact typed vectors/yaw only.")
 		for saved:Dictionary in disk.members:
 			var sim:LifeSim=app.household.member_sim(str(saved.id))
-			check(_same(_project_queue(saved.state.action_queue),sim.action_queue) and sim.needs==saved.state.needs and sim.career==saved.state.career,"Fresh complete queue/paid/progress and exact decoded needs/career: "+str(saved.id))
+			# A career's level and salary are whole numbers the game stores as
+			# ints, so JSON hands them back as floats. They are compared through
+			# the same named integer projection the education, food and sibling
+			# walk-hold suite use, rather than a raw `==` the decode can never
+			# satisfy.
+			check(_same(_project_queue(saved.state.action_queue),sim.action_queue) and sim.needs==saved.state.needs and sim.career==_decoded_integer_fields(saved.state.career,["level","salary"],str(saved.id)+".career"),"Fresh complete queue/paid/progress and exact decoded needs/career: "+str(saved.id))
 		check(app.household.meals.get_state()==_decoded_integer_fields(disk.meals,["version","serial"],"food"),"Fresh food/custody ledger exact apart from documented integer fields.")
 		var before:Dictionary=_physical_facts()
 		for i:int in range(10):app._process(.05);await frames(1)
