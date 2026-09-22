@@ -72,6 +72,13 @@ func _produce_phase()->void:
 	check(not physical.has("error"),"Pure physical capture supplies the exact public-save cache projection.")
 	var expected_saved:Dictionary=paused.duplicate(true)
 	for id:String in expected_saved.people:expected_saved.people[id].character.world_state=physical.members[id]
+	# `save_game` writes the shared world fields (land, properties, the autosave
+	# interval) into the saved member alongside the physical capture, so the
+	# expectation carries the live values the save itself writes.
+	var selected:String=str(app.household.selected_id())
+	expected_saved.people[selected].character.world_state["land"]=LifeBuildingState.land.duplicate(true)
+	expected_saved.people[selected].character.world_state["properties"]=app._properties_for_save()
+	expected_saved.people[selected].character.world_state["autosave_minutes"]=app.autosave_minutes
 	await _public_save("Vale household — current-floor "+wanted)
 	var result:Dictionary=LifeSaveLibrary.read_slot(app.active_save_id)
 	audit["after_save"]=_facts();audit["save_expected"]=expected_saved

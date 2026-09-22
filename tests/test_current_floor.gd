@@ -54,6 +54,17 @@ func _resume_composed()->void:
 			if a.has("target_position"):
 				var p:Array=a.target_position;a.target_position=Vector3(p[0],p[1],p[2])
 			if a.has("progress") and float(a.get("duration",0.0))>0.0:a.progress=clampf(float(a.get("elapsed",0.0)),0.0,float(a.duration))/float(a.duration)
+			# The loader rebuilds each action from the live definition table, so a
+			# definition-derived field (`label`, `changes`, `cost`, `description`,
+			# `skill`, `xp`) reflects today's code rather than the saved text —
+			# which is what lets a retuned activity load. The saved duration,
+			# elapsed, identity, payment and ownership are what is preserved.
+			var definition:Dictionary=app.sim._actions.get(str(a.get("id","")),{})
+			if definition.is_empty():continue
+			var rebuilt:Dictionary=definition.duplicate(true)
+			if str(a.get("id",""))=="cook":rebuilt=LifeMeals.cooking_definition(rebuilt,str(a.get("recipe","garden_skillet")))
+			for key:String in ["label","changes","cost","description","skill","xp"]:
+				if rebuilt.has(key):a[key]=rebuilt[key]
 		check(_same(sim.action_queue,expected),"Full decoded queue retains payment and elapsed, with exact existing target-vector/progress reconstruction: "+id)
 		var p:Array=decoded.data.journeys.members[id].position
 		check(app.world.actors[id].position==Vector3(p[0],p[1],p[2]),"Exact typed saved body loads: "+id)
