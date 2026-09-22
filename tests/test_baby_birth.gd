@@ -62,6 +62,7 @@ func _consume() -> void:
 			"The restored baby has a visible body on the lot.")
 	app.queue_free(); await frames(2)
 	print("BABY_RESULT ", JSON.stringify({"checks": checks, "failures": failures, "phase": "consume"}))
+	quit(0 if failures.is_empty() else 1)
 
 ## Conceive through the game's own plan and run the shipped clock at top speed
 ## until the birth resolves, exactly as play does.
