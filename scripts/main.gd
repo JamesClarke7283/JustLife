@@ -4446,6 +4446,7 @@ func _refresh_member_targets(replan:bool=true) -> void:
 	for target:Dictionary in targets:by_id[str(target.id)]=target
 	sim.register_targets(targets.filter(func(target:Dictionary):return str(target.id)!=bound_member_id))
 	var interrupted_social:bool=false
+	var keep_courtesy_endpoint:bool=false
 	reconciling_targets=true
 	for index:int in range(sim.action_queue.size()-1,-1,-1):
 		var action:Dictionary=sim.action_queue[index]
@@ -4487,6 +4488,12 @@ func _refresh_member_targets(replan:bool=true) -> void:
 			if str(action.id)=="eat_meal":meal_flow.carry_diner_plate(action)
 			action.phase="approach"
 		if waiting_for_target and is_same(action,pending_action) and destination!=action.target_position:_clear_motion()
+		# A live courtesy hold is a contract that this endpoint equals the route
+		# destination. Moving an old sleeper onto a bed half here retires that
+		# hold, so a committed endpoint stays until the action itself changes.
+		if index==0 and _courtesy_endpoint_committed(action):
+			destination=action.target_position
+			keep_courtesy_endpoint=true
 		action.target_position=destination
 	reconciling_targets=false
 	if interrupted_social and not loading_game:
@@ -4502,7 +4509,15 @@ func _refresh_member_targets(replan:bool=true) -> void:
 			_set_route(walk_destination)
 			if path.is_empty():walk_only=false
 		else:_clear_motion()
-	elif str(current.phase)=="approach":on_action_started(current)
+	elif str(current.phase)=="approach" and not keep_courtesy_endpoint:on_action_started(current)
+
+func _courtesy_endpoint_committed(action:Dictionary) -> bool:
+	if not traversal.routes.has(bound_member_id):return false
+	var route:Dictionary=traversal.routes[bound_member_id]
+	if Vector3(action.get("target_position",Vector3.INF))!=Vector3(route.get("destination",Vector3.INF)):return false
+	if route.has("courtesy"):return true
+	var donor_id:String=traversal.courtesy.owner(traversal)
+	return not donor_id.is_empty() and donor_id!=bound_member_id and str(traversal.routes[donor_id].courtesy.get("beneficiary_id",""))==bound_member_id
 
 func _clear_motion(keep_route:bool=false) -> void:
 	if traversal and not keep_route:traversal.cancel(bound_member_id)
@@ -4740,6 +4755,7 @@ func on_action_started(action:Dictionary) -> void:
 		# Only the live marker/FIFO fields are temporarily cleared below. Keep
 		# independent path values; never reinstall a retired route or ownership.
 		courtesy_motion={"owner":courtesy_owner,"owner_route":traversal.routes[courtesy_owner],"route":traversal.routes[bound_member_id],"fact":traversal.routes[courtesy_owner].courtesy,"navigation":world.lot_navigation.generation,"action":action.duplicate(true),"resources":_activity_resources(action),"path":path.duplicate(),"index":path_index,"waiting":waiting_for_target,"started":wait_started,"review":wait_review,"destination":wait_destination}
+	var keep_committed_endpoint:bool=str(action.get("phase",""))=="approach" and not action.has("seat_slot") and traversal.routes.has(bound_member_id) and Vector3(action.get("target_position",Vector3.INF))==Vector3(traversal.routes[bound_member_id].get("destination",Vector3.INF))
 	var resource_wait:Dictionary={}
 	if waiting_for_target and wait_started>=0 and is_same(action,pending_action) and str(action.phase)=="approach" and not walk_only and not resume_activity and not arrived_waiter and (not retained_courtesy or retained_current_floor) and str(action.get("cooperation_id","")).is_empty() and not str(action.id) in LifeSim.SOCIAL_ACTIONS and not _find_item(str(action.target_id)).is_empty():
 		resource_wait={"started":wait_started,"review":wait_review,"destination":wait_destination,"resources":_activity_resources(action),"plate":str(action.get("meal_plate","")),"source":str(action.get("meal_source","")),"stage":str(action.get("meal_stage",""))}
@@ -4761,7 +4777,7 @@ func on_action_started(action:Dictionary) -> void:
 			_cancel_blocked_action.call_deferred(route_generation,action,bound_member_id,load_epoch)
 			return
 		action.target_position=destination
-	else:_resolve_activity_target(action)
+	else:_resolve_activity_target(action,keep_committed_endpoint)
 	meal_flow.resolve(sim,action)
 	if not is_same(sim.get_current_action(),action):return
 	pending_action=action
@@ -6532,14 +6548,17 @@ func _reconcile_social_routes()->void:
 	_bind_member(prior)
 
 
-func _resolve_activity_target(action:Dictionary) -> void:
+func _resolve_activity_target(action:Dictionary,keep_committed_endpoint:bool=false) -> void:
 	if str(action.id) in ["school_day","career_day","morning_run"]:
 		action.target_position=world.lot_exit_position(_member_index(bound_member_id));return
 	if world.actors.has(str(action.target_id)):
 		action.target_position=world.actors[str(action.target_id)].position+Vector3(0,0,.9)
 		return
 	var item:Dictionary=_find_item(str(action.target_id))
-	if not item.is_empty() and world.seat_capacity(item)>1:_assign_seat_slot(action,item)
+	# The route is cleared just before this runs. A caller that already matched
+	# this approach to that route asks us to keep the endpoint: naming a bed
+	# half would move a saved Sleep the moment Build drops its courtesy hold.
+	if not item.is_empty() and world.seat_capacity(item)>1 and not keep_committed_endpoint:_assign_seat_slot(action,item)
 	var wanted:String=""
 	if action.id=="cook" and not item.is_empty() and item.kind=="fridge":wanted="stove"
 	if action.id=="watch" and not item.is_empty() and item.kind=="tv":wanted="sofa"
