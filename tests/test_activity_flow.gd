@@ -38,7 +38,10 @@ func _natural_owner()->void:
 	var first_wait:float=-1.0;var changed_at:float=-1.0;var waiting_preserved:bool=true;var queued_preserved:bool=true;var no_early:bool=true;var minimum:float=INF
 	var clear_id:int=-1;var clear_destination:Vector3=Vector3.INF;var clear_finished:bool=false;var moved:bool=false;var completed:bool=false
 	var deadline:int=Time.get_ticks_msec()+120000
-	await press("▶")
+	# The shared clock is one game minute per second. This continuation was
+	# written when it was six, so normal speed no longer reaches a finished
+	# canvas inside 600 steps. Very fast speed restores that game-time budget.
+	await press("▶▶▶" if test_phase=="natural" else "▶")
 	for i:int in range(600):
 		if Time.get_ticks_msec()>=deadline:check(false,"Declared120s continuation wall cap is not exhausted.");break
 		_exclude_inputs();app._process(.05);await frames(1)

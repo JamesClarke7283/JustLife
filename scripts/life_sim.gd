@@ -3013,6 +3013,17 @@ func _reconsider_active_autonomy() -> void:
 	if not danger and not duty_ready and not preparation_ready:return
 	var next:Dictionary=_autonomous_choice()
 	if next.is_empty() or (str(next.id)==str(current.id) and str(next.target_id)==str(current.target_id)):return
+	# A low need only earns an interruption when the replacement actually
+	# recovers it. Otherwise a free sink can cancel a walk to the easel and the
+	# Lifelet starts reading, which was never the urgent errand.
+	if danger and not duty_ready and not preparation_ready:
+		var next_changes:Dictionary=_actions.get(str(next.id),{}).get("changes",{})
+		var addresses_danger:bool=false
+		for need:String in NEED_NAMES:
+			if float(needs[need])<12.0 and float(current.changes.get(need,0.0))<=0.0 and float(next_changes.get(need,0.0))>0.0:
+				addresses_danger=true
+				break
+		if not addresses_danger:return
 	# A carried portion can resolve many meal targets to the same owned plate.
 	# Let its real eating approach arrive instead of releasing and reclaiming
 	# that plate every hunger check. Different urgent recoveries still interrupt.
