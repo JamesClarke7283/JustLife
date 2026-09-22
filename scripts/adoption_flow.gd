@@ -98,16 +98,23 @@ func sim_bill() -> Dictionary:
 func show_insurance() -> void:
 	_panel("Cover for what is yours.","A burglar breaks in every few nights and carries off the household's cash. Insurance costs a premium once and pays the loss straight back.")
 	var policy:Dictionary=app.household.insurance()
+	var house_id:String=Properties.active(app.properties)
+	var baby_held:bool=not house_id.is_empty() and not str(Properties.house(app.properties,house_id).get("baby_policy","")).is_empty()
 	if not policy.is_empty():
 		app.text_label("Insured · "+str(policy.label),Vector2(302,354),Vector2(820,50),34,P.INK,true,app.overlay)
 		app.paragraph("The household paid ℒ%d for this cover. A break-in is reimbursed in full while it is in force; nothing is refunded if you cancel." % int(policy.premium),Vector2(307,420),Vector2(806,72),18,P.MUTED,app.overlay)
 		app.card(Vector2(302,500),Vector2(820,110),P.PALE,15,app.overlay)
 		app.text_label("A burglar takes up to ℒ%d" % LifeSim.ROBBERY_LOSS,Vector2(326,516),Vector2(780,34),22,P.INK,true,app.overlay)
 		app.paragraph("With this policy the same loss is paid back the moment it happens, so the household ends the night exactly as it started.",Vector2(328,552),Vector2(768,52),16,P.MUTED,app.overlay)
-		var cancel:Button=app.button("Cancel insurance",Vector2(302,646),Vector2(820,47),cancel_insurance,false,app.overlay)
+		if baby_held:
+			app.paragraph("Baby & Child Insurance is also in force on this home.",Vector2(307,620),Vector2(806,24),14,P.TEAL,app.overlay)
+		elif not house_id.is_empty():
+			var baby_buy:Button=app.button("Add Baby & Child Insurance · ℒ500",Vector2(302,616),Vector2(820,36),func():_buy_baby_insurance(),false,app.overlay)
+			baby_buy.name="PhoneBuyBabyInsurance"
+		var cancel:Button=app.button("Cancel insurance",Vector2(302,662),Vector2(820,40),cancel_insurance,false,app.overlay)
 		cancel.name="PhoneCancelInsurance"
 		cancel.tooltip_text="Give up the cover. No premium is refunded."
-		app.button("Back to phone",Vector2(302,703),Vector2(820,47),show_phone,false,app.overlay)
+		app.button("Back to phone",Vector2(302,710),Vector2(820,40),show_phone,false,app.overlay)
 		return
 	var home_policy:Dictionary=LifeSim.INSURANCE_POLICIES.home
 	app.text_label("ℒ%d · one premium" % int(home_policy.premium),Vector2(302,354),Vector2(820,50),34,P.INK,true,app.overlay)
@@ -121,6 +128,14 @@ func show_insurance() -> void:
 	buy.disabled=shortfall>0
 	buy.tooltip_text=("The household needs ℒ%d more." % shortfall) if shortfall>0 else "Cover begins immediately and lasts until you cancel it."
 	app.button("Back to phone",Vector2(302,703),Vector2(820,47),show_phone,false,app.overlay)
+
+func _buy_baby_insurance() -> void:
+	var result:Dictionary=app.buy_home_insurance("baby")
+	if bool(result.get("ok",false)):
+		app.refresh_hud()
+		show_insurance()
+	else:
+		app.show_notice(str(result.get("error","Baby & Child Insurance could not be bought.")))
 
 
 ## Buy the policy and report the outcome through the household's own reason.

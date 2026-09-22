@@ -55,10 +55,11 @@ const MAX_LEVEL: int = 10
 ## stage that may do it; `teaches` names the skill the actor's own level grows,
 ## which is how a child teaching a trick also becomes more logical.
 const INTERACTIONS: Array[Dictionary] = [
+	{"id": "pet_feed", "label": "Feed Dog", "needs": {"hunger": 42.0, "social": 6.0}, "pet_skill": "obedience", "pet_xp": 8.0, "duration": 15.0, "min_age": "", "teaches": "", "teach_xp": 0.0},
+	{"id": "pet_play", "label": "Play with Dog", "needs": {"fun": 40.0, "energy": -6.0, "social": 24.0}, "pet_skill": "agility", "pet_xp": 22.0, "duration": 30.0, "min_age": "", "teaches": "fitness", "teach_xp": 10.0},
+	{"id": "pet_teach_trick", "label": "Play Tricks", "needs": {"fun": 20.0, "energy": -4.0, "social": 18.0}, "pet_skill": "tricks", "pet_xp": 30.0, "duration": 35.0, "min_age": "child", "teaches": "logic", "teach_xp": 26.0},
+	{"id": "pet_walk", "label": "Take for a Walk", "needs": {"fun": 28.0, "energy": -8.0, "social": 20.0}, "pet_skill": "agility", "pet_xp": 18.0, "duration": 40.0, "min_age": "", "teaches": "fitness", "teach_xp": 22.0},
 	{"id": "pet_pet", "label": "Pet", "needs": {"fun": 14.0, "social": 16.0}, "pet_skill": "obedience", "pet_xp": 12.0, "duration": 12.0, "min_age": "", "teaches": "", "teach_xp": 0.0},
-	{"id": "pet_feed", "label": "Feed", "needs": {"hunger": 42.0, "social": 6.0}, "pet_skill": "obedience", "pet_xp": 8.0, "duration": 15.0, "min_age": "", "teaches": "", "teach_xp": 0.0},
-	{"id": "pet_play", "label": "Play together", "needs": {"fun": 40.0, "energy": -6.0, "social": 24.0}, "pet_skill": "agility", "pet_xp": 22.0, "duration": 30.0, "min_age": "", "teaches": "fitness", "teach_xp": 10.0},
-	{"id": "pet_teach_trick", "label": "Teach a trick", "needs": {"fun": 20.0, "energy": -4.0, "social": 18.0}, "pet_skill": "tricks", "pet_xp": 30.0, "duration": 35.0, "min_age": "child", "teaches": "logic", "teach_xp": 26.0},
 	{"id": "pet_train", "label": "Train obedience", "needs": {"fun": 12.0, "social": 14.0}, "pet_skill": "obedience", "pet_xp": 26.0, "duration": 25.0, "min_age": "adult", "teaches": "parenting", "teach_xp": 18.0},
 ]
 

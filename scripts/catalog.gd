@@ -36,20 +36,20 @@ const ITEMS = {
 	"stool": {"label":"Kitchen stool", "category":"Comfort", "price":60, "size":Vector2(.5,.5), "height":.78, "color":"417a71"},
 	"wardrobe": {"label":"Everyday wardrobe", "category":"Comfort", "price":380, "size":Vector2(1.25,.62), "height":2.05, "color":"ab7951"},
 	"bathtub": {"label":"Long soak bathtub", "category":"Bathroom", "price":560, "size":Vector2(1.75,.9), "height":.62, "color":"faf6ea"},
-	# ---------------------------------------------------------------- Bedroom
+	# ---------------------------------------------------------------- Baby & Kids
 	# The nursery and a child's own room. A cot is where a baby sleeps, a child
 	# bed is the next size up, and the changing table, potty and feeding set are
 	# the pieces a caregiver works with. Every one is a real furnishing, so the
 	# household can place, move, save and click it like anything else.
-	"cot": {"label":"Nursery cot", "category":"Bedroom", "price":420, "size":Vector2(1.24,.64), "height":.74, "color":"ab7951",
+	"cot": {"label":"Nursery cot", "category":"Baby & Kids", "price":30, "size":Vector2(1.24,.64), "height":.74, "color":"ab7951",
 		"seat_count":1, "shared_beds":true},
-	"child_bed": {"label":"Child's own bed", "category":"Bedroom", "price":380, "size":Vector2(1.02,1.94), "height":.96, "color":"624435",
+	"child_bed": {"label":"Child's own bed", "category":"Baby & Kids", "price":50, "size":Vector2(1.02,1.94), "height":.96, "color":"624435",
 		"seat_count":1},
-	"changing_table": {"label":"Changing table", "category":"Bedroom", "price":260, "size":Vector2(1.10,.56), "height":1.02, "color":"efe9da"},
-	"potty": {"label":"Toddler potty", "category":"Bedroom", "price":35, "size":Vector2(.42,.36), "height":.26, "color":"9ec1cf"},
-	"baby_bottle": {"label":"Baby bottle", "category":"Bedroom", "price":12, "size":Vector2(.10,.10), "height":.27, "color":"f2f7fa"},
-	"baby_food": {"label":"Jar of baby food", "category":"Bedroom", "price":8, "size":Vector2(.12,.12), "height":.15, "color":"c9a05a"},
-	"baby_toys": {"label":"Baby toys", "category":"Bedroom", "price":55, "size":Vector2(.90,.90), "height":.22, "color":"d2a24b"},
+	"changing_table": {"label":"Changing table", "category":"Baby & Kids", "price":50, "size":Vector2(1.10,.56), "height":1.02, "color":"efe9da"},
+	"potty": {"label":"Toddler potty", "category":"Baby & Kids", "price":10, "size":Vector2(.42,.36), "height":.26, "color":"9ec1cf"},
+	"baby_bottle": {"label":"Baby bottle", "category":"Baby & Kids", "price":5, "size":Vector2(.10,.10), "height":.27, "color":"f2f7fa"},
+	"baby_food": {"label":"Jar of baby food", "category":"Baby & Kids", "price":5, "size":Vector2(.12,.12), "height":.15, "color":"c9a05a"},
+	"baby_toys": {"label":"Baby toys", "category":"Baby & Kids", "price":5, "size":Vector2(.90,.90), "height":.22, "color":"d2a24b"},
 	"computer": {"label":"Home office computer", "category":"Activities", "price":900, "size":Vector2(1.45,.75), "height":1.4, "color":"ab7951"},
 	"piano": {"label":"Parlour upright piano", "category":"Activities", "price":1200, "size":Vector2(1.55,1.3), "height":1.36, "color":"624435"},
 	"chess": {"label":"Quiet strategy games table", "category":"Activities", "price":240, "size":Vector2(.85,2.0), "height":.85, "color":"ab7951"},
@@ -247,7 +247,7 @@ const ITEMS = {
 const PET_ACCESSORIES: Array[String] = ["pet_bowl", "cat_tree", "kennel"]
 
 # The Build & buy filter row, in display order. Structure is the tool page.
-const CATEGORIES: Array[String] = ["All", "Comfort", "Bedroom", "Kitchen", "Bathroom", "Activities", "Decor", "Pets", "Garden", "Pool", "Kids", "Outdoor", "Vehicles", "Structure"]
+const CATEGORIES: Array[String] = ["All", "Comfort", "Bedroom", "Baby & Kids", "Kitchen", "Bathroom", "Activities", "Decor", "Pets", "Garden", "Pool", "Kids", "Outdoor", "Vehicles", "Structure"]
 
 # Instruments share one practice action; the authored model is the difference.
 const INSTRUMENTS: Array[String] = ["guitar", "violin"]

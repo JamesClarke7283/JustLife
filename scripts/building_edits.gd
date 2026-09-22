@@ -85,7 +85,14 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 		if not Building.identifier(operation.get("id")):return _error("Choose an existing wall on this level.")
 		var wall:Dictionary=Building.find(after,str(operation.id))
 		if wall.is_empty() or Building._group_of(after,str(operation.id))!="walls" or int(wall.level)!=int(level):return _error("The selected wall has changed.")
-		after.walls=after.walls.filter(func(record:Dictionary)->bool:return record.id!=wall.id)
+		# Drop every collinear overlapping panel with this wall so a doorway cut
+		# across a bought-plot boundary cannot leave a second stacked panel sealed.
+		var remove_ids:Dictionary={str(wall.id):true}
+		for other:Dictionary in after.walls:
+			if int(other.level)!=int(level) or str(other.id)==str(wall.id):continue
+			if not _coincident_wall({"walls":[wall],"floors":[]},other,int(level)).is_empty():
+				remove_ids[str(other.id)]=true
+		after.walls=after.walls.filter(func(record:Dictionary)->bool:return not remove_ids.has(str(record.id)))
 		var length:float=maxf(float(wall.w),float(wall.d))
 		if tool=="erase":cost=-int(length*20)
 		else:
@@ -109,16 +116,31 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 	after.revision=int(current.revision)+1
 	return {"ok":true,"operation":operation.duplicate(true),"before":Building.fingerprint(current),"after":after,"cost":cost,"funds_before":int(funds),"funds_after":int(funds)-cost}
 
-## The existing wall a proposed wall would duplicate exactly, or an empty
-## dictionary. A room drawn against another room must share the wall between
-## them rather than stacking a second one on the same line, so two rooms are
-## divided by one wall.
+## The existing wall a proposed wall would duplicate, or an empty dictionary. A
+## room drawn against another room must share the wall between them rather than
+## stacking a second one on the same line — including collinear overlaps across a
+## bought-plot boundary, where neither segment fully encloses the other.
 static func _coincident_wall(state:Dictionary,proposed:Dictionary,level:int) -> Dictionary:
 	var area:=Rect2(Vector2(float(proposed.x)-float(proposed.w)*.5,float(proposed.z)-float(proposed.d)*.5),Vector2(float(proposed.w),float(proposed.d)))
+	var proposed_horizontal:bool=float(proposed.w)>=float(proposed.d)
 	for wall:Dictionary in state.walls:
 		if int(wall.level)!=level:continue
 		var other:=Rect2(Vector2(float(wall.x)-float(wall.w)*.5,float(wall.z)-float(wall.d)*.5),Vector2(float(wall.w),float(wall.d)))
 		if area.grow(.02).encloses(other) or other.grow(.02).encloses(area):return wall
+		var wall_horizontal:bool=float(wall.w)>=float(wall.d)
+		if proposed_horizontal!=wall_horizontal:continue
+		# Same centre line and overlapping span: one shared wall, so a doorway
+		# cut later opens both rooms instead of only one of two stacked panels.
+		if proposed_horizontal:
+			if absf(float(proposed.z)-float(wall.z))>.08:continue
+			var a0:float=area.position.x;var a1:float=area.end.x
+			var b0:float=other.position.x;var b1:float=other.end.x
+			if minf(a1,b1)-maxf(a0,b0)>.05:return wall
+		else:
+			if absf(float(proposed.x)-float(wall.x))>.08:continue
+			var a0:float=area.position.y;var a1:float=area.end.y
+			var b0:float=other.position.y;var b1:float=other.end.y
+			if minf(a1,b1)-maxf(a0,b0)>.05:return wall
 	return {}
 
 

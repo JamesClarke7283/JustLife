@@ -63,8 +63,9 @@ const MOVING_FEE: int = 1200
 ## Every policy a house may carry. It mirrors `LifeSim.INSURANCE_POLICIES` in
 ## spirit but is keyed per property, so two houses can be covered differently.
 const POLICIES: Dictionary = {
-	"home": {"label": "Home insurance", "premium": 450},
+	"home": {"label": "Home insurance", "premium": 600},
 	"premium": {"label": "Premium home insurance", "premium": 900, "payout_multiple": 1.5},
+	"baby": {"label": "Baby & Child Insurance", "premium": 500},
 }
 
 ## The most houses one household may own, so a save cannot grow without bound.
@@ -218,19 +219,25 @@ static func policy(state: Dictionary, house_id: String) -> Dictionary:
 
 
 ## Buy the named policy on one house. Each house carries its own cover, so a
-## second home is insured separately from the first.
+## second home is insured separately from the first. Baby & Child cover is an
+## add-on kept on `baby_policy` so it can sit beside burglar cover.
 static func buy_policy(state: Dictionary, house_id: String, policy_id: String, funds: int) -> Dictionary:
 	if not owns(state, house_id):
 		return {"ok": false, "error": "This household does not own that house."}
 	if not POLICIES.has(policy_id):
 		return {"ok": false, "error": "That is not a policy this game sells."}
-	var existing: Dictionary = policy(state, house_id)
-	if not existing.is_empty():
-		return {"ok": false, "error": "%s is already insured for ℒ%d a term. Cancel it first to change cover." % [str(house(state, house_id).get("name", "This house")), int(existing.premium)]}
 	var premium: int = int(POLICIES[policy_id].premium)
 	if funds < premium:
 		return {"ok": false, "error": "That cover costs ℒ%d and needs ℒ%d more." % [premium, premium - funds]}
 	var after: Dictionary = state.duplicate(true)
+	if policy_id == "baby":
+		if not str(house(state, house_id).get("baby_policy", "")).is_empty():
+			return {"ok": false, "error": "Baby & Child Insurance is already in force on this home."}
+		after["houses"][house_id]["baby_policy"] = "baby"
+		return {"ok": true, "state": after, "cost": premium, "funds": funds - premium}
+	var existing: Dictionary = policy(state, house_id)
+	if not existing.is_empty():
+		return {"ok": false, "error": "%s is already insured for ℒ%d a term. Cancel it first to change cover." % [str(house(state, house_id).get("name", "This house")), int(existing.premium)]}
 	after["houses"][house_id]["policy"] = policy_id
 	return {"ok": true, "state": after, "cost": premium, "funds": funds - premium}
 

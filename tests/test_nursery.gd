@@ -45,7 +45,7 @@ func _run() -> void:
 	app.household.set_funds(900000)
 	await frames(2)
 
-	check(LifeCatalog.CATEGORIES.has("Bedroom"), "Build & buy offers its own Bedroom section.")
+	check(LifeCatalog.CATEGORIES.has("Baby & Kids"), "Build & buy offers its own Baby & Kids section.")
 	app.set_build_mode(true); await frames(4)
 
 	var missing: Array[String] = []
@@ -53,8 +53,8 @@ func _run() -> void:
 		var data: Dictionary = LifeCatalog.get_item(kind)
 		check(not data.is_empty(), "The catalogue holds the %s family." % kind)
 		if data.is_empty(): missing.append(kind); continue
-		check(str(data.get("category", "")) == "Bedroom",
-			"%s is filed under Bedroom (%s)." % [kind, str(data.get("label", ""))])
+		check(str(data.get("category", "")) == "Baby & Kids",
+			"%s is filed under Baby & Kids (%s)." % [kind, str(data.get("label", ""))])
 		check(not str(data.get("label", "")).is_empty() and int(data.get("price", 0)) > 0,
 			"%s is named and priced (%s, L%d)." % [kind, str(data.get("label", "")), int(data.get("price", 0))])
 		# The ghost loads this exact path, so a family without it cannot be placed.
