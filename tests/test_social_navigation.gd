@@ -80,7 +80,11 @@ func _saved_control(label_text:String)->void:
 	control_saves.append({"name":label_text,"slot":app.active_save_id,"data":read.data,"friendship":app.sim.relationships.duplicate(true),"funds":app.household.funds})
 
 func _curb_control()->void:
-	await _reset_control({"player":Vector3(-3.75,.16,8.25),"leo":Vector3(-4.54,.16,8.65)})
+	# Day 1 parks the weekly van at (-4.6, 8.5). Its solid band is about
+	# x -5.9..-3.3, z 7.6..9, so the old pair stood inside the van and every
+	# approach was refused before a route existed. This pair is the same
+	# sidewalk, east of that band.
+	await _reset_control({"player":Vector3(-2.0,.16,8.25),"leo":Vector3(-1.25,.16,8.65)})
 	var before:float=app.sim.relationships.leo.friendship
 	await _chat("leo")
 	await _open_item(first_item("bookshelf"));await press("Read a book")
