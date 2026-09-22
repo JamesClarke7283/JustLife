@@ -3,6 +3,10 @@ extends "res://tests/test_sanitation.gd"
 func run()->void:
 	app=MainScene.instantiate();root.add_child(app);current_scene=app
 	await frames(4);app.set_process(false);app.set_sound(false);app.start_household();await frames(3);reset_needs()
+	# Cooking draws its ingredients from the kitchen, so the fixture stocks it
+	# through the household's own order before asking anyone to cook.
+	var ordered:Dictionary=app.household.order_groceries("weekly");var collected:Dictionary=app.household.collect_groceries()
+	check(bool(ordered.ok) and bool(collected.ok),"The fixture stocks its own kitchen through the household's order.")
 	var stove:Dictionary=first("stove")
 	app.queue_interaction(stove,"cook")
 	check(until(func()->bool:return str(app.sim.get_current_action().get("phase",""))=="active"),"Cooking begins after the Lifelet actually reaches the stove.")

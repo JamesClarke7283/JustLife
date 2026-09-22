@@ -20,7 +20,7 @@ source = args.source.resolve()
 work = Path(tempfile.mkdtemp(prefix='sanitation-acting-'))
 print('ACTING_CANDIDATE=' + str(work), flush=True)
 for name in ('scripts', 'assets', 'scenes'):
-    shutil.copytree(source / name, work / name, ignore=shutil.ignore_patterns('*_rig*', '*_grip*'))
+    shutil.copytree(source / name, work / name, ignore=shutil.ignore_patterns('character_rig*', '*_grip*'))
 (work / 'tests').mkdir()
 shutil.copy2(source / 'tests/test_sanitation_acting.gd', work / 'tests/test_sanitation_acting.gd')
 project = re.sub(r'\[(autoload|editor_plugins|mcp_toolkit)\]\n.*?(?=\n\[|\Z)', '', (source / 'project.godot').read_text(), flags=re.S)

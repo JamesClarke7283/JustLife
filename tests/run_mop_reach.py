@@ -20,7 +20,7 @@ source = args.source.resolve()
 work = Path(tempfile.mkdtemp(prefix='sanitation-mop-'))
 print('MOP_CANDIDATE=' + str(work), flush=True)
 for name in ('scripts', 'assets', 'scenes'):
-    shutil.copytree(source / name, work / name, ignore=shutil.ignore_patterns('*_rig*', '*_grip*'))
+    shutil.copytree(source / name, work / name, ignore=shutil.ignore_patterns('character_rig*', '*_grip*'))
 (work / 'tests').mkdir()
 for name in ('test_sanitation_acting.gd', 'test_mop_reach.gd'):
     shutil.copy2(source / 'tests' / name, work / 'tests' / name)

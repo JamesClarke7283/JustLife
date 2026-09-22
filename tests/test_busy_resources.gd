@@ -27,8 +27,21 @@ func _exclude_inputs()->void:
 	for node:Node in [app]+app.find_children("*","Node",true,false):
 		node.set_process_input(false);node.set_process_unhandled_input(false);node.set_process_unhandled_key_input(false);node.set_process_shortcut_input(false)
 func _project_queue(queue:Array)->Array:
+	# The loader rebuilds each stored action from the live definition table and
+	# adopts the saved progress, so a definition-derived field (`label`, `changes`,
+	# `cost`, `description`, `skill`, `xp`) reflects today's code rather than the
+	# text that was saved — which is what lets a retuned activity load. The saved
+	# duration, elapsed, identity, payment and ownership are what a load must
+	# preserve, and they are compared here through this projection.
 	var result:Array=queue.duplicate(true)
-	for action:Dictionary in result:action.progress=clampf(float(action.elapsed)/float(action.duration),0.0,1.0)
+	for action:Dictionary in result:
+		action.progress=clampf(float(action.elapsed)/float(action.duration),0.0,1.0)
+		var definition:Dictionary=app.sim._actions.get(str(action.get("id","")),{})
+		if definition.is_empty():continue
+		var rebuilt:Dictionary=definition.duplicate(true)
+		if str(action.get("id",""))=="cook":rebuilt=LifeMeals.cooking_definition(rebuilt,str(action.get("recipe","garden_skillet")))
+		for key:String in ["label","changes","cost","description","skill","xp"]:
+			if rebuilt.has(key):action[key]=rebuilt[key]
 	return result
 func _busy_record()->Dictionary:
 	var value:Dictionary=_record();value.funds=app.household.funds;value.waits={}

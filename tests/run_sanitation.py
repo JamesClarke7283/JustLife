@@ -4,7 +4,7 @@ import argparse, hashlib, json, os, re, shutil, subprocess, sys, tempfile
 p=argparse.ArgumentParser();p.add_argument('--source',type=Path,default=Path(__file__).resolve().parents[1]);p.add_argument('--capture',action='store_true');a=p.parse_args()
 if not sys.platform.startswith("linux"):p.error("This verification runner requires Linux XDG isolation.")
 source=a.source.resolve();work=Path(tempfile.mkdtemp(prefix='justlife-sanitation-'));print('SANITATION_CANDIDATE='+str(work),flush=True)
-for folder in ('scripts','assets','scenes'):shutil.copytree(source/folder,work/folder,ignore=shutil.ignore_patterns('*_rig*','*_grip*'))
+for folder in ('scripts','assets','scenes'):shutil.copytree(source/folder,work/folder,ignore=shutil.ignore_patterns('character_rig*', '*_grip*'))
 (work/'tests').mkdir()
 for name in ('test_sanitation.gd','test_sanitation_busy.gd','test_sanitation_travel.gd'):shutil.copy2(source/'tests'/name,work/'tests'/name)
 s=(source/'project.godot').read_text();s=re.sub(r'\[(autoload|editor_plugins|mcp_toolkit)\]\n.*?(?=\n\[|\Z)','',s,flags=re.S);(work/'project.godot').write_text(s)

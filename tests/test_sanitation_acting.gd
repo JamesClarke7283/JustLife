@@ -103,6 +103,10 @@ func ownership_controls()->void:
 	app.household_profiles=[{"name":"Casey Wells","frame":1}];app.start_household();await frames(3)
 	app.household.set_speed(1);app.sim.autonomy=false
 	for key:String in app.sim.needs:app.sim.needs[key]=80.0
+	# Cooking draws its ingredients from the kitchen, so the ownership control
+	# stocks it through the household's own order before asking anyone to cook.
+	var ordered:Dictionary=app.household.order_groceries("weekly");var collected:Dictionary=app.household.collect_groceries()
+	check(bool(ordered.ok) and bool(collected.ok),"The ownership control stocks its own kitchen through the household's order.")
 	app.queue_interaction(first("stove"),"cook")
 	check(until(func()->bool:return str(app.sim.get_current_action().get("phase",""))=="active"),"Ownership control uses an actual paid cooking action.")
 	step(.4)

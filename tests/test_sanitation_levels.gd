@@ -87,7 +87,11 @@ func stacked_floors()->void:
 	for value:Dictionary in app.household.sanitation.puddles:
 		var item:Dictionary=app._find_item(value.id);var level:int=int(value.level)
 		check(item.node.get_child(0).layers==(LifeWorld.VIEW_GROUND if level==0 else LifeWorld.VIEW_UPPER),"Wet-patch geometry belongs only to its own storey.")
-		check(item.node.get_node("PuddlePicking").collision_layer==(LifeWorld.PICK_GROUND if level==0 else LifeWorld.PICK_UPPER),"Wet-patch picking belongs only to its own storey.")
+		# The picker also carries the always-on surface bit, so wet patches stay
+		# clickable under furniture; storey isolation is that its *storey* bit is
+		# the only one of the two present.
+		var picking_layer:int=int(item.node.get_node("PuddlePicking").collision_layer)
+		check((picking_layer & (LifeWorld.PICK_GROUND|LifeWorld.PICK_UPPER))==(LifeWorld.PICK_GROUND if level==0 else LifeWorld.PICK_UPPER),"Wet-patch picking belongs only to its own storey.")
 		var at:Vector3=Vector3(value.position[0],value.position[1],value.position[2])
 		check(absf(item.node.position.y-(app.meal_flow._floor_height(at)+.004))<.00001,"Wet patch rests just above the measured supporting slab.")
 		level_facts.append({"value":value.duplicate(true),"mesh_y":item.node.position.y,"mask":item.node.get_node("PuddlePicking").collision_layer})

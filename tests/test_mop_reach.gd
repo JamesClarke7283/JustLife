@@ -17,7 +17,11 @@ func run()->void:
 		app.queue_interaction(app._find_item(puddle.id),"mop_puddle")
 		check(until(func()->bool:return str(app.sim.get_current_action().get("phase",""))=="active"),str(config.name)+" reaches the actual cleanup anchor.")
 		var worst:float=0.0;var feet:float=0.0;var left:float=0.0;var right:float=0.0;var walking_frames:int=0;var held_frames:int=0
-		for i:int in 240:
+		# Each frame advances 1/60 game-minute, and the cleanup itself runs for its
+		# whole declared duration (8 minutes), so the measurement window has to
+		# cover that and then still see the release rather than stopping halfway.
+		var cleanup_frames:int=int(ceil(float(app.sim._actions["mop_puddle"].duration)*60.0))+60
+		for i:int in cleanup_frames:
 			if str(app.sim.get_current_action().get("id",""))!="mop_puddle":break
 			if app.player._motion_action=="walk":
 				walking_frames+=1;check(not app.player._mop.visible,"The final approach frame keeps the walking pose and hides the unheld mop.");step(1.0/60.0);continue

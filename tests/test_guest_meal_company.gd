@@ -21,6 +21,10 @@ func _run()->void:
 		_step()
 	check(app.world.actors.player.position.distance_to(near)<.02,"Household diner walks near the meal before the shared call")
 	app.select_household_member(1)
+	# Cooking draws its ingredients from the kitchen, so the fixture stocks it
+	# through the household's own order before asking the chef to cook.
+	var ordered:Dictionary=app.household.order_groceries("weekly");var collected:Dictionary=app.household.collect_groceries()
+	check(bool(ordered.ok) and bool(collected.ok),"The fixture stocks its own kitchen through the household's order")
 	app.queue_interaction(_item_kind("stove"),"cook")
 	app.household.set_speed(1)
 	for index:int in 300:
