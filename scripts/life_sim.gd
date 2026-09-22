@@ -2957,7 +2957,19 @@ func _autonomy_need_choice(need:String,excluded_target_ids:Array=[],preparing:bo
 		if not shopping.is_empty():return shopping
 	var candidates:Array[String]=[]
 	match need:
-		"hunger":candidates=["eat_meal","snack","cook"]
+		"hunger":
+			# The starter "A taste of home" want only advances on a finished cook.
+			# Prefer the stove while that want is open so autonomy does not snack
+			# the fridge empty for sixty days and leave the chapter pinned forever.
+			var needs_first_cook: bool = false
+			for want: Dictionary in wants:
+				if str(want.get("id", "")) == "first_meal" and not bool(want.get("complete", false)):
+					needs_first_cook = true
+					break
+			if needs_first_cook:
+				candidates = ["cook", "eat_meal", "snack"]
+			else:
+				candidates = ["eat_meal", "snack", "cook"]
 		"energy":
 			if preparing or (LifeEducation.weekday(day) and minutes>=240.0 and minutes<=960.0):candidates=["nap","sleep"]
 			else:candidates=["sleep","nap"]
@@ -4679,6 +4691,13 @@ func celebrate_birthday(start_next_action: bool = true) -> bool:
 	if is_away() and str(away_state.phase) == "away": request_return_home()
 	character.age_stage = next
 	character.life_stage = LifeLifecycle.eligibility(next)
+	# Elders keep their face and frame, but hair should read as aged. Birthdays
+	# used to only flip the stage label, so a sixty-day elder still looked adult.
+	if next == "elder":
+		var elder_hairs: Array = preload("res://scripts/character_identity.gd").ELDER_HAIR_COLORS
+		if not elder_hairs.is_empty():
+			var pick: int = absi(int(hash(str(character.get("name", "")) + ":" + str(day)))) % elder_hairs.size()
+			character["hair_color"] = str(elder_hairs[pick])
 	if LifeLifecycle.eligibility(previous)!="adult" and str(character.life_stage)=="adult":career.schedule=LifeCareerSchedule.fresh(day,day+1 if minutes>LifeCareerSchedule.CLOSE else day)
 	lifecycle.progress = 0.0
 	lifecycle.history.append({"from":previous,"to":next,"day":day})

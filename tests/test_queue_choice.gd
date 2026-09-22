@@ -37,6 +37,26 @@ func run() -> void:
 	var calm: Dictionary=d.sim._autonomy_need_choice("hunger")
 	check(str(calm.get("target_id"))=="fridge",
 		"Free resources keep the established preference (%s)." % str(calm))
+	# The starter "A taste of home" want only advances on cook. While it is open,
+	# hunger must prefer the stove over snacking the fridge empty forever.
+	var stove_home: LifeHousehold = home_setup(["adult"])
+	var cook_seeker: LifeSim = stove_home.members[0].sim
+	comfortable(cook_seeker)
+	cook_seeker.needs.hunger = 40.0
+	cook_seeker.wants = [{
+		"id": "first_meal", "label": "A taste of home", "description": "Cook your first fresh meal.",
+		"progress": 0.0, "target": 1.0, "reward": 60, "complete": false,
+	}]
+	var with_stove: Array = targets()
+	with_stove.append({"id": "stove", "kind": "stove", "position": Vector3(12, .16, 0)})
+	stove_home.register_targets(with_stove)
+	var first_cook: Dictionary = cook_seeker._autonomy_need_choice("hunger")
+	check(str(first_cook.get("id")) == "cook",
+		"An open first-meal want prefers cook over snack (%s)." % str(first_cook))
+	cook_seeker.wants[0].complete = true
+	var after_meal: Dictionary = cook_seeker._autonomy_need_choice("hunger")
+	check(str(after_meal.get("id")) == "snack",
+		"After first_meal is done, snack preference returns (%s)." % str(after_meal))
 	for node: Node in owned:node.free()
 	print("QUEUE_CHOICE %d checks, %d failures" % [checks,failures.size()])
 	quit(0 if failures.is_empty() else 1)

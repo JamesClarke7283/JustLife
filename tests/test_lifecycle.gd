@@ -59,6 +59,8 @@ func _initialize() -> void:
 	check(resumed.restore_state(legacy).ok and resumed.character.age_stage == "teen" and resumed.character.life_stage == "minor", "Legacy minor saves stay minors.")
 	sim.celebrate_birthday()
 	check(sim.character.age_stage == "elder" and not sim.celebrate_birthday(), "Elder has no repeated or wrapping birthday.")
+	check(str(sim.character.hair_color) in preload("res://scripts/character_identity.gd").ELDER_HAIR_COLORS,
+		"Becoming an elder greys the hair so the stage is visible (%s)." % str(sim.character.get("hair_color", "")))
 	check(not sim.get_action_availability("birthday").available, "No birthday action is offered beyond the final supported stage.")
 	sim.new_household({"age_stage":"child"})
 	check(not sim.queue_action("cook") and sim.get_action_availability("snack").available, "Child can get food without adult stove interactions.")

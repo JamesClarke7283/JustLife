@@ -27,6 +27,9 @@ var orders: int = 0
 var promotions: int = 0
 var qualification: String = ""
 var days: int = clampi(int(OS.get_environment("JUSTLIFE_NINETY_DAYS")) if OS.has_environment("JUSTLIFE_NINETY_DAYS") else DAYS, 1, 400)
+## Glitches observed during the long unattended run: day, detail, screenshot path.
+## Written beside the progress report so a critic can open each capture.
+var glitches: Array = []
 
 func _run() -> void:
 	screenshot_dir = "res://art/ninety_day_progress"
@@ -46,7 +49,7 @@ func _run() -> void:
 		await _save_ninety()
 	_write_report()
 	app.queue_free();await frames(3)
-	print("NINETY_DAY_RESULT assertions=%d failures=%d resume=%s days=%d" % [assertions,failures.size(),str(resume_only),days])
+	print("NINETY_DAY_RESULT assertions=%d failures=%d resume=%s days=%d glitches=%d" % [assertions,failures.size(),str(resume_only),days,glitches.size()])
 	quit(0 if failures.is_empty() else 1)
 
 ## Watch the household's own signals, so promotions and deliveries are counted
@@ -153,14 +156,50 @@ func _run_to(target: float) -> void:
 	app.household.set_speed(8)
 	var last_sample: float = _now()
 	var start_wall: float = Time.get_ticks_msec() / 1000.0
-	var guard: float = start_wall + 3000.0
+	var guard: float = start_wall + 3600.0
+	var last_day: int = app.household.day
 	while _now() < target and Time.get_ticks_msec() / 1000.0 < guard:
 		app._process(1.0 / 15.0)
+		if app.household.day != last_day:
+			last_day = app.household.day
+			await _sample_day()
 		if _now() - last_sample >= 1440.0:
 			last_sample = _now()
 			history.append(_snapshot("day_%d" % app.household.day))
 	app.household.set_speed(0)
 	check(_now() >= target,"The household really reaches day %d (reached day %d, %.0f game minutes)." % [days,app.household.day,_now()])
+
+## One real day boundary: capture the live view and note critical needs, empty
+## kitchens or starvation pressure so a long run leaves a glitch trail.
+func _sample_day() -> void:
+	var day_n: int = int(app.household.day)
+	var label: String = "day_%02d" % day_n
+	await screenshot(label)
+	var shot: String = screenshot_dir.path_join(label + ".png")
+	for member: Dictionary in app.household.members:
+		var sim: LifeSim = member.sim
+		if sim == null or sim.is_spirit():
+			continue
+		for need_name: String in ["hunger", "energy", "bladder", "hygiene", "fun", "social"]:
+			var value: float = float(sim.needs.get(need_name, 100.0))
+			if value < 12.0:
+				_log_glitch(day_n, shot, "product",
+					"%s %s at %.0f (critical)." % [str(sim.character.name), need_name, value])
+		if float(sim.starvation_minutes) > 0.0:
+			_log_glitch(day_n, shot, "product",
+				"%s has %.0f starvation minutes." % [str(sim.character.name), float(sim.starvation_minutes)])
+	if int(app.household.funds) <= 0:
+		_log_glitch(day_n, shot, "product", "Household funds are ℒ0.")
+	var grocery_stock: int = int(app.household.groceries.get("stock", 0))
+	var meal_portions: int = app.household.meals.portions.size() if app.household.meals != null else 0
+	if grocery_stock <= 0 and meal_portions <= 0:
+		_log_glitch(day_n, shot, "product", "Kitchen is empty (no grocery stock and no portions).")
+	print("NINETY_DAY_SAMPLE day=%d funds=%d stock=%d glitches=%d" % [day_n, app.household.funds, grocery_stock, glitches.size()])
+
+func _log_glitch(day_n: int, shot: String, kind: String, detail: String) -> void:
+	var entry: Dictionary = {"day": day_n, "screenshot": shot, "kind": kind, "detail": detail}
+	glitches.append(entry)
+	print("GLITCH day=%d kind=%s %s shot=%s" % [day_n, kind, detail, shot])
 
 func _snapshot(label_text: String) -> Dictionary:
 	var members: Array = []
@@ -190,22 +229,29 @@ func _report_progress(start: Dictionary) -> void:
 	var end: Dictionary = _snapshot("end")
 	history.append(end)
 	var report: Dictionary = {"days":days,"start":start,"end":end,"history":history,
-		"orders_delivered":orders,"promotions_seen":promotions,"qualification":qualification}
+		"orders_delivered":orders,"promotions_seen":promotions,"qualification":qualification,
+		"glitches":glitches}
 	print("NINETY_DAY_SUMMARY ", JSON.stringify({"start_highest_skill":int(start.highest_skill),
 		"end_highest_skill":int(end.highest_skill),"start_career":int(start.career_level),
 		"end_career":int(end.career_level),"start_funds":int(start.funds),"end_funds":int(end.funds),
 		"promotions":promotions,"deliveries":orders,"qualification":qualification,
-		"memorials":int(end.memorials)}))
+		"memorials":int(end.memorials),"glitches":glitches.size()}))
 	var file: FileAccess = FileAccess.open("user://ninety_day_progress.json",FileAccess.WRITE)
 	file.store_string(JSON.stringify(report,"\t"));file.close()
+	var glitch_file: FileAccess = FileAccess.open("user://ninety_day_glitches.json",FileAccess.WRITE)
+	glitch_file.store_string(JSON.stringify({"days":days,"glitches":glitches},"\t"));glitch_file.close()
+	# Scaled targets when JUSTLIFE_NINETY_DAYS shortens the run (e.g. a 60-day
+	# playthrough still proves progress without demanding a full ninety-day ladder).
+	var skill_target: int = maxi(3, int(round(float(SKILL_TARGET) * float(days) / float(DAYS))))
+	var career_target: int = maxi(2, int(round(float(CAREER_TARGET) * float(days) / float(DAYS))))
 	check(int(end.day) >= days + 1,"Ninety days really elapsed (%d days)." % int(end.day))
 	# The household must actually get somewhere.
 	check(int(end.highest_skill) > int(start.highest_skill),
 		"A skill rose over the ninety days (%d -> %d)." % [int(start.highest_skill),int(end.highest_skill)])
-	check(int(end.highest_skill) >= SKILL_TARGET,
-		"The household passes skill level %d (reached %d)." % [SKILL_TARGET,int(end.highest_skill)])
-	check(int(end.career_level) >= CAREER_TARGET,
-		"The working adult climbs to career rung %d (reached %d)." % [CAREER_TARGET,int(end.career_level)])
+	check(int(end.highest_skill) >= skill_target,
+		"The household passes skill level %d (reached %d)." % [skill_target,int(end.highest_skill)])
+	check(int(end.career_level) >= career_target,
+		"The working adult climbs to career rung %d (reached %d)." % [career_target,int(end.career_level)])
 	check(promotions > 0,"The career ladder really paid a promotion during the run (%d)." % promotions)
 	check(int(end.funds) > 0,"The household is not bankrupt after ninety days (ℒ%d)." % int(end.funds))
 	# Ninety days is longer than a normal-lifespan adult's whole remaining life, so
@@ -216,7 +262,12 @@ func _report_progress(start: Dictionary) -> void:
 	for entry: Dictionary in end.members:
 		check(not bool(entry.dead) or float(entry.starvation) == 0.0,
 			"%s did not die of hunger (%s)." % [str(entry.name),str(entry.cause)])
-	check(int(end.memorials) > 0 or int(end.day) < days - 20,
+	# Full ninety-day runs start as adults and age through elder, so memorials
+	# are expected near the end. Shorter JUSTLIFE_NINETY_DAYS smoke runs
+	# (e.g. 60 days) reach elder but not due_to_pass_on yet — demanding a
+	# memorial there would be a stale assertion, not a lifecycle defect.
+	var expect_end_of_life: bool = days >= DAYS - 5
+	check(not expect_end_of_life or int(end.memorials) > 0 or int(end.day) < days - 20,
 		"Elderly members reach a real end of life rather than living forever (%d memorials)." % int(end.memorials))
 	# The kitchen's own order entry is what keeps food reachable in a home with
 	# no computer, so the run must have used it and been delivered to.
