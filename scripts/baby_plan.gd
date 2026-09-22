@@ -10,7 +10,7 @@ const ACTION_ID: String = "try_for_baby"
 const SESSION_KIND: String = "baby"
 const TOKEN_PREFIX: String = "baby_"
 const DURATION: float = 40.0
-const PREGNANCY_DAYS: float = 3.0
+const PREGNANCY_DAYS: float = 14.0
 const MINUTES_PER_DAY: float = 1440.0
 const PREGNANCY_MINUTES: float = PREGNANCY_DAYS * MINUTES_PER_DAY
 const SAVE_VERSION: int = 1
@@ -76,6 +76,12 @@ static func expecting(state: Dictionary) -> bool:
 
 static func due(state: Dictionary, day: int, minutes: float) -> bool:
 	return bool(state.get("active",false)) and remaining_minutes(state,day,minutes) <= 0.0
+
+## The last two days of the term: the mother is on maternity leave and cannot
+## start a work shift. Days 13 and 14 of a fourteen-day pregnancy.
+static func on_maternity_leave(state: Dictionary, day: int, minutes: float) -> bool:
+	if not bool(state.get("active",false)):return false
+	return remaining_minutes(state,day,minutes) <= 2.0 * MINUTES_PER_DAY
 
 static func has_baby(members: Array) -> bool:
 	for member:Dictionary in members:
@@ -157,11 +163,11 @@ static func roll(mother: Dictionary, father: Dictionary, serial: int) -> Diction
 	var aspiration:String = str([mother,father][rng.randi()%2].get("aspiration","Balanced"))
 	if not aspiration in ASPIRATIONS:
 		aspiration = "Balanced"
-	# The child takes the father's surname when he has one, otherwise the
-	# mother's, so a single-parent household still names the baby after its
-	# family rather than after nobody.
-	var family:String = surname_of(father)
-	if family.is_empty():family = surname_of(mother)
+	# The child takes the mother's surname first — she is the primary parent of
+	# the pregnancy — then the father's, so a single-parent household still names
+	# the baby after its family rather than after nobody.
+	var family:String = surname_of(mother)
+	if family.is_empty():family = surname_of(father)
 	var first:String = FIRST_NAMES[rng.randi()%FIRST_NAMES.size()]
 	var profile:Dictionary = {
 		"name": (first+" "+family) if not family.is_empty() else first,

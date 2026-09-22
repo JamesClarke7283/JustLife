@@ -949,29 +949,33 @@ func roll_baby_dice() -> void:
 func confirm_baby_creator() -> void:
 	if creator_purpose!="baby" or household.members.size()>=LifeHousehold.MAX_MEMBERS:
 		show_notice("Your household already has eight Lifelets.");return
+	_ensure_baby_surname(profile)
 	if str(profile.name).strip_edges().is_empty():profile.name="Wren Vale"
 	var spawn:Vector3=world.lot_exit_position(household.members.size())
 	var destination:Vector3=world.lot_return_position(household.members.size())
+	# Capture the live home before the baby joins so a rebuild can never reverse
+	# purchases, walls or an upper storey made since the last save.
+	if current_venue=="home":home_layout=world.serialize_items()
+	else:venue_layouts[current_venue]=world.serialize_items()
 	var result:Dictionary=household.commit_baby(profile,spawn,destination,world.serialize_items())
 	if not bool(result.ok):
 		show_notice(str(result.error));return
 	var id:String=str(result.child)
 	var baby:LifeSim=household.member_sim(id)
-	household_profiles.append(baby.character.duplicate(true))
-	motion_states[id]=_empty_motion()
+	# Match adoption: spawn into the live home instead of tearing the world down
+	# with setup_live, which locked the welcome-home path and could drop the baby.
 	creator_purpose=""
 	creator_family_links=[]
-	# Leave the character studio for the real home the newborn walks into.
-	# Serialize the live world first: the cached layout only refreshes on save,
-	# so rebuilding from it would silently reverse purchases, built walls and
-	# an upper storey made since the last save.
-	if current_venue=="home":home_layout=world.serialize_items()
-	else:venue_layouts[current_venue]=world.serialize_items()
-	var layout:Array=home_layout if not home_layout.is_empty() else LifeCatalog.starter_layout(selected_lot)
-	if current_venue!="home":layout=venue_layouts.get(current_venue,layout)
-	setup_live(layout)
+	household_profiles.clear()
+	for member:Dictionary in household.members:
+		household_profiles.append(member.sim.character.duplicate(true))
+	spawn_actor(id,baby.character,spawn)
+	motion_states[id]=_empty_motion()
+	household.stock_baby_supplies()
 	household.register_targets(world.simulation_targets())
 	_member_action_started(id,baby.get_current_action())
+	close_overlay(false)
+	draw_live()
 	show_notice("Welcome to the family, %s. Select their household portrait to help them settle in." % str(baby.character.name).split(" ")[0])
 
 func show_baby_creator() -> void:
@@ -979,16 +983,37 @@ func show_baby_creator() -> void:
 	# the drawing and every control handler are the same code path.
 	var baby:Dictionary=household.pending_baby_profile()
 	if baby.is_empty():return
+	# Keep the parents in the household profile list so canceling the creator
+	# cannot leave the live bar pointing at a draft-only list.
+	var kept:Array=[]
+	for member:Dictionary in household.members:
+		kept.append(member.sim.character.duplicate(true))
 	creator_purpose="baby"
 	creator_tab="Look"
-	household_profiles=[]
 	creator_family_links=[]
 	profile=baby.duplicate(true)
 	profile["age_stage"]="baby"
 	profile["life_stage"]="minor"
+	_ensure_baby_surname(profile)
 	creator_index=0
-	household_profiles=[profile]
+	household_profiles=kept
+	household_profiles.append(profile)
+	creator_index=household_profiles.size()-1
 	show_creator("baby")
+
+## Keep or restore the primary parent's surname on a newborn name field.
+func _ensure_baby_surname(baby:Dictionary) -> void:
+	var family:String=LifeBabyPlan.surname_of(baby)
+	if not family.is_empty():return
+	var mother:LifeSim=household.member_sim(str(household.pregnancy.get("mother_id","")))
+	var father:LifeSim=household.member_sim(str(household.pregnancy.get("father_id","")))
+	# The mother carries the pregnancy, so her surname is the primary default when
+	# the rolled name has none or the player cleared it to a first name alone.
+	if is_instance_valid(mother):family=LifeBabyPlan.surname_of(mother.character)
+	if family.is_empty() and is_instance_valid(father):family=LifeBabyPlan.surname_of(father.character)
+	if family.is_empty():return
+	var first:String=str(baby.get("name","")).strip_edges().split(" ",false)[0] if not str(baby.get("name","")).strip_edges().is_empty() else "Wren"
+	baby["name"]=first+" "+family
 
 func set_creator_tab(value:String) -> void:
 	creator_tab=value
@@ -1268,11 +1293,16 @@ func show_property_panel() -> void:
 		insured=not held.is_empty()
 		text_label("Insurance on this home: %s" % (str(held.label) if insured else "none"),
 			Vector2(432,770),Vector2(300,26),14,P.INK if insured else P.MUTED,false,overlay)
-		button("Cancel insurance" if insured else "Insure this home · ℒ450",
+		button("Cancel insurance" if insured else "Insure this home · ℒ600",
 			Vector2(740,766),Vector2(270,34),func():_toggle_property_insurance(insured),false,overlay)
 	# A second policy product, so a bigger house can be covered more heavily.
 	if not insured:
 		button("Premium cover · ℒ900",Vector2(430,812),Vector2(280,34),func():_buy_property_policy("premium"),false,overlay)
+	# Baby & Child cover sits under home insurance: a separate ℒ500 product that
+	# can be bought alongside burglar cover once the household has children.
+	var baby_held:bool=not str(Properties.house(properties,current_id).get("baby_policy","")).is_empty() if not current_id.is_empty() else false
+	if not current_id.is_empty() and not baby_held:
+		button("Baby & Child Insurance · ℒ500",Vector2(430,848),Vector2(280,34),func():_buy_property_policy("baby"),false,overlay)
 	button("Back to life",Vector2(740,812),Vector2(270,34),close_overlay,true,overlay)
 
 
@@ -1614,12 +1644,13 @@ func spawn_pet(id:String,pet:Dictionary,spawn:Vector3,destination:Vector3) -> Li
 func _pet_pick_body(actor:LifePetActor,id:String) -> void:
 	var body:=StaticBody3D.new()
 	body.collision_layer=LifeWorld.PICK_GROUND|LifeWorld.PICK_UPPER
+	body.input_ray_pickable=true
 	body.set_meta("item_id",id)
 	actor.add_child(body)
 	var shape:=CollisionShape3D.new()
 	var capsule:=CapsuleShape3D.new()
 	capsule.height=float(LifePetActor.SPECIES_HEIGHT.get(actor.species,0.30))
-	capsule.radius=0.18
+	capsule.radius=0.22
 	shape.shape=capsule
 	shape.position.y=capsule.height*.5
 	body.add_child(shape)
@@ -2362,7 +2393,11 @@ func draw_household_bar() -> void:
 		var chip_top:float=657.0-(52.0 if not pet_list.is_empty() else 0.0)
 		for i in range(household.members.size()):
 			var member:Dictionary=household.members[i]
-			var chip=button(member_initials(str(member.sim.character.name),i,household_profiles),Vector2(28+i*35,chip_top),Vector2(31,44),func():select_household_member(i),i==household.selected_index)
+			# Portrait chips match the pet row: the baby's face (and every other
+			# Lifelet) is visible in the life box, not only as initials.
+			var chip=button("",Vector2(28+i*35,chip_top),Vector2(31,44),func():select_household_member(i),i==household.selected_index)
+			chip.name="HouseholdChip_"+str(member.id)
+			model_thumbnail("character",Vector2(29+i*35,chip_top+1),Vector2(29,42),true,ui,member.sim.character)
 			compact_button(chip)
 			chip.size=Vector2(31,44)
 			chip.tooltip_text=str(member.sim.character.name)+" · Click to control"
@@ -3493,7 +3528,7 @@ func on_object_clicked(item:Dictionary,screen:Vector2) -> void:
 		if household.member_sim(str(item.id)) and str(item.id)!=household.selected_id():
 			show_housemate_interactions(item,screen)
 		elif str(item.id)==household.selected_id():show_person()
-		elif str(item.get("kind",""))=="pet":show_pet_card(str(item.id))
+		elif str(item.get("kind",""))=="pet":show_interactions(item,screen)
 		elif str(item.get("kind",""))=="food_truck":show_food_truck()
 		else:show_interactions(item,screen)
 
@@ -3555,7 +3590,10 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 	item=item.duplicate()
 	for key:String in ["kind","id","label"]:
 		if not item.has(key):item[key]=""
-	var actions:Array=sim.get_actions_for(str(item.kind),str(item.id))
+	# Pets use the household care menu (feed, play, tricks, walk) rather than the
+	# older tummy-rub-only list, so a click on a dog opens the same interaction
+	# panel every other object uses.
+	var actions:Array=household.pet_actions(str(item.id),bound_member_id) if str(item.kind)=="pet" else sim.get_actions_for(str(item.kind),str(item.id))
 	if str(item.kind)=="meal":actions.append({"id":"call_to_meal","label":"Call everyone to eat","cost":0,"duration":0,"available":true,"description":"Invite available hungry household members and your welcomed guest. Busy Lifelets keep their plans."})
 	# A served dish or a plated serving can be offered to somebody by name, so the
 	# household can ask who actually wants food instead of only calling everyone.
@@ -4706,7 +4744,7 @@ func _on_pregnancy_began(mother_id: String) -> void:
 	if sound_enabled and is_instance_valid(chime_player) and chime_player.stream:chime_player.play()
 	var mother:LifeSim=household.member_sim(mother_id)
 	var name:String=str(mother.character.name).split(" ")[0] if is_instance_valid(mother) else "Your Lifelet"
-	show_notice("%s is expecting! A baby is on the way in about three days." % name)
+	show_notice("%s is expecting! A baby is on the way in about fourteen days." % name)
 
 func _member_action_finished(id:String,action:Dictionary) -> void:
 	if loading_game:return

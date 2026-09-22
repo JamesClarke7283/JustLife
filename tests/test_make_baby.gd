@@ -218,7 +218,7 @@ func _beat_case()->void:
 	# Sims-4 order: the beat conceives a three-day pregnancy, and the birth
 	# (when the countdown completes) is what produces the pending baby.
 	check(bool(household.pregnancy.get("active",false)) and not bool(household.pregnancy.get("pending",false)),"The beat's completion begins a pregnancy rather than an instant birth.")
-	check(LifeBabyPlan.days_remaining(household.pregnancy,household.day,household.minutes)==int(LifeBabyPlan.PREGNANCY_DAYS),"The pregnancy runs three game days.")
+	check(LifeBabyPlan.days_remaining(household.pregnancy,household.day,household.minutes)==int(LifeBabyPlan.PREGNANCY_DAYS),"The pregnancy runs fourteen game days.")
 	var expecting:LifeSim=household.members[0].sim
 	var has_moodlet:bool=false
 	for mood:Dictionary in expecting.moodlets:has_moodlet = has_moodlet or str(mood.get("label",""))=="Expecting"

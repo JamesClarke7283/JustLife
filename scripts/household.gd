@@ -45,6 +45,9 @@ var pets: Dictionary = LifePets.fresh()
 ## owns a post box; without one, bills arrive by notice exactly as before.
 var mail: Dictionary = LifeMail.fresh()
 var pregnancy: Dictionary = LifeBabyPlan.fresh()
+## Bottles and jars kept for the baby. Stocked when a newborn joins so the fridge
+## can Prepare Bottle / Get Baby Food without a separate shop trip.
+var baby_supplies: Dictionary = {"bottles": 0, "food": 0}
 var _family_roles: Dictionary = {}
 var meals: LifeMeals = LifeMeals.new()
 ## The household's kitchen: what is in the fridge, and the delivery on its way.
@@ -384,7 +387,7 @@ func get_state(world_data: Array = []) -> Dictionary:
 	adopt_selected_changes()
 	var states:Array=[]
 	for member in members:states.append({"id":member.id,"state":member.sim.get_state()})
-	var result:Dictionary={"household_version":2 if not journeys.is_empty() else 1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"pets":pets.duplicate(true),"mail":mail.duplicate(true),"pregnancy":pregnancy.duplicate(true),"birth_serial":birth_serial,"memorials":memorials.duplicate(true),"heirlooms":heirlooms.duplicate(true),"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state(),"groceries":groceries.duplicate(true),"business":business.duplicate(true),"sanitation":sanitation.get_state(),"extras":extras_provider.call() if extras_provider.is_valid() else {}}
+	var result:Dictionary={"household_version":2 if not journeys.is_empty() else 1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"pets":pets.duplicate(true),"mail":mail.duplicate(true),"pregnancy":pregnancy.duplicate(true),"birth_serial":birth_serial,"baby_supplies":baby_supplies.duplicate(true),"memorials":memorials.duplicate(true),"heirlooms":heirlooms.duplicate(true),"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state(),"groceries":groceries.duplicate(true),"business":business.duplicate(true),"sanitation":sanitation.get_state(),"extras":extras_provider.call() if extras_provider.is_valid() else {}}
 	if not journeys.is_empty():result.journeys=journeys.duplicate(true)
 	if physical_snapshot_provider.is_valid():
 		var physical:Dictionary=physical_snapshot_provider.call()
@@ -650,6 +653,11 @@ func restore_state(data: Dictionary) -> Dictionary:
 		if not pet.get("care") is Dictionary:pet["care"]=LifePetCare.fresh()
 	pregnancy=LifeBabyPlan.fresh() if pregnancy_data==null else (pregnancy_data as Dictionary).duplicate(true)
 	birth_serial=int(data.get("birth_serial",1))
+	var supplies:Variant=data.get("baby_supplies",{"bottles":0,"food":0})
+	baby_supplies={"bottles":0,"food":0}
+	if supplies is Dictionary:
+		baby_supplies["bottles"]=maxi(0,int(supplies.get("bottles",0)))
+		baby_supplies["food"]=maxi(0,int(supplies.get("food",0)))
 	meals.restore(meal_data)
 	groceries=LifeGroceries.from_save(data.get("groceries"))
 	# A household that owns no business holds no record at all; the validator
@@ -1743,7 +1751,7 @@ func finish_try_for_baby(session: Dictionary) -> void:
 	if mother != null:
 		# Conception is a beginning, not the arrival itself: the birth moodlet
 		# comes later, and the Expecting countdown stays the strongest tile.
-		mother.add_moodlet("A little one on the way","Happy","The family is expecting. The baby arrives in about three days.",LifeBabyPlan.PREGNANCY_MINUTES,2)
+		mother.add_moodlet("A little one on the way","Happy","The family is expecting. The baby arrives in about fourteen days.",LifeBabyPlan.PREGNANCY_MINUTES,2)
 		mother.remember("A new beginning","The family is welcoming a new baby.")
 	pregnancy_began.emit(str(session.mother_id))
 	var father:LifeSim = member_sim(str(session.father_id))
@@ -2168,6 +2176,14 @@ func commit_baby(profile: Dictionary, spawn: Vector3, destination: Vector3, worl
 	_sync_bill_mirror()
 	return {"ok":true,"child":id,"spawn":spawn}
 
+## Stock the kitchen with bottles and jars the moment a baby joins. Called from
+## the welcome-home path so the fridge already offers Prepare Bottle / Get Baby
+## Food without a separate shop trip.
+func stock_baby_supplies() -> void:
+	if not baby_supplies is Dictionary:baby_supplies={"bottles":0,"food":0}
+	baby_supplies["bottles"]=maxi(int(baby_supplies.get("bottles",0)),4)
+	baby_supplies["food"]=maxi(int(baby_supplies.get("food",0)),4)
+
 func _target(id: String) -> Dictionary:
 	for target:Dictionary in targets:
 		if str(target.id)==id:return target
@@ -2258,13 +2274,24 @@ func pet_actions(pet_id: String, member_id: String) -> Array:
 	var sim: LifeSim = member_sim(member_id)
 	if sim == null: return []
 	var away: bool = sim.is_away()
+	var species: String = str(pet.get("species", "dog"))
 	var out: Array = []
 	for interaction: Dictionary in LifePetCare.INTERACTIONS:
 		var reason: String = LifePetCare.interaction_error(str(interaction.id), str(sim.character.age_stage), away)
+		var label: String = str(interaction.label)
+		# Cat labels drop the dog wording so a click on either species still reads true.
+		if species == "cat":
+			label = str({
+				"pet_feed": "Feed Cat",
+				"pet_play": "Play with Cat",
+				"pet_teach_trick": "Play Tricks",
+				"pet_walk": "Take for a Walk",
+			}.get(str(interaction.id), label))
 		out.append({
 			"id": str(interaction.id),
-			"label": str(interaction.label),
+			"label": label,
 			"duration": float(interaction.duration),
+			"cost": 0,
 			"available": reason.is_empty(),
 			"unavailable_reason": reason,
 			"description": _pet_action_description(str(interaction.id), pet),
@@ -2281,6 +2308,7 @@ func _pet_action_description(id: String, pet: Dictionary) -> String:
 	if id == "pet_feed": parts.append("Fill the bowl and let %s eat their fill." % str(pet.get("name", "your pet")))
 	if id == "pet_pet": parts.append("A quiet fuss. %s warms to you." % str(pet.get("name", "your pet")).capitalize())
 	if id == "pet_play": parts.append("Play until you are both out of breath. Builds Agility.")
+	if id == "pet_walk": parts.append("A turn around the garden. Builds the pet's Agility and your Fitness.")
 	if id == "pet_teach_trick":
 		var next: Dictionary = LifePetCare.next_trick(care)
 		parts.append("Teach the next trick: %s." % str(next.get("label", "something new")) if not next.is_empty() else "%s already knows every trick you can teach." % str(pet.get("name", "your pet")).capitalize())
