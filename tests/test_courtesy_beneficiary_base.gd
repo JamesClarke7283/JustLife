@@ -34,6 +34,12 @@ func _decoded_integer_fields(decoded:Dictionary,fields:Array,scope:String)->Dict
 	for key:String in fields:result[key]=int(decoded[key])
 	return result
 
+func _decoded_career(decoded:Dictionary)->Dictionary:
+	# JSON has one number type, so a saved `level: 1` decodes back as `1.0`. The
+	# top-level integrals are nominated exactly as the education and food scopes
+	# are; the nested schedule is left as saved, where both sides already agree.
+	return _decoded_integer_fields(decoded,["level","salary","worked_day"],"career")
+
 func _finite_diagnostic(value:Variant)->Variant:
 	if value is float and not is_finite(value):
 		return {"__diagnostic_nonfinite__":"nan" if is_nan(value) else ("positive_infinity" if value>0.0 else "negative_infinity")}

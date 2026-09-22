@@ -265,6 +265,24 @@ func _same(disk:Variant,current:Variant)->bool:
 		return true
 	return disk==current
 
+func _decoded_integer_fields(decoded:Dictionary,fields:Array,scope:String)->Dictionary:
+	var result:Dictionary=decoded.duplicate(true)
+	var invalid:Array[String]=[]
+	for key:String in fields:
+		var value:Variant=decoded.get(key)
+		if not (value is int or value is float) or not is_finite(float(value)) or float(value)!=floorf(float(value)):
+			invalid.append(scope+"."+key)
+	check(invalid.is_empty(),"Specified decoded identity fields are finite integral values: "+scope+str(invalid))
+	if not invalid.is_empty():return result
+	for key:String in fields:result[key]=int(decoded[key])
+	return result
+
+func _decoded_career(decoded:Dictionary)->Dictionary:
+	# JSON has one number type, so a saved `level: 1` decodes back as `1.0`. The
+	# top-level integrals are nominated exactly as the education and food scopes
+	# are; the nested schedule is left as saved, where both sides already agree.
+	return _decoded_integer_fields(decoded,["level","salary","worked_day"],"career")
+
 func _minimum_gap()->float:
 	var ids:Array=app.world.actors.keys();var value:float=INF
 	for i:int in ids.size():

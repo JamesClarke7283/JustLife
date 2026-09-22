@@ -48,7 +48,7 @@ func _resume_composed()->void:
 	check(app.household.speed==0 and app.household.members.all(func(m:Dictionary)->bool:return m.sim.speed==0),"Aggregate and every individual member load paused.")
 	for saved:Dictionary in decoded.data.members:
 		var id:String=str(saved.id);var sim:LifeSim=app.household.member_sim(id)
-		check(sim.needs==saved.state.needs and sim.career==saved.state.career,"Exact decoded needs and career survive: "+id)
+		check(sim.needs==saved.state.needs and _same(_decoded_career(saved.state.career),sim.career),"Exact decoded needs and career survive: "+id)
 		var expected:Array=saved.state.action_queue.duplicate(true)
 		for a:Dictionary in expected:
 			if a.has("target_position"):

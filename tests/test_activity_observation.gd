@@ -61,7 +61,7 @@ func _fresh_observation()->void:
 	check(app.household.funds==int(read.data.funds) and app.household.day==int(read.data.day) and app.household.minutes==float(read.data.minutes),"Fresh wallet/calendar/clock exactly retain decoded named values.")
 	for saved:Dictionary in read.data.members:
 		var sim:LifeSim=app.household.member_sim(str(saved.id))
-		check(sim.needs==saved.state.needs and sim.career==saved.state.career,"Fresh exact decoded needs including Fun, and career: "+str(saved.id))
+		check(sim.needs==saved.state.needs and _same(_decoded_career(saved.state.career),sim.career),"Fresh exact decoded needs including Fun, and career: "+str(saved.id))
 	check(_same(read.data.meals,app.household.meals.get_state()) and _same(read.data.sanitation,app.household.sanitation.get_state()),"Fresh complete food/custody and sanitation retain exact decoded values.")
 	check(app.traversal.routes.has("housemate_1") and int(app.traversal.routes.housemate_1.identity)==95,"Fresh reconstruction retains actual Ellis route95 identity.")
 	var route:Dictionary=app.traversal.routes.housemate_1

@@ -200,6 +200,10 @@ func compare_loaded(disk:Dictionary)->void:
 	for saved:Dictionary in disk.members:
 		var sim:LifeSim=app.household.member_sim(str(saved.id))
 		check(_same(_project_queue(saved.state.action_queue),sim.action_queue),"Complete fresh queue/paid/duration/target and elapsed-derived progress: "+str(saved.id))
-		check(sim.needs==saved.state.needs and sim.career==saved.state.career,"Exact fresh needs and career: "+str(saved.id))
+		# `_same` compares the nested career key by key, which the raw Dictionary
+		# `==` does not do reliably once a nested Dictionary is involved; the
+		# integral top-level identities are nominated as the education and food
+		# scopes already do, because JSON hands `level: 1` back as `1.0`.
+		check(sim.needs==saved.state.needs and _same(_decoded_career(saved.state.career),sim.career),"Exact fresh needs and career: "+str(saved.id))
 		check(sim.education==_decoded_integer_fields(saved.state.education,["attended","enrolled_day","first_class_day","homework","last_attendance_day","last_day","last_homework_day","last_prepared_homework_day","missed","prepared","version"],str(saved.id)+".education"),"Exact education with existing nominated integer identities: "+str(saved.id))
 	check(app.household.meals.get_state()==_decoded_integer_fields(disk.meals,["version","serial"],"food"),"Exact fresh food with only existing version/serial integer identities")
