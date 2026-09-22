@@ -298,6 +298,7 @@ func _creator_case()->void:
 	app.profile.aspiration="Balanced"
 	app.confirm_baby_creator()
 	await process_frame
+	check(app.mode=="live","Confirming the baby creator returns to live play so the household clock can advance.")
 	check(household.members.size()==members_before+1,"Confirming the creator adds one baby to the household.")
 	var baby_id:String=""
 	for member:Dictionary in household.members:

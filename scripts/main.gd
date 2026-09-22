@@ -979,6 +979,18 @@ func confirm_baby_creator() -> void:
 	var hospital:Dictionary=household.begin_birth_hospital(mother_id,father_id,id,spawn)
 	if not bool(hospital.get("ok",false)):
 		show_notice(str(hospital.get("error","The hospital stay could not begin.")));return
+	# The baby creator entered CharacterStudio and froze the live clock. Leave
+	# that studio before the partner overlay opens, or main._process stays on
+	# the creator branch and the household never advances another day.
+	if is_instance_valid(stage):
+		stage.queue_free()
+		stage=null
+	_set_studio_render_quality(false)
+	mode="live"
+	world.live_enabled=true
+	if is_instance_valid(world.house):
+		world.house.visible=true
+	world.daylight(household.minutes)
 	_sync_all_away_presence()
 	household.register_targets(world.simulation_targets())
 	close_overlay(false)

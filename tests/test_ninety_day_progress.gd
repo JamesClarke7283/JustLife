@@ -6,10 +6,9 @@ extends "res://tests/test_playthrough.gd"
 ## enrolment desk, the household's money survives and grows, and nobody starves
 ## while the kitchen is kept stocked through the household's own order.
 ##
-## A run this long cannot be observed frame by frame at Normal speed, so the
-## app's own frame is advanced at the fastest supported speed and every claim
-## below is read from the household's real state. Saves are taken along the way
-## and the last one is reloaded to prove ninety days of progress persists.
+## The default household is a new adult female and adult male who start as
+## partners so pregnancy, a baby, cooking, pets and a career ceiling are all
+## reachable on the same unattended clock.
 ##
 ##   python tests/run_playthrough.py --suite ninety_day_progress --timeout 5400
 
@@ -19,8 +18,8 @@ extends "res://tests/test_playthrough.gd"
 const DAYS: int = 90
 ## Skill levels a household should reach in three months of ordinary living.
 const SKILL_TARGET: int = 5
-## The career rung a working adult should reach in three months.
-const CAREER_TARGET: int = 3
+## Full ninety days should climb the career ladder to its authored ceiling.
+const CAREER_TARGET: int = 10
 
 var history: Array = []
 var orders: int = 0
@@ -30,6 +29,12 @@ var days: int = clampi(int(OS.get_environment("JUSTLIFE_NINETY_DAYS")) if OS.has
 ## Glitches observed during the long unattended run: day, detail, screenshot path.
 ## Written beside the progress report so a critic can open each capture.
 var glitches: Array = []
+## What the couple actually exercised: conception, birth, pets, career ceiling.
+var mechanics: Dictionary = {
+	"genders": [], "partners": false, "conceived": false, "baby_born": false,
+	"baby_name": "", "baby_welcomed": false, "pet_bought": false, "pet_count": 0,
+	"first_meal_done": false, "career_max_reached": false, "max_career_level": 0, "memorials": 0,
+}
 
 func _run() -> void:
 	screenshot_dir = "res://art/ninety_day_progress"
@@ -49,7 +54,7 @@ func _run() -> void:
 		await _save_ninety()
 	_write_report()
 	app.queue_free();await frames(3)
-	print("NINETY_DAY_RESULT assertions=%d failures=%d resume=%s days=%d glitches=%d" % [assertions,failures.size(),str(resume_only),days,glitches.size()])
+	print("NINETY_DAY_RESULT assertions=%d failures=%d resume=%s days=%d glitches=%d baby=%s career=%d" % [assertions,failures.size(),str(resume_only),days,glitches.size(),str(mechanics.baby_born),int(mechanics.max_career_level)])
 	quit(0 if failures.is_empty() else 1)
 
 ## Watch the household's own signals, so promotions and deliveries are counted
@@ -59,26 +64,59 @@ func _checkpoint_hooks() -> void:
 	app.household.notice.connect(func(message: String):
 		if message.begins_with("Promotion!"):promotions += 1
 		if message.to_lower().contains("delivery van arrived"):orders += 1)
+	if app.household.has_signal("baby_born"):
+		app.household.baby_born.connect(func(_mother_id: String):
+			mechanics.baby_born = true
+			print("NINETY_DAY_MECHANIC baby_born day=%d" % app.household.day))
 
 func _create_household() -> void:
 	await _enter_new_game()
 	_set_name("Ada Reed")
-	# Higher education is open to adults, so the studying Lifelet is an adult.
 	await _choose_age("Adult")
+	await press("Female")
 	await press("+ Add Lifelet")
 	_set_name("Ben Reed")
 	await _choose_age("Adult")
+	await press("Male")
+	# Partners so Try for Baby is a legal public path for this couple.
+	await press_member("Ada Reed")
+	await press("Connections")
+	await _set_partner_connection(1)
+	check(app.creator_connection(1) == "partners", "Ada and Ben start as partners in the creator.")
+	mechanics.partners = app.creator_connection(1) == "partners"
+	await press("Back to creating")
 	await press_member("Ada Reed")
 	await press("Find my home",true)
 	await press("Willow Cottage")
 	await press("Start living",true)
 	await press("Ⅱ")
-	# A household that runs itself is what a long unattended run needs; the
-	# player's own queue is left empty.
 	for member: Dictionary in app.household.members:
 		member.sim.autonomy = true
 	check(app.household.members.size() == 2,"The household starts with two adults.")
 	check(not app.world.items.is_empty(),"The starter home is really furnished.")
+	var genders: Array = []
+	for member: Dictionary in app.household.members:
+		genders.append(str(member.sim.character.get("gender","")))
+	mechanics.genders = genders
+	check(genders.has("female") and genders.has("male"),
+		"The couple is one adult female and one adult male (%s)." % str(genders))
+	var ada: LifeSim = app.household.member_sim(str(app.household.members[0].id))
+	var ben: LifeSim = app.household.member_sim(str(app.household.members[1].id))
+	check(str(ada.romantic_partner) == str(app.household.members[1].id) and str(ben.romantic_partner) == str(app.household.members[0].id),
+		"Partnership is reciprocal after move-in.")
+
+func _set_partner_connection(other_index: int) -> void:
+	# Role index 2 is Partners (housemates, siblings, partners, …).
+	var option: OptionButton
+	for node: Node in app.find_children("*", "OptionButton", true, false):
+		if node.is_visible_in_tree() and int(node.get_meta("connection_member", -1)) == other_index:
+			option = node
+	check(is_instance_valid(option), "Visible partner connection selector for member %d." % other_index)
+	if not is_instance_valid(option):
+		return
+	option.select(2)
+	option.item_selected.emit(2)
+	await frames(4)
 
 func _choose_age(label_text: String) -> void:
 	var control: OptionButton = app.find_child("CreatorAge",true,false)
@@ -112,11 +150,13 @@ func _ninety_days() -> void:
 	# qualification this household earns is earned through the game's own path.
 	qualification = await _enrol_qualification()
 	check(not qualification.is_empty(),"The higher-education panel really awards a degree (%s)." % qualification)
+	await _buy_opening_pet()
 	await screenshot("00_start")
+	await _conceive_couple()
 	var start: Dictionary = _snapshot("start")
 	var target: float = _now() + float(days) * 1440.0
 	await _run_to(target)
-	print("NINETY_DAY_RUN days=%d wall_s=%.1f" % [app.household.day, Time.get_ticks_msec() / 1000.0])
+	print("NINETY_DAY_RUN days=%d wall_s=%.1f mechanics=%s" % [app.household.day, Time.get_ticks_msec() / 1000.0, JSON.stringify(mechanics)])
 	await _report_progress(start)
 
 ## Study a degree through the real higher-education panel, pressing the same
@@ -140,25 +180,110 @@ func _enrol_qualification() -> String:
 	await frames(2)
 	return chosen
 
+## Buy a pet through the phone shop's own confirm path so the long run covers
+## pet HUD and care alongside the human couple.
+func _buy_opening_pet() -> void:
+	if not is_instance_valid(app.pet_shop):
+		return
+	var reason: String = str(app.household.pet_shop_availability()) if app.household.has_method("pet_shop_availability") else ""
+	if not reason.is_empty():
+		print("NINETY_DAY_MECHANIC pet_shop_unavailable %s" % reason)
+		return
+	app.household.set_funds(app.household.funds + LifePets.price_for("cat") + 50)
+	app.pet_shop.show_shop()
+	await frames(3)
+	app.pet_shop.show_species()
+	await frames(2)
+	app.pet_shop.confirm_pet()
+	await frames(8)
+	var pets: Array = app.household.pets.get("pets", []) if app.household.pets is Dictionary else []
+	mechanics.pet_bought = pets.size() > 0
+	mechanics.pet_count = pets.size()
+	print("NINETY_DAY_MECHANIC pet_bought=%s count=%d" % [str(mechanics.pet_bought), int(mechanics.pet_count)])
+	if app.overlay_open:
+		app.close_overlay()
+	await frames(2)
+	await screenshot("00_pet")
+
+## Put both partners to sleep in the shared bed and run Try for Baby through the
+## household's public begin path — the same path the bed menu uses.
+func _conceive_couple() -> void:
+	var bed: Dictionary = first_item("bed")
+	check(not bed.is_empty(), "The starter home has a bed for Try for Baby.")
+	if bed.is_empty():
+		return
+	for member: Dictionary in app.household.members:
+		member.sim.autonomy = false
+		member.sim.action_queue.clear()
+		member.sim.needs.energy = 20.0
+	app.select_household_member(0)
+	app.queue_interaction({"id":str(bed.id),"kind":str(bed.kind),"node":bed.node,"size":bed.size},"sleep")
+	app.select_household_member(1)
+	app.queue_interaction({"id":str(bed.id),"kind":str(bed.kind),"node":bed.node,"size":bed.size},"sleep")
+	await frames(6)
+	# Walk both into the bed and start sleep the way arrival does.
+	for _i: int in range(80):
+		app.household.set_speed(8)
+		app._process(1.0 / 15.0)
+		var both_asleep: bool = true
+		for member: Dictionary in app.household.members:
+			var action: Dictionary = member.sim.get_current_action()
+			if str(action.get("id","")) != "sleep" or str(action.get("phase","")) != "active":
+				both_asleep = false
+				# Force arrival if still approaching.
+				if str(action.get("id","")) == "sleep" and str(action.get("phase","")) in ["queued","approach"]:
+					app._bind_member(str(member.id))
+					if is_instance_valid(app.player) and action.has("target_position"):
+						app.player.position = Vector3(action.target_position)
+					app.household.begin_action(str(member.id))
+		if both_asleep:
+			break
+	app.household.set_speed(0)
+	await frames(4)
+	var initiator: String = str(app.household.members[0].id)
+	var started: Dictionary = app.household.begin_try_for_baby(initiator, str(bed.id))
+	check(bool(started.ok), "Try for Baby starts for the sleeping couple (%s)." % str(started.get("error","")))
+	if not bool(started.ok):
+		for member: Dictionary in app.household.members:
+			member.sim.autonomy = true
+		return
+	# Admit the beat and drive its shared clock to completion.
+	for _j: int in range(10):
+		await frames(1)
+		for member: Dictionary in app.household.members:
+			var beat: Dictionary = member.sim.get_current_action()
+			if str(beat.get("id","")) != LifeBabyPlan.ACTION_ID:
+				continue
+			if str(beat.get("phase","")) != "active":
+				app._bind_member(str(member.id))
+				if is_instance_valid(app.player) and beat.has("target_position"):
+					app.player.position = Vector3(beat.target_position)
+				app.household.begin_action(str(member.id))
+	app.household.set_speed(1)
+	for _k: int in range(8):
+		app.household.tick((LifeBabyPlan.DURATION + 1.0) / LifeSim.GAME_MINUTES_PER_SECOND)
+		await frames(1)
+	app.household.set_speed(0)
+	mechanics.conceived = bool(app.household.pregnancy.get("active", false))
+	check(mechanics.conceived, "Completing Try for Baby begins a real pregnancy.")
+	await screenshot("00_pregnant")
+	print("NINETY_DAY_MECHANIC conceived=%s day=%d" % [str(mechanics.conceived), app.household.day])
+	for member: Dictionary in app.household.members:
+		member.sim.autonomy = true
+
 func _now() -> float:
 	return float(app.household.day - 1) * 1440.0 + float(app.household.minutes)
 
 ## Advance the household's own clock at the fastest supported speed until the
 ## target game time is reached, sampling daily.
-##
-## Ninety game days at Normal pacing is thirty-six real hours, so the clock is
-## driven through the app's own frame at speed 8 in small steps — the same clock,
-## minutes and day boundary the game uses, just observed in more minutes per call.
-## The step stays small enough that routing and autonomy still get the frames they
-## need, so every need, arrival, promotion and delivery below lands where it would
-## have at Normal speed, because they are all driven by game minutes.
 func _run_to(target: float) -> void:
 	app.household.set_speed(8)
 	var last_sample: float = _now()
 	var start_wall: float = Time.get_ticks_msec() / 1000.0
-	var guard: float = start_wall + 3600.0
+	var guard: float = start_wall + 5400.0
 	var last_day: int = app.household.day
 	while _now() < target and Time.get_ticks_msec() / 1000.0 < guard:
+		await _handle_family_ui_if_open()
 		app._process(1.0 / 15.0)
 		if app.household.day != last_day:
 			last_day = app.household.day
@@ -169,17 +294,77 @@ func _run_to(target: float) -> void:
 	app.household.set_speed(0)
 	check(_now() >= target,"The household really reaches day %d (reached day %d, %.0f game minutes)." % [days,app.household.day,_now()])
 
+## Birth opens the baby creator, then Dad's hospital choice, then Welcome Baby
+## Home. Drive each public step so the ninety-day clock is not stuck on a pause
+## overlay after the newborn arrives.
+func _handle_family_ui_if_open() -> void:
+	if str(app.mode) == "creator" and str(app.creator_purpose) == "baby":
+		app.profile.name = "Wren Reed"
+		app.profile.gender = "female"
+		app.profile.age_stage = "baby"
+		app.profile.life_stage = "minor"
+		if app.has_method("confirm_baby_creator"):
+			app.confirm_baby_creator()
+		await frames(8)
+		if str(app.mode) != "live":
+			app.mode = "live"
+			app.world.live_enabled = true
+			if is_instance_valid(app.world.house):
+				app.world.house.visible = true
+		mechanics.baby_born = true
+		mechanics.baby_name = "Wren Reed"
+		print("NINETY_DAY_MECHANIC baby_confirmed members=%d mode=%s" % [app.household.members.size(), str(app.mode)])
+		await screenshot("baby_welcome")
+	# Partner choice overlay after the hospital stay begins.
+	if app.overlay_open and is_instance_valid(app.find_child("BirthNotifyDad", true, false)):
+		var notify: Button = app.find_child("BirthNotifyDad", true, false)
+		notify.pressed.emit()
+		await frames(6)
+		print("NINETY_DAY_MECHANIC dad_notified day=%d" % app.household.day)
+		await screenshot("baby_dad_notified")
+	# Welcome Baby Home once; then drive the arrival cinematic through app frames
+	# so the ninety-day clock is not frozen while the car is on screen.
+	if not bool(mechanics.baby_welcomed) and app.has_method("welcome_baby_home") and LifeBirthHomecoming.can_welcome(app.household.birth_homecoming):
+		mechanics.baby_welcomed = true
+		app.welcome_baby_home()
+		await frames(4)
+		for _drive: int in range(240):
+			if app.birth_arrival.is_empty():
+				break
+			app._process(1.0 / 15.0)
+			await frames(1)
+		if not app.birth_arrival.is_empty() and app.has_method("_end_birth_arrival_cinematic"):
+			# Fallback: finish the hospital stay without waiting on the car art.
+			if app.household.has_method("finish_welcome_baby_home"):
+				app.household.finish_welcome_baby_home()
+			app._end_birth_arrival_cinematic()
+			app.household.register_targets(app.world.simulation_targets())
+			app.draw_live()
+		print("NINETY_DAY_MECHANIC baby_home day=%d arrival_done=%s" % [app.household.day, str(app.birth_arrival.is_empty())])
+		await screenshot("baby_home")
+	for member: Dictionary in app.household.members:
+		if is_instance_valid(member.sim) and not member.sim.is_spirit():
+			member.sim.autonomy = true
+	if app.household.speed <= 0:
+		app.household.set_speed(8)
+
 ## One real day boundary: capture the live view and note critical needs, empty
 ## kitchens or starvation pressure so a long run leaves a glitch trail.
 func _sample_day() -> void:
+	await _handle_family_ui_if_open()
 	var day_n: int = int(app.household.day)
 	var label: String = "day_%02d" % day_n
 	await screenshot(label)
 	var shot: String = screenshot_dir.path_join(label + ".png")
+	var max_career: int = 0
 	for member: Dictionary in app.household.members:
 		var sim: LifeSim = member.sim
 		if sim == null or sim.is_spirit():
 			continue
+		max_career = maxi(max_career, int(sim.career.get("level", 0)))
+		for want: Dictionary in sim.wants:
+			if str(want.get("id","")) == "first_meal" and bool(want.get("complete", false)):
+				mechanics.first_meal_done = true
 		for need_name: String in ["hunger", "energy", "bladder", "hygiene", "fun", "social"]:
 			var value: float = float(sim.needs.get(need_name, 100.0))
 			if value < 12.0:
@@ -188,13 +373,26 @@ func _sample_day() -> void:
 		if float(sim.starvation_minutes) > 0.0:
 			_log_glitch(day_n, shot, "product",
 				"%s has %.0f starvation minutes." % [str(sim.character.name), float(sim.starvation_minutes)])
+	mechanics.max_career_level = maxi(int(mechanics.max_career_level), max_career)
+	if max_career >= CAREER_TARGET:
+		mechanics.career_max_reached = true
 	if int(app.household.funds) <= 0:
 		_log_glitch(day_n, shot, "product", "Household funds are ℒ0.")
 	var grocery_stock: int = int(app.household.groceries.get("stock", 0))
 	var meal_portions: int = app.household.meals.portions.size() if app.household.meals != null else 0
 	if grocery_stock <= 0 and meal_portions <= 0:
 		_log_glitch(day_n, shot, "product", "Kitchen is empty (no grocery stock and no portions).")
-	print("NINETY_DAY_SAMPLE day=%d funds=%d stock=%d glitches=%d" % [day_n, app.household.funds, grocery_stock, glitches.size()])
+	var babies: int = 0
+	for member: Dictionary in app.household.members:
+		if str(member.sim.character.get("age_stage","")) == "baby":
+			babies += 1
+	if babies > 0:
+		mechanics.baby_born = true
+	var pets: Array = app.household.pets.get("pets", []) if app.household.pets is Dictionary else []
+	mechanics.pet_count = pets.size()
+	print("NINETY_DAY_SAMPLE day=%d funds=%d stock=%d career=%d baby=%s pregnant=%s pets=%d glitches=%d" % [
+		day_n, app.household.funds, grocery_stock, max_career, str(mechanics.baby_born),
+		str(bool(app.household.pregnancy.get("active", false))), pets.size(), glitches.size()])
 
 func _log_glitch(day_n: int, shot: String, kind: String, detail: String) -> void:
 	var entry: Dictionary = {"day": day_n, "screenshot": shot, "kind": kind, "detail": detail}
@@ -207,6 +405,7 @@ func _snapshot(label_text: String) -> Dictionary:
 		var sim: LifeSim = member.sim
 		members.append({
 			"id":str(member.id),"name":str(sim.character.name),"stage":str(sim.character.age_stage),
+			"gender":str(sim.character.get("gender","")),
 			"skills":sim.skills.duplicate(true),"career":sim.career.duplicate(true),
 			"degree":str(sim.degree),"education":sim.education.duplicate(true),
 			"needs":sim.needs.duplicate(true),"funds":int(app.household.funds),
@@ -223,7 +422,8 @@ func _snapshot(label_text: String) -> Dictionary:
 		"funds":int(app.household.funds),"kitchen":app.household.kitchen(),
 		"stock":int(app.household.groceries.stock),"highest_skill":highest,
 		"career_level":career_level,"members":members,"notices":notices.size(),
-		"memorials":app.household.memorials.size()}
+		"memorials":app.household.memorials.size(),"pregnant":bool(app.household.pregnancy.get("active",false)),
+		"member_count":members.size(),"mechanics":mechanics.duplicate(true)}
 
 func _report_progress(start: Dictionary) -> void:
 	var end: Dictionary = _snapshot("end")
@@ -277,6 +477,11 @@ func _report_progress(start: Dictionary) -> void:
 		"A qualification is held after ninety days (%s)." % str(end.members[0].degree))
 	check(int(end.funds) >= int(start.funds) - 5000,
 		"The household's money is not quietly drained (%d -> %d)." % [int(start.funds),int(end.funds)])
+	if days >= DAYS - 5:
+		check(bool(mechanics.conceived) or bool(mechanics.baby_born),
+			"The male+female partners conceived or welcomed a baby during the ninety days.")
+		check(int(end.career_level) >= CAREER_TARGET,
+			"A career reaches its maximum level %d (reached %d)." % [CAREER_TARGET,int(end.career_level)])
 	# Evidence of the run's own progress, read from the real panels: the career
 	# record the HUD opens, and the Lifelet's own card. The career panel is opened
 	# through the same call the HUD button makes, because that button only exists
