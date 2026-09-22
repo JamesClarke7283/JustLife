@@ -16,6 +16,14 @@ const PREGNANCY_MINUTES: float = PREGNANCY_DAYS * MINUTES_PER_DAY
 const SAVE_VERSION: int = 1
 const MAX_BIRTHS: int = 8
 const SLEEP_ACTIONS: Array[String] = ["sleep", "nap"]
+## Sub-stages inside the baby age stage: newborn (swaddled), sitting (mat and
+## rattle), then toddler (crawl, potty, dollhouse, desk). Day counts are from
+## the birth day stored on the character.
+const INFANT_NEWBORN: String = "newborn"
+const INFANT_SITTING: String = "sitting"
+const INFANT_TODDLER: String = "toddler"
+const INFANT_SITTING_DAYS: int = 14
+const INFANT_TODDLER_DAYS: int = 26
 
 const FIRST_NAMES: Array[String] = ["Wren","Finley","Kit","Rowan","Sage","Remy","Jules","Noa","Alex","Robin","Avery","Marin"]
 ## A baby's surname is not drawn from a pool: it inherits the family's own name
@@ -91,6 +99,34 @@ static func has_baby(members: Array) -> bool:
 		if str(sim.character.get("age_stage","")) == "baby":
 			return true
 	return false
+
+## Stamp a newborn with the infant phase clock the caregiver stage reads.
+static func seed_infant(character: Dictionary, day: int) -> void:
+	character["infant_phase"] = INFANT_NEWBORN
+	character["infant_born_day"] = int(day)
+
+## Resolve the infant sub-stage from days since birth. Callers stamp the result
+## back onto the character so HUD, actions and the actor pose agree.
+static func infant_phase_for(character: Dictionary, day: int) -> String:
+	if str(character.get("age_stage","")) != "baby":
+		return ""
+	var born: int = int(character.get("infant_born_day", day))
+	var age_days: int = maxi(0, int(day) - born)
+	if age_days >= INFANT_TODDLER_DAYS:
+		return INFANT_TODDLER
+	if age_days >= INFANT_SITTING_DAYS:
+		return INFANT_SITTING
+	return INFANT_NEWBORN
+
+static func advance_infant_phase(character: Dictionary, day: int) -> String:
+	var phase: String = infant_phase_for(character, day)
+	if phase.is_empty():
+		return ""
+	if not character.has("infant_born_day"):
+		seed_infant(character, day)
+		phase = INFANT_NEWBORN
+	character["infant_phase"] = phase
+	return phase
 
 static func sleeping_in(sim: LifeSim, bed_id: String) -> bool:
 	var action:Dictionary = sim.get_current_action()

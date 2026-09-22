@@ -70,6 +70,8 @@ func _conceive_and_wait(owner_id: String, father_id: String) -> bool:
 		app.household.member_sim(owner_id), owner_id,
 		app.household.member_sim(father_id), father_id,
 		app.household.day, app.household.minutes, 1)
+	# Snap due so the suite proves the birth path without waiting fourteen days.
+	app.household.pregnancy["due_at"] = LifeBabyPlan.now_of(app.household.day, app.household.minutes)
 	app.household.set_speed(3)
 	var guard: int = 0
 	while not app.household.birth_ready() and guard < 60000:
@@ -126,9 +128,30 @@ func _run() -> void:
 	check(not baby_id.is_empty(), "The household holds a member of the baby stage (%s)." % baby_id)
 	if baby_id.is_empty():
 		app.queue_free(); await frames(2); quit(1); return
+	# Hospital stay serializes the baby before they are visible on the lot.
+	check(bool(app.household.birth_homecoming.get("active", false)),
+		"Confirming the creator starts the hospital homecoming.")
+	check(app.household.member_sim(baby_id).is_away(),
+		"The newborn is held at the hospital (away) until Welcome Baby Home.")
+	app.household.choose_birth_dad(LifeBirthHomecoming.DAD_NOTIFY)
+	if app.household.speed <= 0: app.household.set_speed(1)
+	app.close_overlay(false)
+	app.welcome_baby_home()
+	var guard: int = 0
+	while not app.birth_arrival.is_empty() and guard < 800:
+		app._process(0.2)
+		guard += 1
+		if guard % 20 == 0: await process_frame
+	if not app.birth_arrival.is_empty():
+		app.household.finish_welcome_baby_home()
+		app._sync_all_away_presence()
+		app._end_birth_arrival_cinematic()
+	await frames(6)
 	var baby: LifeSim = app.household.member_sim(baby_id)
 	check(str(baby.character.name).ends_with("Stone"),
 		"The member the household added really keeps the family surname (%s)." % str(baby.character.name))
+	check(not baby.is_away(),
+		"Welcome Baby Home clears the hospital away-state.")
 
 	# ------------------------------------------------- the life box and control
 	app.refresh_hud(); await frames(4)

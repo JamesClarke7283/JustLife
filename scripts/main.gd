@@ -957,13 +957,16 @@ func confirm_baby_creator() -> void:
 	# purchases, walls or an upper storey made since the last save.
 	if current_venue=="home":home_layout=world.serialize_items()
 	else:venue_layouts[current_venue]=world.serialize_items()
+	var mother_id:String=str(household.pregnancy.get("mother_id",""))
+	var father_id:String=str(household.pregnancy.get("father_id",""))
 	var result:Dictionary=household.commit_baby(profile,spawn,destination,world.serialize_items())
 	if not bool(result.ok):
 		show_notice(str(result.error));return
 	var id:String=str(result.child)
 	var baby:LifeSim=household.member_sim(id)
-	# Match adoption: spawn into the live home instead of tearing the world down
-	# with setup_live, which locked the welcome-home path and could drop the baby.
+	# SAVE-01: the baby is already serialized. Hold mother and newborn at the
+	# hospital, then let the partner choose Send Dad / Notify Dad before the
+	# welcome-home car arrives on the lot.
 	creator_purpose=""
 	creator_family_links=[]
 	household_profiles.clear()
@@ -971,12 +974,155 @@ func confirm_baby_creator() -> void:
 		household_profiles.append(member.sim.character.duplicate(true))
 	spawn_actor(id,baby.character,spawn)
 	motion_states[id]=_empty_motion()
-	household.stock_baby_supplies()
+	# Cancel the default arrive_home queue; hospital away owns presence until welcome.
+	baby.action_queue.clear()
+	var hospital:Dictionary=household.begin_birth_hospital(mother_id,father_id,id,spawn)
+	if not bool(hospital.get("ok",false)):
+		show_notice(str(hospital.get("error","The hospital stay could not begin.")));return
+	_sync_all_away_presence()
 	household.register_targets(world.simulation_targets())
-	_member_action_started(id,baby.get_current_action())
 	close_overlay(false)
 	draw_live()
-	show_notice("Welcome to the family, %s. Select their household portrait to help them settle in." % str(baby.character.name).split(" ")[0])
+	show_notice("%s is at the hospital with the newborn." % str(household.member_sim(mother_id).character.name).split(" ")[0] if household.member_sim(mother_id)!=null else "Mom")
+	show_birth_partner_choice.call_deferred()
+
+## Partner choice after birth: send dad to the hospital or just notify him.
+func show_birth_partner_choice() -> void:
+	if not bool(household.birth_homecoming.get("active",false)):return
+	if str(household.birth_homecoming.get("phase",""))!=LifeBirthHomecoming.PHASE_PARTNER:return
+	_begin_pause_overlay()
+	menus.shade()
+	card(Vector2(340,220),Vector2(760,360),P.WHITE,22,overlay)
+	small_caps("A new arrival",Vector2(372,248),Vector2(700,28),overlay)
+	text_label("Dad's next step",Vector2(372,290),Vector2(700,48),34,P.INK,true,overlay)
+	paragraph("Mom and the baby are at the hospital. Send Dad there to be with them, or notify him and keep him home until Welcome Baby Home.",Vector2(372,350),Vector2(700,70),18,P.MUTED,overlay)
+	var send:Button=button("Send Dad to Hospital",Vector2(372,450),Vector2(320,52),func():_choose_birth_dad(LifeBirthHomecoming.DAD_SEND),true,overlay)
+	send.name="BirthSendDad"
+	var notify:Button=button("Notify Dad",Vector2(710,450),Vector2(320,52),func():_choose_birth_dad(LifeBirthHomecoming.DAD_NOTIFY),false,overlay)
+	notify.name="BirthNotifyDad"
+
+func _choose_birth_dad(choice:String) -> void:
+	var result:Dictionary=household.choose_birth_dad(choice)
+	if not bool(result.get("ok",false)):
+		show_notice(str(result.get("error","Dad could not be updated.")));return
+	_sync_all_away_presence()
+	close_overlay(false)
+	draw_live()
+	if choice==LifeBirthHomecoming.DAD_SEND:
+		show_notice("Dad is on the way to the hospital.")
+	else:
+		show_notice("Dad has been notified. Welcome Baby Home when you are ready.")
+
+func _sync_all_away_presence() -> void:
+	var prior:String=bound_member_id
+	for member:Dictionary in household.members:
+		_bind_member(str(member.id))
+		_sync_away_presence()
+	_bind_member(prior)
+
+## Welcome Baby Home: the household car arrives and mother exits holding the baby.
+func welcome_baby_home() -> void:
+	if mode!="live" or current_venue!="home":
+		show_notice("Return home to welcome the baby.");return
+	var started:Dictionary=household.start_welcome_baby_home()
+	if not bool(started.get("ok",false)):
+		show_notice(str(started.get("error","Welcome Baby Home is not ready.")));return
+	if household.speed<=0:household.set_speed(1)
+	_begin_birth_arrival_cinematic(started.get("party",[]))
+
+var birth_arrival:Dictionary={}
+
+func _begin_birth_arrival_cinematic(party:Array) -> void:
+	_end_birth_arrival_cinematic()
+	var car:Node3D=load("res://assets/models/juniper_car.glb").instantiate()
+	world.house.add_child(car)
+	car.position=Vector3(0,0,12.5)
+	car.rotation.y=PI*.5
+	world.camera_target=Vector3(0,0,6.5)
+	world.update_camera()
+	# Mother holds the swaddled baby: baby actor is parented in her arms while
+	# the car approaches, then both exit at the curb.
+	var mother_id:String=str(household.birth_homecoming.get("mother_id",""))
+	var baby_id:String=str(household.birth_homecoming.get("baby_id",""))
+	for id:String in party:
+		var actor:LifeActor=world.actors.get(id)
+		if not is_instance_valid(actor):continue
+		actor.set_meta("away",false)
+		actor.visible=false
+	birth_arrival={"phase":"drive","time":0.0,"car":car,"party":party.duplicate(),"mother_id":mother_id,"baby_id":baby_id,"exit_at":world.lot_exit_position(0)}
+	show_notice("The household car is bringing mom and baby home.")
+
+func _end_birth_arrival_cinematic() -> void:
+	if birth_arrival.is_empty():return
+	var car:Node3D=birth_arrival.get("car")
+	if is_instance_valid(car):car.queue_free()
+	birth_arrival={}
+
+func _tick_birth_arrival(delta:float) -> void:
+	if birth_arrival.is_empty():return
+	# The partner-choice overlay may leave speed at 0; the arrival still needs to
+	# advance so Welcome Baby Home cannot freeze the household forever.
+	var speed_scale:float=maxf(1.0,clampf(float(household.speed),0.0,3.0))
+	birth_arrival.time=float(birth_arrival.time)+delta*speed_scale
+	var car:Node3D=birth_arrival.get("car")
+	var phase:String=str(birth_arrival.phase)
+	var curb:Vector3=Vector3(0,0,10.25)
+	if phase=="drive":
+		if is_instance_valid(car):
+			car.position=car.position.move_toward(curb,delta*speed_scale*2.4)
+			if car.position.distance_to(curb)<.05 or float(birth_arrival.time)>12.0:
+				birth_arrival.phase="exit";birth_arrival.time=0.0
+		else:
+			birth_arrival.phase="exit";birth_arrival.time=0.0
+	elif phase=="exit":
+		household.finish_welcome_baby_home()
+		var mother_id:String=str(birth_arrival.mother_id)
+		var baby_id:String=str(birth_arrival.baby_id)
+		var exit_at:Vector3=birth_arrival.exit_at
+		_sync_all_away_presence()
+		var mother:LifeActor=world.actors.get(mother_id)
+		var baby:LifeActor=world.actors.get(baby_id)
+		if is_instance_valid(mother):
+			mother.visible=true
+			mother.position=exit_at
+			mother.set_meta("away",false)
+		if is_instance_valid(baby) and is_instance_valid(mother):
+			# Swaddled newborn held in mother's arms for the arrival beat.
+			baby.visible=true
+			baby.set_meta("away",false)
+			baby.reparent(mother)
+			baby.position=Vector3(0.12,1.05,0.18)
+			baby.scale=Vector3.ONE*0.92
+		for id:String in birth_arrival.party:
+			if id==mother_id or id==baby_id:continue
+			var actor:LifeActor=world.actors.get(id)
+			if is_instance_valid(actor):
+				actor.visible=true
+				actor.set_meta("away",false)
+				actor.position=exit_at+Vector3(0.7,0,0.2)
+		birth_arrival.phase="hold";birth_arrival.time=0.0
+		show_notice("Welcome home. Mom steps out holding the baby.")
+	elif phase=="hold":
+		if float(birth_arrival.time)>=2.4:
+			var baby_id2:String=str(birth_arrival.baby_id)
+			var baby2:LifeActor=world.actors.get(baby_id2)
+			if is_instance_valid(baby2) and baby2.get_parent()!=world.house:
+				var at:Vector3=baby2.global_position
+				baby2.reparent(world.house)
+				baby2.global_position=at
+				baby2.scale=Vector3.ONE
+			var destination:Vector3=world.lot_return_position(household.members.size()-1)
+			if is_instance_valid(world.actors.get(str(birth_arrival.mother_id))):
+				world.actors[str(birth_arrival.mother_id)].position=destination
+			if is_instance_valid(baby2):
+				baby2.position=destination+Vector3(0.35,0,0)
+			household.stock_baby_supplies()
+			household.register_targets(world.simulation_targets())
+			_end_birth_arrival_cinematic()
+			draw_live()
+			var baby_sim:LifeSim=household.member_sim(baby_id2)
+			var label:String=str(baby_sim.character.name).split(" ")[0] if baby_sim!=null else "the baby"
+			show_notice("Welcome to the family, %s. Select their household portrait to help them settle in." % label)
 
 func show_baby_creator() -> void:
 	# The baby creator is the ordinary creator with the baby stage seeded, so
@@ -2277,6 +2423,10 @@ func draw_live() -> void:
 	button("Build & buy",Vector2(638,27),Vector2(150,39),func():set_build_mode(true),mode=="build")
 	button("My Lifelet",Vector2(796,27),Vector2(130,39),show_person)
 	button("Phone",Vector2(952,27),Vector2(153,43),adoption_flow.show_phone).name="HouseholdPhone"
+	if LifeBirthHomecoming.can_welcome(household.birth_homecoming):
+		var welcome:Button=button("Welcome Baby Home",Vector2(952,78),Vector2(260,36),welcome_baby_home,true)
+		welcome.name="WelcomeBabyHome"
+		welcome.tooltip_text="Drive mom and the baby home. The baby is already part of the household save."
 	card(Vector2(1125,18),Vector2(293,62),P.WHITE,14)
 	funds_label=text_label("ℒ 2,500",Vector2(1145,29),Vector2(170,38),25,P.TEAL)
 	icon_button("menu","Pause menu (Esc)",Vector2(1357,27),Vector2(48,42),show_menu).name="PauseMenu"
@@ -4731,11 +4881,9 @@ func _place_memorial(id: String) -> void:
 	_refresh_sim_targets()
 
 func _on_baby_born(mother_id: String) -> void:
-	# The birth itself opens the naming/customising creator, exactly as the
-	# Sims-4 flow ends with the newborn arriving. Deferred so the household's
-	# tick finishes the conception bookkeeping before the mode changes.
+	# Day-14 notice: the household hears the news before the creator opens.
 	if not bool(household.birth_ready()):return
-	show_notice("The baby has arrived.")
+	show_notice("Congratulations, mom is having a baby!")
 	show_baby_creator.call_deferred()
 
 func _on_pregnancy_began(mother_id: String) -> void:
@@ -5965,6 +6113,7 @@ func _process(delta:float) -> void:
 	if mode not in ["live","build"]:return
 	if mode=="live":
 		_update_cover_beat(delta)
+		_tick_birth_arrival(delta)
 		residents.publish_targets()
 		meal_flow.sync_world(household.speed>0)
 		_sync_delivery_van()
@@ -7547,6 +7696,8 @@ func _away_status(state:Dictionary) -> String:
 	# household's own release tick brings them home.
 	if str(state.get("activity",""))=="prison":
 		return "Inside until day %d" % int(state.get("return_day",0))
+	if str(state.get("activity",""))=="hospital":
+		return "At the hospital · Welcome Baby Home when ready"
 	var career_state:bool=str(state.get("activity",""))=="career"
 	var activity:String="work" if career_state else "school"
 	if str(state.get("phase",""))=="returning":return "Coming home from "+activity

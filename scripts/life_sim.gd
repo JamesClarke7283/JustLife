@@ -477,9 +477,16 @@ func _build_actions() -> void:
 	_define("pet_walk", "Take for a Walk", 40.0, {"fun": 16.0, "social": 14.0, "energy": -8.0}, 0, "fitness", 22.0, "A turn around the garden. Pet exercise and owner fitness.")
 	_define("pet_pet", "Pet", 12.0, {"fun": 10.0, "social": 12.0}, 0, "parenting", 6.0, "A quiet fuss. The pet warms to you.")
 	_define("pet_train", "Train obedience", 25.0, {"fun": 8.0, "social": 10.0}, 0, "parenting", 18.0, "Patient repetition. Builds Obedience and your own Parenting.")
-	_define("change_nappy", "Change the baby's nappy", 20.0, {"fun": 4.0, "hygiene": -6.0}, 0, "parenting", 16.0, "A clean nappy on the changing table. The baby's hygiene and bladder are seen to and they stop fussing.")
-	_define("cuddle_baby", "Pick the baby up for a cuddle", 20.0, {"social": 26.0, "fun": 14.0}, 0, "parenting", 14.0, "Carry the baby and talk to them quietly. Their social need fills and they feel safe.")
+	_define("change_nappy", "Change Nappy", 20.0, {"fun": 4.0, "hygiene": -6.0}, 0, "parenting", 16.0, "A clean nappy on the changing table. The baby's hygiene and bladder are seen to and they stop fussing.")
+	_define("cuddle_baby", "Pick Up for Cuddle", 20.0, {"social": 26.0, "fun": 14.0}, 0, "parenting", 14.0, "Carry the baby and talk to them quietly. Their social need fills and they feel safe.")
+	_define("talk_to_baby", "Talk To", 18.0, {"social": 16.0, "fun": 8.0}, 0, "parenting", 10.0, "Chat softly with the baby. Their social need fills.")
+	_define("spin_baby_mobile", "Spin the baby mobile", 20.0, {"fun": 6.0}, 0, "parenting", 8.0, "Set the nursery mobile turning. The baby watches and their fun need rises.")
 	_define("play_with_baby", "Play with the baby", 30.0, {"fun": 20.0, "social": 16.0, "energy": -4.0}, 0, "parenting", 20.0, "Sit on the floor with the baby's toys and play together. Fun for both of you, and their social need too.")
+	_define("play_rattle", "Shake the rattle", 16.0, {"fun": 4.0}, 0, "parenting", 6.0, "Shake a rattle for a sitting baby. Logic and fun tick up together.")
+	_define("play_baby_mat", "Sit on the baby mat", 22.0, {"fun": 6.0, "social": 4.0}, 0, "parenting", 8.0, "Settle on the mat with the baby. Social, logic and fun all get a lift.")
+	_define("use_potty", "Potty training", 24.0, {"hygiene": 8.0}, 0, "parenting", 12.0, "Help a toddler practise on the potty.")
+	_define("play_dollhouse", "Play with the dollhouse", 28.0, {"fun": 18.0, "social": 8.0}, 0, "parenting", 10.0, "A toddler play session at the dollhouse.")
+	_define("child_desk_study", "Sit at the child desk", 30.0, {"fun": 6.0}, 0, "logic", 14.0, "A toddler or child settles at their own desk.")
 	_define("deep_clean", "Deep clean", 45.0, {"hygiene": 6.0, "fun": 10.0}, 0, "", 0.0, "Scrub the surfaces until the room sparkles. Slow, but oddly satisfying.")
 	_define("remember_life", "Remember a life", 20.0, {"social": 12.0, "fun": 6.0}, 0, "", 0.0, "Stand with the stone and remember who they were.")
 	# The computer is where a subject is truly mastered. A skill book stops at
@@ -558,7 +565,15 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		# toy in hand. Each is offered only when a baby is in the household.
 		"changing_table": ids = ["change_nappy"] if _has_baby() else []
 		"baby_toys": ids = ["play_with_baby"] if _has_baby() else []
-		"cot": ids = ["cuddle_baby", "sleep", "nap"] if _has_baby() else ["sleep", "nap"]
+		"cot": ids = ["cuddle_baby", "talk_to_baby", "sleep", "nap"] if _has_baby() else ["sleep", "nap"]
+		"baby_mobile": ids = ["spin_baby_mobile"] if _has_baby() else []
+		"baby_rattle": ids = ["play_rattle"] if _infant_at_least(LifeBabyPlan.INFANT_SITTING) else []
+		"baby_mat": ids = ["play_baby_mat"] if _infant_at_least(LifeBabyPlan.INFANT_SITTING) else []
+		"rocking_chair": ids = ["cuddle_baby", "relax"] if _has_baby() else ["relax"]
+		"potty": ids = ["use_potty"] if _infant_at_least(LifeBabyPlan.INFANT_TODDLER) else []
+		"dollhouse": ids = ["play_dollhouse"] if _infant_at_least(LifeBabyPlan.INFANT_TODDLER) else []
+		"child_desk": ids = ["child_desk_study"] if _infant_at_least(LifeBabyPlan.INFANT_TODDLER) or str(character.age_stage)=="child" else []
+		"train_set": ids = ["play_toys"] if _infant_at_least(LifeBabyPlan.INFANT_TODDLER) or str(character.age_stage)=="child" else []
 
 	if LifeGardenGames.is_game(kind): ids = [LifeGardenGames.ACTION_ID]
 	elif LifeOutdoorActs.is_outdoor_act(kind):
@@ -715,6 +730,10 @@ func _tick_away(_game_minutes: float) -> void:
 	# simply not here until the household's own release tick brings them home,
 	# so time passes without an action to progress.
 	if str(away_state.activity)=="prison":
+		return
+	if str(away_state.activity)=="hospital":
+		# Hospital stays end when Welcome Baby Home clears the away-state, not
+		# on a school-style clock return.
 		return
 	if day != int(away_state.departure_day) or str(character.age_stage) != str(away_state.age_stage):
 		request_return_home()
@@ -1552,7 +1571,7 @@ func _finish_front() -> void:
 		if is_instance_valid(household_service):
 			household_service.bathe_pet(str(action.get("target_id","")),str(character.get("name","")))
 		_emit_notice("%s is clean and fluffy again." % str(action.get("pet_name","The dog")))
-	elif id in ["feed_baby_bottle", "feed_baby_food", "change_nappy", "cuddle_baby", "play_with_baby"]:
+	elif id in ["feed_baby_bottle", "feed_baby_food", "change_nappy", "cuddle_baby", "play_with_baby", "talk_to_baby", "spin_baby_mobile", "play_rattle", "play_baby_mat", "use_potty", "play_dollhouse"]:
 		# The caregiver completes the action, but the need it answers is the
 		# baby's own: feeding fills their hunger, a nappy their hygiene and
 		# bladder, a cuddle and play their social and fun. The caregiver also
@@ -1867,6 +1886,42 @@ func _pet_record_for(pet_id:String) -> Dictionary:
 func _has_baby() -> bool:
 	return _baby_in_household() != null
 
+func _infant_at_least(phase: String) -> bool:
+	var baby: LifeSim = _baby_in_household()
+	if baby == null:
+		return false
+	var order: Array[String] = [LifeBabyPlan.INFANT_NEWBORN, LifeBabyPlan.INFANT_SITTING, LifeBabyPlan.INFANT_TODDLER]
+	var have: String = LifeBabyPlan.advance_infant_phase(baby.character, day)
+	return order.find(have) >= order.find(phase)
+
+## Hospital stay after birth: mother and newborn wait off-lot until Welcome Baby
+## Home clears this away-state. No school-style auto-return.
+func begin_hospital_stay(exit_position: Vector3) -> void:
+	action_queue.clear()
+	away_state = {
+		"version": 1,
+		"activity": "hospital",
+		"phase": "away",
+		"departure_day": day,
+		"departure_minutes": minutes,
+		"return_day": day + 30,
+		"return_minutes": minutes,
+		"exit_id": "lot_exit",
+		"exit_position": exit_position,
+		"age_stage": str(character.age_stage),
+		"completed": false,
+		"ended_at": 0.0,
+	}
+	_publish("away_changed", [get_away_state()])
+	_emit_changed()
+
+func end_hospital_stay() -> void:
+	if str(away_state.get("activity", "")) != "hospital":
+		return
+	away_state = {}
+	_publish("away_changed", [get_away_state()])
+	_emit_changed()
+
 ## The baby this caregiver is caring for, so a care action can answer the
 ## child's own needs rather than the caregiver's. A baby is a household member
 ## like any other, so this reads the household's own member list.
@@ -1909,6 +1964,30 @@ func _care_for_baby(action_id: String) -> void:
 			baby.needs["social"] = minf(100.0, float(baby.needs.get("social", 0.0)) + 45.0)
 			baby.needs["fun"] = minf(100.0, float(baby.needs.get("fun", 0.0)) + 20.0)
 			_emit_notice("%s is happy in your arms." % name)
+		"talk_to_baby":
+			baby.needs["social"] = minf(100.0, float(baby.needs.get("social", 0.0)) + 28.0)
+			baby.needs["fun"] = minf(100.0, float(baby.needs.get("fun", 0.0)) + 10.0)
+			_emit_notice("A quiet chat settles %s." % name)
+		"spin_baby_mobile":
+			baby.needs["fun"] = minf(100.0, float(baby.needs.get("fun", 0.0)) + 34.0)
+			_emit_notice("%s watches the mobile spin." % name)
+		"play_rattle":
+			baby.needs["fun"] = minf(100.0, float(baby.needs.get("fun", 0.0)) + 22.0)
+			baby._gain_skill("logic", 4.0)
+			_emit_notice("%s shakes along with the rattle." % name)
+		"play_baby_mat":
+			baby.needs["fun"] = minf(100.0, float(baby.needs.get("fun", 0.0)) + 26.0)
+			baby.needs["social"] = minf(100.0, float(baby.needs.get("social", 0.0)) + 18.0)
+			baby._gain_skill("logic", 6.0)
+			_emit_notice("%s practises sitting on the mat." % name)
+		"use_potty":
+			baby.needs["hygiene"] = minf(100.0, float(baby.needs.get("hygiene", 0.0)) + 30.0)
+			baby.needs["bladder"] = minf(100.0, float(baby.needs.get("bladder", 0.0)) + 40.0)
+			_emit_notice("Potty practice with %s." % name)
+		"play_dollhouse":
+			baby.needs["fun"] = minf(100.0, float(baby.needs.get("fun", 0.0)) + 36.0)
+			baby.needs["social"] = minf(100.0, float(baby.needs.get("social", 0.0)) + 16.0)
+			_emit_notice("%s plays house for a while." % name)
 		"play_with_baby":
 			baby.needs["fun"] = minf(100.0, float(baby.needs.get("fun", 0.0)) + 40.0)
 			baby.needs["social"] = minf(100.0, float(baby.needs.get("social", 0.0)) + 32.0)

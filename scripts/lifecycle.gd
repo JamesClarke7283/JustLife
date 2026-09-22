@@ -23,7 +23,8 @@ static func above(stage: String, ceiling: String) -> bool:
 	if have < 0 or top < 0: return false
 	return have > top
 const LABELS: Dictionary = {"baby":"Baby", "child":"Child", "teen":"Teen", "young_adult":"Young adult", "adult":"Adult", "elder":"Elder", "unknown":"Age unspecified"}
-const NORMAL_DAYS: Dictionary = {"baby":7, "child":14, "teen":21, "young_adult":28, "adult":42, "elder":28}
+## Baby covers newborn → sitting → toddler (14 + 12 days) before the child stage.
+const NORMAL_DAYS: Dictionary = {"baby":28, "child":14, "teen":21, "young_adult":28, "adult":42, "elder":28}
 const SPANS: Dictionary = {"short":0.5, "normal":1.0, "long":4.0}
 ## "elder" is the last stage, so next_stage() has nowhere to send them and a
 ## completed stage has no birthday to become. That completion is the end of the

@@ -48,6 +48,8 @@ var pregnancy: Dictionary = LifeBabyPlan.fresh()
 ## Bottles and jars kept for the baby. Stocked when a newborn joins so the fridge
 ## can Prepare Bottle / Get Baby Food without a separate shop trip.
 var baby_supplies: Dictionary = {"bottles": 0, "food": 0}
+## Hospital stay and the welcome-home car arrival after the baby creator closes.
+var birth_homecoming: Dictionary = LifeBirthHomecoming.fresh()
 var _family_roles: Dictionary = {}
 var meals: LifeMeals = LifeMeals.new()
 ## The household's kitchen: what is in the fridge, and the delivery on its way.
@@ -81,6 +83,7 @@ func new_household(profiles: Array) -> void:
 	pets=LifePets.fresh()
 	mail=LifeMail.fresh()
 	pregnancy=LifeBabyPlan.fresh()
+	birth_homecoming=LifeBirthHomecoming.fresh()
 	meals.clear()
 	sanitation.clear()
 	cooperations.clear()
@@ -307,6 +310,7 @@ func tick(delta: float) -> void:
 	# Conception to birth runs on the shared game clock, so fast speed, pause
 	# and a save/load all agree about when the baby is due.
 	pregnancy_tick()
+	_infant_phase_tick()
 	_caregiving_tick()
 	# A pet's own day runs on the same clock, so a paused household freezes its
 	# pets' needs exactly as it freezes its Lifelets.
@@ -342,12 +346,23 @@ func _caregiving_tick() -> void:
 		if str(member.sim.character.get("age_stage",""))=="baby":
 			if baby==null or _urgent_needs(member.sim)>_urgent_needs(baby):baby=member.sim
 	if baby==null:return
+	LifeBabyPlan.advance_infant_phase(baby.character,day)
 	var need:String=_most_urgent_need(baby)
 	if need.is_empty():return
+	# Low needs make the baby cry so the player hears the urgency even when no
+	# carer is free to answer it this minute. At most once every few game minutes.
+	if float(baby.needs.get(need,100.0))<18.0:
+		var last_cry:float=float(baby.character.get("last_cry_at",-9999.0))
+		var now:float=float(day-1)*1440.0+float(minutes)
+		if now-last_cry>=8.0:
+			baby.character["last_cry_at"]=now
+			var cry_name:String=str(baby.character.get("name","The baby")).split(" ")[0]
+			notice.emit("%s is crying — their %s need is low." % [cry_name,need])
 	var carer:LifeSim=null
 	for member:Dictionary in members:
 		var candidate:LifeSim=member.sim
 		if str(candidate.character.get("age_stage","")) not in ["young_adult","adult","elder"]:continue
+		if candidate.is_away():continue
 		if not candidate.get_current_action().is_empty() or not candidate.action_queue.is_empty():continue
 		# A desperate baby outranks the carer's own comfort: only a carer who is
 		# themselves about to collapse is excused, and any candidate serves.
@@ -359,6 +374,50 @@ func _caregiving_tick() -> void:
 	carer.add_moodlet("Caring","Happy","Looking after the little one.",120,2)
 	carer._gain_skill("parenting",8.0)
 	notice.emit("%s looked after the baby." % str(carer.character.get("name","A grown-up")).split(" ")[0])
+
+func _infant_phase_tick() -> void:
+	for member:Dictionary in members:
+		if str(member.sim.character.get("age_stage",""))!="baby":continue
+		LifeBabyPlan.advance_infant_phase(member.sim.character,day)
+
+## Put mother and newborn into the hospital away-state after the creator closes.
+## The baby is already a household member (SAVE-01); they stay serialized while
+## the lot waits for Welcome Baby Home.
+func begin_birth_hospital(mother_id:String,father_id:String,baby_id:String,exit_position:Vector3) -> Dictionary:
+	var mother:LifeSim=member_sim(mother_id)
+	var baby:LifeSim=member_sim(baby_id)
+	if mother==null or baby==null:
+		return {"ok":false,"error":"The parents or baby are no longer part of this household."}
+	mother.begin_hospital_stay(exit_position)
+	baby.begin_hospital_stay(exit_position)
+	birth_homecoming=LifeBirthHomecoming.begin(mother_id,father_id,baby_id)
+	return {"ok":true,"homecoming":birth_homecoming.duplicate(true)}
+
+func choose_birth_dad(choice:String) -> Dictionary:
+	if not bool(birth_homecoming.get("active",false)):
+		return {"ok":false,"error":"Nobody is waiting at the hospital right now."}
+	birth_homecoming=LifeBirthHomecoming.choose_dad(birth_homecoming,choice)
+	if str(birth_homecoming.get("dad_choice",""))==LifeBirthHomecoming.DAD_SEND:
+		var father:LifeSim=member_sim(str(birth_homecoming.get("father_id","")))
+		var mother:LifeSim=member_sim(str(birth_homecoming.get("mother_id","")))
+		if father!=null and mother!=null:
+			var exit:Vector3=Vector3(mother.get_away_state().get("exit_position",Vector3.ZERO))
+			father.begin_hospital_stay(exit)
+	return {"ok":true,"homecoming":birth_homecoming.duplicate(true)}
+
+func start_welcome_baby_home() -> Dictionary:
+	if not LifeBirthHomecoming.can_welcome(birth_homecoming):
+		return {"ok":false,"error":"Welcome Baby Home is not ready yet."}
+	birth_homecoming=LifeBirthHomecoming.start_arrival(birth_homecoming)
+	return {"ok":true,"party":LifeBirthHomecoming.party_ids(birth_homecoming),"homecoming":birth_homecoming.duplicate(true)}
+
+func finish_welcome_baby_home() -> Dictionary:
+	for id:String in LifeBirthHomecoming.party_ids(birth_homecoming):
+		var person:LifeSim=member_sim(id)
+		if person!=null:person.end_hospital_stay()
+	birth_homecoming=LifeBirthHomecoming.finish(birth_homecoming)
+	stock_baby_supplies()
+	return {"ok":true}
 
 func _urgent_needs(who:LifeSim) -> float:
 	var worst:float=0.0
@@ -387,7 +446,7 @@ func get_state(world_data: Array = []) -> Dictionary:
 	adopt_selected_changes()
 	var states:Array=[]
 	for member in members:states.append({"id":member.id,"state":member.sim.get_state()})
-	var result:Dictionary={"household_version":2 if not journeys.is_empty() else 1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"pets":pets.duplicate(true),"mail":mail.duplicate(true),"pregnancy":pregnancy.duplicate(true),"birth_serial":birth_serial,"baby_supplies":baby_supplies.duplicate(true),"memorials":memorials.duplicate(true),"heirlooms":heirlooms.duplicate(true),"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state(),"groceries":groceries.duplicate(true),"business":business.duplicate(true),"sanitation":sanitation.get_state(),"extras":extras_provider.call() if extras_provider.is_valid() else {}}
+	var result:Dictionary={"household_version":2 if not journeys.is_empty() else 1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"pets":pets.duplicate(true),"mail":mail.duplicate(true),"pregnancy":pregnancy.duplicate(true),"birth_homecoming":birth_homecoming.duplicate(true),"birth_serial":birth_serial,"baby_supplies":baby_supplies.duplicate(true),"memorials":memorials.duplicate(true),"heirlooms":heirlooms.duplicate(true),"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state(),"groceries":groceries.duplicate(true),"business":business.duplicate(true),"sanitation":sanitation.get_state(),"extras":extras_provider.call() if extras_provider.is_valid() else {}}
 	if not journeys.is_empty():result.journeys=journeys.duplicate(true)
 	if physical_snapshot_provider.is_valid():
 		var physical:Dictionary=physical_snapshot_provider.call()
@@ -582,6 +641,10 @@ func restore_state(data: Dictionary) -> Dictionary:
 	if not pregnancy_error.is_empty():
 		for candidate:Dictionary in candidates:candidate.sim.free()
 		return {"ok":false,"error":pregnancy_error}
+	var homecoming_error:String=LifeBirthHomecoming.validate(data.get("birth_homecoming",LifeBirthHomecoming.fresh()) if data.get("birth_homecoming",null) is Dictionary else LifeBirthHomecoming.fresh())
+	if not homecoming_error.is_empty():
+		for candidate:Dictionary in candidates:candidate.sim.free()
+		return {"ok":false,"error":homecoming_error}
 	if not LifeJourneyState.number(data.get("birth_serial",1),1,LifeBabyPlan.MAX_BIRTHS,true):
 		for candidate:Dictionary in candidates:candidate.sim.free()
 		return {"ok":false,"error":"Save contains an invalid birth counter."}
@@ -652,6 +715,8 @@ func restore_state(data: Dictionary) -> Dictionary:
 	for pet:Dictionary in pets.get("pets",[]):
 		if not pet.get("care") is Dictionary:pet["care"]=LifePetCare.fresh()
 	pregnancy=LifeBabyPlan.fresh() if pregnancy_data==null else (pregnancy_data as Dictionary).duplicate(true)
+	var homecoming_data:Variant=data.get("birth_homecoming",null)
+	birth_homecoming=LifeBirthHomecoming.fresh() if not homecoming_data is Dictionary else (homecoming_data as Dictionary).duplicate(true)
 	birth_serial=int(data.get("birth_serial",1))
 	var supplies:Variant=data.get("baby_supplies",{"bottles":0,"food":0})
 	baby_supplies={"bottles":0,"food":0}
@@ -2124,6 +2189,7 @@ func commit_baby(profile: Dictionary, spawn: Vector3, destination: Vector3, worl
 	var baby_profile:Dictionary=profile.duplicate(true)
 	baby_profile["wants_and_fears"]=true
 	baby.new_household(baby_profile)
+	LifeBabyPlan.seed_infant(baby.character,day)
 	baby.day=day;baby.minutes=minutes;baby.funds=funds;baby.speed=speed
 	baby.education=LifeEducation.fresh("baby",day)
 	baby.career.schedule=LifeCareerSchedule.fresh(day)

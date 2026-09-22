@@ -48,6 +48,8 @@ func _birth_baby() -> LifeSim:
 		app.household.member_sim(owner_id), owner_id,
 		app.household.member_sim("housemate_1"), "housemate_1",
 		app.household.day, app.household.minutes, 1)
+	# Snap the due clock so a fourteen-day term does not burn the suite's budget.
+	app.household.pregnancy["due_at"] = LifeBabyPlan.now_of(app.household.day, app.household.minutes)
 	app.household.set_speed(3)
 	var guard: int = 0
 	while not app.household.birth_ready() and guard < 60000:
@@ -58,6 +60,22 @@ func _birth_baby() -> LifeSim:
 	pending["age_stage"] = "baby"; pending["life_stage"] = "minor"
 	app.profile = pending; app.creator_purpose = "baby"
 	app.confirm_baby_creator()
+	await frames(4)
+	# Drive the hospital → Welcome Baby Home path so care runs on a home baby.
+	if bool(app.household.birth_homecoming.get("active", false)):
+		app.close_overlay(false)
+		if app.household.speed <= 0: app.household.set_speed(1)
+		app.household.choose_birth_dad(LifeBirthHomecoming.DAD_NOTIFY)
+		app.welcome_baby_home()
+		var arrive: int = 0
+		while not app.birth_arrival.is_empty() and arrive < 800:
+			app._process(0.2); arrive += 1
+			if arrive % 20 == 0: await process_frame
+		# If the cinematic stalled, finish the state transition so care can run.
+		if not app.birth_arrival.is_empty():
+			app.household.finish_welcome_baby_home()
+			app._sync_all_away_presence()
+			app._end_birth_arrival_cinematic()
 	await frames(8)
 	for member: Dictionary in app.household.members:
 		if str(member.sim.character.age_stage) == "baby": return member.sim
