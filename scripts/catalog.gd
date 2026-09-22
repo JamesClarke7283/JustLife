@@ -50,6 +50,25 @@ const ITEMS = {
 	"baby_bottle": {"label":"Baby bottle", "category":"Baby & Kids", "price":5, "size":Vector2(.10,.10), "height":.27, "color":"f2f7fa"},
 	"baby_food": {"label":"Jar of baby food", "category":"Baby & Kids", "price":5, "size":Vector2(.12,.12), "height":.15, "color":"c9a05a"},
 	"baby_toys": {"label":"Baby toys", "category":"Baby & Kids", "price":5, "size":Vector2(.90,.90), "height":.22, "color":"d2a24b"},
+	"baby_mobile": {"label":"Nursery mobile", "category":"Baby & Kids", "price":25, "size":Vector2(.42,.42), "height":.85, "color":"c97c66",
+		"styles":["stars","cloud"]},
+	"baby_rattle": {"label":"Baby rattle", "category":"Baby & Kids", "price":8, "size":Vector2(.18,.18), "height":.22, "color":"c97c66"},
+	"rocking_chair": {"label":"Nursery rocking chair", "category":"Baby & Kids", "price":80, "size":Vector2(.78,.90), "height":1.05, "color":"ab7951"},
+	"baby_mat": {"label":"Baby play mat", "category":"Baby & Kids", "price":20, "size":Vector2(1.20,1.20), "height":.06, "color":"d2a24b"},
+	"children_picture": {"label":"Children's picture", "category":"Baby & Kids", "price":15, "size":Vector2(.72,.08), "height":.72, "color":"c97c66",
+		"styles":["01","02","03","04","05"], "wall_mounted":true},
+	"dollhouse": {"label":"Dollhouse", "category":"Baby & Kids", "price":60, "size":Vector2(.95,.55), "height":1.05, "color":"d7ae7e",
+		"styles":["classic","cottage"]},
+	"train_set": {"label":"Wooden train set", "category":"Baby & Kids", "price":40, "size":Vector2(1.10,.70), "height":.18, "color":"ab7951",
+		"styles":["oval","figure8"]},
+	"child_rug": {"label":"Child rug", "category":"Baby & Kids", "price":30, "size":Vector2(1.6,1.2), "height":.04, "color":"decfaf",
+		"sizes":["small","medium","large"], "size_prices":{"small":30,"medium":50,"large":80}},
+	"child_desk": {"label":"Child desk", "category":"Baby & Kids", "price":55, "size":Vector2(.95,.55), "height":.72, "color":"ab7951",
+		"styles":["plain","shelf"]},
+	"child_chair": {"label":"Child chair", "category":"Baby & Kids", "price":20, "size":Vector2(.42,.42), "height":.55, "color":"d7ae7e",
+		"styles":["plain","arms"]},
+	"nursery_paint": {"label":"Nursery wall paint", "category":"Baby & Kids", "rate_per_square_metre":5, "size":Vector2(2.0,.04), "height":2.2, "color":"8faf9f", "tint":true,
+		"styles":["stars","clouds","stripes","dots","animals"], "wall_mounted":true},
 	"computer": {"label":"Home office computer", "category":"Activities", "price":900, "size":Vector2(1.45,.75), "height":1.4, "color":"ab7951"},
 	"piano": {"label":"Parlour upright piano", "category":"Activities", "price":1200, "size":Vector2(1.55,1.3), "height":1.36, "color":"624435"},
 	"chess": {"label":"Quiet strategy games table", "category":"Activities", "price":240, "size":Vector2(.85,2.0), "height":.85, "color":"ab7951"},
@@ -413,7 +432,18 @@ static func starter_layout(lot: int = 0) -> Array:
 		entries = _rowan_entries()
 	elif lot == 4:
 		entries = _juniper_entries()
+	elif lot == 5:
+		entries = nursery_room_preset()
 	for i in range(entries.size()):
 		var e: Array = entries[i]
 		a.append({"id":"item_%d" % i,"kind":e[0],"x":e[1],"z":e[2],"rotation":e[3]})
 	return a
+
+## A ready nursery: cot, changing table, mobile, mat, rocking chair and paint
+## accents. Offered as starter_layout(5) and as Build & buy's nursery preset pack.
+static func nursery_room_preset() -> Array:
+	return [
+		["cot",3.4,1.6,0],["changing_table",5.0,1.2,-90],["baby_mobile",3.4,2.35,0],
+		["baby_mat",2.2,2.8,0],["rocking_chair",1.4,1.4,90],["baby_rattle",2.5,2.6,0],
+		["children_picture",3.4,4.91,180],["child_rug",3.2,2.4,0],["lamp",5.1,3.6,0],
+	]

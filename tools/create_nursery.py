@@ -163,13 +163,150 @@ def baby_toys():
         box('Soft block',(.06+i*.20,.075,.18),(.14,.14,.14),m,.030)
     torus('Play ring',(.24,.045,.30),.080,.024,'coral')
 
-catalog={'cot':cot,'child_bed':child_bed,'changing_table':changing_table,'potty':potty,
-         'baby_bottle':bottle,'baby_food':baby_food,'baby_toys':baby_toys}
+def baby_mobile_stars():
+    rod('Mobile stem',(0,.70,0),(0,.85,0),.012,'oak')
+    for i in range(4):
+        a=i*math.pi/2
+        x,z=math.cos(a)*.18,math.sin(a)*.18
+        rod('Arm',(0,.85,0),(x,.85,z),.008,'oak')
+        rod('Thread',(x,.85,z),(x,.55,z),.003,'graphite')
+        box('Star',(x,.50,z),(.08,.02,.08),'mustard',.004)
+
+def baby_mobile_cloud():
+    rod('Mobile stem',(0,.70,0),(0,.85,0),.012,'oak')
+    for i in range(3):
+        a=i*2.1
+        x,z=math.cos(a)*.16,math.sin(a)*.16
+        rod('Arm',(0,.85,0),(x,.85,z),.008,'sky')
+        rod('Thread',(x,.85,z),(x,.58,z),.003,'graphite')
+        ell('Cloud',(x,.52,z),(.07,.04,.05),'white')
+
+def baby_rattle():
+    rod('Handle',(0,.04,0),(0,.14,0),.016,'oak')
+    ell('Head',(0,.18,0),(.05,.05,.05),'coral')
+    for i in range(3):
+        ell('Bead',(math.cos(i*2.1)*.06,.18,math.sin(i*2.1)*.06),(.02,.02,.02),'mustard')
+
+def rocking_chair():
+    box('Seat',(0,.42,0),(.52,.04,.48),'oak',.012)
+    box('Back',(0,.72,-.22),(.50,.55,.04),'oak',.012)
+    for x in [-.22,.22]:
+        box('Leg',(x,.22,.16),(.05,.44,.05),'walnut',.008)
+        box('Leg',(x,.22,-.16),(.05,.44,.05),'walnut',.008)
+    # Rockers
+    for z in [-.28,.28]:
+        cyl('Rocker',(0,.04,z),.04,.70,'walnut',axis='Z')
+
+def baby_mat():
+    box('Mat',(0,.015,0),(1.20,.03,1.20),'mustard',.020)
+    for i in range(5):
+        box('Stripe',(-.45+i*.22,.032,0),(.12,.006,1.10),['coral','teal','sky','rose','plum'][i],.004)
+    ell('Bolster',(0,.06,-.45),(.35,.05,.10),'rose')
+
+def children_picture(style):
+    box('Frame',(0,.36,0),(.72,.72,.04),'oak',.010)
+    box('Tint',(0,.36,.02),(.60,.60,.01),['coral','sky','mustard','teal','rose'][style%5],.004)
+
+def dollhouse_classic():
+    box('Body',(0,.45,0),(.90,.90,.50),'oak_light',.012)
+    box('Roof',(0,.98,0),(.98,.16,.56),'coral',.010)
+    for x in [-.22,.22]:
+        box('Window',(x,.55,.26),(.18,.22,.02),'sky',.004)
+    box('Door',(0,.28,.26),(.16,.36,.02),'walnut',.004)
+
+def dollhouse_cottage():
+    box('Body',(0,.40,0),(.85,.80,.48),'cream',.012)
+    box('Roof',(0,.90,0),(.95,.20,.54),'teal',.010)
+    box('Chimney',(.28,1.05,-.10),(.10,.28,.10),'coral',.006)
+    box('Door',(0,.26,.25),(.14,.34,.02),'oak',.004)
+
+def train_set_oval():
+    torus('Track',(0,.02,0),.40,.03,'oak',axis='Y')
+    box('Engine',(.40,.08,0),(.18,.10,.10),'coral',.008)
+    box('Caboose',(-.40,.08,0),(.16,.10,.10),'teal',.008)
+
+def train_set_figure8():
+    torus('LoopA',(-.18,.02,0),.28,.025,'oak',axis='Y')
+    torus('LoopB',(.18,.02,0),.28,.025,'oak',axis='Y')
+    box('Engine',(0,.08,.28),(.16,.10,.10),'mustard',.008)
+
+def child_rug():
+    box('Tint',(0,.02,0),(1.6,.04,1.2),'rose',.020)
+    box('Border',(0,.025,0),(1.50,.01,1.10),'cream',.004)
+
+def child_desk_plain():
+    box('Top',(0,.70,0),(.95,.04,.55),'oak',.012)
+    for x in [-.40,.40]:
+        for z in [-.20,.20]:
+            box('Leg',(x,.35,z),(.05,.70,.05),'walnut',.008)
+
+def child_desk_shelf():
+    child_desk_plain()
+    box('Shelf',(0,.40,0),(.80,.03,.40),'oak_light',.008)
+    box('Back',(0,.55,-.24),(.90,.30,.03),'oak',.008)
+
+def child_chair_plain():
+    box('Seat',(0,.32,0),(.38,.04,.36),'oak',.010)
+    box('Back',(0,.50,-.16),(.36,.36,.04),'oak',.010)
+    for x in [-.14,.14]:
+        for z in [-.12,.12]:
+            box('Leg',(x,.16,z),(.04,.32,.04),'walnut',.006)
+
+def child_chair_arms():
+    child_chair_plain()
+    for x in [-.18,.18]:
+        box('Arm',(x,.42,0),(.04,.04,.30),'oak',.006)
+
+def nursery_paint(style):
+    # A wall panel sample: Tint surface for the ten-colour catalogue, pattern as
+    # raised dots/stripes on the face so styles stay distinct after recolour.
+    box('Tint',(0,1.1,0),(2.0,2.2,.04),'sky',.004)
+    if style==0:  # stars
+        for i in range(6):
+            box('Star',(-.7+i*.28,1.3+((i%2)*.25),.03),(.08,.02,.08),'mustard',.002)
+    elif style==1:  # clouds
+        for i in range(4):
+            ell('Cloud',(-.6+i*.4,1.4,.03),(.16,.08,.04),'white')
+    elif style==2:  # stripes
+        for i in range(5):
+            box('Stripe',(-.8+i*.4,1.1,.03),(.12,2.0,.01),'cream',.002)
+    elif style==3:  # dots
+        for i in range(12):
+            ell('Dot',(-.7+(i%4)*.45,0.7+(i//4)*.5,.03),(.06,.06,.02),'coral')
+    else:  # animals
+        for i,m in enumerate(['coral','teal','mustard']):
+            ell('Critter',(-.5+i*.5,1.2,.03),(.12,.10,.04),m)
+
+catalog={
+    'cot':cot,'child_bed':child_bed,'changing_table':changing_table,'potty':potty,
+    'baby_bottle':bottle,'baby_food':baby_food,'baby_toys':baby_toys,
+    'baby_mobile_stars':baby_mobile_stars,'baby_mobile_cloud':baby_mobile_cloud,
+    'baby_rattle':baby_rattle,'rocking_chair':rocking_chair,'baby_mat':baby_mat,
+    'children_picture_01':lambda:children_picture(0),
+    'children_picture_02':lambda:children_picture(1),
+    'children_picture_03':lambda:children_picture(2),
+    'children_picture_04':lambda:children_picture(3),
+    'children_picture_05':lambda:children_picture(4),
+    'dollhouse_classic':dollhouse_classic,'dollhouse_cottage':dollhouse_cottage,
+    'train_set_oval':train_set_oval,'train_set_figure8':train_set_figure8,
+    'child_rug':child_rug,
+    'child_desk_plain':child_desk_plain,'child_desk_shelf':child_desk_shelf,
+    'child_chair_plain':child_chair_plain,'child_chair_arms':child_chair_arms,
+    'nursery_paint_stars':lambda:nursery_paint(0),
+    'nursery_paint_clouds':lambda:nursery_paint(1),
+    'nursery_paint_stripes':lambda:nursery_paint(2),
+    'nursery_paint_dots':lambda:nursery_paint(3),
+    'nursery_paint_animals':lambda:nursery_paint(4),
+}
 parser=argparse.ArgumentParser()
 parser.add_argument('--only',choices=tuple(catalog))
 parser.add_argument('--source-out',default='art/furniture_nursery.blend')
+parser.add_argument('--new-only',action='store_true',help='Export only the newly added families')
 args=parser.parse_args(sys.argv[sys.argv.index('--')+1:] if '--' in sys.argv else [])
 if args.only:catalog={args.only:catalog[args.only]}
+elif args.new_only:
+    skip={'cot','child_bed','changing_table','potty','baby_bottle','baby_food','baby_toys'}
+    catalog={k:v for k,v in catalog.items() if k not in skip}
 for idx,(name,fn) in enumerate(catalog.items()):
     active=[]; fn()
     root=bpy.data.objects.new(name,None); bpy.context.collection.objects.link(root)
