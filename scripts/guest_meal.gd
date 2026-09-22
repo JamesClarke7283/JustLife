@@ -24,8 +24,8 @@ func offer(source:String)->bool:
 	if batch.is_empty() or str(batch.venue)!="home" or str(batch.storage)!="surface" or not str(batch.owner).is_empty() or int(batch.remaining)<=0 or visit._now()>=float(batch.expires):return false
 	var entry:Dictionary=flow().item(source)
 	if entry.is_empty() or flow()._food_level(batch,flow().item(str(batch.host)))!=0:return false
-	var target:Vector3=app.world.approach(entry)
-	var route:PackedVector3Array=visit._route(body().position,target,person())
+	var target:Vector3=visit.meal.pickup_place(entry)
+	var route:PackedVector3Array=visit._route(body().position,target,person(),true)
 	if route.is_empty():return false
 	var token:int=int(visit.state.next_meal);visit.state.next_meal=token+1
 	visit.state.meal={"token":token,"source":source,"plate":"","phase":"pickup","target":target,"seat":"","standing":false,"last_at":visit._now(),"retry_at":0.0,"reason":""}
@@ -58,17 +58,66 @@ func _pickup()->void:
 		cancel("The serving dish is no longer available.");return
 	var item:Dictionary=flow().item(str(state.source))
 	if item.is_empty():cancel("The serving dish is no longer available.");return
-	var pickup:Vector3=app.world.approach(item)
+	var pickup:Vector3=Vector3(state.get("target",visit.meal.pickup_place(item)))
+	# Standing on the chosen cell is the whole test: `offer` and this leg both
+	# store a cell the guest can really reach, so re-planning only happens when
+	# something moved it since.
 	if body().position.distance_to(pickup)>.02:
-		var route:PackedVector3Array=visit._route(body().position,pickup,person())
-		if route.is_empty():cancel("Your guest cannot reach the serving dish.");return
-		state.target=pickup;visit.state.route={"points":route,"point":0};return
+		if body().position.distance_to(app.world.approach(item))<=.02:
+			pickup=app.world.approach(item)
+		else:
+			var route:PackedVector3Array=visit._route(body().position,pickup,person(),true)
+			if route.is_empty():cancel("Your guest cannot reach the serving dish.");return
+			visit.state.route={"points":route,"point":0};return
 	var serving:Dictionary=app.household.meals.claim(str(state.source),person(),visit._now())
 	if serving.is_empty():cancel("There is no fresh serving left for your guest.");return
 	# The stage and ledger binding change together; restore never calls claim.
 	state.plate=str(serving.id);serving.guest_visit=int(visit.state.serial);serving.guest_meal=int(state.token)
 	if not _choose_place():cancel("There is no clear place for your guest to eat.")
 	flow().sync_due=true
+## Where the guest stands to take its serving. The dish's canonical approach
+## point is shared with a dining chair's own standing place, so a household
+## member eating at that chair can hold the only cell the guest would use. The
+## nearest cell that another body does not stand on — and that the guest can
+## really walk to without being turned back — still reaches the dish, so prefer
+## that over cancelling the visitor's meal.
+func pickup_place(entry:Dictionary)->Vector3:
+	var canonical:Vector3=app.world.approach(entry)
+	if _pickup_cell_usable(canonical):return canonical
+	var candidates:Array[Vector3]=[]
+	var origin:=Vector2i(roundi(canonical.x*4),roundi(canonical.z*4))
+	for x:int in range(-5,6):
+		for z:int in range(-5,6):
+			var at:=Vector3((origin.x+x)*.25,canonical.y,(origin.y+z)*.25)
+			if at.distance_to(canonical)>.24 and at.distance_to(canonical)<=1.25:candidates.append(at)
+	candidates.sort_custom(func(a:Vector3,b:Vector3)->bool:return a.distance_squared_to(canonical)<b.distance_squared_to(canonical))
+	for at:Vector3 in candidates:
+		if _pickup_cell_usable(at):return at
+	return canonical
+## A cell is usable when the guest can really walk to it and no body crowds it.
+## `_free` alone is too weak: a cell barely outside `BODY_GAP` still passes it
+## while the walk's swept step test refuses the last stride, which would strand
+## the guest beside the dish. Ask for the extra margin the walk itself needs.
+func _pickup_cell_usable(at:Vector3)->bool:
+	if not app.traversal._free(person(),at):return false
+	if app.traversal._floor_route(body().position,at,person()).is_empty():return false
+	for other_id:String in app.world.actors:
+		if other_id==person():continue
+		var other:LifeActor=app.world.actors[other_id]
+		if is_instance_valid(other) and other.visible and other.position.distance_to(at)<LifeTraversal.BODY_GAP+.15:return false
+	return true
+## A body can take the guest's standing cell after it has set off — the diner who
+## shares the dish's cell sits down while the guest is still walking. Retarget to
+## a cell that is free *and walkable* now, so the visitor is not stranded.
+func _replan_pickup()->void:
+	if not active() or str(state.phase)!="pickup":return
+	var item:Dictionary=flow().item(str(state.source))
+	if item.is_empty():return
+	var place:Vector3=pickup_place(item)
+	if place.distance_to(Vector3(state.get("target",place)))<=.24:return
+	var route:PackedVector3Array=visit._route(body().position,place,person(),true)
+	if route.is_empty():return
+	state.target=place;visit.state.route={"points":route,"point":0}
 func _begin_eating()->void:
 	var action:Dictionary=activity()
 	if not flow().guest_place_valid(action):
@@ -125,6 +174,7 @@ func tick(delta:float)->void:
 	if phase in ["pickup","to_place","return"]:
 		var result:Dictionary=app.traversal._walk(person(),visit.state.route,delta*float(app.household.speed))
 		moving=bool(result.moved);visit.state.blocked=bool(result.blocked)
+		if bool(result.blocked) and phase=="pickup":_replan_pickup()
 		if int(visit.state.route.point)>=visit.state.route.points.size():
 			if phase=="pickup":_pickup()
 			elif phase=="to_place":_begin_eating()

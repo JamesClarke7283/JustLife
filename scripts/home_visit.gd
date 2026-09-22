@@ -256,9 +256,18 @@ func _begin_visit(id:String,notice:String,auto_welcome:bool=false)->bool:
 	app.show_notice(str(LifeResidents.PEOPLE[id].name)+notice)
 	return true
 
-func _route(from:Vector3,to:Vector3,id:String)->PackedVector3Array:
+func _route(from:Vector3,to:Vector3,id:String,tolerant:bool=false)->PackedVector3Array:
 	if app.world.point_level(from)!=0 or app.world.point_level(to)!=0:return []
-	return app.traversal._floor_route(from,to,id)
+	var strict:PackedVector3Array=app.traversal._floor_route(from,to,id)
+	if not strict.is_empty() or not tolerant:return strict
+	# Picking a dish up is a place to *wait* for, not one to reject: a body on
+	# the serving's own standing place (the dish and a dining chair can share a
+	# cell) disables that point, so the strict planner reports no route at all and
+	# the guest never even sets off. Household members already plan without body
+	# avoidance and let `_walk` block and wait their turn; give the guest the same
+	# tolerant plan for this leg so it walks up and waits for the spot to clear.
+	# Seat *choice* stays strict, so a blocked chair is still skipped.
+	return app.traversal._floor_route(from,to,"")
 
 func _building()->Dictionary:
 	# The world already builds this read-only migrated view for legacy homes.

@@ -50,7 +50,13 @@ func _run()->void:
 		var plate_id:String=str(app.sim.get_current_action().meal_plate)
 		var guest_plate:String=str(app.residents.home_visit.meal.state.plate)
 		check(str(app.household.meals.portion(plate_id).host)==str(app.household.meals.portion(guest_plate).host),"Separate real reservations share one table without sharing a chair")
-		_step(20)
+		# Both diners accrue shared minutes one game-minute per twenty steps, so
+		# the five-minute threshold the check names needs a hundred of them; the
+		# former twenty measured a fifth of the way in and could never pass.
+		for index:int in 300:
+			if float(app.household.meals.portion(plate_id).shared_minutes)>=5.0:break
+			if str(app.residents.home_visit.meal.state.get("phase",""))=="none":break
+			_step()
 		var own:Dictionary=app.household.meals.portion(plate_id);var guest:Dictionary=app.household.meals.portion(guest_plate)
 		check(float(own.shared_minutes)>=5 and own.company.has("maya") and guest.company.has("player"),"Actual overlapping eating records guest company and shared minutes on both portions")
 		check(app.household.members.size()==2 and app.household.member_sim("maya")==null,"Shared company creates no fake household member or guest needs")
