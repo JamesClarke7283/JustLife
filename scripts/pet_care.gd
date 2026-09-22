@@ -56,10 +56,12 @@ const MAX_LEVEL: int = 10
 ## which is how a child teaching a trick also becomes more logical.
 const INTERACTIONS: Array[Dictionary] = [
 	{"id": "pet_feed", "label": "Feed Dog", "needs": {"hunger": 42.0, "social": 6.0}, "pet_skill": "obedience", "pet_xp": 8.0, "duration": 15.0, "min_age": "", "teaches": "", "teach_xp": 0.0},
-	{"id": "pet_play", "label": "Play with Dog", "needs": {"fun": 40.0, "energy": -6.0, "social": 24.0}, "pet_skill": "agility", "pet_xp": 22.0, "duration": 30.0, "min_age": "", "teaches": "fitness", "teach_xp": 10.0},
-	{"id": "pet_teach_trick", "label": "Play Tricks", "needs": {"fun": 20.0, "energy": -4.0, "social": 18.0}, "pet_skill": "tricks", "pet_xp": 30.0, "duration": 35.0, "min_age": "child", "teaches": "logic", "teach_xp": 26.0},
-	{"id": "pet_walk", "label": "Take for a Walk", "needs": {"fun": 28.0, "energy": -8.0, "social": 20.0}, "pet_skill": "agility", "pet_xp": 18.0, "duration": 40.0, "min_age": "", "teaches": "fitness", "teach_xp": 22.0},
 	{"id": "pet_pet", "label": "Pet", "needs": {"fun": 14.0, "social": 16.0}, "pet_skill": "obedience", "pet_xp": 12.0, "duration": 12.0, "min_age": "", "teaches": "", "teach_xp": 0.0},
+	{"id": "pet_tummy_rub", "label": "Tummy rub", "needs": {"fun": 28.0, "social": 20.0}, "pet_skill": "obedience", "pet_xp": 14.0, "duration": 20.0, "min_age": "", "teaches": "", "teach_xp": 0.0, "dog_only": true},
+	{"id": "pet_play", "label": "Play with Dog", "needs": {"fun": 40.0, "energy": -6.0, "social": 24.0}, "pet_skill": "agility", "pet_xp": 22.0, "duration": 30.0, "min_age": "", "teaches": "fitness", "teach_xp": 10.0},
+	{"id": "pet_tug", "label": "Tug-of-war", "needs": {"fun": 36.0, "energy": -8.0, "social": 18.0}, "pet_skill": "agility", "pet_xp": 20.0, "duration": 22.0, "min_age": "", "teaches": "fitness", "teach_xp": 14.0, "dog_only": true},
+	{"id": "pet_teach_trick", "label": "Play Tricks", "needs": {"fun": 20.0, "energy": -4.0, "social": 18.0}, "pet_skill": "tricks", "pet_xp": 30.0, "duration": 35.0, "min_age": "child", "teaches": "logic", "teach_xp": 26.0},
+	{"id": "pet_walk", "label": "Take for a Walk", "needs": {"fun": 28.0, "energy": -8.0, "social": 20.0}, "pet_skill": "agility", "pet_xp": 18.0, "duration": 40.0, "min_age": "child", "teaches": "fitness", "teach_xp": 22.0},
 	{"id": "pet_train", "label": "Train obedience", "needs": {"fun": 12.0, "social": 14.0}, "pet_skill": "obedience", "pet_xp": 26.0, "duration": 25.0, "min_age": "adult", "teaches": "parenting", "teach_xp": 18.0},
 ]
 
@@ -105,7 +107,7 @@ static func stage_handles(stage: String) -> bool:
 
 ## Why this actor may not use this interaction, or "" when it may. One gate, so
 ## the withheld option and a refused call say exactly the same thing.
-static func interaction_error(id: String, stage: String, away: bool = false) -> String:
+static func interaction_error(id: String, stage: String, away: bool = false, species: String = "dog") -> String:
 	var entry: Dictionary = interaction(id)
 	if entry.is_empty(): return "That is not something you can do with a pet."
 	if away: return "Wait until this Lifelet is home."
@@ -114,6 +116,8 @@ static func interaction_error(id: String, stage: String, away: bool = false) -> 
 	var min_age: String = str(entry.get("min_age", ""))
 	if not min_age.is_empty() and not _stage_at_least(stage, min_age):
 		return "Only an %s or older Lifelet can %s." % [str(LifeLifecycle.LABELS.get(min_age, min_age)).to_lower(), str(entry.label).to_lower()]
+	if bool(entry.get("dog_only", false)) and species != "dog":
+		return "That is a dog's own game. Cats keep to themselves."
 	return ""
 
 

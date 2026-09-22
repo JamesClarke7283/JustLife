@@ -2162,6 +2162,15 @@ func pregnancy_mother_id() -> String:
 	if not bool(pregnancy.get("active",false)):return ""
 	return str(pregnancy.get("mother_id",""))
 
+## Status line for the selected mother's Needs panel pregnancy meter.
+func pregnancy_status_text() -> String:
+	if not bool(pregnancy.get("active",false)):return ""
+	return LifeBabyPlan.pregnancy_status_text(pregnancy,day,minutes)
+
+## Whether this member is the active pregnancy's mother (hot-tub refusal, bump).
+func member_is_pregnant(member_id: String) -> bool:
+	return not member_id.is_empty() and pregnancy_mother_id() == member_id
+
 func pending_baby_profile() -> Dictionary:
 	if not birth_ready():return {}
 	return LifeBabyPlan.pending_birth(pregnancy,day,minutes).baby
@@ -2343,7 +2352,7 @@ func pet_actions(pet_id: String, member_id: String) -> Array:
 	var species: String = str(pet.get("species", "dog"))
 	var out: Array = []
 	for interaction: Dictionary in LifePetCare.INTERACTIONS:
-		var reason: String = LifePetCare.interaction_error(str(interaction.id), str(sim.character.age_stage), away)
+		var reason: String = LifePetCare.interaction_error(str(interaction.id), str(sim.character.age_stage), away, species)
 		var label: String = str(interaction.label)
 		# Cat labels drop the dog wording so a click on either species still reads true.
 		if species == "cat":
@@ -2352,6 +2361,7 @@ func pet_actions(pet_id: String, member_id: String) -> Array:
 				"pet_play": "Play with Cat",
 				"pet_teach_trick": "Play Tricks",
 				"pet_walk": "Take for a Walk",
+				"pet_pet": "Pet",
 			}.get(str(interaction.id), label))
 		out.append({
 			"id": str(interaction.id),
@@ -2371,13 +2381,15 @@ func _pet_action_description(id: String, pet: Dictionary) -> String:
 	if entry.is_empty(): return ""
 	var care: Dictionary = pet.get("care", LifePetCare.fresh())
 	var parts: Array[String] = []
-	if id == "pet_feed": parts.append("Fill the bowl and let %s eat their fill." % str(pet.get("name", "your pet")))
-	if id == "pet_pet": parts.append("A quiet fuss. %s warms to you." % str(pet.get("name", "your pet")).capitalize())
+	if id == "pet_feed": parts.append("Pick up the food and pour kibble into the bowl. Fills hunger.")
+	if id == "pet_pet": parts.append("Stroke the coat. %s warms to you." % str(pet.get("name", "your pet")).capitalize())
+	if id == "pet_tummy_rub": parts.append("Roll them over for a belly rub and a happy kick.")
 	if id == "pet_play": parts.append("Play until you are both out of breath. Builds Agility.")
-	if id == "pet_walk": parts.append("A turn around the garden. Builds the pet's Agility and your Fitness.")
+	if id == "pet_tug": parts.append("Grab the rope toy and pull. A proper tug-of-war.")
+	if id == "pet_walk": parts.append("Clip on a leash and walk the neighbourhood. Stops for neighbour chats fill Social for you both.")
 	if id == "pet_teach_trick":
 		var next: Dictionary = LifePetCare.next_trick(care)
-		parts.append("Teach the next trick: %s." % str(next.get("label", "something new")) if not next.is_empty() else "%s already knows every trick you can teach." % str(pet.get("name", "your pet")).capitalize())
+		parts.append("Hand signals for the next trick: %s." % str(next.get("label", "something new")) if not next.is_empty() else "%s already knows every trick you can teach." % str(pet.get("name", "your pet")).capitalize())
 	if id == "pet_train": parts.append("Patient repetition. Builds Obedience and your own Parenting.")
 	var teaches: String = str(entry.get("teaches", ""))
 	if not teaches.is_empty(): parts.append("You build %s too." % teaches.capitalize())
@@ -2391,7 +2403,7 @@ func do_pet_interaction(pet_id: String, member_id: String, interaction_id: Strin
 	if pet.is_empty(): return {"ok": false, "error": "That pet is no longer here."}
 	var sim: LifeSim = member_sim(member_id)
 	if sim == null: return {"ok": false, "error": "That Lifelet is no longer here."}
-	var reason: String = LifePetCare.interaction_error(interaction_id, str(sim.character.age_stage), sim.is_away())
+	var reason: String = LifePetCare.interaction_error(interaction_id, str(sim.character.age_stage), sim.is_away(), str(pet.get("species", "dog")))
 	if not reason.is_empty(): return {"ok": false, "error": reason}
 	var care: Dictionary = pet_care(pet_id)
 	var result: Dictionary = LifePetCare.apply_interaction(care, interaction_id, member_id)
@@ -2402,6 +2414,21 @@ func do_pet_interaction(pet_id: String, member_id: String, interaction_id: Strin
 	if not teaches.is_empty() and teach_xp > 0.0:
 		sim.gain_skill(teaches, teach_xp)
 	return {"ok": true, "pet": pet.duplicate(true), "care": care.duplicate(true), "result": result}
+
+## After a walk, a neighbourly stop fills Social (and a little Fun) for walker and
+## pet alike — the brief's "stop and chat while walking the dog".
+func credit_pet_walk_chat(member_id: String, pet_id: String) -> void:
+	var sim: LifeSim = member_sim(member_id)
+	var pet: Dictionary = pet_record(pet_id)
+	if sim == null or pet.is_empty(): return
+	sim.needs["social"] = minf(100.0, float(sim.needs.get("social", 50.0)) + 12.0)
+	sim.needs["fun"] = minf(100.0, float(sim.needs.get("fun", 50.0)) + 8.0)
+	var care: Dictionary = pet_care(pet_id)
+	var needs: Dictionary = care.get("needs", {})
+	needs["social"] = minf(100.0, float(needs.get("social", 50.0)) + 14.0)
+	needs["fun"] = minf(100.0, float(needs.get("fun", 50.0)) + 10.0)
+	care["needs"] = needs
+	pet["care"] = care
 
 ## ---------------------------------------------------------------- post box
 

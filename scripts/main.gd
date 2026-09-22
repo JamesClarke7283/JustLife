@@ -2262,40 +2262,51 @@ func show_pet_card(id:String) -> void:
 	var record:Dictionary=_pet_record(id)
 	if record.is_empty():return
 	close_overlay();overlay_open=true;dismiss_layer()
-	# The card is as tall as its action list: a cat offers one action and a dog
-	# offers two, so a fixed height would clip one of them.
 	var offered:Array=sim.get_actions_for("pet",id) if is_instance_valid(sim) else []
+	var care:Dictionary=record.get("care", LifePetCare.fresh()) if record.get("care") is Dictionary else LifePetCare.fresh()
+	var needs:Dictionary=care.get("needs", LifePetCare.FRESH_NEEDS) as Dictionary
 	var rows:int=maxi(offered.size(),1)
-	var height:float=452.0+float(rows)*38.0+56.0
-	var p:=Vector2(clampf(get_viewport().get_visible_rect().size.x*.5-200,300,1064),clampf((900.0-height)*.5,60,200))
-	card(p,Vector2(400,height),P.WHITE,17,overlay)
-	text_label(str(record.name),p+Vector2(19,14),Vector2(360,37),24,P.INK,true,overlay)
-	text_label("%s · %s" % [LifePets.species_label(str(record.species)),str(LifePets.SEX_LABELS[record.sex])],p+Vector2(20,52),Vector2(360,26),16,P.TEAL,false,overlay)
-	paragraph("%s coat, %s markings, %s." % [str(LifePets.COAT_LENGTH_LABELS[record.coat_length]),str(LifePets.MARKING_LABELS[record.marking]).to_lower(),"mixed gradient" if float(record.gradient)>.35 else "solid"],p+Vector2(20,84),Vector2(362,40),14,P.MUTED,overlay)
+	var height:float=520.0+float(rows)*38.0+56.0
+	var p:=Vector2(clampf(get_viewport().get_visible_rect().size.x*.5-220,280,1000),clampf((900.0-height)*.5,40,160))
+	card(p,Vector2(440,height),P.WHITE,17,overlay)
+	text_label(str(record.name),p+Vector2(19,14),Vector2(400,37),24,P.INK,true,overlay)
+	text_label("%s · %s" % [LifePets.species_label(str(record.species)),str(LifePets.SEX_LABELS[record.sex])],p+Vector2(20,52),Vector2(400,26),16,P.TEAL,false,overlay)
 	var actor:LifePetActor=pet_actors.get(id)
-	if is_instance_valid(actor):pet_thumbnail(p+Vector2(19,132),Vector2(362,210),record,overlay)
-	# What the animal has actually learned, and how far the next lesson has got.
-	var learned:Array=LifePets.TRICKS.filter(func(t:String)->bool:return (record.get("tricks",[]) as Array).has(t))
-	var progress:Dictionary=record.get("trick_progress",{})
-	var next:String=household_flow.next_trick(id) if is_instance_valid(household_flow) else ""
-	var tricks_text:String="Knows no tricks yet."
-	if not learned.is_empty():
-		tricks_text="Knows: "+", ".join(learned)+"."
-	if not next.is_empty() and int(progress.get(next,0))>0:
-		tricks_text+=" %s is coming along (%d/%d)." % [next,int(progress.get(next,0)),LifePets.TRICK_SESSIONS]
-	small_caps("Tricks",p+Vector2(20,352),Vector2(362,20),overlay)
-	paragraph(tricks_text,p+Vector2(20,374),Vector2(362,42),14,P.MUTED,overlay)
-	if int(record.get("affection",0))>0:
-		paragraph("%d cuddles so far." % int(record.get("affection",0)),p+Vector2(20,416),Vector2(362,22),13,P.MUTED,overlay)
-	# Every action the simulation offers for this animal, with the same reasons.
+	if is_instance_valid(actor):pet_thumbnail(p+Vector2(19,88),Vector2(402,170),record,overlay)
+	# Pet HUD: Hunger, Affection (bond), Energy, Bladder, and Tricks as Logic.
+	small_caps("Needs",p+Vector2(20,268),Vector2(200,18),overlay)
+	var affection:float=LifePetCare.bond(care,bound_member_id)
+	var hud_rows:Array=[["Hunger",float(needs.get("hunger",50.0))],["Affection",affection],["Energy",float(needs.get("energy",50.0))],["Bladder",float(needs.get("bladder",50.0))]]
+	for i in range(hud_rows.size()):
+		var row_y:float=290.0+float(i)*22.0
+		text_label(str(hud_rows[i][0]),p+Vector2(20,row_y),Vector2(90,20),12,P.INK,false,overlay)
+		var bar:=ProgressBar.new();bar.show_percentage=false;bar.value=float(hud_rows[i][1])
+		rect(bar,p+Vector2(112,row_y+6),Vector2(160,8),overlay)
+		bar.add_theme_stylebox_override("fill",P.panel(P.TEAL if str(hud_rows[i][0])!="Affection" else Color("d98cb0"),4))
+		bar.add_theme_stylebox_override("background",P.panel(Color("e6dcd4"),4))
+		text_label("%d" % int(float(hud_rows[i][1])),p+Vector2(280,row_y),Vector2(40,20),12,P.MUTED,false,overlay)
+	var trick_level:int=LifePetCare.level(care,"tricks")
+	var trick_xp:float=LifePetCare.xp(care,"tricks")
+	var trick_need:float=LifePetCare.xp_required(trick_level)
+	var trick_frac:float=0.0 if trick_need<=0.0 else clampf(trick_xp/trick_need,0.0,1.0)
+	small_caps("Logic · Tricks",p+Vector2(20,386),Vector2(200,18),overlay)
+	text_label("Level %d" % trick_level,p+Vector2(20,404),Vector2(90,20),12,P.TEAL,false,overlay)
+	var logic_bar:=ProgressBar.new();logic_bar.show_percentage=false;logic_bar.value=trick_frac*100.0
+	rect(logic_bar,p+Vector2(112,410),Vector2(200,8),overlay)
+	logic_bar.add_theme_stylebox_override("fill",P.panel(Color("7195b3"),4))
+	logic_bar.add_theme_stylebox_override("background",P.panel(Color("e6dcd4"),4))
+	var next:Dictionary=LifePetCare.next_trick(care)
+	var next_text:String=str(next.get("label","All tricks known")) if not next.is_empty() else "All tricks known"
+	paragraph("Next: %s" % next_text,p+Vector2(20,426),Vector2(400,22),12,P.MUTED,overlay)
 	var row:float=0.0
+	var actions_top:float=456.0
 	for action:Dictionary in offered:
-		var b:=button(str(action.label),p+Vector2(19,446+row*38),Vector2(362,34),_queue_pet_action.bind(id,str(action.id)),false,overlay)
+		var b:=button(str(action.label),p+Vector2(19,actions_top+row*38),Vector2(402,34),_queue_pet_action.bind(id,str(action.id)),false,overlay)
 		b.disabled=not bool(action.get("available",false))
 		b.tooltip_text=str(action.get("unavailable_reason","")) if not bool(action.get("available",false)) else str(action.description)
 		row+=1.0
-	button("Back to life",p+Vector2(19,height-48),Vector2(174,38),close_overlay,false,overlay)
-	button("Main menu",p+Vector2(207,height-48),Vector2(174,38),show_main_menu,false,overlay)
+	button("Back to life",p+Vector2(19,height-48),Vector2(190,38),close_overlay,false,overlay)
+	button("Main menu",p+Vector2(231,height-48),Vector2(190,38),show_main_menu,false,overlay)
 
 ## Queue one of the pet card's own actions, exactly as the interaction menu does
 ## for a furnishing: the walk, the beat and its completion all run the ordinary
@@ -2691,18 +2702,20 @@ func draw_household_bar() -> void:
 			value.gui_input.connect(func(event:InputEvent):_need_row_clicked(event,key))
 			need_values[key]=value
 		# A pregnancy is not a need, but it is a meter the mother watches fill.
-		# It appears under the needs grid only while somebody is expecting.
+		# It sits under the needs grid with the real clock: stage and days left.
 		pregnancy_meter=null;pregnancy_label=null
 		if household.pregnancy_mother_id()==bound_member_id:
-			var pp:=Vector2(989,858)
-			pregnancy_label=text_label("Pregnancy",pp,Vector2(120,19),12,P.TEAL)
-			pregnancy_label.tooltip_text="The baby is on the way. The meter fills toward the birth."
-			pregnancy_meter=ProgressBar.new();pregnancy_meter.show_percentage=false
-			rect(pregnancy_meter,pp+Vector2(120,8),Vector2(290,7))
+			var pp:=Vector2(989,866)
+			pregnancy_label=text_label("Pregnancy",pp,Vector2(400,18),12,P.TEAL)
+			pregnancy_label.tooltip_text="The baby is on the way. The meter fills toward delivery."
+			pregnancy_meter=ProgressBar.new();pregnancy_meter.name="PregnancyProgressBar"
+			pregnancy_meter.show_percentage=false
+			rect(pregnancy_meter,pp+Vector2(0,18),Vector2(400,8))
 			var pfill:StyleBoxFlat=P.panel(Color("d98cb0"),5)
 			pfill.content_margin_top=0;pfill.content_margin_bottom=0
 			pregnancy_meter.add_theme_stylebox_override("fill",pfill)
 			pregnancy_meter.add_theme_stylebox_override("background",P.panel(Color("e6dcd4"),5))
+			pregnancy_meter.tooltip_text=household.pregnancy_status_text()
 	elif panel_tab=="Skills":
 		for i in range(mini(8,sim.skills.size())):
 			var key:String=sim.skills.keys()[i]
@@ -2878,8 +2891,11 @@ func refresh_hud() -> void:
 	if is_instance_valid(pregnancy_meter):
 		var progress:float=household.pregnancy_progress()
 		pregnancy_meter.value=maxf(0.0,progress)*100.0
+		var status:String=household.pregnancy_status_text()
+		pregnancy_meter.tooltip_text=status
 		if is_instance_valid(pregnancy_label):
-			pregnancy_label.text="Pregnancy · %d%%" % int(maxf(0.0,progress)*100.0)
+			pregnancy_label.text=status if not status.is_empty() else "Pregnancy"
+			pregnancy_label.tooltip_text=status
 	if is_instance_valid(second_wind_card):
 		# The card is chrome for a pool that is usually empty, so it shows only
 		# while a coffee is still working; the bar reads the second wind and
@@ -3358,7 +3374,7 @@ func _buy_land(side:String) -> void:
 	if not bool(result.ok):
 		show_notice(str(result.error));draw_live();return
 	refresh_hud()
-	show_notice("A new plot %s. The garden is %s" % [side,Land.describe(LifeBuildingState.land)])
+	show_notice("A new plot %s. The garden is %s. Build tools cover the expanded lot." % [side,Land.describe(LifeBuildingState.land)])
 	draw_live()
 
 ## The paint row for a paintable kind, shown in place of the catalogue strip
@@ -3468,6 +3484,9 @@ func on_construction(data:Dictionary) -> void:
 
 func on_placement(kind:String,p:Vector3,angle:float,style:String="",size:String="") -> void:
 	if mode!="build" or not LifeCatalog.ITEMS.has(kind):return
+	if kind in ["nursery_room_pack", "child_bedroom_pack"]:
+		_place_room_pack(kind, p, angle)
+		return
 	var data:Dictionary=LifeCatalog.get_item(kind)
 	var variant:Dictionary=Variants.resolve(data,{"style":style,"size":size})
 	if not world.can_place(kind,p,angle,variant.style,variant.size):
@@ -3513,6 +3532,51 @@ func on_placement(kind:String,p:Vector3,angle:float,style:String="",size:String=
 	refresh_hud()
 	play_click()
 	show_notice("%s moved into place." % LifeCatalog.ITEMS[kind].label if moving else "%s added to your home. −ℒ%d" % [LifeCatalog.ITEMS[kind].label,price])
+
+## Place a ready room pack: every furniture entry from the catalogue preset,
+## offset to the click point. Door heights stay on the room the player already built.
+func _place_room_pack(kind: String, origin: Vector3, yaw: float) -> void:
+	var price: int = int(LifeCatalog.ITEMS[kind].price)
+	if sim.funds < price:
+		show_notice("You need ℒ%d for this room pack." % price)
+		return
+	var entries: Array = LifeCatalog.nursery_room_preset() if kind == "nursery_room_pack" else LifeCatalog.child_bedroom_preset()
+	var snapshot: Dictionary = _build_snapshot(price)
+	var protection: Dictionary = build_protection_context()
+	var placed: int = 0
+	var cos_y: float = cos(deg_to_rad(yaw))
+	var sin_y: float = sin(deg_to_rad(yaw))
+	for row: Array in entries:
+		var local := Vector3(float(row[1]), 0.0, float(row[2]))
+		var world_xz := Vector3(local.x * cos_y - local.z * sin_y, 0.0, local.x * sin_y + local.z * cos_y)
+		var at: Vector3 = origin + world_xz
+		var entry: Dictionary = {
+			"id": "pack_%d_%d" % [Time.get_ticks_usec(), placed],
+			"kind": str(row[0]),
+			"x": at.x,
+			"z": at.z,
+			"rotation": float(row[3]) + yaw,
+		}
+		if world.view_level == 1:
+			entry["level"] = 1
+		if not LifeCatalog.ITEMS.has(str(row[0])):
+			continue
+		if not world.can_place(str(row[0]), at, float(entry.rotation)):
+			continue
+		world.add_item(entry, false)
+		placed += 1
+	world.rebuild_navigation()
+	if placed <= 0:
+		show_notice("That room pack needs a clearer floor. Build walls and try again.")
+		return
+	build_undo.append(snapshot)
+	household.set_funds(sim.funds - price)
+	build_transactions.furnishing_rebuilt(protection)
+	world.clear_placement()
+	_refresh_sim_targets()
+	refresh_hud()
+	play_click()
+	show_notice("%s placed (%d pieces). −ℒ%d" % [LifeCatalog.ITEMS[kind].label, placed, price])
 
 func undo_build() -> void:
 	if mode!="build":return
@@ -3811,6 +3875,9 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 			elif str(a.id)=="order_groceries":show_grocery_order()
 			elif str(a.id)=="supported_homework":show_homework_helpers(item)
 			elif str(a.id)==LifeDancePlan.ACTION_ID:show_dance_partners(item)
+			elif str(a.id)=="drive_car":
+				# Walk-to-car cinematic is a placeholder pose; destination uses the town map.
+				close_overlay();show_neighborhood()
 			elif str(a.id)==LifeBabyPlan.ACTION_ID:try_for_baby(item);close_overlay()
 			elif str(a.id)=="stop_try_for_baby":
 				household.cancel_cooperative_action(bound_member_id)

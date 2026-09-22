@@ -68,7 +68,15 @@ const ITEMS = {
 	"child_chair": {"label":"Child chair", "category":"Baby & Kids", "price":20, "size":Vector2(.42,.42), "height":.55, "color":"d7ae7e",
 		"styles":["plain","arms"]},
 	"nursery_paint": {"label":"Nursery wall paint", "category":"Baby & Kids", "rate_per_square_metre":5, "size":Vector2(2.0,.04), "height":2.2, "color":"8faf9f", "tint":true,
-		"styles":["stars","clouds","stripes","dots","animals"], "wall_mounted":true},
+		"styles":["01","02","03","04","05","06","07","08","09","10"],
+		"colors":["8faf9f","d9a0a0","9ec1cf","efeadb","c97c66","6e5470","c9a05a","7195b3","decfaf","4a6b5c"],
+		"wall_mounted":true},
+	"toy_chest": {"label":"Toy chest", "category":"Baby & Kids", "price":40, "size":Vector2(.9,.55), "height":.7, "color":"ab7951", "tint":true,
+		"colors":["ab7951","c97c66","6f8fa8","417a71","c9a05a"]},
+	"nursery_room_pack": {"label":"Nursery room pack", "category":"Baby & Kids", "price":2000, "size":Vector2(4.5,4.0), "height":2.2, "color":"8faf9f",
+		"description":"Furnished nursery with carpet, pictures and curtains. Snaps into the room you build."},
+	"child_bedroom_pack": {"label":"Child bedroom pack", "category":"Baby & Kids", "price":2000, "size":Vector2(4.5,4.0), "height":2.2, "color":"d7ae7e",
+		"description":"Furnished child bedroom with carpet, pictures and curtains."},
 	"computer": {"label":"Home office computer", "category":"Activities", "price":900, "size":Vector2(1.45,.75), "height":1.4, "color":"ab7951"},
 	"piano": {"label":"Parlour upright piano", "category":"Activities", "price":1200, "size":Vector2(1.55,1.3), "height":1.36, "color":"624435"},
 	"chess": {"label":"Quiet strategy games table", "category":"Activities", "price":240, "size":Vector2(.85,2.0), "height":.85, "color":"ab7951"},
@@ -166,8 +174,23 @@ const ITEMS = {
 		"sizes":["small","medium","large"], "size_prices":{"small":100,"medium":300,"large":500},
 		"seats":{"small":2,"medium":3,"large":5}},
 	"kids_slide": {"label":"Kids slide", "category":"Kids", "price":100, "size":Vector2(.9,1.8), "height":1.2, "color":"c97c4e", "tint":true, "colors":["c97c4e","6f8fa8","c9a05a","d9a0a0","8faf9f"]},
+	"adult_slide": {"label":"Adult slide", "category":"Kids", "price":180, "size":Vector2(1.2,2.6), "height":2.0, "color":"6f8fa8", "tint":true, "colors":["6f8fa8","c97c4e","c9a05a","d9a0a0","8faf9f","4a6b5c"]},
 	"climbing_frame": {"label":"Kids climbing frame", "category":"Kids", "price":100, "size":Vector2(2.8,2.2), "height":2.2, "color":"c9a05a", "tint":true, "colors":["c9a05a","6f8fa8","c97c4e","8faf9f","7d6b93"],
 		"styles":["a","b","c","d"]},
+	# Baby and child transport for neighbourhood walks and car journeys.
+	"baby_pram": {"label":"Baby pram", "category":"Kids", "price":50, "size":Vector2(1.0,.6), "height":1.0, "color":"d9a0a0", "tint":true,
+		"styles":[""], "colors":["d9a0a0","c97c66","6f8fa8","417a71","c9a05a","efeadb","4a4f55","7d6b93","8faf9f","a8674f"]},
+	"pushchair": {"label":"Pushchair", "category":"Kids", "price":50, "size":Vector2(.9,.55), "height":1.05, "color":"6f8fa8", "tint":true,
+		"styles":[""], "colors":["6f8fa8","c97c66","d9a0a0","417a71","c9a05a","efeadb","4a4f55","7d6b93","8faf9f","a8674f"]},
+	"baby_car_seat": {"label":"Baby car seat", "category":"Vehicles", "price":50, "size":Vector2(.55,.55), "height":.65, "color":"c97c66", "tint":true,
+		"styles":[""], "colors":["c97c66","6f8fa8","d9a0a0","417a71","c9a05a","efeadb","4a4f55","7d6b93","8faf9f","a8674f"]},
+	"child_car_seat": {"label":"Child car seat", "category":"Vehicles", "price":50, "size":Vector2(.6,.55), "height":.75, "color":"417a71", "tint":true,
+		"styles":[""], "colors":["417a71","c97c66","6f8fa8","d9a0a0","c9a05a","efeadb","4a4f55","7d6b93","8faf9f","a8674f"]},
+	# Curtain packs: two panels that snap over a window. Ten styles × ten colours.
+	"curtains": {"label":"Curtain set", "category":"Decor", "price":100, "size":Vector2(1.4,.12), "height":1.6, "color":"c97c66", "tint":true,
+		"styles":["01","02","03","04","05","06","07","08","09","10"],
+		"colors":["c97c66","417a71","efeadb","7195b3","bd9b68","3d4145","d9a0a0","6e5470","8faf9f","a8674f"],
+		"wall_mounted":true},
 	# A bike is ridden: riding needs a helmet, and `ride_from` names the youngest
 	# life stage that may ride each one, so a child takes the small bike.
 	"bike_adult": {"label":"Adult bicycle", "category":"Vehicles", "price":120, "size":Vector2(1.7,.5), "height":1.1, "color":"4a6b5c", "tint":true,
@@ -440,10 +463,27 @@ static func starter_layout(lot: int = 0) -> Array:
 	return a
 
 ## A ready nursery: cot, changing table, mobile, mat, rocking chair and paint
-## accents. Offered as starter_layout(5) and as Build & buy's nursery preset pack.
+## accents. Offered as starter_layout(5) and as Build & buy's nursery preset pack
+## (ℒ2000: furnished, carpet, themed pictures).
 static func nursery_room_preset() -> Array:
 	return [
 		["cot",3.4,1.6,0],["changing_table",5.0,1.2,-90],["baby_mobile",3.4,2.35,0],
 		["baby_mat",2.2,2.8,0],["rocking_chair",1.4,1.4,90],["baby_rattle",2.5,2.6,0],
-		["children_picture",3.4,4.91,180],["child_rug",3.2,2.4,0],["lamp",5.1,3.6,0],
+		["children_picture",3.4,4.91,180],["children_picture",1.2,4.91,180],
+		["child_rug",3.2,2.4,0],["lamp",5.1,3.6,0],["curtains",3.4,4.85,180],
 	]
+
+## Child bedroom preset pack (ℒ2000): bed, desk, rug, pictures and curtains.
+static func child_bedroom_preset() -> Array:
+	return [
+		["child_bed",3.6,1.5,0],["child_desk",5.0,3.2,-90],["child_chair",4.4,3.2,0],
+		["child_rug",3.0,2.6,0],["children_picture",3.4,4.91,180],["children_picture",5.0,4.91,180],
+		["toy_chest",1.6,2.8,90],["lamp",5.1,1.2,0],["curtains",3.4,4.85,180],
+		["bookshelf",1.4,4.2,180],
+	]
+
+static func nursery_preset_price() -> int:
+	return 2000
+
+static func child_bedroom_preset_price() -> int:
+	return 2000

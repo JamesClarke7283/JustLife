@@ -33,14 +33,15 @@ const ACTION_ID: String = "enjoy_outdoors"
 ## together lifts a friendship.
 const ACTS: Dictionary = {
 	"pool": {
-		"label": "Go for a swim", "note": "Swim a few lengths and float about.",
-		"duration": 60.0, "skill": "fitness", "xp": 40.0, "from": "child",
+		"label": "Go for a swim", "note": "Swim a few lengths with a proper stroke through the water.",
+		"duration": 60.0, "skill": "fitness", "xp": 40.0, "from": "child", "to": "young_adult",
 		"changes": {"fun": 46.0, "energy": -18.0, "hygiene": 20.0, "social": 10.0},
 	},
 	"hot_tub": {
-		"label": "Soak in the hot tub", "note": "Warm water and a long, quiet soak.",
-		"duration": 45.0, "skill": "", "xp": 0.0, "from": "teen",
+		"label": "Soak in the hot tub", "note": "Warm water and a long soak together. Not while pregnant.",
+		"duration": 45.0, "skill": "", "xp": 0.0, "from": "child", "to": "adult",
 		"changes": {"fun": 34.0, "energy": 12.0, "hygiene": 22.0, "social": 14.0},
+		"block_pregnant": true,
 	},
 	"kids_swing": {
 		"label": "Play on the swing set", "note": "Swing as high as you dare. An adult can push.",
@@ -56,8 +57,14 @@ const ACTS: Dictionary = {
 	},
 	"kids_slide": {
 		"label": "Go down the slide", "note": "Up the ladder and down again, over and over.",
-		"duration": 30.0, "skill": "fitness", "xp": 18.0, "from": "child", "to": "teen",
+		"duration": 30.0, "skill": "fitness", "xp": 18.0, "from": "child", "to": "child",
 		"changes": {"fun": 40.0, "energy": -8.0, "hygiene": -5.0, "social": 14.0},
+		"companion": "friendship",
+	},
+	"adult_slide": {
+		"label": "Go down the big slide", "note": "Climb the tall ladder and race down.",
+		"duration": 30.0, "skill": "fitness", "xp": 22.0, "from": "teen",
+		"changes": {"fun": 42.0, "energy": -10.0, "hygiene": -5.0, "social": 12.0},
 		"companion": "friendship",
 	},
 	"climbing_frame": {
@@ -74,11 +81,21 @@ const ACTS: Dictionary = {
 	},
 	# The floating toys are used in the pool rather than on their own, so they
 	# offer the same swim with their own flavour.
-	"pool_ring": {"label": "Float about", "note": "Tuck the ring under your arms and drift.", "duration": 40.0, "skill": "fitness", "xp": 16.0, "from": "child", "changes": {"fun": 40.0, "hygiene": 12.0, "social": 12.0}, "needs_pool": true},
-	"pool_noodle": {"label": "Float about", "note": "Lie back on the noodle and paddle.", "duration": 40.0, "skill": "fitness", "xp": 16.0, "from": "child", "changes": {"fun": 40.0, "hygiene": 12.0, "social": 12.0}, "needs_pool": true},
-	"pool_slide": {"label": "Go down the pool slide", "note": "Climb up and splash straight in.", "duration": 30.0, "skill": "fitness", "xp": 22.0, "from": "child", "changes": {"fun": 46.0, "energy": -10.0, "hygiene": 14.0, "social": 12.0}, "needs_pool": true},
-	"pool_ladder": {"label": "Use the pool ladder", "note": "Climb in and out the easy way.", "duration": 30.0, "skill": "fitness", "xp": 14.0, "from": "child", "changes": {"fun": 36.0, "hygiene": 12.0, "social": 8.0}, "needs_pool": true},
-	"pool_light": {"label": "Swim in the pool lights", "note": "A lit pool after dark is a treat on its own.", "duration": 40.0, "skill": "fitness", "xp": 18.0, "from": "child", "changes": {"fun": 42.0, "hygiene": 12.0, "social": 10.0}, "needs_pool": true},
+	"pool_ring": {"label": "Float about", "note": "Tuck the ring under your arms and drift.", "duration": 40.0, "skill": "fitness", "xp": 16.0, "from": "child", "to": "young_adult", "changes": {"fun": 40.0, "hygiene": 12.0, "social": 12.0}, "needs_pool": true},
+	"pool_noodle": {"label": "Float about", "note": "Lie back on the noodle and paddle.", "duration": 40.0, "skill": "fitness", "xp": 16.0, "from": "child", "to": "young_adult", "changes": {"fun": 40.0, "hygiene": 12.0, "social": 12.0}, "needs_pool": true},
+	"pool_slide": {"label": "Go down the pool slide", "note": "Climb up and splash straight in.", "duration": 30.0, "skill": "fitness", "xp": 22.0, "from": "child", "to": "young_adult", "changes": {"fun": 46.0, "energy": -10.0, "hygiene": 14.0, "social": 12.0}, "needs_pool": true},
+	"pool_ladder": {"label": "Use the pool ladder", "note": "Climb in and out the easy way.", "duration": 30.0, "skill": "fitness", "xp": 14.0, "from": "child", "to": "young_adult", "changes": {"fun": 36.0, "hygiene": 12.0, "social": 8.0}, "needs_pool": true},
+	"pool_light": {"label": "Swim in the pool lights", "note": "A lit pool after dark is a treat on its own.", "duration": 40.0, "skill": "fitness", "xp": 18.0, "from": "child", "to": "young_adult", "changes": {"fun": 42.0, "hygiene": 12.0, "social": 10.0}, "needs_pool": true},
+	"baby_pram": {
+		"label": "Push the pram", "note": "Settle a baby in and stroll the neighbourhood. You can stop and chat.",
+		"duration": 35.0, "skill": "", "xp": 0.0, "from": "teen",
+		"changes": {"fun": 22.0, "social": 24.0, "energy": -6.0},
+	},
+	"pushchair": {
+		"label": "Push the pushchair", "note": "Buckle a child in and walk the block. Stops for chats fill Social and Fun.",
+		"duration": 35.0, "skill": "", "xp": 0.0, "from": "teen",
+		"changes": {"fun": 24.0, "social": 24.0, "energy": -6.0},
+	},
 }
 
 ## The action an adult takes at a children's swing instead of riding it. Pushing
@@ -121,7 +138,8 @@ const LEISURE: Dictionary = {
 	"bbq": ["snack", "host_a_chat"],
 	"garden_table": ["clear_table", "host_a_chat"],
 	"fence": [],
-	"car": ["ride_bike"],
+	"car": ["drive_car"],
+	"car_electric": ["drive_car"],
 	"garage": ["work"],
 	"helmet": [],
 }
@@ -158,7 +176,9 @@ static func can_push(kind: String) -> bool:
 
 ## Why this Lifelet may not use this furnishing, or "" when they may. One gate, so
 ## the withheld option and a refused call say exactly the same thing.
-static func act_error(kind: String, stage: String, away: bool = false, pool_available: bool = true) -> String:
+## `pregnant` refuses hot-tub soaks: the menu shows the can't-do reason rather
+## than hiding the option.
+static func act_error(kind: String, stage: String, away: bool = false, pool_available: bool = true, pregnant: bool = false) -> String:
 	var act: Dictionary = acts(kind)
 	if act.is_empty(): return "That is not something to do in the garden."
 	if away: return "Wait until this Lifelet is home."
@@ -167,9 +187,11 @@ static func act_error(kind: String, stage: String, away: bool = false, pool_avai
 	if not from.is_empty() and not LifeLifecycle.at_least(stage, from):
 		return "A %s is too young for that. An older Lifelet can." % str(LifeLifecycle.LABELS.get(stage, stage)).to_lower()
 	if not to.is_empty() and LifeLifecycle.above(stage, to):
-		return "That is for %s and younger. An adult would rather sit down." % str(LifeLifecycle.LABELS.get(to, to)).to_lower()
+		return "That is for %s and younger." % str(LifeLifecycle.LABELS.get(to, to)).to_lower()
 	if bool(act.get("needs_pool", false)) and not pool_available:
 		return "Buy a pool first. This belongs in one."
+	if pregnant and bool(act.get("block_pregnant", false)):
+		return "Pregnant Lifelets cannot use the hot tub."
 	return ""
 
 
@@ -186,10 +208,10 @@ static func push_refusal(kind: String, stage: String, away: bool = false) -> Str
 ## The action one furnishing offers, in the shape the ordinary menu, queue and
 ## save expect. `company` is how many others are already using it, which is what
 ## playing together is.
-static func action(kind: String, stage: String, away: bool = false, company: int = 0, pool_available: bool = true) -> Dictionary:
+static func action(kind: String, stage: String, away: bool = false, company: int = 0, pool_available: bool = true, pregnant: bool = false) -> Dictionary:
 	var act: Dictionary = acts(kind)
 	if act.is_empty(): return {}
-	var reason: String = act_error(kind, stage, away, pool_available)
+	var reason: String = act_error(kind, stage, away, pool_available, pregnant)
 	var text: String = str(act.get("note", ""))
 	var skill: String = str(act.get("skill", ""))
 	if not skill.is_empty(): text += " Builds %s." % skill.capitalize()

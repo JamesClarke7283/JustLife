@@ -79,6 +79,27 @@ static func countdown_text(state: Dictionary, day: int, minutes: float) -> Strin
 		return "Any moment now"
 	return "About %d day%s to go" % [days,"" if days==1 else "s"]
 
+## Early / mid / late against the shared pregnancy clock, so the HUD and bump
+## agree on which stage the mother is in without inventing a second calendar.
+static func pregnancy_stage(progress: float) -> String:
+	var amount: float = clampf(progress, 0.0, 1.0)
+	if amount < 0.34:
+		return "early"
+	if amount < 0.67:
+		return "mid"
+	return "late"
+
+static func pregnancy_stage_label(progress: float) -> String:
+	return {"early": "Early pregnancy", "mid": "Mid pregnancy", "late": "Late pregnancy"}.get(pregnancy_stage(progress), "Pregnancy")
+
+## One status line for the Lifelet panel: stage plus days left until delivery.
+static func pregnancy_status_text(state: Dictionary, day: int, minutes: float) -> String:
+	if not bool(state.get("active", false)):
+		return ""
+	var total: float = PREGNANCY_MINUTES
+	var progress: float = 0.0 if total <= 0.0 else clampf(1.0 - remaining_minutes(state, day, minutes) / total, 0.0, 1.0)
+	return "%s · %s" % [pregnancy_stage_label(progress), countdown_text(state, day, minutes)]
+
 static func expecting(state: Dictionary) -> bool:
 	return bool(state.get("active",false)) or bool(state.get("pending",false))
 

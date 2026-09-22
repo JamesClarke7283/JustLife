@@ -471,12 +471,16 @@ func _build_actions() -> void:
 	# real need on the baby's own side, the way the needs panel shows it.
 	_define("feed_baby_bottle", "Prepare Bottle", 25.0, {"social": 8.0, "fun": 6.0, "energy": -3.0}, 0, "parenting", 18.0, "Warm a bottle from the fridge and feed the baby. Fills their hunger and settles them.")
 	_define("feed_baby_food", "Get Baby Food", 30.0, {"social": 10.0, "fun": 8.0, "energy": -4.0}, 0, "parenting", 24.0, "Take a jar from the fridge and spoon-feed the baby. A proper meal, and a messy face afterwards.")
-	_define("pet_feed", "Feed Dog", 15.0, {"social": 6.0}, 0, "parenting", 8.0, "Fill the bowl and let the pet eat their fill.")
+	_define("pet_feed", "Feed Dog", 15.0, {"social": 6.0}, 0, "parenting", 8.0, "Pick up the food and pour kibble into the bowl. Fills the dog's hunger.")
 	_define("pet_play", "Play with Dog", 30.0, {"fun": 18.0, "social": 14.0, "energy": -6.0}, 0, "fitness", 10.0, "Play until you are both out of breath.")
-	_define("pet_teach_trick", "Play Tricks", 35.0, {"fun": 20.0, "social": 12.0, "energy": -4.0}, 0, "logic", 26.0, "Practice the next trick together. Builds discipline and logic.")
-	_define("pet_walk", "Take for a Walk", 40.0, {"fun": 16.0, "social": 14.0, "energy": -8.0}, 0, "fitness", 22.0, "A turn around the garden. Pet exercise and owner fitness.")
-	_define("pet_pet", "Pet", 12.0, {"fun": 10.0, "social": 12.0}, 0, "parenting", 6.0, "A quiet fuss. The pet warms to you.")
+	_define("pet_tug", "Tug-of-war", 22.0, {"fun": 24.0, "social": 14.0, "energy": -8.0}, 0, "fitness", 14.0, "Grab the rope toy and pull. Dog and Lifelet both love it.")
+	_define("pet_teach_trick", "Play Tricks", 35.0, {"fun": 20.0, "social": 12.0, "energy": -4.0}, 0, "logic", 26.0, "Hand signals and cues for the next trick. Builds the pet's trick skill.")
+	_define("pet_walk", "Take for a Walk", 40.0, {"fun": 16.0, "social": 14.0, "energy": -8.0}, 0, "fitness", 22.0, "Clip on a leash and walk the neighbourhood. You can stop and chat with neighbours.")
+	_define("pet_pet", "Pet", 12.0, {"fun": 10.0, "social": 12.0}, 0, "parenting", 6.0, "Stroke the coat. Warm affection for you both.")
 	_define("pet_train", "Train obedience", 25.0, {"fun": 8.0, "social": 10.0}, 0, "parenting", 18.0, "Patient repetition. Builds Obedience and your own Parenting.")
+	_define("drive_car", "Drive…", 0.0, {}, 0, "", 0.0, "Open the door, get in, and pick a destination on the town map. With a baby or child, buckle them into a car seat first.")
+	_define("push_pram", "Push the pram", 35.0, {"fun": 22.0, "social": 24.0, "energy": -6.0}, 0, "", 0.0, "Settle a baby in and stroll. Stops for chats fill Social and Fun.")
+	_define("push_pushchair", "Push the pushchair", 35.0, {"fun": 24.0, "social": 24.0, "energy": -6.0}, 0, "", 0.0, "Buckle a child in and walk the block.")
 	_define("change_nappy", "Change Nappy", 20.0, {"fun": 4.0, "hygiene": -6.0}, 0, "parenting", 16.0, "A clean nappy on the changing table. The baby's hygiene and bladder are seen to and they stop fussing.")
 	_define("cuddle_baby", "Pick Up for Cuddle", 20.0, {"social": 26.0, "fun": 14.0}, 0, "parenting", 14.0, "Carry the baby and talk to them quietly. Their social need fills and they feel safe.")
 	_define("talk_to_baby", "Talk To", 18.0, {"social": 16.0, "fun": 8.0}, 0, "parenting", 10.0, "Chat softly with the baby. Their social need fills.")
@@ -559,7 +563,7 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"fireplace": ids = ["warm_up"]
 		"urn", "tombstone", "memorial": ids = ["remember_life", "mourn", "leave_flowers", "remember_passed"]
 		"neighbor", "maya", "leo", "priya", "tom": ids = SOCIAL_ACTIONS
-		"pet": ids = ["pet_feed", "pet_play", "pet_teach_trick", "pet_walk", "pet_pet", "pet_train"]
+		"pet": ids = ["pet_feed", "pet_pet", "pet_tummy_rub", "pet_play", "pet_tug", "pet_teach_trick", "pet_walk", "pet_train"]
 		# Baby care. The changing table is where a nappy is changed, the toys are
 		# what play happens on, and the cot is where a cuddle happens without a
 		# toy in hand. Each is offered only when a baby is in the household.
@@ -641,6 +645,13 @@ func _pool_present() -> bool:
 	for entry: Dictionary in _targets:
 		if str(entry.get("kind", "")) == "pool": return true
 	return false
+
+
+## The selected household member is the active pregnancy's mother.
+func _actor_is_pregnant() -> bool:
+	if not is_instance_valid(cooperation_owner) or not cooperation_owner.has_method("member_is_pregnant"):
+		return false
+	return bool(cooperation_owner.member_is_pregnant(_social_member_id))
 
 
 ## How many other Lifelets are already using this furnishing. Playing together is
@@ -940,7 +951,7 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 		if not LifeOutdoorActs.is_outdoor_act(act_kind):
 			_emit_notice("Choose something in the garden to use.")
 			return false
-		var act_reason: String = LifeOutdoorActs.act_error(act_kind, str(character.age_stage), is_away(), _pool_present())
+		var act_reason: String = LifeOutdoorActs.act_error(act_kind, str(character.age_stage), is_away(), _pool_present(), _actor_is_pregnant())
 		if not act_reason.is_empty():
 			_emit_notice(act_reason)
 			return false
@@ -1542,12 +1553,14 @@ func _finish_front() -> void:
 			_emit_notice(str(placed.get("error","The shop could not be ordered just now.")))
 	elif id == "watch_together":
 		pass
-	elif id in ["pet_feed", "pet_play", "pet_teach_trick", "pet_walk", "pet_pet", "pet_train"]:
+	elif id in ["pet_feed", "pet_play", "pet_teach_trick", "pet_walk", "pet_pet", "pet_train", "pet_tug", "pet_tummy_rub"]:
 		if is_instance_valid(cooperation_owner) and cooperation_owner.has_method("do_pet_interaction"):
 			var cared:Dictionary=cooperation_owner.do_pet_interaction(str(action.get("target_id","")),_social_member_id,id)
 			if bool(cared.get("ok",false)):
 				var label:String=str(_actions.get(id,{}).get("label",id))
 				_emit_notice("%s with %s." % [label, str(action.get("pet_name","your pet"))])
+				if id == "pet_walk" and is_instance_valid(cooperation_owner) and cooperation_owner.has_method("credit_pet_walk_chat"):
+					cooperation_owner.credit_pet_walk_chat(_social_member_id, str(action.get("target_id","")))
 			else:
 				_emit_notice(str(cared.get("error","That did not work with the pet.")))
 	elif id == "teach_pet_trick":
@@ -1561,10 +1574,6 @@ func _finish_front() -> void:
 			_emit_notice("A patient session, but nothing stuck today. Try again another time.")
 		else:
 			_emit_notice("%s learned to %s!" % [str(action.get("pet_name","the pet")), learned])
-	elif id == "pet_tummy_rub":
-		if is_instance_valid(household_service):
-			household_service.affectionate_pet(str(action.get("target_id","")),str(character.get("name","")))
-		_emit_notice("A proper tummy rub. %s is delighted." % str(action.get("pet_name","The dog")))
 	elif id == "bathe_pet":
 		# A bath really cleans the coat: the pet's own cleanliness is restored,
 		# and the household's sink or tub is the place it happened.
@@ -1762,7 +1771,7 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 			return {"available":false, "reason":game_reason}
 	elif id == LifeOutdoorActs.ACTION_ID:
 		var act_kind: String = _target_kind_of(target_id)
-		var act_reason: String = LifeOutdoorActs.act_error(act_kind, str(character.age_stage), is_away(), _pool_present())
+		var act_reason: String = LifeOutdoorActs.act_error(act_kind, str(character.age_stage), is_away(), _pool_present(), _actor_is_pregnant())
 		if not act_reason.is_empty():
 			return {"available":false, "reason":act_reason}
 	elif id == LifeOutdoorActs.PUSH_ID:
@@ -1814,7 +1823,7 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 		reason = "Today's shift is already complete."
 	elif id=="job" and day<int(career.get("schedule",LifeCareerSchedule.fresh(day)).first_day):
 		reason="Your first shift begins on the next workday."
-	elif id in ["teach_pet_trick","pet_tummy_rub","bathe_pet","pet_feed","pet_play","pet_teach_trick","pet_walk","pet_pet","pet_train"]:
+	elif id in ["teach_pet_trick","pet_tummy_rub","bathe_pet","pet_feed","pet_play","pet_teach_trick","pet_walk","pet_pet","pet_train","pet_tug"]:
 		reason=_pet_action_error(id,target_id)
 	elif id in SOCIAL_ACTIONS:
 		var target: String = _social_target(target_id)
@@ -1857,12 +1866,13 @@ func _pet_action_error(id:String,target_id:String) -> String:
 	var record:Dictionary=_pet_record_for(target_id)
 	if record.is_empty():
 		return "That pet is not part of this household."
+	var species:String=str(record.get("species","dog"))
 	if id in LifePetCare.interaction_ids():
-		return LifePetCare.interaction_error(id, str(character.age_stage), is_away())
-	if id=="pet_tummy_rub" and str(record.get("species","")) != "dog":
+		return LifePetCare.interaction_error(id, str(character.age_stage), is_away(), species)
+	if id=="pet_tummy_rub" and species != "dog":
 		return "%s is a cat. Cats keep their tummies to themselves." % str(record.get("name","This pet"))
 	if id=="bathe_pet":
-		if not LifePets.needs_bathing(str(record.get("species",""))):
+		if not LifePets.needs_bathing(species):
 			return "%s is a cat. Cats keep themselves clean by licking." % str(record.get("name","This pet"))
 		if float((record.get("needs",{}) as Dictionary).get("cleanliness",100.0))>=92.0:
 			return "%s is already clean." % str(record.get("name","This pet"))
