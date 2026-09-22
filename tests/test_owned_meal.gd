@@ -30,10 +30,24 @@ func _paused_load(slot:String)->bool:
 	check(before==_record(),"Ten paused calls preserve clock, complete queues, bodies, routes, needs and food.")
 	return failures.is_empty()
 func _restored_queue(queue:Array)->Array:
-	# LifeSim.restore_state explicitly derives this one display field from the
-	# decoded authoritative elapsed/duration. Every other field stays unchanged.
+	# The loader rebuilds each stored action from the live definition table and
+	# adopts the saved progress, so a definition-derived field (`label`, `changes`,
+	# `cost`, `description`, `skill`, `xp`) reflects today's code rather than the
+	# text that was saved — which is what lets a retuned activity load. `sleep`
+	# is the case here: 7e8b5d0 made it fun-neutral, so its `changes` gained `fun`
+	# and its description names the boredom it now chases away. The saved
+	# duration, elapsed, identity, payment and ownership are what a load must
+	# preserve, and they are compared below through this same projection the
+	# sibling courtesy suites use.
 	var projected:Array=queue.duplicate(true)
-	for action:Dictionary in projected:action.progress=clampf(float(action.elapsed)/float(action.duration),0.0,1.0)
+	for action:Dictionary in projected:
+		action.progress=clampf(float(action.elapsed)/float(action.duration),0.0,1.0)
+		var definition:Dictionary=app.sim._actions.get(str(action.get("id","")),{})
+		if definition.is_empty():continue
+		var rebuilt:Dictionary=definition.duplicate(true)
+		if str(action.get("id",""))=="cook":rebuilt=LifeMeals.cooking_definition(rebuilt,str(action.get("recipe","garden_skillet")))
+		for key:String in ["label","changes","cost","description","skill","xp"]:
+			if rebuilt.has(key):action[key]=rebuilt[key]
 	return projected
 func _save_owned(label:String)->void:
 	await press("Ⅱ")
@@ -57,8 +71,13 @@ func _natural()->void:
 	audit.initial=_record()
 	app.household.member_action_finished.connect(func(id:String,action:Dictionary):audit.completions.append({"id":id,"action":action.duplicate(true),"at":_now()}))
 	await press("▶")
+	# The continuation must reach the end of the dish before it spoils: the plate
+	# is 36 game-minutes from expiry, and each step advances .05 real seconds, so
+	# the run needs enough steps at this speed to cover that whole window rather
+	# than stopping a fifth of the way in.
+	var step_budget:int=int(ceil((float(plate.expires)-_now())/maxf(0.001,0.05*float(app.household.speed)*LifeSim.GAME_MINUTES_PER_SECOND)))+40
 	var saved_approach:bool=false;var saved_active:bool=false;var moved:bool=false;var held_identity:bool=true;var nutrition_exact:bool=true
-	for i:int in range(140):
+	for i:int in range(step_budget):
 		if _now()>=float(plate.expires):break
 		var before:Dictionary=sim.get_current_action();var hunger:float=float(sim.needs.hunger)
 		var expected:float=_next_hunger(sim,plate)
@@ -105,8 +124,12 @@ func _fresh()->void:
 		var starting:Dictionary=_record();var route_id:int=int(app.traversal.routes.get(PERSON,{}).get("identity",0))
 		check(str(current.phase)==("approach" if saved.phase=="approach" else "active") and plate.owner==PERSON,"Fresh load preserves actual "+str(saved.phase)+" custody and phase.")
 		await press("▶")
+		# Same reach as the natural continuation: each step advances .05 real
+		# seconds, so size the run to the portion's whole remaining freshness
+		# window instead of stopping part-way and blaming the product.
+		var step_budget:int=int(ceil((float(plate.expires)-_now())/maxf(0.001,0.05*float(app.household.speed)*LifeSim.GAME_MINUTES_PER_SECOND)))+40
 		var exact:bool=true;var identity_preserved:bool=true
-		for i:int in range(140):
+		for i:int in range(step_budget):
 			if _now()>=float(plate.expires):break
 			var expected:float=_next_hunger(sim,plate)
 			app._process(.05);await frames(1)

@@ -2987,8 +2987,14 @@ func _reconsider_active_autonomy() -> void:
 				if float(current.duration)<=90.0 or float(current.elapsed)<60.0:return
 		if int(current.get("cost",0))>0 and float(current.duration)<=90.0:return
 	var danger:bool=false
+	# Eating restores hunger through the food ledger, not `changes`, so a diner
+	# already carrying their own fresh portion reads as a critical unmet hunger
+	# here. That is not a danger while they are walking to it: diverting them to
+	# the shop would release and reclaim the very plate they are about to eat.
+	var eating_owned:bool=_autonomy_eating_owned_portion(current)
 	for need:String in NEED_NAMES:
 		if float(needs[need])<12.0 and float(current.changes.get(need,0.0))<=0.0:
+			if need=="hunger" and eating_owned:continue
 			var recovery:Dictionary=_autonomy_need_choice(need)
 			if not recovery.is_empty() and (str(recovery.id)!=str(current.id) or str(recovery.target_id)!=str(current.target_id)):danger=true
 	var duty:String=_autonomy_duty_id()
