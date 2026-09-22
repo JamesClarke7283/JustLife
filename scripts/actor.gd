@@ -234,6 +234,10 @@ func configure(new_profile: Dictionary) -> void:
 	_grip_shapes = {"L":[],"R":[]}
 	_grip_amounts = {"L":0.0,"R":0.0}
 	_hand_props.clear()
+	# Held books are children of the freed model. Drop their refs before
+	# `_create_props` appends new ones, or buy_book's pose writes `.visible`
+	# on previously freed Node3Ds and crashes.
+	_books.clear()
 	_hair_bob = null
 	_sit_amount = 0.0
 	_cook_weight = 0.0
@@ -1637,7 +1641,9 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 				pose["Forearm_L"] = Vector3(-0.95, 0, 0.04)
 				pose["Forearm_R"] = Vector3(-0.95, 0, -0.04)
 				pose["Head"] = Vector3(0.22, 0.04 * sin(t * 1.4), 0)
-				for held_book: Node3D in _books: held_book.visible = true
+				for held_book: Node3D in _books:
+					if is_instance_valid(held_book):
+						held_book.visible = true
 			"practice_instrument":
 				# Both hands on the instrument: a strumming right hand over a fretting left.
 				var strum: float = sin(t * 3.4)

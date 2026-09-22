@@ -309,16 +309,18 @@ func storage_count() -> int:
 
 func refresh_props() -> void:
 	for item: Dictionary in app.world.items:
-		var node: Node3D = item.node
+		var node: Node3D = item.get("node") as Node3D
+		if not is_instance_valid(node):
+			continue
 		if str(item.kind) == "rubbish_bin":
 			var bag: Node = node.find_child("BinBag", true, false)
-			if bag != null:
+			if bag != null and is_instance_valid(bag):
 				bag.visible = bin_is_full(str(item.id))
 		elif str(item.kind) == "bookshelf":
 			var on_shelf: Array = books_on(str(item.id))
 			for index: int in range(MAX_BOOKS):
 				var prop: Node = node.find_child("ShelfBook_%d" % index, true, false)
-				if prop == null:
+				if prop == null or not is_instance_valid(prop):
 					continue
 				prop.visible = index < on_shelf.size()
 				if prop is Node3D and index < on_shelf.size():

@@ -106,6 +106,6 @@ __pycache__/
 !/art/vegetation/README.md
 !/art/vegetation/manifest.json
 
-# A stray probe result written by running a test straight from the repo root;
-# real probe evidence lives in its own tracked subdirectory with its transcript.
-evidence/components.json
+# Probe screenshots and transcripts stay on disk locally but are not published.
+# Older commits may still carry them; the working tree is kept via --cached rm.
+/evidence/
