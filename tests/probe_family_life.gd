@@ -50,7 +50,12 @@ func _run() -> void:
 	check(LifeCatalog.child_bedroom_preset_price() == 2000, "Child bedroom pack is ℒ2000.")
 	check(LifeCatalog.ITEMS.curtains.styles.size() == 10, "Curtains offer ten styles.")
 	check(LifeCatalog.ITEMS.curtains.colors.size() == 10, "Curtains offer ten colours.")
-	check(LifeCatalog.ITEMS.nursery_paint.styles.size() == 10, "Nursery paint offers ten styles.")
+	check(LifeCatalog.ITEMS.nursery_paint.styles.size() == 5, "Nursery paint offers five patterns.")
+	check(LifeCatalog.ITEMS.nursery_paint.colors.size() == 10, "Nursery paint offers ten colours.")
+	check(int(LifeCatalog.ITEMS.nursery_paint.rate_per_square_metre) == 5, "Nursery paint is ℒ5 per square metre.")
+	for style: String in LifeCatalog.ITEMS.nursery_paint.styles:
+		check(ResourceLoader.exists(LifeCatalogVariants.model_path("nursery_paint", str(style))),
+			"Nursery pattern mesh exists for %s." % style)
 
 	var app: Node = load("res://scenes/main.tscn").instantiate()
 	root.add_child(app)

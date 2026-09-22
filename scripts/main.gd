@@ -3206,13 +3206,46 @@ func draw_build_catalog() -> void:
 		if world.construction.tool=="paint":
 			# While the paint tool is active the wall swatches take this row and
 			# the floor finishes drop one row down, so both stay reachable.
-			for i in range(8):
-				var colour:String=["eae7d7","8faf9f","e6d8c5","c8d7e0","d9b7a3","7d8a99","efd9a0","a3ad7a"][i]
-				var swatch=button("",Vector2(305+i*58,791),Vector2(50,32),func():world.construction.paint_material=colour;draw_live())
-				swatch.tooltip_text=["Cream","Sage","Blush","Sky","Clay","Dusk","Butter","Moss"][i]+" wall paint"
-				swatch.add_theme_stylebox_override("normal",P.panel(Color(colour),16,P.TEAL if world.construction.paint_material==colour else Color("ffffff"),3))
-				swatch.add_theme_stylebox_override("hover",P.panel(Color(colour).lightened(.1),16,P.TEAL,3))
-				if world.construction.paint_material==colour:swatch.text="•";swatch.add_theme_color_override("font_color",Color.WHITE)
+			var nursery_set:Dictionary=LifeCatalog.get_item("nursery_paint")
+			var using_nursery:bool=world.construction.paint_palette=="nursery"
+			button("Home",Vector2(305,756),Vector2(88,28),func():
+				world.construction.paint_palette="home"
+				world.construction.paint_pattern=""
+				if not ["eae7d7","8faf9f","e6d8c5","c8d7e0","d9b7a3","7d8a99","efd9a0","a3ad7a"].has(world.construction.paint_material):
+					world.construction.paint_material="8faf9f"
+				draw_live(),not using_nursery)
+			button("Nursery",Vector2(401,756),Vector2(110,28),func():
+				world.construction.paint_palette="nursery"
+				if world.construction.paint_pattern.is_empty():
+					world.construction.paint_pattern=str(LifeCatalogVariants.styles(nursery_set).front())
+				if not LifeCatalogVariants.color_offered(world.construction.paint_material,nursery_set):
+					world.construction.paint_material=str(LifeCatalogVariants.colors(nursery_set).front())
+				draw_live(),using_nursery).tooltip_text="Five patterns and ten colours at ℒ5 per square metre."
+			if using_nursery:
+				var patterns:Array=LifeCatalogVariants.styles(nursery_set)
+				var pattern_labels:Dictionary={"stars":"Stars","clouds":"Clouds","animals":"Animals","dots":"Dots","stripes":"Stripes"}
+				for i in range(patterns.size()):
+					var pattern:String=str(patterns[i])
+					var chip=button(str(pattern_labels.get(pattern,pattern.capitalize())),Vector2(525+i*92,756),Vector2(88,28),func():
+						world.construction.paint_pattern=pattern;draw_live(),world.construction.paint_pattern==pattern)
+					chip.tooltip_text="%s nursery pattern" % str(pattern_labels.get(pattern,pattern))
+				var colours:Array=LifeCatalogVariants.colors(nursery_set)
+				for i in range(colours.size()):
+					var colour:String=str(colours[i])
+					var col:int=i%10
+					var swatch=button("",Vector2(305+col*58,791),Vector2(50,32),func():world.construction.paint_material=colour;draw_live())
+					swatch.tooltip_text="Nursery wall paint · ℒ5/m²"
+					swatch.add_theme_stylebox_override("normal",P.panel(Color(colour),16,P.TEAL if world.construction.paint_material==colour else Color("ffffff"),3))
+					swatch.add_theme_stylebox_override("hover",P.panel(Color(colour).lightened(.1),16,P.TEAL,3))
+					if world.construction.paint_material==colour:swatch.text="•";swatch.add_theme_color_override("font_color",Color.WHITE)
+			else:
+				for i in range(8):
+					var colour:String=["eae7d7","8faf9f","e6d8c5","c8d7e0","d9b7a3","7d8a99","efd9a0","a3ad7a"][i]
+					var swatch=button("",Vector2(305+i*58,791),Vector2(50,32),func():world.construction.paint_material=colour;draw_live())
+					swatch.tooltip_text=["Cream","Sage","Blush","Sky","Clay","Dusk","Butter","Moss"][i]+" wall paint"
+					swatch.add_theme_stylebox_override("normal",P.panel(Color(colour),16,P.TEAL if world.construction.paint_material==colour else Color("ffffff"),3))
+					swatch.add_theme_stylebox_override("hover",P.panel(Color(colour).lightened(.1),16,P.TEAL,3))
+					if world.construction.paint_material==colour:swatch.text="•";swatch.add_theme_color_override("font_color",Color.WHITE)
 			button("Warm oak",Vector2(305,836),Vector2(146,31),func():change_floor("cfa97e"))
 			button("Pale stone",Vector2(461,836),Vector2(146,31),func():change_floor("dcd6c6"))
 			button("Walnut",Vector2(617,836),Vector2(146,31),func():change_floor("896953"))
@@ -3223,7 +3256,7 @@ func draw_build_catalog() -> void:
 		button("Wall view",Vector2(785,784),Vector2(130,47),func():world.set_cutaway(not world.cutaway))
 		button("Remove wall",Vector2(925,784),Vector2(140,47),func():begin_construction("erase"))
 		var paint=button("Paint wall",Vector2(1075,784),Vector2(150,47),func():begin_construction("paint"),world.construction.tool=="paint")
-		paint.tooltip_text="Pick the tool, choose a swatch, then click a wall to repaint that segment."
+		paint.tooltip_text="Pick the tool, choose a home or nursery finish, then click a wall to repaint that segment."
 		var whole=button("Whole room",Vector2(1235,784),Vector2(144,47),func():
 			world.construction.paint_scope="wall" if world.construction.paint_scope=="room" else "room"
 			draw_live(),world.construction.paint_scope=="room")

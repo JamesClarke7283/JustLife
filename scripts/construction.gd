@@ -27,6 +27,10 @@ var roof_pitch:float=.5
 var roof_material:String="57736a"
 var paint_material:String="8faf9f"
 var paint_scope:String="wall"  # "wall" repaints one segment; "room" repaints every wall joined to it corner to corner
+## "home" is the eight house colours at ℒ6/m; "nursery" is the five patterns and
+## ten nursery colours at ℒ5/m² from the Baby & Kids paint set.
+var paint_palette:String="home"
+var paint_pattern:String="stars"
 var roof_edit_id:String=""
 var build_level:int=0
 var last_error:String=""
@@ -84,6 +88,8 @@ func _rebuild_wall(e:Dictionary, supports:Dictionary)->void:
 		var pos:Vector3=Vector3(c.x,c.y,0) if horizontal else Vector3(0,c.y,c.x)
 		var size:Vector3=Vector3(piece.size.x,piece.size.y,float(e.d)) if horizontal else Vector3(float(e.w),piece.size.y,piece.size.x)
 		world.box(node,pos,size,str(e.color))
+	var pattern:String=str(e.get("pattern",""))
+	if not pattern.is_empty():_dress_nursery_pattern(node,e,horizontal,length,h,pattern)
 	world.box(node,Vector3(0,h+.025,0),Vector3(float(e.w)+.025,.05,float(e.d)+.025),"f5efdf")
 	world.box(node,Vector3(0,.055,0),Vector3(float(e.w)+.015,.11,float(e.d)+.015),"f5efdf")
 	if not building_state.is_empty() and not (bool(e.cut) and cutaway):
@@ -350,7 +356,11 @@ func make_proposal(p: Vector3) -> Dictionary:
 		elif tool in ["door","erase","paint"]:
 			if not data.has("remove_id"):return {"valid":false,"error":"Point at a wall on this level."}
 			operation["id"]=str(data.remove_id)
-			if tool=="paint":operation["material"]=paint_material;operation["scope"]=paint_scope;operation["px"]=p.x;operation["pz"]=p.z
+			if tool=="paint":
+				operation["material"]=paint_material;operation["scope"]=paint_scope;operation["px"]=p.x;operation["pz"]=p.z
+				operation["palette"]=paint_palette
+				if paint_palette=="nursery":operation["pattern"]=paint_pattern
+				else:operation["pattern"]=""
 			if tool=="door":
 				var wall:Dictionary={}
 				for record:Dictionary in records:
@@ -695,6 +705,24 @@ func commit(data: Dictionary) -> void:
 	proposal.clear()
 	world.rebuild_navigation()
 	refresh_decorations()
+
+## Cover a painted nursery wall with the authored pattern panel, tinted to the
+## chosen colour and scaled to the wall face so Structure paint uses the same
+## five meshes as the Baby & Kids catalogue sample.
+func _dress_nursery_pattern(node:Node3D,entry:Dictionary,horizontal:bool,length:float,height:float,pattern:String)->void:
+	var path:String=LifeCatalogVariants.model_path("nursery_paint",pattern)
+	if not ResourceLoader.exists(path):return
+	var panel:Node3D=load(path).instantiate()
+	node.add_child(panel)
+	var data:Dictionary=LifeCatalog.get_item("nursery_paint")
+	var authored_w:float=maxf(.01,float(data.size.x))
+	var authored_h:float=maxf(.01,float(data.height))
+	var scale_x:float=length/authored_w
+	var scale_y:float=height/authored_h
+	panel.scale=Vector3(scale_x,scale_y,1.0)
+	panel.position=Vector3(0,height*.5,0)
+	if not horizontal:panel.rotation_degrees.y=90.0
+	world._apply_variant_colour(panel,data,{"style":pattern,"color":str(entry.get("color",entry.get("material","8faf9f"))),"size":""})
 
 func _visible_wall_height(entry:Dictionary)->float:
 	var height:float=float(entry.height)

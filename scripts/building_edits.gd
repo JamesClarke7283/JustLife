@@ -65,11 +65,24 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 		cost=int(length*55+floor_cost) # Preserve legacy whole-quote currency truncation.
 	elif tool=="paint":
 		# Repaint one wall segment, or every wall joined to it corner to corner;
-		# the colour is a wall material like the floor finishes.
+		# the colour is a wall material like the floor finishes. Nursery paint
+		# also carries one of five patterns and is priced per square metre.
 		if not Building.identifier(operation.get("id")):return _error("Choose an existing wall on this level.")
 		if not Building._material(operation.get("material")):return _error("Choose a valid wall colour.")
 		var scope:String=str(operation.get("scope","wall"))
 		if scope not in ["wall","room"]:return _error("Choose whether to paint one wall or the whole room.")
+		var palette:String=str(operation.get("palette","home"))
+		if palette not in ["home","nursery"]:return _error("Choose a home or nursery paint set.")
+		var pattern:String=str(operation.get("pattern",""))
+		var rate:float=6.0
+		var per_area:bool=false
+		if palette=="nursery":
+			var nursery:Dictionary=LifeCatalog.get_item("nursery_paint")
+			if not LifeCatalogVariants.color_offered(str(operation.material),nursery):return _error("Choose a valid nursery colour.")
+			if not LifeCatalogVariants.styles(nursery).has(pattern):return _error("Choose a nursery pattern.")
+			rate=float(nursery.get("rate_per_square_metre",5))
+			per_area=true
+		elif not pattern.is_empty():return _error("Home wall paint does not use a pattern.")
 		var wall:Dictionary=Building.find(after,str(operation.id))
 		if wall.is_empty() or Building._group_of(after,str(operation.id))!="walls" or int(wall.level)!=int(level):return _error("The selected wall has changed.")
 		var side:Variant=null
@@ -77,9 +90,16 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 			side=Vector2(float(operation.px),float(operation.pz))
 		var changed:int=0
 		for target:Dictionary in (_room_walls(after,wall,int(level),side) if scope=="room" else [wall]):
-			if str(target.material)==str(operation.material):continue
+			var same_colour:bool=str(target.material)==str(operation.material)
+			var same_pattern:bool=str(target.get("pattern",""))==pattern
+			if same_colour and same_pattern:continue
 			target.material=str(operation.material)
-			cost+=int(maxf(float(target.w),float(target.d))*6);changed+=1
+			if pattern.is_empty():target.erase("pattern")
+			else:target["pattern"]=pattern
+			var span:float=maxf(float(target.w),float(target.d))
+			var height:float=float(target.get("height",2.6))
+			cost+=int(span*height*rate) if per_area else int(span*rate)
+			changed+=1
 		if changed==0:return _error("That wall already has this colour." if scope=="wall" else "Those walls already have this colour.")
 	else:
 		if not Building.identifier(operation.get("id")):return _error("Choose an existing wall on this level.")

@@ -112,6 +112,18 @@ func _run()->void:
 	check(not bool(tx.prepare({"op":"structure","tool":"paint","level":0,"id":str(painted_wall.id),"material":paint_colour}).ok),"Repainting a wall with its current colour is refused.")
 	check(not bool(tx.prepare({"op":"structure","tool":"paint","level":0,"id":"wall_missing","material":paint_colour}).ok),"Painting an unknown wall is refused.")
 	check(bool(tx.undo(paint_purchase.receipt).ok) and str(app.world.construction.building_state.walls[0].material)==wall_before,"Paint undo restores the previous wall colour.")
+	var nursery_colour:String="d9a0a0"
+	var nursery_quote:Dictionary=tx.prepare({"op":"structure","tool":"paint","level":0,"id":str(painted_wall.id),"material":nursery_colour,"palette":"nursery","pattern":"stars"})
+	var nursery_span:float=maxf(float(painted_wall.w),float(painted_wall.d))
+	var nursery_height:float=float(painted_wall.get("height",2.6))
+	var nursery_cost:int=int(nursery_span*nursery_height*5)
+	var nursery_purchase:Dictionary=tx.commit(nursery_quote)
+	var nursery_wall:Dictionary=app.world.construction.building_state.walls[0]
+	check(bool(nursery_purchase.ok) and int(nursery_quote.cost)==nursery_cost and str(nursery_wall.material)==nursery_colour and str(nursery_wall.get("pattern",""))=="stars","Nursery Structure paint charges ℒ5/m² and records colour with pattern.")
+	check(not bool(tx.prepare({"op":"structure","tool":"paint","level":0,"id":str(painted_wall.id),"material":nursery_colour,"palette":"nursery","pattern":"stars"}).ok),"Repainting nursery with the same colour and pattern is refused.")
+	check(bool(tx.prepare({"op":"structure","tool":"paint","level":0,"id":str(painted_wall.id),"material":nursery_colour,"palette":"nursery","pattern":"dots"}).ok),"Changing only the nursery pattern is a new coat.")
+	check(not bool(tx.prepare({"op":"structure","tool":"paint","level":0,"id":str(painted_wall.id),"material":nursery_colour,"palette":"nursery","pattern":"missing"}).ok),"An unknown nursery pattern is refused.")
+	check(bool(tx.undo(nursery_purchase.receipt).ok) and str(app.world.construction.building_state.walls[0].get("pattern",""))=="","Nursery paint undo clears the pattern with the previous colour.")
 	var room_wall:Dictionary={}
 	for wall:Dictionary in app.world.construction.building_state.walls:
 		if is_equal_approx(float(wall.x),2.0) and is_equal_approx(float(wall.z),-2.0):room_wall=wall

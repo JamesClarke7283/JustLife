@@ -67,8 +67,11 @@ const ITEMS = {
 		"styles":["plain","shelf"]},
 	"child_chair": {"label":"Child chair", "category":"Baby & Kids", "price":20, "size":Vector2(.42,.42), "height":.55, "color":"d7ae7e",
 		"styles":["plain","arms"]},
+	# Structure → Paint wall offers the same five patterns and ten colours at
+	# ℒ5/m²; the Baby & Kids catalogue panel keeps the authored meshes for
+	# placement when a household wants a freestanding sample board.
 	"nursery_paint": {"label":"Nursery wall paint", "category":"Baby & Kids", "rate_per_square_metre":5, "size":Vector2(2.0,.04), "height":2.2, "color":"8faf9f", "tint":true,
-		"styles":["01","02","03","04","05","06","07","08","09","10"],
+		"styles":["stars","clouds","animals","dots","stripes"],
 		"colors":["8faf9f","d9a0a0","9ec1cf","efeadb","c97c66","6e5470","c9a05a","7195b3","decfaf","4a6b5c"],
 		"wall_mounted":true},
 	"toy_chest": {"label":"Toy chest", "category":"Baby & Kids", "price":40, "size":Vector2(.9,.55), "height":.7, "color":"ab7951", "tint":true,
