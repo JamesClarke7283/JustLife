@@ -90,6 +90,11 @@ func consider_ring(force:bool=false)->bool:
 		if not app.residents.present(id):continue
 		if int(_bell_denied.get(id,-1))>=app.household.day:continue
 		if not app.residents._speaker(id).is_empty():continue
+		# Only somebody who has actually come to the door rings it. A neighbor
+		# merely walking the sidewalk lane passes within the doorstep radius of
+		# the porch, and ringing for them froze that pass at the door for the
+		# whole ring wait instead of letting them walk on.
+		if str(app.residents.locations.get(app.residents.active_place,{}).get(id,{}).get("phase",""))!="visiting":continue
 		if not _at_doorstep(id,app.world.actors[id].position):continue
 		return _start_ring(id)
 	return false

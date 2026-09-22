@@ -538,8 +538,12 @@ func tick_trip(delta:float) -> void:
     while int(record.index)<route.size() and budget>0:
      var point:Vector3=route[int(record.index)]
      var distance:float=actor.position.distance_to(point)
-     if distance>.001:
-      var direction:Vector3=point-actor.position;actor.rotation.y=atan2(direction.x,direction.z)
+     # The path's first point is where the boarder already stands, so its step
+     # is zero and the body test refuses a zero-length move; advance past the
+     # reached point instead, or nobody ever leaves the doorway.
+     if distance<=.00001:
+      record.index=int(record.index)+1;continue
+     var direction:Vector3=point-actor.position;actor.rotation.y=atan2(direction.x,direction.z)
      var step:float=minf(distance,budget)
      var next:Vector3=actor.position.move_toward(point,step)
      # Even the bare-lot boarding walk keeps bodies apart; a blocked step
