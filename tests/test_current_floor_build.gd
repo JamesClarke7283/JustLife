@@ -88,6 +88,11 @@ func _affected_route_move()->void:
 	check(after.people[DONOR].action_queue==before.people[DONOR].action_queue and after.bodies==before.bodies and after.at==before.at and after.funds==before.funds,"Actual affected-route edit leaves the original Sleep instruction, bodies, clock and funds exact.")
 
 func _unchanged_build()->void:
+	# The slot predates the seat model, so its sleeper holds no place of its own
+	# and the first refresh gives them one, moving that action's endpoint onto
+	# the bed's own half. Settle that one-time upgrade before the baseline is
+	# captured, so the pauses below compare two already-current states.
+	app._refresh_sim_targets()
 	var before:Dictionary=_facts();audit["before_build"]=before
 	var donor_queue:Array=app.household.member_sim(DONOR).action_queue.duplicate(true)
 	var peer_queue:Array=app.household.member_sim(PEER).action_queue.duplicate(true)
