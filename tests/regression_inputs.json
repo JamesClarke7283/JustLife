@@ -692,6 +692,7 @@
     "scripts/adoption_flow.gd",
     "scripts/adoption_flow.gd.uid",
     "scripts/baby_plan.gd",
+    "scripts/birth_homecoming.gd",
     "scripts/build_protection.gd",
     "scripts/build_protection.gd.uid",
     "scripts/build_transactions.gd",
