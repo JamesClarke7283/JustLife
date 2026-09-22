@@ -134,7 +134,10 @@ func action_availability(sim:LifeSim,id:String,target:String) -> String:
 		return ""
 	if id=="clean_plate":
 		var plate:Dictionary=food().portion(target)
-		if plate.is_empty() or not str(plate.owner).is_empty():return "That plate is being used."
+		# A plate its own carrier is still holding is theirs to wash: the walk to
+		# the sink is the whole job, and refusing it as "being used" left that
+		# instruction stalled on the spot with no standoff to resolve.
+		if plate.is_empty() or (not str(plate.owner).is_empty() and str(plate.owner)!=member_id(sim)):return "That plate is being used."
 		if app.world.closest_item("sink",Vector3.ZERO).is_empty():return "Place a sink to wash dishes."
 	if id=="clear_table":
 		if not _clear_target_dirty(target):return "There are no used plates or finished dishes on this surface to clear."
@@ -278,7 +281,9 @@ func before_begin(sim:LifeSim,action:Dictionary) -> bool:
 		action.meal_stage="bin";_reconcile_guest_offer();sim._emit_action_started(action);return false
 	if action.id=="clean_plate" and action.get("meal_stage")=="pickup":
 		var plate:Dictionary=food().portion(str(action.meal_source))
-		if plate.is_empty() or not str(plate.owner).is_empty() or not food().carried_by(person).is_empty():_stop(sim,"That plate is no longer available.");return false
+		# The plate may already be in this member's hands (their own used plate,
+		# or one they were carrying) — that is the pickup, so go straight on.
+		if plate.is_empty() or (not str(plate.owner).is_empty() and str(plate.owner)!=person):_stop(sim,"That plate is no longer available.");return false
 		plate.owner=person;plate.storage="carried";plate.seat=""
 		action.meal_stage="wash";sim._emit_action_started(action);return false
 	return true
