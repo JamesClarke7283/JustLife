@@ -1167,6 +1167,12 @@ func begin_placement(kind:String,style:String="",size:String="") -> void:
 	placement_style=style
 	placement_size=size
 	placement_angle=0
+	if bool(LifeCatalog.get_item(kind).get("room_pack",false)):
+		# A room pack is a room, not a model: the ghost is its floor and wall
+		# outline, previewed where the room will actually be built.
+		ghost=_room_pack_ghost(LifeCatalog.get_item(kind).size)
+		add_child(ghost)
+		return
 	var path:String=Variants.model_path(kind,style)
 	if not ResourceLoader.exists(path):path="res://assets/models/%s.glb" % kind
 	# A family whose art is styled may ship no base model at all, and a caller
@@ -1196,6 +1202,28 @@ func begin_placement(kind:String,style:String="",size:String="") -> void:
 		m.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
 		m.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED
 		n.material_override=m
+
+func _room_pack_ghost(size:Vector2) -> Node3D:
+	var root:=Node3D.new();root.name="RoomPackGhost"
+	box(root,Vector3(0,.03,0),Vector3(size.x,.03,size.y),"8faf9f")
+	for edge:Array in [[Vector3(0,.3,-size.y*.5),Vector3(size.x,.6,.14)],[Vector3(0,.3,size.y*.5),Vector3(size.x,.6,.14)],[Vector3(-size.x*.5,.3,0),Vector3(.14,.6,size.y)],[Vector3(size.x*.5,.3,0),Vector3(.14,.6,size.y)]]:
+		box(root,edge[0],edge[1],"8faf9f")
+	for n in root.find_children("*","MeshInstance3D",true,false):
+		var m=StandardMaterial3D.new()
+		m.albedo_color=Color(.38,.8,.63,.48)
+		m.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED
+		n.material_override=m
+	return root
+
+## Where a room pack of this kind would be built for a pointer at `p`: the
+## catalogue footprint, turned with the placement angle, snapped onto the walls
+## it meets.
+func room_pack_area(kind:String,p:Vector3,angle:float) -> Rect2:
+	var size:Vector2=LifeCatalog.get_item(kind).size
+	if int(roundf(angle/90))%2:size=Vector2(size.y,size.x)
+	var walls:Array=construction.building_state.get("walls",[]) if is_instance_valid(construction) and not construction.building_state.is_empty() else (construction.records if is_instance_valid(construction) else [])
+	return LifeBuildingEdits.room_pack_rect({"walls":walls},Vector2(p.x,p.z),size,0)
 
 func clear_placement() -> void:
 	placement_kind=""
@@ -1284,6 +1312,27 @@ func wall_snap(kind:String,p:Vector3,reach:float=1.0,size_choice:String="") -> D
 		else:
 			var side:float=1.0 if p.x>=cx else -1.0
 			best={"position":Vector3(cx+side*(w*.5+size.y*.5+.01),p.y,clampf(p.z,cz-d*.5+size.x*.5+.3,cz+d*.5-size.x*.5-.3)),"angle":90.0 if side>0 else -90.0}
+	return best
+
+## A furnishing that frames a window (a curtain set) slides along the wall it is
+## already snapped to until it is centred on the nearest window in that wall, so
+## both panels hang either side of the glass. Windows only exist on walls that
+## really carry them, so a curtain on a plain wall stays where it was pointed.
+func window_snap(kind:String,p:Vector3,angle:float,reach:float=1.6) -> Vector3:
+	if not bool(LifeCatalog.get_item(kind).get("window_snap",false)) or not is_instance_valid(house):return p
+	var forward:Vector3=Basis(Vector3.UP,deg_to_rad(angle))*Vector3(0,0,1)
+	var along:Vector3=Vector3(forward.z,0,-forward.x)
+	var best:Vector3=p;var best_distance:float=reach
+	for window:Node in house.get_children():
+		if not window is Node3D or not window.has_meta("window_aperture") or not window.visible:continue
+		if absf(window.global_basis.z.normalized().dot(forward))<.99:continue
+		var offset:Vector3=window.global_position-p
+		if absf(offset.dot(forward))>.45:continue
+		var height:float=window.global_position.y-p.y
+		if height<.9 or height>2.5:continue
+		var slide:float=offset.dot(along)
+		if absf(slide)>=best_distance:continue
+		best_distance=absf(slide);best=p+along*slide
 	return best
 
 func wall_behind(kind:String,p:Vector3,angle:float,size_choice:String="") -> bool:
@@ -1454,10 +1503,20 @@ func _process(delta:float) -> void:
 	if build_enabled and is_instance_valid(ghost):
 		var p=floor_point(get_viewport().get_mouse_position())
 		p.x=snappedf(p.x,.25);p.z=snappedf(p.z,.25)
+		if bool(LifeCatalog.get_item(placement_kind).get("room_pack",false)):
+			var area:Rect2=room_pack_area(placement_kind,p,placement_angle)
+			ghost.position=Vector3(area.get_center().x,Building.level_y(0),area.get_center().y)
+			ghost.rotation_degrees.y=placement_angle
+			ghost_position=ghost.position
+			ghost_valid=view_level==0 and Building.lot().encloses(area)
+			for n in ghost.find_children("*","MeshInstance3D",true,false):n.material_override.albedo_color=Color(.4,.85,.6,.48) if ghost_valid else Color(.9,.3,.25,.48)
+			return
 		if LifeCatalog.wall_mounted(placement_kind):
 			# Wall decor slides along the nearest wall and faces into the room.
 			var snap:Dictionary=wall_snap(placement_kind,p,1.0,placement_size)
-			if not snap.is_empty():p=snap.position;placement_angle=float(snap.angle)
+			if not snap.is_empty():
+				p=window_snap(placement_kind,snap.position,float(snap.angle))
+				placement_angle=float(snap.angle)
 		ghost.position=p
 		ghost.rotation_degrees.y=placement_angle
 		ghost_position=p

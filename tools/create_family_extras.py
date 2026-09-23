@@ -1,4 +1,4 @@
-"""Author baby transport, curtains, and an adult playground slide.
+"""Author baby transport and an adult playground slide (curtains: create_curtains.py).
 
 Exports glTF into assets/models/ the way other JustLife creators do.
 
@@ -119,13 +119,6 @@ def child_car_seat():
     box("Arm_R", (.2, .38, .02), (.05, .18, .28), "steel")
     export_family("child_car_seat")
 
-def curtains():
-    # Two hanging panels with a rod — snaps over windows as wall-mounted decor.
-    box("Rod", (0, 1.5, 0), (1.35, .04, .04), "steel")
-    box("Panel_L_tint", (-.34, .75, .02), (.55, 1.4, .04), "tint")
-    box("Panel_R", (.34, .75, .02), (.55, 1.4, .04), "linen")
-    export_family("curtains")
-
 def adult_slide():
     box("Ladder_L", (-.35, 1.0, -.9), (.08, 2.0, .08), "steel")
     box("Ladder_R", (.35, 1.0, -.9), (.08, 2.0, .08), "steel")
@@ -149,7 +142,6 @@ if __name__ == "__main__":
     pushchair()
     baby_car_seat()
     child_car_seat()
-    curtains()
     adult_slide()
     toy_chest()
     print("family extras done")

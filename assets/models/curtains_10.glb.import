@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://ci6plots4tgkb"
-path="res://.godot/imported/curtains.glb-5364c8e41db0295b88b61c34182b2e61.scn"
+uid="uid://dq86ut631pk8r"
+path="res://.godot/imported/curtains_10.glb-4b9f4426e5d17a8bbb763c6ef6e30017.scn"
 
 [deps]
 
-source_file="res://assets/models/curtains.glb"
-dest_files=["res://.godot/imported/curtains.glb-5364c8e41db0295b88b61c34182b2e61.scn"]
+source_file="res://assets/models/curtains_10.glb"
+dest_files=["res://.godot/imported/curtains_10.glb-4b9f4426e5d17a8bbb763c6ef6e30017.scn"]
 
 [params]
 

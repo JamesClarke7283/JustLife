@@ -7,6 +7,7 @@ const LifeGroceries = preload("res://scripts/groceries.gd")
 const Variants = preload("res://scripts/catalog_variants.gd")
 const LifeLog = preload("res://scripts/logger.gd")
 const LifeWantsManager = preload("res://scripts/wants_manager.gd")
+const RoomPack = preload("res://scripts/room_pack.gd")
 const CREATOR_FACE_GROUPS: Dictionary = {
 	"Shape":["face_round","jaw_strong","chin_length","face_length"],
 	"Eyes":["eye_spacing","brow_arch"],
@@ -3581,50 +3582,86 @@ func on_placement(kind:String,p:Vector3,angle:float,style:String="",size:String=
 	play_click()
 	show_notice("%s moved into place." % LifeCatalog.ITEMS[kind].label if moving else "%s added to your home. −ℒ%d" % [LifeCatalog.ITEMS[kind].label,price])
 
-## Place a ready room pack: every furniture entry from the catalogue preset,
-## offset to the click point. Door heights stay on the room the player already built.
-func _place_room_pack(kind: String, origin: Vector3, yaw: float) -> void:
+## Place a ready room pack. The room itself is one structure transaction —
+## walls that share whatever wall they meet, a standard doorway and a carpet
+## floor — and the furniture is then laid out against that room's own walls and
+## window. The pack costs its catalogue price all in: the structure's quote is
+## part of it and the furnishings are the rest. Returns what was built, for tests.
+func _place_room_pack(kind: String, origin: Vector3, yaw: float) -> Dictionary:
 	var price: int = int(LifeCatalog.ITEMS[kind].price)
+	if world.view_level != 0:
+		show_notice("Room packs are built on the ground floor.");return {}
 	if sim.funds < price:
-		show_notice("You need ℒ%d for this room pack." % price)
-		return
-	var entries: Array = LifeCatalog.nursery_room_preset() if kind == "nursery_room_pack" else LifeCatalog.child_bedroom_preset()
-	var snapshot: Dictionary = _build_snapshot(price)
+		show_notice("You need ℒ%d for this room pack." % price);return {}
+	var current: Dictionary = build_transactions.current()
+	if not bool(current.ok):
+		show_notice(str(current.error));return {}
+	var area: Rect2 = world.room_pack_area(kind, origin, yaw)
+	var house: Rect2 = Rect2()
+	for floor: Dictionary in current.state.floors:
+		if int(floor.level) == 0:house = LifeBuildingState.rect(floor) if not house.has_area() else house.merge(LifeBuildingState.rect(floor))
+	# The doorway goes on the best edge whose far side is clear floor, so a
+	# counter or bed against the house wall never seals the new room in.
+	var order: Array[String] = LifeBuildingEdits.room_pack_door_order(current.state, area, house.get_center() if house.has_area() else Vector2.ZERO)
+	var door: String = order[0]
+	var door_at: float = NAN
+	var clear: Callable = func(point: Vector2) -> bool: return world.lot_navigation.point_clear(0, Vector3(point.x, LifeBuildingState.level_y(0), point.y))
+	for side: String in order:
+		door_at = LifeBuildingEdits.room_pack_door_at(area, side, clear)
+		if not is_nan(door_at): door = side; break
+	var operation: Dictionary = {"op":"structure","tool":"room_pack","level":0,"ax":area.position.x,"az":area.position.y,"bx":area.end.x,"bz":area.end.y,"material":LifeCatalog.room_pack_carpet(kind),"door":door}
+	if not is_nan(door_at): operation["door_at"] = door_at
+	var quote: Dictionary = build_transactions.prepare(operation)
+	if not bool(quote.ok):
+		show_notice(str(quote.error));return {}
+	var built: Dictionary = build_transactions.commit(quote)
+	if not bool(built.ok):
+		show_notice(str(built.error));return {}
+	build_undo.append({"architecture":built.receipt,"level":0})
+	world.construction.refresh_decorations()
+	var share: int = maxi(0, price - int(built.cost))
+	var snapshot: Dictionary = _build_snapshot(share)
 	var protection: Dictionary = build_protection_context()
+	_cancel_all_cooperative_actions()
 	var placed: int = 0
-	var cos_y: float = cos(deg_to_rad(yaw))
-	var sin_y: float = sin(deg_to_rad(yaw))
-	for row: Array in entries:
-		var local := Vector3(float(row[1]), 0.0, float(row[2]))
-		var world_xz := Vector3(local.x * cos_y - local.z * sin_y, 0.0, local.x * sin_y + local.z * cos_y)
-		var at: Vector3 = origin + world_xz
-		var entry: Dictionary = {
-			"id": "pack_%d_%d" % [Time.get_ticks_usec(), placed],
-			"kind": str(row[0]),
-			"x": at.x,
-			"z": at.z,
-			"rotation": float(row[3]) + yaw,
-		}
-		if world.view_level == 1:
-			entry["level"] = 1
-		if not LifeCatalog.ITEMS.has(str(row[0])):
-			continue
-		if not world.can_place(str(row[0]), at, float(entry.rotation)):
-			continue
+	var skipped: Array[String] = []
+	for request: Dictionary in RoomPack.plan(kind, area, door):
+		var entry: Dictionary = _room_pack_entry(request, placed)
+		if entry.is_empty():skipped.append(str(request.kind));continue
+		var proposed: Array = world.serialize_items();proposed.append(entry)
+		if not build_transactions.furnishing_error(proposed).is_empty():skipped.append(str(request.kind));continue
 		world.add_item(entry, false)
+		if _find_item(str(entry.id)).is_empty():skipped.append(str(request.kind));continue
 		placed += 1
 	world.rebuild_navigation()
-	if placed <= 0:
-		show_notice("That room pack needs a clearer floor. Build walls and try again.")
-		return
-	build_undo.append(snapshot)
-	household.set_funds(sim.funds - price)
+	if placed > 0:build_undo.append(snapshot)
+	household.set_funds(sim.funds - (share if placed > 0 else 0))
 	build_transactions.furnishing_rebuilt(protection)
 	world.clear_placement()
 	_refresh_sim_targets()
 	refresh_hud()
 	play_click()
-	show_notice("%s placed (%d pieces). −ℒ%d" % [LifeCatalog.ITEMS[kind].label, placed, price])
+	show_notice("%s built with a doorway and carpet, %d pieces placed. −ℒ%d" % [LifeCatalog.ITEMS[kind].label, placed, int(built.cost) + (share if placed > 0 else 0)])
+	return {"area":area,"door":door,"door_at":float(operation.get("door_at",NAN)),"placed":placed,"skipped":skipped,"structure_cost":int(built.cost),"furnishing_cost":share if placed > 0 else 0}
+
+## One room-pack piece as a furnishing entry, or {} when it does not fit. Wall
+## pieces snap to the room's wall, and curtains then centre on a window.
+func _room_pack_entry(request: Dictionary, serial: int) -> Dictionary:
+	var kind: String = str(request.kind)
+	var data: Dictionary = LifeCatalog.get_item(kind)
+	var variant: Dictionary = Variants.resolve(data, {"style":str(request.style),"size":str(request.size)})
+	var point: Vector2 = request.point
+	var at := Vector3(point.x, LifeBuildingState.level_y(0), point.y)
+	var angle: float = float(request.get("rotation", 0.0))
+	if request.has("wall"):
+		var snap: Dictionary = world.wall_snap(kind, at, 1.0, str(variant.size))
+		if snap.is_empty():return {}
+		at = world.window_snap(kind, snap.position, float(snap.angle))
+		angle = float(snap.angle)
+	if not world.can_place(kind, at, angle, str(variant.style), str(variant.size)):return {}
+	var entry: Dictionary = {"id":"pack_%d_%d" % [Time.get_ticks_usec(), serial],"kind":kind,"x":at.x,"z":at.z,"rotation":angle}
+	entry.merge(Variants.record(data, str(variant.style), str(request.color), str(variant.size)), true)
+	return entry
 
 func undo_build() -> void:
 	if mode!="build":return
@@ -4606,7 +4643,7 @@ func pick_furnishing(kind:String,working:Dictionary={}) -> void:
 		for style_id:String in styles:
 			var held:Dictionary=working.duplicate(true)
 			held["style"]=style_id
-			var option=button(Variants.style_label(str(style_id)),Vector2.ZERO,Vector2(124,40),pick_furnishing.bind(kind,held),str(style_id)==str(working.style),style_row)
+			var option=button(Variants.style_label(str(style_id),data),Vector2.ZERO,Vector2(124,40),pick_furnishing.bind(kind,held),str(style_id)==str(working.style),style_row)
 			option.name="VariantStyle_"+str(style_id)
 			option.tooltip_text=str(style_id)
 			compact_button(option);option.size=Vector2(124,40)

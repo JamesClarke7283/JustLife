@@ -12,9 +12,13 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 	if not operation is Dictionary or operation.get("op")!="structure" or not Building.number(funds,0,1e9,true):return _error("Invalid structure edit.")
 	if int(current.revision)>=1000000000:return _error("Building revision limit reached.")
 	var tool:Variant=operation.get("tool");var level:Variant=operation.get("level")
-	if not tool is String or tool not in ["wall","room","door","erase","finish","paint"] or not Building.number(level,0,1,true):return _error("Invalid structure tool or level.")
+	if not tool is String or tool not in ["wall","room","door","erase","finish","paint","room_pack"] or not Building.number(level,0,1,true):return _error("Invalid structure tool or level.")
 	var after:Dictionary=current.duplicate(true);var cost:int=0
-	if tool=="finish":
+	if tool=="room_pack":
+		var built:Dictionary=_room_pack(after,operation,int(level))
+		if built.has("error"):return _error(str(built.error))
+		cost=int(built.cost)
+	elif tool=="finish":
 		if not Building._material(operation.get("material")):return _error("Choose a valid floor finish.")
 		var changed:bool=false
 		for floor:Dictionary in after.floors:
@@ -105,29 +109,12 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 		if not Building.identifier(operation.get("id")):return _error("Choose an existing wall on this level.")
 		var wall:Dictionary=Building.find(after,str(operation.id))
 		if wall.is_empty() or Building._group_of(after,str(operation.id))!="walls" or int(wall.level)!=int(level):return _error("The selected wall has changed.")
-		# Drop every collinear overlapping panel with this wall so a doorway cut
-		# across a bought-plot boundary cannot leave a second stacked panel sealed.
-		var remove_ids:Dictionary={str(wall.id):true}
-		for other:Dictionary in after.walls:
-			if int(other.level)!=int(level) or str(other.id)==str(wall.id):continue
-			if not _coincident_wall({"walls":[wall],"floors":[]},other,int(level)).is_empty():
-				remove_ids[str(other.id)]=true
-		after.walls=after.walls.filter(func(record:Dictionary)->bool:return not remove_ids.has(str(record.id)))
-		var length:float=maxf(float(wall.w),float(wall.d))
-		if tool=="erase":cost=-int(length*20)
+		if tool=="erase":
+			_remove_collinear(after,wall,int(level))
+			cost=-int(maxf(float(wall.w),float(wall.d))*20)
 		else:
-			if not Building.number(operation.get("center"),-Building.Land.MAX_SPAN,Building.Land.MAX_SPAN) or length<1.55:return _error("Choose a wall long enough for a doorway.")
-			var horizontal:bool=float(wall.w)>float(wall.d)
-			var center:float=float(wall.x) if horizontal else float(wall.z)
-			var door:float=clampf(float(operation.center),center-length*.5+.65,center+length*.5-.65)
-			for side:int in [-1,1]:
-				var low:float=center-length*.5 if side<0 else door+.53
-				var high:float=door-.53 if side<0 else center+length*.5
-				if high-low<=.05:continue
-				var part:Dictionary=wall.duplicate(true);part.id=Building._new_id(after,"walls")
-				if horizontal:part.x=(low+high)*.5;part.w=high-low
-				else:part.z=(low+high)*.5;part.d=high-low
-				after.walls.append(part)
+			var door_error:String=_cut_door(after,wall,operation.get("center"),int(level))
+			if not door_error.is_empty():return _error(door_error)
 			cost=90
 	error=Building.validate(after)
 	if not error.is_empty():return _error(error)
@@ -135,6 +122,190 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 	if int(funds)-cost>1000000000:return _error("This refund exceeds the wallet limit.")
 	after.revision=int(current.revision)+1
 	return {"ok":true,"operation":operation.duplicate(true),"before":Building.fingerprint(current),"after":after,"cost":cost,"funds_before":int(funds),"funds_after":int(funds)-cost}
+
+## Drop this wall and every collinear panel overlapping it, so a doorway cut
+## across a bought-plot boundary cannot leave a second stacked panel sealed.
+static func _remove_collinear(after:Dictionary,wall:Dictionary,level:int) -> void:
+	var remove_ids:Dictionary={str(wall.id):true}
+	for other:Dictionary in after.walls:
+		if int(other.level)!=level or str(other.id)==str(wall.id):continue
+		if not _coincident_wall({"walls":[wall],"floors":[]},other,level).is_empty():
+			remove_ids[str(other.id)]=true
+	after.walls=after.walls.filter(func(record:Dictionary)->bool:return not remove_ids.has(str(record.id)))
+
+## Replace a wall with the two panels either side of a 1.06 m doorway centred
+## as near `center` as the wall's ends allow. Returns an error or "".
+static func _cut_door(after:Dictionary,wall:Dictionary,center_value:Variant,level:int) -> String:
+	_remove_collinear(after,wall,level)
+	var length:float=maxf(float(wall.w),float(wall.d))
+	if not Building.number(center_value,-Building.Land.MAX_SPAN,Building.Land.MAX_SPAN) or length<1.55:return "Choose a wall long enough for a doorway."
+	var horizontal:bool=float(wall.w)>float(wall.d)
+	var center:float=float(wall.x) if horizontal else float(wall.z)
+	var door:float=clampf(float(center_value),center-length*.5+.65,center+length*.5-.65)
+	for side:int in [-1,1]:
+		var low:float=center-length*.5 if side<0 else door+.53
+		var high:float=door-.53 if side<0 else center+length*.5
+		if high-low<=.05:continue
+		var part:Dictionary=wall.duplicate(true);part.id=Building._new_id(after,"walls")
+		if horizontal:part.x=(low+high)*.5;part.w=high-low
+		else:part.z=(low+high)*.5;part.d=high-low
+		after.walls.append(part)
+	return ""
+
+## ------------------------------------------------------------ room packs
+##
+## A ready-made room is a real structure edit: four walls (sharing any existing
+## wall that already stands on one of its edges), one doorway and a carpet floor,
+## validated and priced together so the furniture that follows always stands in
+## a finished room.
+
+const ROOM_PACK_SIDES:Array[String]=["north","south","west","east"]
+const ROOM_PACK_SNAP:float=.9
+
+## Where one edge of an axis-aligned room lies: its line, its span and whether
+## it runs along x.
+static func _pack_edge(area:Rect2,side:String) -> Dictionary:
+	match side:
+		"north":return {"horizontal":true,"line":area.position.y,"low":area.position.x,"high":area.end.x}
+		"south":return {"horizontal":true,"line":area.end.y,"low":area.position.x,"high":area.end.x}
+		"west":return {"horizontal":false,"line":area.position.x,"low":area.position.y,"high":area.end.y}
+	return {"horizontal":false,"line":area.end.x,"low":area.position.y,"high":area.end.y}
+
+## The parts of one room edge no existing wall already covers. A room drawn
+## against the house reuses its wall instead of stacking a second panel on it.
+static func _uncovered_spans(state:Dictionary,edge:Dictionary,level:int) -> Array:
+	var spans:Array=[Vector2(float(edge.low),float(edge.high))]
+	for wall:Dictionary in state.walls:
+		if int(wall.level)!=level or (float(wall.w)>=float(wall.d))!=bool(edge.horizontal):continue
+		var line:float=float(wall.z) if edge.horizontal else float(wall.x)
+		if absf(line-float(edge.line))>.08:continue
+		var center:float=float(wall.x) if edge.horizontal else float(wall.z)
+		var half:float=maxf(float(wall.w),float(wall.d))*.5
+		var cut:=Vector2(center-half,center+half)
+		var kept:Array=[]
+		for span:Vector2 in spans:
+			if cut.y<=span.x or cut.x>=span.y:kept.append(span);continue
+			if cut.x>span.x:kept.append(Vector2(span.x,cut.x))
+			if cut.y<span.y:kept.append(Vector2(cut.y,span.y))
+		spans=kept
+	return spans.filter(func(span:Vector2)->bool:return span.y-span.x>=.3)
+
+static func _room_pack(after:Dictionary,operation:Dictionary,level:int) -> Dictionary:
+	if level!=0:return {"error":"Room packs are built on the ground floor."}
+	for key:String in ["ax","az","bx","bz"]:
+		if not Building.number(operation.get(key),-Building.Land.MAX_SPAN,Building.Land.MAX_SPAN):return {"error":"Choose where the room pack goes."}
+	if not Building._material(operation.get("material")):return {"error":"Choose a valid carpet."}
+	var side:String=str(operation.get("door",""))
+	if side not in ROOM_PACK_SIDES:return {"error":"Choose which wall the doorway goes in."}
+	var a:=Vector2(float(operation.ax),float(operation.az));var b:=Vector2(float(operation.bx),float(operation.bz))
+	var area:=Rect2(Vector2(minf(a.x,b.x),minf(a.y,b.y)),(b-a).abs())
+	if area.size.x<2.0 or area.size.y<2.0:return {"error":"A room pack needs at least two metres each way."}
+	var length:float=0.0
+	for edge_side:String in ROOM_PACK_SIDES:
+		var edge:Dictionary=_pack_edge(area,edge_side)
+		for span:Vector2 in _uncovered_spans(after,edge,level):
+			var mid:float=(span.x+span.y)*.5;var run:float=span.y-span.x
+			var wall:Dictionary={"x":mid if edge.horizontal else float(edge.line),"z":float(edge.line) if edge.horizontal else mid,"w":run if edge.horizontal else .14,"d":.14 if edge.horizontal else run}
+			wall.merge({"id":Building._new_id(after,"walls"),"level":level,"height":2.6,"cut":true,"material":"eae7d7"})
+			after.walls.append(wall);length+=run
+	# The doorway goes through whichever wall now stands across the middle of
+	# the chosen edge: a new panel, or the house wall the room was built against.
+	var door_edge:Dictionary=_pack_edge(area,side)
+	var door_at:float=(float(door_edge.low)+float(door_edge.high))*.5
+	if operation.has("door_at"):
+		if not Building.number(operation.get("door_at"),float(door_edge.low)+.65,float(door_edge.high)-.65):return {"error":"Choose a doorway position along that wall."}
+		door_at=float(operation.door_at)
+	var host:Dictionary={}
+	for wall:Dictionary in after.walls:
+		if int(wall.level)!=level or (float(wall.w)>=float(wall.d))!=bool(door_edge.horizontal):continue
+		var line:float=float(wall.z) if door_edge.horizontal else float(wall.x)
+		var center:float=float(wall.x) if door_edge.horizontal else float(wall.z)
+		var half:float=maxf(float(wall.w),float(wall.d))*.5
+		if absf(line-float(door_edge.line))<=.08 and absf(door_at-center)<=half-.6:host=wall;break
+	if host.is_empty():return {"error":"There is no wall long enough for the room's doorway on that side."}
+	var door_error:String=_cut_door(after,host,door_at,level)
+	if not door_error.is_empty():return {"error":door_error}
+	# Carpet is its own floor record over the room, so it wins the finish even
+	# where the house floor already runs beneath; only new area is charged.
+	var before_area:float=Building._union_area(Building._rects(after,"floors",level))
+	after.floors.append({"id":Building._new_id(after,"floors"),"level":level,"x":area.get_center().x,"z":area.get_center().y,"w":area.size.x,"d":area.size.y,"material":str(operation.material)})
+	var added_area:float=maxf(0.0,Building._union_area(Building._rects(after,"floors",level))-before_area)
+	return {"cost":int(length*55+added_area*12)+90}
+
+## Fit a room pack of `size` near `center`: on the quarter-metre grid, with any
+## edge that lands within ROOM_PACK_SNAP of a parallel wall moved onto that wall,
+## so the room shares it instead of leaving a sliver between.
+static func room_pack_rect(state:Dictionary,center:Vector2,size:Vector2,level:int=0) -> Rect2:
+	var c:=Vector2(snappedf(center.x,Building.CELL),snappedf(center.y,Building.CELL))
+	var area:=Rect2(c-size*.5,size)
+	var shift:=Vector2.ZERO;var best:=Vector2(ROOM_PACK_SNAP,ROOM_PACK_SNAP)
+	for wall:Dictionary in state.get("walls",[]):
+		if int(wall.get("level",0))!=level:continue
+		var horizontal:bool=float(wall.w)>=float(wall.d)
+		var half:float=maxf(float(wall.w),float(wall.d))*.5
+		if horizontal:
+			if minf(float(wall.x)+half,area.end.x)-maxf(float(wall.x)-half,area.position.x)<.5:continue
+			for edge:float in [area.position.y,area.end.y]:
+				var move:float=float(wall.z)-edge
+				if absf(move)<best.y:best.y=absf(move);shift.y=move
+		else:
+			if minf(float(wall.z)+half,area.end.y)-maxf(float(wall.z)-half,area.position.y)<.5:continue
+			for edge:float in [area.position.x,area.end.x]:
+				var move:float=float(wall.x)-edge
+				if absf(move)<best.x:best.x=absf(move);shift.x=move
+	area.position+=shift
+	# Keep the whole room on the household's own land.
+	var lot:Rect2=Building.lot().grow(-.3)
+	area.position.x=clampf(area.position.x,lot.position.x,lot.end.x-area.size.x)
+	area.position.y=clampf(area.position.y,lot.position.y,lot.end.y-area.size.y)
+	return area
+
+## Which edge of a room pack gets the doorway. An edge whose far side is already
+## floor opens into the house; an edge built against an existing wall is next
+## best; otherwise the door faces `toward` (the rest of the home).
+static func room_pack_door(state:Dictionary,area:Rect2,toward:Vector2,level:int=0) -> String:
+	return room_pack_door_order(state,area,toward,level)[0]
+
+## Every edge, best doorway first, so a caller that finds the best edge blocked
+## on its far side can try the next.
+static func room_pack_door_order(state:Dictionary,area:Rect2,toward:Vector2,level:int=0) -> Array[String]:
+	var scores:Dictionary={}
+	var floors:Array=Building._rects(state,"floors",level)
+	for side:String in ROOM_PACK_SIDES:
+		var edge:Dictionary=_pack_edge(area,side)
+		var mid:float=(float(edge.low)+float(edge.high))*.5
+		var normal:Vector2={"north":Vector2(0,-1),"south":Vector2(0,1),"west":Vector2(-1,0),"east":Vector2(1,0)}[side]
+		var point:Vector2=(Vector2(mid,float(edge.line)) if edge.horizontal else Vector2(float(edge.line),mid))
+		var score:float=0.0
+		for floor:Rect2 in floors:
+			if floor.has_point(point+normal*.6) and not area.has_point(point+normal*.6):score+=4.0;break
+		if _uncovered_spans(state,edge,level).is_empty():score+=2.0
+		var to:Vector2=toward-area.get_center()
+		if to.length()>.01:score+=normal.dot(to.normalized())
+		scores[side]=score
+	var order:Array[String]=ROOM_PACK_SIDES.duplicate()
+	order.sort_custom(func(a:String,b:String)->bool:return float(scores[a])>float(scores[b]))
+	return order
+
+## Where along a room pack's edge the doorway can open onto clear floor, nearest
+## the middle first. `clear` answers whether a lot point is free to stand on;
+## returns NAN when nowhere on that edge is.
+static func room_pack_door_at(area:Rect2,side:String,clear:Callable) -> float:
+	var edge:Dictionary=_pack_edge(area,side)
+	var mid:float=(float(edge.low)+float(edge.high))*.5
+	var normal:Vector2={"north":Vector2(0,-1),"south":Vector2(0,1),"west":Vector2(-1,0),"east":Vector2(1,0)}[side]
+	var reach:float=(float(edge.high)-float(edge.low))*.5-.65
+	var step:float=0.0
+	while step<=reach+.001:
+		for at:float in ([mid] if step==0.0 else [mid+step,mid-step]):
+			var point:Vector2=(Vector2(at,float(edge.line)) if edge.horizontal else Vector2(float(edge.line),at))
+			var ok:bool=true
+			for across:float in [-.35,0.0,.35]:
+				var sample:Vector2=point+normal*.6+(Vector2(across,0) if edge.horizontal else Vector2(0,across))
+				if not bool(clear.call(sample)):ok=false;break
+			if ok:return at
+		step+=Building.CELL
+	return NAN
 
 ## The existing wall a proposed wall would duplicate, or an empty dictionary. A
 ## room drawn against another room must share the wall between them rather than
@@ -257,10 +428,7 @@ static func _room_walls(state:Dictionary,start:Dictionary,level:int,side:Variant
 			if region.has(nxt) or solid.has(nxt):continue
 			region[nxt]=true;frontier.append(nxt)
 			if region.size()>4000:escaped=true;break
-	if escaped:print("ROOMDBG escaped region_size=",region.size())
-	print("ROOMDBG west=",region.has(Vector2i(-12,0))," east=",region.has(Vector2i(12,0))," north_gap_seal=",region.has(Vector2i(0,0)),solid.has(Vector2i(0,0)),seams.has(Vector2i(0,0)))
 	var room:Array=[start]
-	print("ROOMDBG region_size=",region.size()," solid=",solid.size()," seams=",seams.size()," begin=",begin)
 	for wall:Dictionary in state.walls:
 		if int(wall.level)!=int(level) or room.has(wall):continue
 		var wends:Array=_wall_ends(wall)

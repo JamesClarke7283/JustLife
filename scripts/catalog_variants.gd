@@ -208,7 +208,11 @@ static func height(data: Dictionary, size: String) -> float:
 
 
 ## Labels for the picker.
-static func style_label(style: String) -> String:
+## A family with numbered styles names them in its own `style_labels`, so the
+## picker says "Tied back" rather than "03".
+static func style_label(style: String, data: Dictionary = {}) -> String:
+	var named: Variant = data.get("style_labels", {})
+	if named is Dictionary and named.has(style): return str(named[style])
 	return "Classic" if style.is_empty() else style.capitalize()
 
 

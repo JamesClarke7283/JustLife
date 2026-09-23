@@ -76,10 +76,10 @@ const ITEMS = {
 		"wall_mounted":true},
 	"toy_chest": {"label":"Toy chest", "category":"Baby & Kids", "price":40, "size":Vector2(.9,.55), "height":.7, "color":"ab7951", "tint":true,
 		"colors":["ab7951","c97c66","6f8fa8","417a71","c9a05a"]},
-	"nursery_room_pack": {"label":"Nursery room pack", "category":"Baby & Kids", "price":2000, "size":Vector2(4.5,4.0), "height":2.2, "color":"8faf9f",
-		"description":"Furnished nursery with carpet, pictures and curtains. Snaps into the room you build."},
-	"child_bedroom_pack": {"label":"Child bedroom pack", "category":"Baby & Kids", "price":2000, "size":Vector2(4.5,4.0), "height":2.2, "color":"d7ae7e",
-		"description":"Furnished child bedroom with carpet, pictures and curtains."},
+	"nursery_room_pack": {"label":"Nursery room pack", "category":"Baby & Kids", "price":2000, "size":Vector2(4.5,4.0), "height":2.2, "color":"8faf9f", "room_pack":true,
+		"description":"Builds a carpeted 4.5 × 4 m nursery with its own doorway, sharing any wall it meets, then furnishes it: cot, mobile, changing table, rocking chair, play mat, pictures and curtains. ℒ2000 all in."},
+	"child_bedroom_pack": {"label":"Child bedroom pack", "category":"Baby & Kids", "price":2000, "size":Vector2(4.5,4.0), "height":2.2, "color":"d7ae7e", "room_pack":true,
+		"description":"Builds a carpeted 4.5 × 4 m child's bedroom with its own doorway, sharing any wall it meets, then furnishes it: bed, desk and chair, bookcase, toy chest, pictures and curtains. ℒ2000 all in."},
 	"computer": {"label":"Home office computer", "category":"Activities", "price":900, "size":Vector2(1.45,.75), "height":1.4, "color":"ab7951"},
 	"piano": {"label":"Parlour upright piano", "category":"Activities", "price":1200, "size":Vector2(1.55,1.3), "height":1.36, "color":"624435"},
 	"chess": {"label":"Quiet strategy games table", "category":"Activities", "price":240, "size":Vector2(.85,2.0), "height":.85, "color":"ab7951"},
@@ -189,11 +189,13 @@ const ITEMS = {
 		"styles":[""], "colors":["c97c66","6f8fa8","d9a0a0","417a71","c9a05a","efeadb","4a4f55","7d6b93","8faf9f","a8674f"]},
 	"child_car_seat": {"label":"Child car seat", "category":"Vehicles", "price":50, "size":Vector2(.6,.55), "height":.75, "color":"417a71", "tint":true,
 		"styles":[""], "colors":["417a71","c97c66","6f8fa8","d9a0a0","c9a05a","efeadb","4a4f55","7d6b93","8faf9f","a8674f"]},
-	# Curtain packs: two panels that snap over a window. Ten styles × ten colours.
-	"curtains": {"label":"Curtain set", "category":"Decor", "price":100, "size":Vector2(1.4,.12), "height":1.6, "color":"c97c66", "tint":true,
+	# Curtain packs: two panels that snap over a window. Ten authored styles
+	# (tools/create_curtains.py) × ten colours on the fabric's Tint surface.
+	"curtains": {"label":"Curtain set", "category":"Decor", "price":100, "size":Vector2(2.6,.14), "height":2.4, "color":"c97c66", "tint":true,
 		"styles":["01","02","03","04","05","06","07","08","09","10"],
+		"style_labels":{"01":"Pinch pleat","02":"Tab top","03":"Tied back","04":"Café","05":"Box pelmet","06":"Swag and tails","07":"Layered sheer","08":"Eyelet","09":"Shaped pelmet","10":"Nursery scallop"},
 		"colors":["c97c66","417a71","efeadb","7195b3","bd9b68","3d4145","d9a0a0","6e5470","8faf9f","a8674f"],
-		"wall_mounted":true},
+		"wall_mounted":true, "window_snap":true},
 	# A bike is ridden: riding needs a helmet, and `ride_from` names the youngest
 	# life stage that may ride each one, so a child takes the small bike.
 	"bike_adult": {"label":"Adult bicycle", "category":"Vehicles", "price":120, "size":Vector2(1.7,.5), "height":1.1, "color":"4a6b5c", "tint":true,
@@ -298,7 +300,7 @@ const CATEGORIES: Array[String] = ["All", "Comfort", "Bedroom", "Baby & Kids", "
 const INSTRUMENTS: Array[String] = ["guitar", "violin"]
 
 # Floor coverings and wall decor: they never block routes, walls or other furnishings.
-const PASSABLE: Array[String] = ["rug", "painting", "wall_clock", "shelf", "yoga_mat", "room_light", "memorial"]
+const PASSABLE: Array[String] = ["rug", "child_rug", "painting", "wall_clock", "shelf", "yoga_mat", "room_light", "memorial", "curtains"]
 ## Decor that hangs flat against a wall, kept as a list for the pieces that have
 ## always been authored that way. A catalogue entry may also declare
 ## `"wall_mounted": true` for itself, and `wall_mounted(kind)` is the one
@@ -484,6 +486,46 @@ static func child_bedroom_preset() -> Array:
 		["toy_chest",1.6,2.8,90],["lamp",5.1,1.2,0],["curtains",3.4,4.85,180],
 		["bookshelf",1.4,4.2,180],
 	]
+
+## How a room pack furnishes the room it builds, relative to that room rather
+## than to the lot. `x` runs from the left wall (−1) to the right wall (1) and
+## `z` from the doorway wall (−1) to the back wall (1), as seen walking in; ±1
+## means flush against that wall. `facing` is the wall the piece's front turns
+## toward ("door", "back", "left", "right"). `wall` pieces hang on the named
+## wall; curtains then centre on a window in any of the room's walls.
+static func room_pack_layout(kind: String) -> Array:
+	if kind == "nursery_room_pack":
+		return [
+			{"kind":"cot","x":-.15,"z":1.0,"facing":"door"},
+			{"kind":"baby_mobile","x":.42,"z":1.0,"facing":"door"},
+			{"kind":"changing_table","x":1.0,"z":.15,"facing":"left"},
+			{"kind":"rocking_chair","x":-1.0,"z":-.45,"facing":"right"},
+			{"kind":"child_rug","x":-.05,"z":-.05,"facing":"door","size":"medium"},
+			{"kind":"baby_mat","x":-.15,"z":-.05,"facing":"door"},
+			{"kind":"baby_rattle","x":.35,"z":-.1,"facing":"door"},
+			{"kind":"lamp","x":-1.0,"z":1.0,"facing":"door"},
+			{"kind":"children_picture","wall":"left","along":.55,"style":"01"},
+			{"kind":"children_picture","wall":"right","along":-.6,"style":"03"},
+			{"kind":"curtains","wall":"back","along":0.0,"style":"10","color":"d9a0a0"},
+		]
+	if kind == "child_bedroom_pack":
+		return [
+			{"kind":"child_bed","x":-.55,"z":1.0,"facing":"door"},
+			{"kind":"toy_chest","x":-.55,"z":-.3,"facing":"door"},
+			{"kind":"child_desk","x":1.0,"z":.35,"facing":"left"},
+			{"kind":"child_chair","x":.62,"z":.35,"facing":"right"},
+			{"kind":"bookshelf","x":.45,"z":1.0,"facing":"door"},
+			{"kind":"child_rug","x":.2,"z":-.15,"facing":"door","size":"medium"},
+			{"kind":"lamp","x":-1.0,"z":-1.0,"facing":"right"},
+			{"kind":"children_picture","wall":"left","along":.5,"style":"02"},
+			{"kind":"children_picture","wall":"right","along":-.6,"style":"04"},
+			{"kind":"curtains","wall":"back","along":0.0,"style":"03","color":"7195b3"},
+		]
+	return []
+
+## The carpet each room pack lays on its floor.
+static func room_pack_carpet(kind: String) -> String:
+	return "c9d8cf" if kind == "nursery_room_pack" else "b9c7d9"
 
 static func nursery_preset_price() -> int:
 	return 2000

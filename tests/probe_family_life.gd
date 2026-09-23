@@ -43,8 +43,8 @@ func _run() -> void:
 		check(LifeCatalog.ITEMS.has(kind), "Catalogue sells %s." % kind)
 		if kind.ends_with("_pack"):
 			continue
-		var path: String = "res://assets/models/%s.glb" % kind
-		check(ResourceLoader.exists(path), "Mesh exists for %s." % kind)
+		for path: String in LifeCatalogVariants.model_paths(kind, LifeCatalog.get_item(kind)):
+			check(ResourceLoader.exists(path), "Mesh exists for %s: %s." % [kind, path.get_file()])
 
 	check(LifeCatalog.nursery_preset_price() == 2000, "Nursery pack is ℒ2000.")
 	check(LifeCatalog.child_bedroom_preset_price() == 2000, "Child bedroom pack is ℒ2000.")
