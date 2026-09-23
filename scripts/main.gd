@@ -6028,6 +6028,7 @@ func _adopt_loaded_world(prepared:Dictionary,slot_id:String,title:String="") -> 
 	# provider must point at this controller, not the candidate that built it.
 	household.set_home_value_provider(home_value)
 	sim=household.selected();bound_member_id=household.selected_id();_bind_member(bound_member_id)
+	_restore_properties(sim.character.world_state.get("properties"))
 	has_active_game=true;active_save_id=slot_id;active_save_name=title
 	household_profiles=[]
 	for member:Dictionary in household.members:household_profiles.append(member.sim.character.duplicate(true))

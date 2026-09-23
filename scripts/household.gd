@@ -642,6 +642,7 @@ func restore_state(data: Dictionary) -> Dictionary:
 		for candidate:Dictionary in candidates:candidate.sim.free()
 		return {"ok":false,"error":pregnancy_error}
 	var homecoming_error:String=LifeBirthHomecoming.validate(data.get("birth_homecoming",LifeBirthHomecoming.fresh()) if data.get("birth_homecoming",null) is Dictionary else LifeBirthHomecoming.fresh())
+	if homecoming_error.is_empty():homecoming_error=_hospital_party_error(data)
 	if not homecoming_error.is_empty():
 		for candidate:Dictionary in candidates:candidate.sim.free()
 		return {"ok":false,"error":homecoming_error}
@@ -758,6 +759,16 @@ func restore_state(data: Dictionary) -> Dictionary:
 	_sync_bill_mirror()
 	restoring=false
 	return {"ok":true,"world":data.get("world",[]).duplicate(true)}
+
+func _hospital_party_error(data:Dictionary) -> String:
+	var homecoming:Variant=data.get("birth_homecoming",null)
+	var party:Array[String]=[]
+	if homecoming is Dictionary and LifeBirthHomecoming.in_hospital(homecoming):party=LifeBirthHomecoming.party_ids(homecoming)
+	for entry:Dictionary in data.members:
+		var away:Variant=entry.state.get("away_state",{})
+		if away is Dictionary and str(away.get("activity",""))=="hospital" and not party.has(str(entry.id)):
+			return "Save holds a Lifelet at the hospital with no birth homecoming to return from."
+	return ""
 
 func _prepare_saved_family(data:Dictionary) -> Dictionary:
 	var ids:Array[String]=[]
@@ -975,7 +986,15 @@ func _sync_bill_mirror() -> void:
 		return
 	for member: Dictionary in members:
 		if member.sim != owner:
-			member.sim.set_bill_mirror(owner.pending_bill, owner.utilities_cut, owner.bills_paid_total, owner.bills_late, owner.last_bill_day, owner.insurance_policy_id)
+			_mirror_bills_onto(member.sim)
+
+## A born or adopted Lifelet is built outside `members`, but the household
+## validator refuses a snapshot whose Lifelets disagree about insurance, so it
+## must carry the shared record before that snapshot is checked.
+func _mirror_bills_onto(sim: LifeSim) -> void:
+	var owner: LifeSim = bill_owner()
+	if owner != null and sim != owner:
+		sim.set_bill_mirror(owner.pending_bill, owner.utilities_cut, owner.bills_paid_total, owner.bills_late, owner.last_bill_day, owner.insurance_policy_id)
 
 ## The outstanding bill as the household sees it, empty when nothing is due.
 func bill() -> Dictionary:
@@ -2204,6 +2223,7 @@ func commit_baby(profile: Dictionary, spawn: Vector3, destination: Vector3, worl
 	baby.career.schedule=LifeCareerSchedule.fresh(day)
 	baby._story_generated_day=day
 	baby.set_aging(str(mother.lifecycle.lifespan),bool(mother.lifecycle.auto_age))
+	_mirror_bills_onto(baby)
 	baby.character.world_state={"player":[spawn.x,spawn.y,spawn.z],"player_rotation":PI,"resource_wait_started":-1.0,"resource_action_active":false,"waiting_action_id":"arrive_home","waiting_target_id":"lot_exit"}
 	var arrival:Dictionary=baby._actions.arrive_home.duplicate(true)
 	arrival.merge({"target_id":"lot_exit","target_kind":"lot_exit","target_position":destination,"elapsed":0.0,"progress":0.0,"phase":"approach","paid":false,"autonomous":false,"baby_serial":int(pregnancy.get("serial",1))},true)
@@ -2557,6 +2577,7 @@ func commit_adoption(request:Dictionary,spawn:Vector3,destination:Vector3,world_
 	child._story_generated_day=day
 	var guardian:LifeSim=member_sim(str(request.guardians[0]))
 	child.set_aging(str(guardian.lifecycle.lifespan),bool(guardian.lifecycle.auto_age))
+	_mirror_bills_onto(child)
 	child.character.world_state={"player":[spawn.x,spawn.y,spawn.z],"player_rotation":PI,"resource_wait_started":-1.0,"resource_action_active":false,"waiting_action_id":"arrive_home","waiting_target_id":"lot_exit"}
 	var arrival:Dictionary=child._actions.arrive_home.duplicate(true)
 	arrival.merge({"target_id":"lot_exit","target_kind":"lot_exit","target_position":destination,"elapsed":0.0,"progress":0.0,"phase":"approach","paid":false,"autonomous":false,"adoption_serial":int(request.serial)},true)

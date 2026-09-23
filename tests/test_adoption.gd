@@ -119,6 +119,15 @@ func _boundaries() -> void:
 	household.set_funds(2500);household.selected().character.age_stage="teen";household.selected().character.life_stage="minor"
 	check(not bool(apply(household,prepared.request).ok),"A guardian becoming ineligible before confirmation is rechecked.")
 	household.free()
+	household=fixture(1)
+	check(bool(household.buy_insurance("home").ok),"The fixture household takes out home insurance.")
+	prepared=household.prepare_adoption(["player"],0)
+	var insured:Dictionary=apply(household,prepared.request)
+	check(bool(insured.ok),"An insured household can adopt: %s" % str(insured.get("error","")))
+	if bool(insured.ok):
+		check(str(household.member_sim(str(insured.child)).insurance_policy_id)=="home","The adopted child shares the household's insurance.")
+		positive(state(household),"An insured household with an adopted child saves.")
+	household.free()
 	for date:int in [5,6,100]:
 		household=fixture(1,date);prepared=household.prepare_adoption(["player"],0)
 		check(bool(apply(household,prepared.request).ok),"Late/day-%d entry validates without retroactive absences." % date)

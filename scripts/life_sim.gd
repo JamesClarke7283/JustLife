@@ -3681,7 +3681,7 @@ func get_mood() -> Dictionary:
 
 
 func get_state() -> Dictionary:
-	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "bladder_grace":bladder_grace, "starvation_minutes":starvation_minutes, "exhaustion_minutes":exhaustion_minutes, "deferred_passing_minutes":deferred_passing_minutes, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "degree": degree, "criminal_record": criminal_record.duplicate(true), "wants": wants.duplicate(true), "whims": whims.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "last_bill_day": last_bill_day, "pending_bill":pending_bill.duplicate(true), "bills_paid_total":bills_paid_total, "bills_late":bills_late, "utilities_cut":utilities_cut, "insurance_policy_id":insurance_policy_id, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "routine_memory_days":routine_memory_days.duplicate(true)}
+	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "second_wind": second_wind, "bladder_grace":bladder_grace, "starvation_minutes":starvation_minutes, "exhaustion_minutes":exhaustion_minutes, "deferred_passing_minutes":deferred_passing_minutes, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "degree": degree, "criminal_record": criminal_record.duplicate(true), "wants": wants.duplicate(true), "whims": whims.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "last_bill_day": last_bill_day, "pending_bill":pending_bill.duplicate(true), "bills_paid_total":bills_paid_total, "bills_late":bills_late, "utilities_cut":utilities_cut, "insurance_policy_id":insurance_policy_id, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "routine_memory_days":routine_memory_days.duplicate(true)}
 
 
 func save_game(world_data: Array = []) -> bool:
@@ -3937,6 +3937,8 @@ func _validate_away_state(state:Dictionary) -> String:
 	# than by a queued action, so it is validated against that record.
 	if str(state.get("away_state",{}).get("activity",""))=="prison":
 		return _validate_prison_away_state(state)
+	if str(state.get("away_state",{}).get("activity",""))=="hospital":
+		return _validate_hospital_away_state(state)
 	if str(state.get("away_state",{}).get("activity",""))=="career" or state.action_queue.any(func(action:Dictionary)->bool:return str(action.id)=="career_day"):
 		return _validate_career_away_state(state)
 	return _validate_school_away_state(state)
@@ -3955,6 +3957,25 @@ func _validate_prison_away_state(state:Dictionary) -> String:
 	if _autonomy_integer(value.get("departure_day"),1,int(state.day))==false:return "Save contains an invalid prison departure."
 	if not _autonomy_integer(value.get("return_day"),int(value.get("departure_day",0)),1000000):return "Save contains an invalid prison release day."
 	if int(value.get("return_day",0))!=int(record.get("prison_until_day",0)):return "Save disagrees about when the sentence ends."
+	return ""
+
+
+## Validate a saved hospital stay after a birth. It has no timed return: Welcome
+## Baby Home ends it, so it only has to be a real, already-begun absence that no
+## school or work departure contradicts.
+func _validate_hospital_away_state(state:Dictionary) -> String:
+	var value:Dictionary=state.get("away_state",{})
+	if not _autonomy_integer(value.get("version"),1,1) or str(value.get("phase",""))!="away":return "Save contains an unsupported hospital stay."
+	if state.action_queue.any(func(action:Dictionary)->bool:return str(action.id) in ["school_day","career_day"]):return "Save leaves for school or work from the hospital."
+	if not _autonomy_integer(value.get("departure_day"),1,int(state.day)) or not _number_in_range(value.get("departure_minutes"),0.0,1439.99999):return "Save contains an invalid hospital arrival."
+	if not _autonomy_integer(value.get("return_day"),int(value.departure_day),1000000):return "Save contains an invalid hospital stay."
+	var position:Variant=value.get("exit_position")
+	if position is Vector3:
+		if not position.is_finite():return "Save contains an invalid hospital return position."
+	elif position is Array and position.size()==3:
+		for component:Variant in position:
+			if not _number_in_range(component,-100000.0,100000.0):return "Save contains an invalid hospital return position."
+	else:return "Save contains an invalid hospital return position."
 	return ""
 
 

@@ -367,7 +367,9 @@ static func validate(value: Variant, data: Dictionary) -> String:
 	if float(state.conceived_at) > now + .001:
 		return "Save contains a pregnancy conceived in the future."
 	if bool(state.active):
-		if float(state.due_at) - float(state.conceived_at) != PREGNANCY_MINUTES:
+		# `due_at` is `conceived_at + term` in floating point, so subtracting a
+		# fractional conception minute back out need not give the term exactly.
+		if absf(float(state.due_at) - float(state.conceived_at) - PREGNANCY_MINUTES) > .001:
 			return "Save contains an impossible pregnancy term."
 		if float(state.due_at) < now - .001:
 			return "Save holds a pregnancy past its due date without a birth."
