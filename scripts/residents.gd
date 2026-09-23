@@ -2,12 +2,14 @@ extends RefCounted
 class_name LifeResidents
 ## Stable residents own homes; only actors physically present can be approached.
 const Building=preload("res://scripts/building_state.gd")
+const CarEntry=preload("res://scripts/car_entry.gd")
 const PEOPLE=LifeResidentCatalogue.PEOPLE
 var app:Node
 var locations:Dictionary={}
 var active_place:String=""
 var trip:Dictionary={}
 var car:Node3D
+var car_entry:CarEntry
 var home_visit:LifeHomeVisit
 var sidewalk_routes:Dictionary={}
 var _initiated:Dictionary={}
@@ -25,7 +27,7 @@ func _init(controller:Node) -> void:
   SIDEWALK_LANES[id]=float(PEOPLE[id].get("lane",8.0))
 
 func reset() -> void:
- locations.clear();active_place="";trip.clear();home_visit.reset();sidewalk_routes.clear();_initiated.clear();_anchor_cache.clear()
+ locations.clear();active_place="";trip.clear();car_entry=null;home_visit.reset();sidewalk_routes.clear();_initiated.clear();_anchor_cache.clear()
 
 ## A visiting resident with a household member nearby starts one contact per
 ## game day: a cheerful chat off hours, or looking for company when their
@@ -493,6 +495,11 @@ func begin_trip(destination:String, party: Array = []) -> bool:
  caption.name="TripPhase"
  car=_make_car();app.world.house.add_child(car);car.position=Vector3(0,0,10.25);car.rotation.y=PI*.5
  app.world.camera_target=Vector3(0,0,6.5);app.world.update_camera()
+ # Everyone gets in through a real door once they reach the kerb; babies and
+ # children are buckled into their seats first.
+ var seating:Array=[]
+ for member:Dictionary in travellers:seating.append({"id":str(member.id),"stage":str(member.sim.character.get("age_stage","adult"))})
+ car_entry=CarEntry.new(car,seating)
  trip={"destination":destination,"resume":resume,"phase":"boarding","time":0.0,"boarding":boarding,"canonical":canonical,"party":boarding.keys()}
  return true
 
@@ -554,8 +561,8 @@ func tick_trip(delta:float) -> void:
     boarded=int(record.index)>=route.size()
     actor.animate(delta,1.0,not boarded,"")
    record.boarded=boarded
-   if boarded:actor.visible=false
-   else:all_boarded=false
+   if not boarded:all_boarded=false
+   elif car_entry==null:actor.visible=false
   if not all_boarded and float(trip.time)>60.0:
    # A transition must never hold the household hostage: everyone still out
    # after a minute of boarding is already at the car, so they pile in.
@@ -563,9 +570,16 @@ func tick_trip(delta:float) -> void:
     if not bool(trip.boarding[waiting_id].boarded):
      trip.boarding[waiting_id].boarded=true
      var waiting:LifeActor=app.world.actors[waiting_id]
-     if waiting!=null:waiting.visible=false
+     if waiting!=null and car_entry==null:waiting.visible=false
    all_boarded=true
-  if all_boarded:trip.phase="departure";trip.time=0.0;_trip_caption("Driving across Juniper Bay · 15 minutes")
+  if all_boarded and car_entry!=null:
+   # Arrived at the kerb: now the doors, the car seats and getting in.
+   var bodies:Dictionary={}
+   for id:String in trip.boarding:bodies[id]=app.world.actors.get(id)
+   var caption:String=car_entry.caption()
+   if not caption.is_empty():_trip_caption(caption)
+   all_boarded=car_entry.tick(delta,bodies)
+  if all_boarded:car_entry=null;trip.phase="departure";trip.time=0.0;_trip_caption("Driving across Juniper Bay · 15 minutes")
  elif phase=="departure":
   car.position.x=minf(float(trip.time)/2.8,1.0)*21.0
   app.world.camera_target.x=minf(car.position.x*.45,7.0);app.world.update_camera()

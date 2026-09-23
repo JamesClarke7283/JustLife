@@ -1,6 +1,8 @@
 extends Node3D
 class_name LifeActor
 ## Articulated original character. The parent world owns all navigation/movement.
+const ActorMotion = preload("res://scripts/actor_motion.gd")
+const CareProps = preload("res://scripts/care_props.gd")
 
 const JOINT_NAMES: Array[String] = ["Head", "Arm_L", "Arm_R", "Forearm_L", "Forearm_R", "Leg_L", "Leg_R", "Shin_L", "Shin_R"]
 const HAIR_NAMES: Array[String] = ["Hair_Crop", "Hair_Bob", "Hair_Curls", "Hair_Pony", "Hair_Long", "Hair_Buzz", "Hair_Waves", "Hair_Bun", "Hair_Braids", "Hair_Topknot"]
@@ -142,6 +144,7 @@ var _seasoning_weight: float = 0.0
 var _preparation_tip: Vector3 = Vector3.ZERO
 var _seasoning_axis: Vector3 = Vector3.DOWN
 var _meal_fork: Node3D
+var _care_props: CareProps
 var _meal_tip: Vector3 = Vector3.ZERO
 
 
@@ -594,9 +597,15 @@ func set_activity_anchor(world_position: Vector3,world_yaw: float,anchor_kind: S
 
 	if details.get("desk_surface_y") is float or details.get("desk_surface_y") is int:
 		if is_finite(float(details.desk_surface_y)): _activity_anchor["desk_surface_y"] = float(details.desk_surface_y)
-	for key: String in ["desk_front_edge","desk_forward","attention_target","plate_position","mop_contact"]:
+	for key: String in ["desk_front_edge","desk_forward","attention_target","plate_position","mop_contact","swim_from","swim_to","care_target","care_forward","care_collar"]:
 		if details.get(key) is Vector3 and details[key].is_finite(): _activity_anchor[key] = details[key]
 	if is_instance_valid(details.get("oven")):_activity_anchor["oven"]=details.oven
+	# Facts for ActorMotion: which garden piece, and the controller's clock
+	# and phase for a pet-care or car beat.
+	for key: String in ["outdoor_kind","care_phase"]:
+		if details.get(key) is String: _activity_anchor[key] = details[key]
+	for key: String in ["care_time","care_progress"]:
+		if (details.get(key) is float or details.get(key) is int) and is_finite(float(details[key])): _activity_anchor[key] = float(details[key])
 
 
 func clear_activity_anchor() -> void:
@@ -1364,6 +1373,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		pose[joint_name] = Vector3.ZERO
 	var offset: Vector3 = interaction_offset
 	var lean: Vector3 = Vector3.ZERO
+	var shaped: Dictionary = {}
 	var breathe: float = sin(t * 2.0)
 	pose["Head"] = Vector3(0.010 * breathe, 0.04 * sin(t * 0.43), 0.013 * sin(t * 0.71))
 	pose["Arm_L"] = Vector3(0.012 * breathe, 0.0, -0.015)
@@ -1688,6 +1698,11 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 			"friendly", "joke", "deep_talk", "flirt", "argue", "ask_partner", "commit", "break_up", "playful_prank", "bold_introduction", "host_a_chat":
 				var gesture_aliases: Dictionary = {"ask_partner":"deep_talk", "commit":"flirt", "break_up":"deep_talk", "playful_prank":"joke", "bold_introduction":"friendly", "host_a_chat":"deep_talk"}
 				_conversation_pose(pose, str(gesture_aliases.get(action_id, action_id)), t)
+			_:
+				if ActorMotion.handles(action_id):
+					shaped = ActorMotion.apply(self, pose, action_id, t)
+					if shaped.has("lean"): lean = shaped.lean
+					if not anchored: offset.y -= float(shaped.get("drop", 0.0))
 	if _accident_visible:_accident_pose(pose)
 	if bool(meal_presentation.get("carrying",false)):
 		# Props keep their authored metre scale across ages. Solve the hands from
@@ -1718,6 +1733,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 			# Match the back of the body at its midpoint to the mattress surface.
 			reference = Vector3(0.0,_hip_height * _height,-.10 * _proportion * visual.scale.z)
 		var world_origin: Vector3 = _activity_anchor.position - world_orientation * reference
+		world_origin.y -= float(shaped.get("drop", 0.0))
 		if action_id=="cook" and _has_oven():
 			var bend:float=LifeOvenSequence.crouch(_cooking_progress())
 			var upright:Basis=Basis(Vector3.UP,float(_activity_anchor.yaw))
@@ -1769,13 +1785,26 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		var shoe:Node3D=rest.shoe
 		if not moving and ((action_id=="cook" and _has_oven()) or (anchored and action_id in ["plant_wee","mop_puddle"])):shoe.global_basis=Basis(Vector3.UP,float(_activity_anchor.yaw))*Basis(rest.shoe_basis)
 		else:shoe.basis=Basis.IDENTITY
-	var seated: bool = not moving and ((action_id in ["relax", "watch", "toilet", "work", "study", "job", "school", "homework", "play_games", "homework_wait", "eat_meal", "bath", "play_piano", "play_chess", "study_hard", "deep_read", "host_a_chat"] and anchor_kind != "standing") or (action_id in ["sleep", "nap"] and anchor_kind == "seat"))
+	var seated: bool = not moving and ((action_id in ["relax", "watch", "toilet", "work", "study", "job", "school", "homework", "play_games", "homework_wait", "eat_meal", "bath", "play_piano", "play_chess", "study_hard", "deep_read", "host_a_chat"] and anchor_kind != "standing") or (action_id in ["sleep", "nap"] and anchor_kind == "seat") or bool(shaped.get("seated", false)))
 	_sit_amount = lerpf(_sit_amount, 1.0 if seated else 0.0, blend)
 	for entry: Dictionary in _sit_shapes:
 		entry.mesh.set_blend_shape_value(int(entry.index), _sit_amount)
 	if not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation and not _reconstructing_meal and not _reconstructing_rest:_update_expression(animation_delta,action_id,blend)
 	if not stair_presentation.is_empty():_apply_stair_pose()
 	_update_held_props(animation_delta,moving,action_id)
+	_present_care_props(shaped.get("props", {}))
+
+
+## The bag, rope or lead a care pose is holding, built the first time one is
+## needed so a household without pets never carries the nodes.
+func _present_care_props(props: Dictionary) -> void:
+	if props.is_empty():
+		if is_instance_valid(_care_props): _care_props.hide_all()
+		return
+	if not is_instance_valid(_care_props):
+		_care_props = CareProps.new()
+		add_child(_care_props)
+	_care_props.present(props)
 
 
 func _baby_kneel_pose(pose: Dictionary, t: float) -> void:

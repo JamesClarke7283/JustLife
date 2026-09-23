@@ -46,6 +46,15 @@ var _configured: bool = false
 var _time: float = 0.0
 var _phase: float = 0.0
 var _base_height: float = 0.0
+var _collar: Node3D
+## The care beat a Lifelet is giving this pet (care_motion.gd), on that beat's
+## own clock, and where the person is.
+var interaction: String = ""
+var interaction_time: float = 0.0
+var _partner: Vector3 = Vector3.ZERO
+
+## How far forward of the neck joint each species' mouth sits.
+const MOUTH_REACH: Dictionary = {"cat": .14, "dog": .22}
 
 
 func _ready() -> void:
@@ -123,6 +132,7 @@ func configure(id: String, new_species: String, appearance: Dictionary, name: St
 	add_child(_model)
 	_head = _model.find_child("Head", true, false) as Node3D
 	_tail = _model.find_child("Tail", true, false) as Node3D
+	_collar = _model.find_child("Collar", true, false) as Node3D
 	for leg_name: String in LEG_NAMES:
 		var leg := _model.find_child(leg_name, true, false) as Node3D
 		if leg != null:
@@ -206,6 +216,12 @@ func _notification(what: int) -> void:
 ## Both go through the same joint setters, so there is no second system.
 func animate(delta: float, moving: bool, speed_factor: float = 1.0) -> void:
 	_time += delta * clampf(speed_factor, 0.0, 3.0) * 0.9
+	var caring: bool = not interaction.is_empty() and not moving
+	_settle_body(delta, caring)
+	if caring:
+		_care_pose(delta)
+		if is_instance_valid(_ring): _ring.rotation.y = _time * 0.6
+		return
 	var stride: float = float(SPECIES_LENGTH.get(species, 0.60))
 	if is_instance_valid(_head):
 		var look: float = sin(_time * 0.7 + _phase) * 0.16
@@ -235,6 +251,103 @@ func animate(delta: float, moving: bool, speed_factor: float = 1.0) -> void:
 		leg.rotation = Vector3(reach, 0.0, 0.0)
 	if is_instance_valid(_ring):
 		_ring.rotation.y = _time * 0.6
+
+
+func set_interaction(id: String, time: float, partner: Vector3) -> void:
+	interaction = id
+	interaction_time = time
+	_partner = partner
+
+
+func clear_interaction() -> void:
+	interaction = ""
+
+
+## The whole body leans, sits, bows or rolls from the model root; with no care
+## beat it eases back to standing.
+func _body_goal(caring: bool) -> Array:
+	var h: float = float(SPECIES_HEIGHT.get(species, 0.30))
+	var scale: float = h / 0.52
+	if not caring: return [Vector3.ZERO, Vector3.ZERO]
+	match interaction:
+		"pet_pet", "pet_teach_trick":
+			return [Vector3(-.38, 0, 0), Vector3(0, .05 * scale, 0)]
+		"pet_tummy_rub":
+			var roll: float = smoothstep(0.0, .9, interaction_time)
+			return [Vector3(0, 0, roll * PI * .92), Vector3(0, roll * h, 0)]
+		"pet_tug":
+			var pull: float = .5 + .5 * sin(interaction_time * 3.2)
+			return [Vector3(.22, 0, 0), Vector3(0, 0, (-.05 + .09 * pull) * scale)]
+		"pet_feed":
+			return [Vector3(.10 if interaction_time > 1.4 else 0.0, 0, 0), Vector3.ZERO]
+	return [Vector3.ZERO, Vector3.ZERO]
+
+
+func _settle_body(delta: float, caring: bool) -> void:
+	if not is_instance_valid(_model): return
+	var goal: Array = _body_goal(caring)
+	var blend: float = 1.0 - exp(-delta * 7.0)
+	_model.rotation = _model.rotation.lerp(goal[0], blend)
+	_model.position = _model.position.lerp(goal[1], blend)
+
+
+## Joint poses for each care beat: sitting up to be stroked, legs in the air
+## for a tummy rub with a happy back-leg kick, a play bow and head shake on the
+## rope, head down in the bowl, a raised paw for a trick.
+func _care_pose(delta: float) -> void:
+	var blend: float = 1.0 - exp(-delta * 9.0)
+	var ct: float = interaction_time
+	var legs: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, Vector3.ZERO]
+	var head := Vector3(-.1, 0, 0)
+	var wag: float = sin(_time * 14.0) * .5
+	match interaction:
+		"pet_pet", "pet_teach_trick":
+			legs = [Vector3(.38, 0, 0), Vector3(.38, 0, 0), Vector3(-1.1, 0, .08), Vector3(-1.1, 0, -.08)]
+			head = Vector3(-.30, 0, .10 * sin(ct * 1.3))
+			if interaction == "pet_teach_trick":
+				var beg: float = smoothstep(1.8, 2.1, fmod(ct, 3.2)) * (1.0 - smoothstep(2.9, 3.2, fmod(ct, 3.2)))
+				legs[1] = Vector3(.38 - 1.3 * beg, 0, 0)
+				head.x -= .15 * beg
+		"pet_tummy_rub":
+			var roll: float = smoothstep(0.0, .9, ct)
+			var burst: float = smoothstep(.55, .75, sin(ct * 1.4))
+			legs = [Vector3(sin(ct * 5.0) * .35 * roll, 0, 0), Vector3(sin(ct * 5.0 + 1.5) * .35 * roll, 0, 0),
+				Vector3((.25 + sin(ct * 18.0) * .7 * burst) * roll, 0, 0), Vector3(.3 * sin(ct * 4.0) * roll, 0, 0)]
+			head = Vector3(-.35 * roll, .15 * sin(ct * .8), 0)
+		"pet_tug":
+			legs = [Vector3(-.35, 0, 0), Vector3(-.35, 0, 0), Vector3(.30, 0, 0), Vector3(.30, 0, 0)]
+			head = Vector3(.12, sin(ct * 11.0) * .35, 0)
+		"pet_feed":
+			if ct > 1.4: head = Vector3(.75 + sin(_time * 7.0) * .08, 0, 0)
+			else: head = Vector3(-.2, 0, 0)
+		_:
+			wag *= .6
+	for index: int in range(_legs.size()):
+		if is_instance_valid(_legs[index]): _legs[index].rotation = _legs[index].rotation.lerp(legs[index], blend)
+	if is_instance_valid(_head): _head.rotation = _head.rotation.lerp(head, blend)
+	if is_instance_valid(_tail): _tail.rotation = Vector3(-.05, wag, 0)
+
+
+## Where a stroking hand runs along the coat.
+func back_point() -> Vector3:
+	return to_global(Vector3(0, float(SPECIES_HEIGHT.get(species, 0.30)) * .97 + .01, -.02))
+
+
+## The upturned tummy while rolled over (and the flank before the roll lands).
+func belly_point() -> Vector3:
+	return to_global(Vector3(0, float(SPECIES_HEIGHT.get(species, 0.30)) * .64, -.02))
+
+
+## The front of the muzzle, where a rope toy is gripped.
+func mouth_point() -> Vector3:
+	if is_instance_valid(_head): return _head.to_global(Vector3(0, -.02, float(MOUTH_REACH.get(species, .14))))
+	return to_global(Vector3(0, float(SPECIES_HEIGHT.get(species, 0.30)) * .85, .45))
+
+
+## The collar ring a lead clips to.
+func collar_point() -> Vector3:
+	if is_instance_valid(_collar): return _collar.global_position + Vector3(0, -.03, 0)
+	return to_global(Vector3(0, float(SPECIES_HEIGHT.get(species, 0.30)) * .78, .27))
 
 
 func set_selected(value: bool) -> void:

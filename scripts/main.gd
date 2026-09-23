@@ -7,6 +7,7 @@ const LifeGroceries = preload("res://scripts/groceries.gd")
 const Variants = preload("res://scripts/catalog_variants.gd")
 const LifeLog = preload("res://scripts/logger.gd")
 const LifeWantsManager = preload("res://scripts/wants_manager.gd")
+const CareMotion = preload("res://scripts/care_motion.gd")
 const RoomPack = preload("res://scripts/room_pack.gd")
 const CREATOR_FACE_GROUPS: Dictionary = {
 	"Shape":["face_round","jaw_strong","chin_length","face_length"],
@@ -1991,14 +1992,23 @@ func _tick_pets(delta:float) -> void:
 	# runs on, and it walks to the bowl or to its own bed when one runs low.
 	if running:
 		moving=_tick_pet_autonomy(delta,float(sim.speed)) or moving
+	# A pet being fed, stroked, walked or played with stays with that Lifelet.
+	var walked:Dictionary=care_motion().present_pets(delta if running else 0.0)
 	for id:String in pet_actors.keys():
 		var actor:LifePetActor=pet_actors.get(id)
 		if not is_instance_valid(actor):
 			pet_actors.erase(id)
 			continue
 		var busy:bool=moving and (pet_arrivals.has(id) or _pet_errand(id).get("walking",false))
-		actor.animate(delta,busy,float(sim.speed) if running else 0.0)
+		actor.animate(delta,busy or walked.has(id),float(sim.speed) if running else 0.0)
 	_refresh_pet_targets()
+
+var _care_motion:CareMotion
+
+## Who is caring for which pet, and how that looks (care_motion.gd).
+func care_motion() -> CareMotion:
+	if _care_motion==null:_care_motion=CareMotion.new(self)
+	return _care_motion
 
 ## One pet's own errand: where it is going and what it is doing there. The
 ## controller owns this, exactly as it owns the household's own routes.
@@ -2017,6 +2027,7 @@ func _tick_pet_autonomy(delta:float,speed:float) -> bool:
 	for id:String in pet_actors.keys():
 		var actor:LifePetActor=pet_actors.get(id)
 		if not is_instance_valid(actor):continue
+		if care_motion().holds(id):continue
 		var record:Dictionary=_pet_record(id)
 		if record.is_empty():continue
 		# The household's own clock already drains a pet's condition through
@@ -3961,7 +3972,8 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 			elif str(a.id)=="supported_homework":show_homework_helpers(item)
 			elif str(a.id)==LifeDancePlan.ACTION_ID:show_dance_partners(item)
 			elif str(a.id)=="drive_car":
-				# Walk-to-car cinematic is a placeholder pose; destination uses the town map.
+				# Pick the destination on the town map; the trip then walks the party
+				# to the car, opens the doors, buckles children in and drives off.
 				close_overlay();show_neighborhood()
 			elif str(a.id)==LifeBabyPlan.ACTION_ID:try_for_baby(item);close_overlay()
 			elif str(a.id)=="stop_try_for_baby":
@@ -4905,7 +4917,13 @@ func queue_interaction(item:Dictionary,id:String) -> void:
 	if item.kind=="pet":
 		var body:LifePetActor=pet_actors.get(str(item.id))
 		if not is_instance_valid(body):show_notice("That pet is not here right now.");return
-		_queue_pet_beat(id,str(item.id),body.position+Vector3(0,0,.8),str(item.get("label","your pet")))
+		var beside:Vector3=body.position+Vector3(0,0,.8)
+		# Feeding happens at the household's bowl: the Lifelet goes there and
+		# the pet comes to eat once the kibble is poured.
+		if id=="pet_feed":
+			var bowl:Dictionary=world.closest_item("pet_bowl",body.position,14.0)
+			if not bowl.is_empty():beside=world.approach(bowl)
+		_queue_pet_beat(id,str(item.id),beside,str(item.get("label","your pet")))
 		return
 	var destination:Vector3=world.approach(item)
 	if item.kind=="neighbor":destination=item.node.position+Vector3(0,0,.8)
@@ -6797,6 +6815,10 @@ func _has_placement_tool() -> bool:
 func _update_activity_facing(delta:float,action:Dictionary,action_id:String) -> void:
 	if player.has_method("clear_activity_anchor"):player.clear_activity_anchor()
 	if action_id.is_empty():return
+	var care:Dictionary=care_motion().anchor(bound_member_id,action,action_id,delta)
+	if not care.is_empty():
+		player.set_activity_anchor(care.position,care.yaw,"standing",action_id,care)
+		return
 	if action_id=="eat_meal":
 		var meal_anchor:Dictionary=meal_flow.eating_anchor(bound_member_id,action)
 		player.set_activity_anchor(meal_anchor.position,meal_anchor.yaw,meal_anchor.kind,action_id,meal_anchor)

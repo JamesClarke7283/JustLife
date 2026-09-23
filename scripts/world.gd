@@ -4,6 +4,7 @@ const Building=preload("res://scripts/building_state.gd")
 const RoofRules=preload("res://scripts/roof_rules.gd")
 const Variants=preload("res://scripts/catalog_variants.gd")
 const LotNavigation=preload("res://scripts/lot_navigation.gd")
+const ActorMotion=preload("res://scripts/actor_motion.gd")
 const VIEW_ENVIRONMENT:int=1
 const VIEW_GROUND:int=2
 const VIEW_UPPER:int=4
@@ -1689,6 +1690,25 @@ func _clear_coaching_space(at:Vector3) -> bool:
 			if panel.grow(.29).has_point(Vector2(at.x,at.z)):return false
 	return true
 
+## A swimmer laps the pool along its length at the waterline rather than
+## standing at its edge, a ring or noodle floats in that water, and a soaker sits
+## on the hot tub's bench in the water (authored at 0.16 m and 0.60 m by
+## tools/create_outdoor_water.py). Pool furniture is used in the nearest pool.
+func outdoor_water_anchor(item:Dictionary) -> Dictionary:
+	var kind:String=str(item.get("kind",""))
+	if kind=="hot_tub":
+		var tub:Node3D=item.node
+		return {"position":tub.to_global(Vector3(0,.40,-.46)),"yaw":tub.global_rotation.y,"kind":"seat","outdoor_kind":kind}
+	if kind not in ActorMotion.POOL_KINDS:return {}
+	var pool:Dictionary=item if kind=="pool" else closest_item("pool",item.node.global_position,6.0)
+	if pool.is_empty():return {}
+	var basin:Node3D=pool.node
+	var scale:float=Variants.size_scale(str((pool.get("variant",{}) as Dictionary).get("size","")))
+	var reach:float=maxf(.4,float(LifeCatalog.get_item("pool").size.x)*scale*.5-1.05)
+	var from:Vector3=basin.to_global(Vector3(-reach,.16*scale,0))
+	var to:Vector3=basin.to_global(Vector3(reach,.16*scale,0))
+	return {"position":from,"yaw":atan2(to.x-from.x,to.z-from.z),"kind":"swim","outdoor_kind":kind,"swim_from":from,"swim_to":to}
+
 func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -> Dictionary:
 	var node:Node3D=item.node
 	var local:Vector3=Vector3(0,0,float(item.size.y)*.5+.36)
@@ -1699,6 +1719,9 @@ func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -
 		var toward:Vector3=node.global_position-at
 		at.y=node.global_position.y
 		return {"position":at,"yaw":atan2(toward.x,toward.z),"kind":"standing","mop_contact":node.global_position}
+	if action_id==LifeOutdoorActs.ACTION_ID:
+		var water:Dictionary=outdoor_water_anchor(item)
+		if not water.is_empty():return water
 	if str(item.kind)=="stove" and action_id=="cook" and str(landmarks.get("recipe",""))=="harvest_bake":
 		var at:Vector3=landmarks.get("cooking_position",oven_approach(item))
 		at.y=node.global_position.y
