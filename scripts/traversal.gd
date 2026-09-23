@@ -215,6 +215,11 @@ func _walk(id:String,route:Dictionary,time:float,consider_courtesy:bool=true)->D
 		var next:Vector3=actor.position+difference/distance*step
 		if not courtesy.step_allowed(self,id,actor.position,next):return {"time":0.0,"moved":moved,"blocked":true}
 		var can_squeeze:bool=bool(route.get("squeeze",false)) and _step_clear_of_structure(id,actor.position,next) and not _use_point_occupied(id,next)
+		# Meal carriers: refuse the step when a peer sits only in the planner's
+		# wider clearance so standoff/make-way can run. BODY_GAP itself is
+		# unchanged for ordinary walkers and courtesy sweeps.
+		if _meal_dead_zone_peer(id,actor.position,next) and not can_squeeze:
+			return {"time":0.0,"moved":moved,"blocked":true}
 		if not _step_clear(id,actor.position,next) and not can_squeeze:
 			if not _step_clear_of_structure(id,actor.position,next) and courtesy.step_allowed(self,id,actor.position,next):
 				# Even without any body nearby this step is refused by walls,
@@ -533,8 +538,10 @@ func validate_occupancy()->Dictionary:
 
 # --- Standoffs: yielding in doorways and at shared use points ---------------
 
-func _blocking_bodies(id:String,from:Vector3,to:Vector3)->Array:
-	# The same body test as _step_clear, returning who refuses the step.
+func _blocking_bodies(id:String,from:Vector3,to:Vector3,gap:float=BODY_GAP)->Array:
+	# The same body test as _step_clear, returning who refuses the step. Callers
+	# that need the planner's wider body budget (ROUTE_CLEARANCE) pass that gap
+	# so a standoff can still form in the .72–.78m dead zone.
 	var found:Array=[]
 	for other_id:String in app.world.actors:
 		if other_id==id:continue
@@ -544,10 +551,20 @@ func _blocking_bodies(id:String,from:Vector3,to:Vector3)->Array:
 		var step:Vector3=to-from
 		var part:float=clampf((actor.position-from).dot(step)/maxf(.00000001,step.length_squared()),0.0,1.0)
 		var closest:float=from.lerp(to,part).distance_to(actor.position)
-		if before<BODY_GAP:
+		if before<gap:
 			if after<=before+.000001 or closest<before-.000001:found.append(other_id)
-		elif closest<BODY_GAP-.000001:found.append(other_id)
+		elif closest<gap-.000001:found.append(other_id)
 	return found
+
+func _meal_dead_zone_peer(id:String,from:Vector3,to:Vector3)->bool:
+	# A carried meal cannot enter courtesy.blocked (note_block requires a
+	# courtesy-eligible donor). Steps still clear at BODY_GAP while planning
+	# treats the peer as an obstacle at ROUTE_CLEARANCE, so two meal walkers
+	# can freeze ~.75m apart with no block and no standoff. Detect that annulus.
+	if app.household.meals.carried_by(id).is_empty():return false
+	var plan_blockers:Array=_blocking_bodies(id,from,to,ROUTE_CLEARANCE)
+	if plan_blockers.is_empty():return false
+	return _blocking_bodies(id,from,to,BODY_GAP).is_empty()
 
 func _corridor_points(route:Dictionary)->PackedVector3Array:
 	var points:PackedVector3Array=PackedVector3Array()
@@ -610,6 +627,10 @@ func _resolve_standoff(id:String,route:Dictionary)->void:
 	var actor:LifeActor=app.world.actors[id]
 	var next:Vector3=route.points[int(route.point)]
 	var blockers:Array=_blocking_bodies(id,actor.position,next)
+	# Meal walkers that froze in the .72–.78m planner/step gap still need a peer
+	# to yield to; widen only the standoff lookup, not the step test.
+	if blockers.is_empty() and not app.household.meals.carried_by(id).is_empty():
+		blockers=_blocking_bodies(id,actor.position,next,ROUTE_CLEARANCE)
 	if blockers.is_empty():return
 	blockers.sort()
 	for other_id:String in blockers:
