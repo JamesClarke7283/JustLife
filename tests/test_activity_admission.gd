@@ -88,7 +88,10 @@ func _policy_controls()->void:
 	check(person.get_current_action().id=="paint" and not is_same(current,person.get_current_action()) and not person.get_current_action().paid,"The same automatic choice may interrupt when live ownership becomes free.");owner.action_queue.assign(original_queue);person.free()
 	person=_make_policy();person.needs.fun=4;person.needs.hygiene=5;person._reconsider_active_autonomy();check(person.get_current_action().id=="paint","Standalone LifeSim without a provider preserves its prior replacement behavior.");person.free()
 	person=_make_policy();person.needs.hunger=3;person.autonomy_activity_available=_record_availability;calls.clear();person._reconsider_active_autonomy()
-	check(person.get_current_action().id=="snack" and calls.size()==1 and not person.get_current_action().paid,"A genuinely available urgent hunger recovery still interrupts the ordinary reading approach.");person.free()
+	# first_meal keeps cook ahead of snack while that want is open (d11fa58); either
+	# recovery is a genuine hunger interrupt of the reading approach.
+	var hunger_id:String=str(person.get_current_action().get("id",""))
+	check(hunger_id in ["snack","cook"] and calls.size()==1 and not person.get_current_action().paid,"A genuinely available urgent hunger recovery still interrupts the ordinary reading approach.");person.free()
 	person=_make_policy();person.minutes=600;person.autonomy_activity_available=_record_availability;calls.clear();person._reconsider_active_autonomy()
 	check(person.get_current_action().id=="career_day" and calls.size()==1 and not person.get_current_action().paid,"A due available work departure still interrupts an optional approach.");person.free()
 	person=_make_policy();person.autonomy_activity_available=_deny_record;calls.clear();person.needs.hunger=3

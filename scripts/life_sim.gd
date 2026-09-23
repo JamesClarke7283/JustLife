@@ -2947,14 +2947,7 @@ func _brief_leisure_fits(duty:String,excluded_target_ids:Array=[]) -> bool:
 		return true
 	return false
 
-func _autonomy_need_choice(need:String,excluded_target_ids:Array=[],preparing:bool=false) -> Dictionary:
-	if need=="social":return _autonomy_social_choice(excluded_target_ids)
-	# A kitchen with nothing in it has no meal to choose, so the household's own
-	# shop is the recovery: a hungry Lifelet with an empty fridge and no delivery
-	# on its way orders one rather than queueing a meal it cannot cook.
-	if need=="hunger" and is_instance_valid(grocery_service) and str(grocery_service.grocery_availability()).is_empty():
-		var shopping:Dictionary=_autonomy_target_for("order_groceries",excluded_target_ids)
-		if not shopping.is_empty():return shopping
+func _autonomy_need_candidates(need:String,excluded_target_ids:Array=[],preparing:bool=false) -> Array[String]:
 	var candidates:Array[String]=[]
 	match need:
 		"hunger":
@@ -3006,6 +2999,28 @@ func _autonomy_need_choice(need:String,excluded_target_ids:Array=[],preparing:bo
 					overflow.sort_custom(func(a:String,b:String)->bool:return float(_actions[a].duration)<float(_actions[b].duration))
 					fitting.append_array(overflow)
 				candidates=fitting
+	return candidates
+
+func _autonomy_need_ranks_earlier(need:String,preferred_id:String,other_id:String) -> bool:
+	# Catalogue order only: used to allow read→paint while Fun is critical without
+	# also allowing the busy-easel fallback paint→read.
+	var candidates:Array[String]=_autonomy_need_candidates(need)
+	var preferred_at:int=candidates.find(preferred_id)
+	var other_at:int=candidates.find(other_id)
+	if preferred_at<0:return false
+	if other_at<0:return true
+	return preferred_at<other_at
+
+func _autonomy_need_choice(need:String,excluded_target_ids:Array=[],preparing:bool=false) -> Dictionary:
+	if need=="social":return _autonomy_social_choice(excluded_target_ids)
+	# A kitchen with nothing in it has no meal to choose, so the household's own
+	# shop is the recovery: a hungry Lifelet with an empty fridge and no delivery
+	# on its way orders one rather than queueing a meal it cannot cook.
+	if need=="hunger" and is_instance_valid(grocery_service) and str(grocery_service.grocery_availability()).is_empty():
+		var shopping:Dictionary=_autonomy_target_for("order_groceries",excluded_target_ids)
+		if not shopping.is_empty():return shopping
+	var candidates:Array[String]=_autonomy_need_candidates(need,excluded_target_ids,preparing)
+	if candidates.is_empty():return {}
 	if need!="fun":
 		# Physical needs keep their preference order and fair waiting: a bed is
 		# worth a short queue even when a sofa nap is free. A queue longer than
@@ -3141,13 +3156,24 @@ func _reconsider_active_autonomy() -> void:
 	# A low need only earns an interruption when the replacement actually
 	# recovers it. Otherwise a free sink can cancel a walk to the easel and the
 	# Lifelet starts reading, which was never the urgent errand.
+	#
+	# Accept the need's own autonomous recovery (cook for an open first-meal want)
+	# as well as positive need deltas. Prefer an earlier catalogue pick for a
+	# critical need the current action already raises (read → paint) without
+	# allowing the busy-easel fallback (paint → read).
 	if danger and not duty_ready and not preparation_ready:
 		var next_changes:Dictionary=_actions.get(str(next.id),{}).get("changes",{})
 		var addresses_danger:bool=false
 		for need:String in NEED_NAMES:
-			if float(needs[need])<12.0 and float(current.changes.get(need,0.0))<=0.0 and float(next_changes.get(need,0.0))>0.0:
-				addresses_danger=true
-				break
+			if float(needs[need])>=12.0:continue
+			var current_helps:bool=float(current.changes.get(need,0.0))>0.0
+			var next_helps:bool=float(next_changes.get(need,0.0))>0.0
+			var recovery:Dictionary=_autonomy_need_choice(need)
+			var next_is_recovery:bool=not recovery.is_empty() and str(recovery.id)==str(next.id) and str(recovery.target_id)==str(next.target_id)
+			if not current_helps and (next_helps or next_is_recovery):
+				addresses_danger=true;break
+			if current_helps and next_is_recovery and _autonomy_need_ranks_earlier(need,str(next.id),str(current.id)):
+				addresses_danger=true;break
 		if not addresses_danger:return
 	# A carried portion can resolve many meal targets to the same owned plate.
 	# Let its real eating approach arrive instead of releasing and reclaiming
