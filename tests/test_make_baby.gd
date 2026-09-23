@@ -215,7 +215,7 @@ func _beat_case()->void:
 	check(is_equal_approx(float(ada.action_queue[0].get("elapsed",0.0)),float(ben.action_queue[0].get("elapsed",0.0))),"The pair's beat clocks stay together.")
 	for i:int in range(4):household.tick((LifeBabyPlan.DURATION+1.0)/LifeSim.GAME_MINUTES_PER_SECOND)
 	check(household.cooperations.is_empty() and ada.action_queue.size()==1,"Completing the beat clears the session and the beat action together.")
-	# Sims-4 order: the beat conceives a three-day pregnancy, and the birth
+	# Sims-4 order: the beat conceives a pregnancy, and the birth
 	# (when the countdown completes) is what produces the pending baby.
 	check(bool(household.pregnancy.get("active",false)) and not bool(household.pregnancy.get("pending",false)),"The beat's completion begins a pregnancy rather than an instant birth.")
 	check(LifeBabyPlan.days_remaining(household.pregnancy,household.day,household.minutes)==int(LifeBabyPlan.PREGNANCY_DAYS),"The pregnancy runs fourteen game days.")
@@ -229,8 +229,11 @@ func _beat_case()->void:
 	check(baby.is_empty(),"No baby exists before the birth.")
 	# Advance the household clock through the countdown: the birth follows.
 	household.set_speed(1)
+	# The guard follows the real term (fourteen days since 2184c56), with a
+	# day of slack; it used to be sized for the old three-day pregnancy.
 	var guard:int=0
-	while bool(household.pregnancy.get("active",false)) and guard<200:
+	var hours:int=ceili(LifeBabyPlan.PREGNANCY_MINUTES/60.0)+24
+	while bool(household.pregnancy.get("active",false)) and guard<hours:
 		household.tick(60.0/LifeSim.GAME_MINUTES_PER_SECOND)
 		guard+=1
 	check(not bool(household.pregnancy.get("active",false)) and bool(household.pregnancy.get("pending",false)),"Completing the countdown delivers the birth.")
@@ -256,8 +259,11 @@ func _creator_case()->void:
 	# the birth event opens the creator, exactly as the Sims-4 flow ends.
 	household.tick((LifeBabyPlan.DURATION+1.0)/LifeSim.GAME_MINUTES_PER_SECOND)
 	household.set_speed(1)
+	# The guard follows the real term (fourteen days since 2184c56), with a
+	# day of slack; it used to be sized for the old three-day pregnancy.
 	var guard:int=0
-	while bool(household.pregnancy.get("active",false)) and guard<200:
+	var hours:int=ceili(LifeBabyPlan.PREGNANCY_MINUTES/60.0)+24
+	while bool(household.pregnancy.get("active",false)) and guard<hours:
 		household.tick(60.0/LifeSim.GAME_MINUTES_PER_SECOND)
 		guard+=1
 	for i:int in range(8):await process_frame
@@ -266,7 +272,9 @@ func _creator_case()->void:
 	check(app.mode=="creator" and app.creator_purpose=="baby","The birth opens the ordinary creator for the baby.")
 	check(app.creator_age_stages()==["baby"],"The baby creator offers the baby stage alone.")
 	check(str(app.profile.get("age_stage",""))=="baby","The creator is seeded as the baby stage.")
-	check(app.household_profiles.size()==1,"The baby creator customises the single new Lifelet.")
+	# Since 2184c56 the parents stay in the profile list (so cancelling cannot
+	# strand the live bar); the creator edits only the appended newborn.
+	check(app.household_profiles.size()==members_before+1 and app.creator_index==app.household_profiles.size()-1 and str(app.household_profiles[app.creator_index].get("age_stage",""))=="baby","The baby creator customises the single new Lifelet.")
 	# Every clothing button the baby creator actually shows must be one the
 	# newborn model has. The ordinary creator drew all five tops and both bottoms
 	# for every stage, and the birth validator refuses clothing a baby's model
@@ -316,7 +324,9 @@ func _creator_case()->void:
 		if str(edge.b)==baby_id:parents.append(str(edge.a))
 	check(parents.has(str(household.members[0].id)) and parents.has(str(household.members[1].id)),"Both parents are recorded in the family graph.")
 	check(app.world.actors.has(baby_id),"The baby is placed at the home lot.")
-	check(str(baby.get_current_action().get("id",""))=="arrive_home","The baby walks home from the street.")
+	# Since 4977452 a newborn waits at the hospital with its mother until
+	# Welcome Baby Home drives them back; it no longer walks in from the street.
+	check(baby.is_away() and str(baby.away_state.get("activity",""))=="hospital" and LifeBirthHomecoming.in_hospital(household.birth_homecoming) and LifeBirthHomecoming.party_ids(household.birth_homecoming).has(baby_id),"The baby waits at the hospital for Welcome Baby Home.")
 	check(household.pregnancy.get("pending",false)==false,"The pending birth is consumed by the confirmation.")
 	app.queue_free();await process_frame
 
@@ -334,8 +344,11 @@ func _persistence_case()->void:
 	await _admit_beat(app)
 	household.tick((LifeBabyPlan.DURATION+1.0)/LifeSim.GAME_MINUTES_PER_SECOND)
 	household.set_speed(1)
+	# The guard follows the real term (fourteen days since 2184c56), with a
+	# day of slack; it used to be sized for the old three-day pregnancy.
 	var guard:int=0
-	while bool(household.pregnancy.get("active",false)) and guard<200:
+	var hours:int=ceili(LifeBabyPlan.PREGNANCY_MINUTES/60.0)+24
+	while bool(household.pregnancy.get("active",false)) and guard<hours:
 		household.tick(60.0/LifeSim.GAME_MINUTES_PER_SECOND)
 		guard+=1
 	for i:int in range(4):await process_frame

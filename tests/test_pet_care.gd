@@ -101,10 +101,11 @@ func _interactions() -> void:
 	var id: String = str(pets[0].id)
 	var who: String = app.household.selected_id()
 	var actions: Array = app.household.pet_actions(id, who)
-	check(actions.size() == LifePetCare.INTERACTIONS.size(),
-		"Every interaction is offered to a grown Lifelet (%d of %d)." % [actions.size(), LifePetCare.INTERACTIONS.size()])
-	check(actions.all(func(a: Dictionary) -> bool: return str(a.id) in ["pet_pet", "pet_tummy_rub", "pet_feed", "pet_play", "pet_tug", "pet_teach_trick", "pet_walk", "pet_train"]),
-		"The card offers petting, a tummy rub, feeding, playing, tug-of-war, trick teaching, walking and training.")
+	# Every LifePetCare interaction, plus the bath a person gives a dirty dog.
+	check(actions.size() == LifePetCare.INTERACTIONS.size() + 1,
+		"Every interaction and the bath are offered to a grown Lifelet (%d of %d)." % [actions.size(), LifePetCare.INTERACTIONS.size() + 1])
+	check(actions.all(func(a: Dictionary) -> bool: return str(a.id) in ["pet_pet", "pet_tummy_rub", "pet_feed", "pet_play", "pet_tug", "pet_teach_trick", "pet_walk", "pet_train", "bathe_pet"]),
+		"The card offers petting, a tummy rub, feeding, playing, tug-of-war, trick teaching, walking, training and a bath.")
 
 	# Feeding really lifts hunger and deepens the bond with the person who fed it.
 	var care: Dictionary = app.household.pet_care(id)

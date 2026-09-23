@@ -563,7 +563,7 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"fireplace": ids = ["warm_up"]
 		"urn", "tombstone", "memorial": ids = ["remember_life", "mourn", "leave_flowers", "remember_passed"]
 		"neighbor", "maya", "leo", "priya", "tom": ids = SOCIAL_ACTIONS
-		"pet": ids = ["pet_feed", "pet_pet", "pet_tummy_rub", "pet_play", "pet_tug", "pet_teach_trick", "pet_walk", "pet_train"]
+		"pet": ids = ["pet_feed", "pet_pet", "pet_tummy_rub", "pet_play", "pet_tug", "pet_teach_trick", "pet_walk", "pet_train", "bathe_pet"]
 		# Baby care. The changing table is where a nappy is changed, the toys are
 		# what play happens on, and the cot is where a cuddle happens without a
 		# toy in hand. Each is offered only when a baby is in the household.
@@ -1565,6 +1565,12 @@ func _finish_front() -> void:
 				# record, as it was before these ran through LifePetCare.
 				if id in ["pet_pet", "pet_tummy_rub"] and is_instance_valid(household_service):
 					household_service.affectionate_pet(str(action.get("target_id","")),str(character.get("name","")))
+				# Playing tricks is also a lesson in the next named trick, so the
+				# pet's own record of what it knows still grows.
+				if id == "pet_teach_trick" and is_instance_valid(household_service) and household_service.has_method("teach_pet_trick"):
+					var taught:Dictionary=household_service.teach_pet_trick(str(action.get("target_id","")),str(character.get("name","")))
+					if bool(taught.get("learned",false)):
+						_emit_notice("%s learned to %s!" % [str(action.get("pet_name","the pet")), str(taught.get("trick",""))])
 			else:
 				_emit_notice(str(cared.get("error","That did not work with the pet.")))
 	elif id == "teach_pet_trick":
@@ -1876,9 +1882,16 @@ func _pet_action_error(id:String,target_id:String) -> String:
 	if id=="pet_tummy_rub" and species != "dog":
 		return "%s is a cat. Cats keep their tummies to themselves." % str(record.get("name","This pet"))
 	if id=="bathe_pet":
+		if not LifePetCare.stage_handles(str(character.age_stage)):
+			return "A %s is too young to bathe a pet." % str(LifeLifecycle.LABELS.get(str(character.age_stage),"Lifelet")).to_lower()
+		if is_away():return "Wait until this Lifelet is home."
 		if not LifePets.needs_bathing(species):
 			return "%s is a cat. Cats keep themselves clean by licking." % str(record.get("name","This pet"))
-		if float((record.get("needs",{}) as Dictionary).get("cleanliness",100.0))>=92.0:
+		# The coat lives in the LifePetCare condition the bath restores; a record
+		# from before that kept `needs.cleanliness` on the pet itself.
+		var care_needs:Dictionary=((record.get("care",{}) as Dictionary).get("needs",{}) as Dictionary) if record.get("care") is Dictionary else {}
+		var coat:float=float(care_needs.get("hygiene",(record.get("needs",{}) as Dictionary).get("cleanliness",100.0)))
+		if coat>=92.0:
 			return "%s is already clean." % str(record.get("name","This pet"))
 	if id=="teach_pet_trick" and is_instance_valid(household_service):
 		if not household_service.has_method("next_trick") or str(household_service.call("next_trick",target_id)).is_empty():

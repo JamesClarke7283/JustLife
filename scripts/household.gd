@@ -2392,6 +2392,18 @@ func pet_actions(pet_id: String, member_id: String) -> Array:
 			"unavailable_reason": reason,
 			"description": _pet_action_description(str(interaction.id), pet),
 		})
+	# A dirty dog needs a person to wash it; the simulation's own gate says
+	# why a cat or an already-clean coat is refused.
+	var bath: Dictionary = sim.get_action_availability("bathe_pet", pet_id)
+	out.append({
+		"id": "bathe_pet",
+		"label": "Bathe the dog" if species == "dog" else "Bathe",
+		"duration": float(sim._actions.get("bathe_pet", {}).get("duration", 35.0)),
+		"cost": 0,
+		"available": bool(bath.get("available", false)),
+		"unavailable_reason": str(bath.get("reason", "")),
+		"description": "Soap, warm water and a good towel. Restores the coat.",
+	})
 	return out
 
 ## What one interaction does, said in terms of what the player will actually

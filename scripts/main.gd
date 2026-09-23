@@ -2324,7 +2324,10 @@ func show_pet_card(id:String) -> void:
 	logic_bar.add_theme_stylebox_override("background",P.panel(Color("e6dcd4"),4))
 	var next:Dictionary=LifePetCare.next_trick(care)
 	var next_text:String=str(next.get("label","All tricks known")) if not next.is_empty() else "All tricks known"
-	paragraph("Next: %s" % next_text,p+Vector2(20,426),Vector2(400,22),12,P.MUTED,overlay)
+	# The named tricks this animal has really learned, as well as its Logic level.
+	var learned:Array=record.get("tricks",[]) if record.get("tricks") is Array else []
+	var known_text:String="Knows: %s" % ", ".join(PackedStringArray(learned.map(func(t:Variant)->String:return str(t)))) if not learned.is_empty() else "Knows no tricks yet"
+	paragraph("Next: %s · %s" % [next_text,known_text],p+Vector2(20,426),Vector2(400,22),12,P.MUTED,overlay)
 	var row:float=0.0
 	var actions_top:float=456.0
 	for action:Dictionary in offered:

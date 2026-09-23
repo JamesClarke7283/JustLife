@@ -65,7 +65,9 @@ func _run() -> void:
 
 	# --- What the menu offers -------------------------------------------------
 	var dog_actions: Array = actions_for(dog).map(func(a: Dictionary) -> String: return str(a.id))
-	check(dog_actions.has("teach_pet_trick"), "A pet offers teaching a trick")
+	# Since b632be3 the menu teaches tricks through LifePetCare's "Play Tricks"
+	# (pet_teach_trick), which also advances the pet's named tricks.
+	check(dog_actions.has("pet_teach_trick"), "A pet offers teaching a trick")
 	check(dog_actions.has("pet_tummy_rub"), "A dog offers a tummy rub")
 	var rub: Dictionary = action_named(cat, "pet_tummy_rub")
 	check(not rub.is_empty() and not bool(rub.get("available", true)), "A cat is refused a tummy rub")
@@ -132,7 +134,7 @@ func _run() -> void:
 	for node: Node in app.overlay.find_children("*", "Button", true, false):
 		var b: Button = node as Button
 		if b != null: card_buttons.append(str(b.text))
-	check(card_buttons.has("Teach a trick"), "The card offers teaching a trick")
+	check(card_buttons.has("Play Tricks"), "The card offers teaching a trick (Play Tricks)")
 	check(card_buttons.has("Give a tummy rub"), "The card offers a tummy rub")
 	app.close_overlay()
 	app.set_process(true)
