@@ -298,6 +298,9 @@ func _ready() -> void:
 	# any window shape.
 	get_viewport().size_changed.connect(_fit_interface)
 	_fit_interface()
+	# Sound and music choices are player settings, not save-local: load them
+	# before any stream starts so a restart keeps "Music: off" quiet.
+	_load_audio_preferences()
 	setup_audio()
 	menus=LifeMenus.new(self)
 	show_main_menu()
@@ -6158,7 +6161,9 @@ func setup_audio() -> void:
 		stream.loop_end=int(stream.get_length()*stream.mix_rate)
 		ambience_player.stream=stream
 		ambience_player.volume_db=0
-		ambience_player.play()
+		# Prefer the remembered mute over always starting the garden loop.
+		if sound_enabled:ambience_player.play()
+		else:ambience_player.stream_paused=true
 	setup_music()
 
 ## "Summit Dawn" is the game's own theme: a full-length forward loop with the
@@ -6182,8 +6187,36 @@ func setup_music() -> void:
 	if sound_enabled and music_enabled:music_player.play()
 	else:music_player.stream_paused=true
 
+## Player audio toggles live beside saves under JUSTLIFE_DATA_DIR / ~/.justlife so
+## a restart — not only Continue — keeps Music/Sound off until the player turns
+## them back on. Saves may still remember the same keys for older loads.
+func _audio_preferences_path() -> String:
+	var root:String=str(load("res://scripts/save_storage.gd").root_path())
+	if root.is_empty():return ""
+	return root.path_join("settings.json")
+
+func _load_audio_preferences() -> void:
+	var path:String=_audio_preferences_path()
+	if path.is_empty() or not FileAccess.file_exists(path):return
+	var parsed:Variant=JSON.parse_string(FileAccess.get_file_as_string(path))
+	if not parsed is Dictionary:return
+	var data:Dictionary=parsed
+	if data.get("sound") is bool:sound_enabled=bool(data.sound)
+	if data.get("music") is bool:music_enabled=bool(data.music)
+
+func _save_audio_preferences() -> void:
+	var path:String=_audio_preferences_path()
+	if path.is_empty():return
+	var storage=load("res://scripts/save_storage.gd")
+	if not storage.safe_directory(path.get_base_dir(),true):return
+	var file:=FileAccess.open(path,FileAccess.WRITE)
+	if file==null:return
+	file.store_string(JSON.stringify({"sound":sound_enabled,"music":music_enabled},"\t",true,true))
+	file.close()
+
 func set_sound(enabled:bool) -> void:
 	sound_enabled=enabled
+	_save_audio_preferences()
 	if is_instance_valid(ambience_player):ambience_player.stream_paused=not enabled
 	if not enabled and is_instance_valid(audio_player):audio_player.stop()
 	if not enabled and is_instance_valid(chime_player):chime_player.stop()
@@ -6194,15 +6227,18 @@ func set_sound(enabled:bool) -> void:
 
 ## The music switch is independent of the sound switch: the menu offers music on
 ## its own, so a household can keep life sounds while turning the theme off.
-## Changing the setting takes effect immediately and rides the save.
+## Changing the setting takes effect immediately and is written to settings.json
+## so the next launch stays quiet without needing a household save.
 func set_music(enabled:bool) -> void:
 	music_enabled=enabled
+	_save_audio_preferences()
 	if not is_instance_valid(music_player):return
 	if enabled and sound_enabled:
 		music_player.stream_paused=false
 		if not music_player.playing:music_player.play()
 	else:
 		music_player.stream_paused=true
+		if music_player.playing:music_player.stop()
 
 func _sync_actor_sound() -> void:
 	if not is_instance_valid(world):return
