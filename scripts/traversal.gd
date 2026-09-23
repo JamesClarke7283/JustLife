@@ -214,7 +214,8 @@ func _walk(id:String,route:Dictionary,time:float,consider_courtesy:bool=true)->D
 		var step:float=minf(distance,remaining*WALK_SPEED)
 		var next:Vector3=actor.position+difference/distance*step
 		if not courtesy.step_allowed(self,id,actor.position,next):return {"time":0.0,"moved":moved,"blocked":true}
-		if not _step_clear(id,actor.position,next) and not (bool(route.get("squeeze",false)) and _step_clear_of_structure(id,actor.position,next)):
+		var can_squeeze:bool=bool(route.get("squeeze",false)) and _step_clear_of_structure(id,actor.position,next) and not _use_point_occupied(id,next)
+		if not _step_clear(id,actor.position,next) and not can_squeeze:
 			if not _step_clear_of_structure(id,actor.position,next) and courtesy.step_allowed(self,id,actor.position,next):
 				# Even without any body nearby this step is refused by walls,
 				# furniture or floors: the planned corridor is not truly
@@ -662,6 +663,22 @@ func _retreat(id:String,route:Dictionary,peer:String)->bool:
 	route.standoff_age=0.0;standoff_count+=1;route.standoffs=int(route.get("standoffs",0))+1
 	return true
 
+func _use_point_occupied(id:String,next:Vector3)->bool:
+	# Squeeze must not walk onto a Lifelet who is actively using this route's
+	# standing destination (shower, easel, …); the waiter joins the queue instead.
+	if not routes.has(id):return false
+	var destination:Vector3=routes[id].destination
+	if not destination.is_finite() or next.distance_to(destination)>BODY_GAP:return false
+	for other_id:String in app.world.actors:
+		if other_id==id:continue
+		var actor:LifeActor=app.world.actors[other_id]
+		if not is_instance_valid(actor) or not actor.visible or actor.position.distance_to(destination)>.05:continue
+		var person:LifeSim=app.household.member_sim(other_id)
+		if not is_instance_valid(person):continue
+		var action:Dictionary=person.get_current_action()
+		if str(action.get("phase",""))=="active" and Vector3(action.get("target_position",Vector3.INF))==destination:return true
+	return false
+
 func _make_way(other_id:String,walker_id:String,route:Dictionary)->bool:
 	# An idle Lifelet standing on somebody's path or use point steps aside.
 	var person:LifeSim=app.household.member_sim(other_id)
@@ -673,6 +690,12 @@ func _make_way(other_id:String,walker_id:String,route:Dictionary)->bool:
 	var start:Vector3=actor.position
 	routes[other_id]={"identity":next_identity,"generation":app.world.lot_navigation.generation,"destination":anchor,"legs":[{"key":"floor:","kind":"floor","stair_id":"","points":PackedVector3Array([start,anchor]),"from":start,"to":anchor}],"cursor":0,"phase":"route","points":PackedVector3Array([start,anchor]),"point":0,"prepared":true,"wait":Vector3.INF,"ticket":0,"distance":0.0,"safety":false,"stair_id":"","error":"","make_way":true}
 	next_identity+=1;make_way_count+=1
+	# Mirror ordinary walk intent so controllers and activity-flow see a clearing walk.
+	var motion:Dictionary=app.motion_states.get(other_id,app._empty_motion())
+	motion.walk=true;motion.destination=anchor;motion.path=PackedVector3Array([start,anchor]);motion.index=0
+	app.motion_states[other_id]=motion
+	if other_id==str(app.bound_member_id):
+		app.walk_only=true;app.walk_destination=anchor;app.path=motion.path;app.path_index=0
 	return true
 
 func _advance_standoff(id:String,route:Dictionary,time:float)->bool:
