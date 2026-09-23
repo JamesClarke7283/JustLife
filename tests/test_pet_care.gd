@@ -103,8 +103,8 @@ func _interactions() -> void:
 	var actions: Array = app.household.pet_actions(id, who)
 	check(actions.size() == LifePetCare.INTERACTIONS.size(),
 		"Every interaction is offered to a grown Lifelet (%d of %d)." % [actions.size(), LifePetCare.INTERACTIONS.size()])
-	check(actions.all(func(a: Dictionary) -> bool: return str(a.id) in ["pet_pet", "pet_feed", "pet_play", "pet_teach_trick", "pet_train"]),
-		"The card offers petting, feeding, playing, trick teaching and training.")
+	check(actions.all(func(a: Dictionary) -> bool: return str(a.id) in ["pet_pet", "pet_tummy_rub", "pet_feed", "pet_play", "pet_tug", "pet_teach_trick", "pet_walk", "pet_train"]),
+		"The card offers petting, a tummy rub, feeding, playing, tug-of-war, trick teaching, walking and training.")
 
 	# Feeding really lifts hunger and deepens the bond with the person who fed it.
 	var care: Dictionary = app.household.pet_care(id)
@@ -191,7 +191,8 @@ func _save_round_trip() -> void:
 ## words — a children's swing is for children and teenagers with an adult
 ## pushing, and a sand pit is never a toilet.
 func _outdoor_acts() -> void:
-	check(LifeOutdoorActs.ACTS.size() == 12, "The outdoor furnishings offer their own activities (%d)." % LifeOutdoorActs.ACTS.size())
+	# Twelve garden pieces plus the adult slide, the pram and the pushchair.
+	check(LifeOutdoorActs.ACTS.size() == 15, "The outdoor furnishings offer their own activities (%d)." % LifeOutdoorActs.ACTS.size())
 	# A children's swing is for children and teenagers exactly.
 	check(LifeOutdoorActs.act_error("kids_swing", "child", false).is_empty(), "A child may play on the swing set.")
 	check(LifeOutdoorActs.act_error("kids_swing", "teen", false).is_empty(), "A teenager may play on the swing set.")
@@ -216,7 +217,9 @@ func _outdoor_acts() -> void:
 	check(not LifeOutdoorActs.act_error("pool_ring", "child", false, false).is_empty(),
 		"A pool toy is refused with a reason when no pool stands (%s)." % LifeOutdoorActs.act_error("pool_ring", "child", false, false))
 	check(LifeOutdoorActs.act_error("pool_ring", "child", false, true).is_empty(), "The same toy is allowed once a pool stands.")
-	check(not LifeOutdoorActs.act_error("hot_tub", "child", false).is_empty(), "A child is refused the hot tub (%s)." % LifeOutdoorActs.act_error("hot_tub", "child", false))
+	# The brief opens the hot tub to children, young adults and adults.
+	check(LifeOutdoorActs.act_error("hot_tub", "child", false).is_empty(), "A child may soak in the hot tub (%s)." % LifeOutdoorActs.act_error("hot_tub", "child", false))
+	check(not LifeOutdoorActs.act_error("hot_tub", "baby", false).is_empty(), "A baby is refused the hot tub (%s)." % LifeOutdoorActs.act_error("hot_tub", "baby", false))
 	check(LifeOutdoorActs.act_error("hot_tub", "adult", false).is_empty(), "An adult may use the hot tub.")
 	check(not LifeOutdoorActs.act_error("outdoor_swing", "child", false).is_empty(),
 		"The grown-up swing is refused to a child (%s)." % LifeOutdoorActs.act_error("outdoor_swing", "child", false))
@@ -244,7 +247,7 @@ func _outdoor_acts() -> void:
 	check(LifeOutdoorActs.leisure_actions("garden_table").has("clear_table"), "A garden table is cleared.")
 	check(LifeOutdoorActs.leisure_actions("bbq").has("snack"), "A barbecue is eaten at.")
 	check(LifeOutdoorActs.leisure_actions("tree_garden").has("water"), "A bought tree is tended.")
-	check(LifeOutdoorActs.leisure_actions("car").has("ride_bike"), "A car is driven.")
+	check(LifeOutdoorActs.leisure_actions("car").has("drive_car"), "A car is driven.")
 	check(LifeOutdoorActs.leisure_actions("garage").has("work"), "A garage is worked in.")
 	# A fence and a helmet are worn or built around rather than used, so they
 	# carry no action and the helmet carries the bike rule instead.
@@ -263,7 +266,7 @@ func _placed_menus() -> void:
 	app.household.set_funds(app.sim.funds + 20000)
 	var wants: Dictionary = {
 		"outdoor_tv": "watch", "garden_table": "clear_table", "bbq": "snack",
-		"tree_garden": "water", "car": "ride_bike", "garage": "work",
+		"tree_garden": "water", "car": "drive_car", "garage": "work",
 		"post_box": "read_post", "bike_adult": "ride_bike",
 	}
 	var styles: Dictionary = {

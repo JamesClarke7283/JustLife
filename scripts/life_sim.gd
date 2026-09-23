@@ -1561,6 +1561,10 @@ func _finish_front() -> void:
 				_emit_notice("%s with %s." % [label, str(action.get("pet_name","your pet"))])
 				if id == "pet_walk" and is_instance_valid(cooperation_owner) and cooperation_owner.has_method("credit_pet_walk_chat"):
 					cooperation_owner.credit_pet_walk_chat(_social_member_id, str(action.get("target_id","")))
+				# A stroke or a tummy rub is also remembered on the pet's own
+				# record, as it was before these ran through LifePetCare.
+				if id in ["pet_pet", "pet_tummy_rub"] and is_instance_valid(household_service):
+					household_service.affectionate_pet(str(action.get("target_id","")),str(character.get("name","")))
 			else:
 				_emit_notice(str(cared.get("error","That did not work with the pet.")))
 	elif id == "teach_pet_trick":
