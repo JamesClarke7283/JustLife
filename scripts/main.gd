@@ -3976,7 +3976,9 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 			elif str(a.id)==LifeDancePlan.ACTION_ID:show_dance_partners(item)
 			elif str(a.id)=="drive_car":
 				# Pick the destination on the town map; the trip then walks the party
-				# to the car, opens the doors, buckles children in and drives off.
+				# to this car (or the shared car when the household owns none), opens
+				# the doors, buckles children in and drives off.
+				residents.preferred_vehicle_id=str(item.id)
 				close_overlay();show_neighborhood()
 			elif str(a.id)==LifeBabyPlan.ACTION_ID:try_for_baby(item);close_overlay()
 			elif str(a.id)=="stop_try_for_baby":
@@ -7390,6 +7392,8 @@ func _neighborhood_gesture(event:InputEvent) -> bool:
 ## What the travel button will really do. Who comes along is the party picker's
 ## own choice, so the caption names the town and the time rather than a mode.
 func _travel_caption(destination:String) -> String:
+	if residents.has_owned_vehicle():
+		return "Your car takes the household across town in 15 minutes; use **Choose who goes** to take only some of them. Drag the map to look around; the wheel zooms."
 	return "A shared car takes the household across town in 15 minutes; use **Choose who goes** to take only some of them. Drag the map to look around; the wheel zooms."
 
 func travel_to(destination:String) -> void:

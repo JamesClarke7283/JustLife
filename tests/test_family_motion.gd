@@ -413,7 +413,8 @@ func _car() -> void:
 	kid.queue_free()
 	bodies.erase(child)
 	for id: String in bodies: (bodies[id] as Node3D).visible = true
-	# The real trip: walk to the shared car, doors, then drive away.
+	# The real trip: walk to the household's own car when one is parked, doors,
+	# then drive away. Without a parked car the shared Juniper stand-in is used.
 	var destination: String = ""
 	for place: String in LifeNeighborhood.travel_ids():
 		if LifeNeighborhood.is_venue(place) and place != app.current_venue: destination = place; break
@@ -422,11 +423,43 @@ func _car() -> void:
 	for id: String in start_spots:
 		var body: Node3D = app.world.actors.get(id)
 		if is_instance_valid(body): body.global_position = start_spots[id]; body.visible = true
+	# Park an estate on the lot so Drive… uses it rather than the shared car.
+	if app.mode != "build": app.set_build_mode(true)
+	await frames(2)
+	var parked_at := Vector3.INF
+	for radius: int in range(0, 40):
+		for x: int in range(-radius, radius + 1):
+			for z: int in range(-radius, radius + 1):
+				if maxi(abs(x), abs(z)) != radius: continue
+				var at := Vector3(float(x) * .5, .16, float(z) * .5)
+				if app.world.can_place("car", at, 90.0, "estate", "medium"):
+					parked_at = at; break
+			if parked_at.is_finite(): break
+		if parked_at.is_finite(): break
+	check(parked_at.is_finite(), "There is room on the lot for an estate car.")
+	if not parked_at.is_finite(): return
+	app.on_placement("car", parked_at, 90.0, "estate", "medium")
+	await frames(3)
+	app.set_build_mode(false)
+	await frames(2)
+	var parked: Dictionary = {}
+	for item: Dictionary in app.world.items:
+		if str(item.kind) == "car": parked = item; break
+	check(not parked.is_empty(), "An estate car is parked on the lot.")
+	if parked.is_empty(): return
 	app.world.rebuild_navigation()
 	app.household.set_speed(1)
+	app.residents.preferred_vehicle_id = str(parked.get("id", ""))
 	var started: bool = app.residents.begin_trip(destination, [adult])
 	check(started, "A trip to %s begins (%s)." % [destination, app.notice_label.text if is_instance_valid(app.notice_label) else ""])
 	if not started: return
+	check(bool(app.residents.trip.get("own_car", false)), "Drive… boards the household's own car.")
+	check(app.residents.uses_household_car() and str(app.residents.trip_vehicle.get("style", "")) == "estate",
+		"The trip remembers the parked estate's model.")
+	if is_instance_valid(app.residents.car) and is_instance_valid(parked.get("node")):
+		check(app.residents.car.global_position.distance_to((parked.node as Node3D).global_position) < .05,
+			"The trip car sits on the parked car's own spot.")
+		check(not (parked.node as Node3D).visible, "The parked body is hidden while the trip car boards.")
 	var saw_door: bool = false
 	var departed: bool = false
 	for i: int in int(90.0 / DT):

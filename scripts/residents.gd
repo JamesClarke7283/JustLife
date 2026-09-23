@@ -3,7 +3,11 @@ class_name LifeResidents
 ## Stable residents own homes; only actors physically present can be approached.
 const Building=preload("res://scripts/building_state.gd")
 const CarEntry=preload("res://scripts/car_entry.gd")
+const Variants=preload("res://scripts/catalog_variants.gd")
 const PEOPLE=LifeResidentCatalogue.PEOPLE
+## Catalogue kinds a household can park on the lot and then drive.
+const VEHICLE_KINDS: Array[String] = ["car", "car_electric", "electric_car"]
+const SHARED_CAR: String = "res://assets/models/juniper_car.glb"
 var app:Node
 var locations:Dictionary={}
 var active_place:String=""
@@ -14,6 +18,13 @@ var home_visit:LifeHomeVisit
 var sidewalk_routes:Dictionary={}
 var _initiated:Dictionary={}
 var _anchor_cache:Dictionary={}
+## The parked car the player clicked Drive… on, when one is preferred.
+var preferred_vehicle_id:String=""
+## Kind/style/colour/size/paint remembered for the outing so a trip that left
+## home in the household car keeps using that car at every venue, not the
+## shared Juniper stand-in.
+var trip_vehicle:Dictionary={}
+var _parked_hidden:Node3D=null
   # resident id -> absolute game day of their last self-started contact
 const INITIATE_RADIUS:=2.5
 ## Sidewalk lane per resident, derived from the catalogue so new roster
@@ -28,6 +39,7 @@ func _init(controller:Node) -> void:
 
 func reset() -> void:
  locations.clear();active_place="";trip.clear();car_entry=null;home_visit.reset();sidewalk_routes.clear();_initiated.clear();_anchor_cache.clear()
+ preferred_vehicle_id="";trip_vehicle.clear();_parked_hidden=null
 
 ## A visiting resident with a household member nearby starts one contact per
 ## game day: a cheerful chat off hours, or looking for company when their
@@ -449,6 +461,12 @@ func begin_trip(destination:String, party: Array = []) -> bool:
  var planner:LifeTraversal=LifeTraversal.new(app) if canonical else null
  var boarding:Dictionary={}
  var curb_places:Array[Vector3]=[]
+ # The trip boards beside the household's own parked car when one is on the lot
+ # (or the one Drive… named); otherwise beside the shared kerb stand. An outing
+ # that already left home in the household car keeps that remember even when the
+ # destination lot has no parked body.
+ var owned:Dictionary=_find_owned_vehicle()
+ var car_at:Transform3D=_trip_car_transform(owned)
  # Preflight against the existing scene; a refusal changes no queue, body,
  # stair owner, dish, selection, clock, resident state or saved home layout.
  for index:int in range(travellers.size()):
@@ -456,7 +474,7 @@ func begin_trip(destination:String, party: Array = []) -> bool:
   var actor:LifeActor=app.world.actors[member.id]
   if app.traversal.busy(str(member.id)):
    app.show_notice("Let everyone finish the current stair crossing before leaving.");return false
-  var endpoint:Vector3=_boarding_point(index,str(member.id),curb_places)
+  var endpoint:Vector3=_boarding_point(index,str(member.id),curb_places,car_at)
   if not endpoint.is_finite():app.show_notice("Clear the sidewalk so everyone has room beside the car.");return false
   curb_places.append(endpoint)
   var route:PackedVector3Array
@@ -469,6 +487,7 @@ func begin_trip(destination:String, party: Array = []) -> bool:
   boarding[member.id]={"path":route,"index":0,"boarded":false,"endpoint":endpoint}
  var food_error:String=preload("res://scripts/travel_food.gd").departure_error(app)
  if not food_error.is_empty():app.show_notice(food_error);return false
+ if not owned.is_empty():_remember_vehicle(owned)
  app.cancel_placement()
  if app.current_venue=="home":app.home_layout=app.world.serialize_items()
  else:app.venue_layouts[app.current_venue]=app.world.serialize_items()
@@ -491,20 +510,100 @@ func begin_trip(destination:String, party: Array = []) -> bool:
  app.overlay.get_child(0).modulate.a=.15
  app.card(Vector2(440,730),Vector2(560,125),app.P.WHITE,18,app.overlay)
  app.text_label("Off to "+str(LifeNeighborhood.place_name(destination)),Vector2(463,744),Vector2(515,35),24,app.P.INK,true,app.overlay)
- var caption:Label=app.paragraph("Walking to the shared car · Saving is available on arrival.",Vector2(464,791),Vector2(515,47),14,app.P.MUTED,app.overlay)
+ var using_own:bool=not trip_vehicle.is_empty()
+ var walk_caption:String="Walking to the household car · Saving is available on arrival." if using_own else "Walking to the shared car · Saving is available on arrival."
+ var caption:Label=app.paragraph(walk_caption,Vector2(464,791),Vector2(515,47),14,app.P.MUTED,app.overlay)
  caption.name="TripPhase"
- car=_make_car();app.world.house.add_child(car);car.position=Vector3(0,0,10.25);car.rotation.y=PI*.5
- app.world.camera_target=Vector3(0,0,6.5);app.world.update_camera()
+ car=_spawn_trip_car(owned,car_at)
+ preferred_vehicle_id=""
+ app.world.camera_target=car.global_position*Vector3(1,0,1)+Vector3(0,0,-3.5);app.world.update_camera()
  # Everyone gets in through a real door once they reach the kerb; babies and
  # children are buckled into their seats first.
  var seating:Array=[]
  for member:Dictionary in travellers:seating.append({"id":str(member.id),"stage":str(member.sim.character.get("age_stage","adult"))})
  car_entry=CarEntry.new(car,seating)
- trip={"destination":destination,"resume":resume,"phase":"boarding","time":0.0,"boarding":boarding,"canonical":canonical,"party":boarding.keys()}
+ trip={"destination":destination,"resume":resume,"phase":"boarding","time":0.0,"boarding":boarding,"canonical":canonical,"party":boarding.keys(),"own_car":using_own}
  return true
 
+## The parked vehicle on this lot the trip should use: the one Drive… named,
+## otherwise the first household car/electric car found.
+func _find_owned_vehicle() -> Dictionary:
+ if not preferred_vehicle_id.is_empty():
+  for item:Dictionary in app.world.items:
+   if str(item.id)==preferred_vehicle_id and str(item.kind) in VEHICLE_KINDS:return item
+ for item:Dictionary in app.world.items:
+  if str(item.kind) in VEHICLE_KINDS:return item
+ return {}
+
+func _remember_vehicle(item:Dictionary) -> void:
+ var kind:String=str(item.kind)
+ var data:Dictionary=LifeCatalog.get_item(kind)
+ var variant:Dictionary=item.get("variant",Variants.resolve(data,item))
+ trip_vehicle={
+  "kind":kind,
+  "style":str(variant.get("style","")),
+  "color":str(variant.get("color","")),
+  "size":str(variant.get("size","")),
+  "paint":LifeCatalog.paint_of(item) if LifeCatalog.paints(kind) else "",
+ }
+
+func _trip_car_transform(owned:Dictionary) -> Transform3D:
+ if not owned.is_empty() and is_instance_valid(owned.get("node")):
+  return (owned.node as Node3D).global_transform
+ return Transform3D(Basis.from_euler(Vector3(0,PI*.5,0)),Vector3(0,0,10.25))
+
+## Build the car that boards and drives: the household's own model and paint
+## when one is known, otherwise the shared Juniper car at the kerb.
 func _make_car() -> Node3D:
- return load("res://assets/models/juniper_car.glb").instantiate()
+ if trip_vehicle.is_empty():
+  var owned:Dictionary=_find_owned_vehicle()
+  if not owned.is_empty():_remember_vehicle(owned)
+ if trip_vehicle.is_empty():
+  return load(SHARED_CAR).instantiate()
+ var kind:String=str(trip_vehicle.kind)
+ var path:String=Variants.model_path(kind,str(trip_vehicle.get("style","")))
+ if not ResourceLoader.exists(path):
+  return load(SHARED_CAR).instantiate()
+ var model:Node3D=load(path).instantiate()
+ var scale:float=Variants.size_scale(str(trip_vehicle.get("size","")))
+ if not is_equal_approx(scale,1.0):model.scale=Vector3.ONE*scale
+ var data:Dictionary=LifeCatalog.get_item(kind)
+ if LifeCatalog.paints(kind) and not str(trip_vehicle.get("paint","")).is_empty():
+  _tint_trip_car(model,str(trip_vehicle.paint))
+ elif Variants.colors(data).size()>1 and not str(trip_vehicle.get("color","")).is_empty():
+  app.world._apply_variant_colour(model,data,{"style":str(trip_vehicle.style),"color":str(trip_vehicle.color),"size":str(trip_vehicle.size)})
+ return model
+
+func _tint_trip_car(model:Node3D,hex:String) -> void:
+ var tint:Color=Color(hex)
+ for node:Node in model.find_children("*","MeshInstance3D",true,false):
+  var mesh:MeshInstance3D=node as MeshInstance3D
+  if mesh==null:continue
+  if not Variants.is_tint(mesh.name) and not str(mesh.name).to_lower().contains("body"):continue
+  var painted:=StandardMaterial3D.new()
+  painted.albedo_color=tint;painted.roughness=.35;painted.metallic=.2
+  mesh.material_override=painted
+
+## Place the trip car: at the parked car's own transform when leaving home in
+## it (hiding the parked body so there are not two), otherwise at the shared
+## kerb stand for venues and households without a car.
+func _spawn_trip_car(owned:Dictionary,at:Transform3D) -> Node3D:
+ var body:Node3D=_make_car()
+ app.world.house.add_child(body)
+ body.global_transform=at
+ if not owned.is_empty() and is_instance_valid(owned.get("node")):
+  var parked:Node3D=owned.node
+  parked.visible=false
+  _parked_hidden=parked
+ else:
+  _parked_hidden=null
+ return body
+
+func uses_household_car() -> bool:
+ return not trip_vehicle.is_empty()
+
+func has_owned_vehicle() -> bool:
+ return not _find_owned_vehicle().is_empty() or not trip_vehicle.is_empty()
 
 func tick_trip(delta:float) -> void:
  if trip.is_empty():return
@@ -725,6 +824,10 @@ func _arrive() -> void:
  app.text_label("Arriving at "+str(LifeNeighborhood.place_name(destination)),Vector2(463,744),Vector2(515,35),24,app.P.INK,true,app.overlay)
  app.paragraph("Pulling up outside · Saving is available when everyone steps out.",Vector2(464,791),Vector2(515,47),14,app.P.MUTED,app.overlay)
  trip.phase="arrival";trip.time=0.0
+ if destination=="home":
+  # Back on the lot: the parked body is in the layout again, and the outing's
+  # remembered car is done.
+  trip_vehicle.clear();_parked_hidden=null
 
 func _curb(index:int,taken:Array[Vector3]=[]) -> Vector3:
  # Quarter-grid aligned places leave more than the 72cm body clearance, and a
@@ -751,8 +854,18 @@ func _clear_curb(preferred:Vector3,index:int,taken:Array[Vector3]) -> Vector3:
  # Every nearby spot is taken: keep the authored place rather than fail.
  return preferred
 
-func _boarding_point(index:int,id:String,reserved:Array[Vector3]) -> Vector3:
- var candidates:Array[Vector3]=[_curb(index)]
+func _boarding_point(index:int,id:String,reserved:Array[Vector3],car_at:Transform3D=Transform3D.IDENTITY) -> Vector3:
+ var origin:Vector3=car_at.origin
+ var basis:Basis=car_at.basis
+ # Stand on the kerb side of the car (local +x), spaced along its length so a
+ # travelling party does not stack on one spot.
+ var candidates:Array[Vector3]=[]
+ for i:int in range(4):
+  var local:Vector3=Vector3(1.55,.0,.85-float(i)*.55)
+  var world:Vector3=origin+basis*local
+  world.y=.16
+  candidates.append(world)
+ candidates.append(_curb(index))
  for z:float in [7.5,8.5,6.5]:
   for x:float in [-3.5,-2.5,-1.5,-.5,.5,1.5,2.5,3.5]:candidates.append(Vector3(x,.16,z))
  for point:Vector3 in candidates:
