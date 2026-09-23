@@ -380,8 +380,11 @@ static func validate(value: Variant, data: Dictionary) -> String:
 	if not error.is_empty():
 		return error
 	# The conception roll took the household's next birth serial, which was
-	# advanced at the same moment, so a live pregnancy always claims it.
-	if int(state.serial) != int(data.get("birth_serial",1)) - 1:
+	# advanced at the same moment (clamped at MAX_BIRTHS). A live pregnancy
+	# therefore claims `mini(serial+1, MAX_BIRTHS)` — for the eighth birth the
+	# counter stays equal to the pregnancy serial rather than climbing past it.
+	var next_serial: int = mini(int(state.serial) + 1, MAX_BIRTHS)
+	if int(data.get("birth_serial", 1)) != next_serial:
 		return "Save contains a pregnancy that disagrees with its birth counter."
 	return ""
 

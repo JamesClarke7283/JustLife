@@ -107,6 +107,7 @@ func _run()->void:
 	await _beat_case()
 	await _creator_case()
 	await _persistence_case()
+	await _eighth_pregnancy_save_case()
 	print("MAKE_BABY %d checks, %d failures" % [checks,failures.size()])
 	quit(0 if failures.is_empty() else 1)
 
@@ -387,3 +388,27 @@ func _persistence_case()->void:
 	root.add_child(rejected)
 	check(not bool(rejected.restore_state(broken).ok),"A malformed pregnancy record is refused, not silently dropped.")
 	app.queue_free();fresh.queue_free();older.queue_free();rejected.queue_free();await process_frame
+
+## The eighth pregnancy leaves birth_serial at MAX_BIRTHS (it cannot climb past
+## the cap). Saving mid-term used to be refused because validate demanded
+## birth_serial == serial+1 even after that clamp.
+func _eighth_pregnancy_save_case()->void:
+	var app=_home()
+	await process_frame
+	await process_frame
+	_setup(app)
+	var household=app.household
+	household.birth_serial=LifeBabyPlan.MAX_BIRTHS
+	var mother_id:String=str(household.members[0].id)
+	var father_id:String=str(household.members[1].id)
+	household.pregnancy=LifeBabyPlan.conceive(household.member_sim(mother_id),mother_id,household.member_sim(father_id),father_id,household.day,household.minutes,household.birth_serial)
+	household.birth_serial=mini(int(household.pregnancy.serial)+1,LifeBabyPlan.MAX_BIRTHS)
+	check(int(household.pregnancy.serial)==LifeBabyPlan.MAX_BIRTHS and household.birth_serial==LifeBabyPlan.MAX_BIRTHS,"The eighth conception leaves the birth counter at the cap.")
+	var state:Dictionary=household.get_state(app.world.serialize_items())
+	var roundtrip:Dictionary=JSON.parse_string(JSON.stringify(LifeSaveLibrary._json_safe(state)))
+	var probe:=LifeHousehold.new()
+	root.add_child(probe)
+	var restored:Dictionary=probe.restore_state(roundtrip)
+	check(bool(restored.ok),"A save during the eighth pregnancy is accepted: %s." % str(restored.get("error","")))
+	check(bool(probe.pregnancy.get("active",false)) and int(probe.pregnancy.serial)==LifeBabyPlan.MAX_BIRTHS and probe.birth_serial==LifeBabyPlan.MAX_BIRTHS,"The eighth pregnancy survives the load with its birth counter.")
+	app.queue_free();probe.queue_free();await process_frame
