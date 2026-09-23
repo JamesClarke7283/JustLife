@@ -60,7 +60,7 @@ func _needs_space(id:String,person:LifeActor) -> bool:
 		if _distance(destination,person.position)<BODY_GAP and _distance(other.position,destination)<1.8:return true
 	return false
 
-func _clear_route(id:String,origin:Vector3) -> PackedVector3Array:
+func _clear_route(id:String,origin:Vector3,min_length:float=0.0) -> PackedVector3Array:
 	var candidates:Array[Vector3]=[]
 	var center:Vector3=Vector3(roundf(origin.x*4)*.25,origin.y,roundf(origin.z*4)*.25)
 	for radius:int in range(1,7):
@@ -82,6 +82,7 @@ func _clear_route(id:String,origin:Vector3) -> PackedVector3Array:
 		var at:Vector3=origin
 		for point:Vector3 in route:length+=at.distance_to(point);at=point
 		if length>4.0:continue # Step aside locally; do not take a tour around the house.
+		if length+0.000001<min_length:continue
 		return route
 	return PackedVector3Array()
 

@@ -5013,8 +5013,28 @@ func _member_action_finished(id:String,action:Dictionary) -> void:
 	_store_motion()
 	_bind_member(id)
 	on_action_finished(action)
+	# Vacate the standing use point before autonomy queues the next pastime, so a
+	# waiter or the next approach can claim the fixture without walking through us.
+	_start_clearing_walk(action)
 	_store_motion()
 	_bind_member(prior)
+
+func _start_clearing_walk(action:Dictionary) -> void:
+	if walk_only or waiting_for_target or resume_activity or not sim.action_queue.is_empty():return
+	if not is_instance_valid(player) or sim.is_away():return
+	if str(action.get("id","")) in LifeSim.SOCIAL_ACTIONS or str(action.get("id","")) in ["arrive_home","school_day","career_day","morning_run"]:return
+	if not action.has("target_position"):return
+	var use:Vector3=action.target_position
+	if not use.is_finite() or player.position.distance_to(use)>.1:return
+	# Prefer a clear that lasts more than one very-fast movement frame, so the
+	# walk is observable before autonomy claims the next pastime.
+	var route:PackedVector3Array=idle_space._clear_route(bound_member_id,player.position,1.5)
+	if route.is_empty():route=idle_space._clear_route(bound_member_id,player.position)
+	if route.is_empty():return
+	_clear_motion()
+	_set_route(route[-1])
+	walk_only=not path.is_empty()
+	walk_destination=route[-1] if walk_only else Vector3.INF
 
 func show_housemate_interactions(item:Dictionary,screen:Vector2) -> void:
 	# The world's click payload carries a display label; a caller that identifies
@@ -6391,7 +6411,7 @@ func _queue_near_busy_activity()->bool:
 	var destination:Vector3=action.target_position
 	var level:int=world.point_level(player.position)
 	if level<0 or level!=world.point_level(destination) or not traversal._free(bound_member_id,player.position):return false
-	var near_anchor:bool=player.position.distance_to(destination)<=1.0 and (world.lot_navigation.segment_clear(level,player.position,destination) or _near_active_resource_owner(action,level))
+	var near_anchor:bool=player.position.distance_to(destination)<=1.0 and (world.lot_navigation.segment_clear(level,player.position,destination) or _near_active_resource_owner(action,level) or _near_busy_use_collision(action,level))
 	if not near_anchor and not _near_arrived_resource_waiter(action,level):return false
 	if _activity_available(action):return false
 	waiting_for_target=true
@@ -6404,6 +6424,27 @@ func _queue_near_busy_activity()->bool:
 		wait_destination=player.position
 		traversal.cancel(bound_member_id);path.clear();path_index=0
 	return true
+
+func _near_busy_use_collision(action:Dictionary,level:int)->bool:
+	# Within body-clearance of an active owner already standing on the shared use
+	# point, join the queue even when the bent corridor witness is longer than a
+	# metre (shower stalls, tight bathroom corners). Keep the ordinary 1m curved
+	# witness for farther approaches so long geodesic controls stay refused.
+	var wanted:Array[String]=_activity_resources(action)
+	var courtesy_owner:String=traversal.courtesy.owner(traversal)
+	for member:Dictionary in household.members:
+		var id:String=str(member.id)
+		if id==bound_member_id or not world.actors.has(id):continue
+		var other:Dictionary=member.sim.get_current_action()
+		if str(other.get("phase",""))!="active" or not bool(other.get("paid",false)) or not str(other.get("cooperation_id","")).is_empty() or str(other.get("id","")) in LifeSim.SOCIAL_ACTIONS:continue
+		if traversal.busy(id) or traversal.safety(id):continue
+		if not courtesy_owner.is_empty() and id in [courtesy_owner,str(traversal.routes[courtesy_owner].courtesy.beneficiary_id)]:continue
+		var actor:LifeActor=world.actors[id]
+		if not actor.visible or actor.position!=action.target_position or world.point_level(actor.position)!=level:continue
+		if player.position.distance_to(actor.position)>LifeTraversal.BODY_GAP+.1:continue
+		for resource:String in _activity_resources(other):
+			if not resource.begins_with("standing:") and wanted.has(resource):return true
+	return false
 
 func _near_arrived_resource_waiter(action:Dictionary,level:int)->bool:
 	var wanted:Array[String]=_activity_resources(action)
