@@ -41,7 +41,10 @@ func _natural_owner()->void:
 	# The shared clock is one game minute per second. This continuation was
 	# written when it was six, so normal speed no longer reaches a finished
 	# canvas inside 600 steps. Very fast speed restores that game-time budget.
-	await press("▶▶▶" if test_phase=="natural" else "▶")
+	# Natural and the observation producer share the first107 advancing calls;
+	# both must run at very-fast so the producer's frozen prefix matches.
+	await press("▶▶▶" if test_phase in ["natural","produce"] else "▶")
+
 	for i:int in range(600):
 		if Time.get_ticks_msec()>=deadline:check(false,"Declared120s continuation wall cap is not exhausted.");break
 		_exclude_inputs();app._process(.05);await frames(1)

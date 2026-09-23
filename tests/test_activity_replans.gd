@@ -147,23 +147,31 @@ func _speeds()->Array:
 	for member:Dictionary in app.household.members:result.append(member.sim.speed)
 	return result
 func _live_controls()->void:
+	# Normal speed keeps Ellis inside the occupied-easel queue for this 107-call
+	# prefix. Danger interrupts no longer abandon that paint approach for an
+	# unrelated Read (e6fcfc3); the waiter stands at the FIFO point with the
+	# approach route retired, so Pause/Build must freeze wait facts rather than
+	# index a missing traversal route.
 	await press("▶")
 	for i:int in range(107):_exclude_inputs();app._process(.05);await frames(1)
-	var route:Dictionary=app.traversal.routes.housemate_1;var age:float=float(route.get("replan_observation",{}).get("age",-1));var identity:int=route.identity
-	check(age==.05 and app.household.member_sim("housemate_1").get_current_action().id=="read","Unchanged public continuation reaches the actual first observed reading collision.")
+	var sim:LifeSim=app.household.member_sim("housemate_1")
+	var action:Dictionary=sim.get_current_action()
+	var motion:Dictionary=app.motion_states.housemate_1
+	check(str(action.id)=="paint" and str(action.phase)=="approach" and not bool(action.paid) and float(action.elapsed)==0.0 and bool(action.autonomous),"Unchanged public continuation keeps Ellis on the unpaid autonomous paint approach.")
+	check(bool(motion.waiting) and float(motion.wait_started)>=0.0 and Vector3(motion.wait_destination).is_finite() and not app.traversal.routes.has("housemate_1"),"Ellis remains in the occupied-easel FIFO with the approach route retired at the wait point.")
 	await press("Ⅱ");_exclude_inputs();app._process(.05);await frames(1)
-	var before:Dictionary=_busy_record();var observation:Dictionary=route.replan_observation.duplicate(true);var all_routes:Dictionary=app.traversal.routes.duplicate(true)
+	var before:Dictionary=_busy_record();var all_routes:Dictionary=app.traversal.routes.duplicate(true)
 	for i:int in range(10):_exclude_inputs();app._process(.05);await frames(1)
-	check(_speeds()==[0,0,0,0,0] and before==_busy_record() and all_routes==app.traversal.routes,"Ten actual paused calls freeze every captured fact and the real derived observation age.")
-	await press("Build & buy");_exclude_inputs();var building:Dictionary=_busy_record();var new_route:Dictionary=app.traversal.routes.housemate_1
-	check(app.mode=="build" and int(new_route.identity)>identity and not new_route.has("replan_observation"),"Actual unchanged Build entry retains its established route-identity refresh and resets only derived observation.")
+	check(_speeds()==[0,0,0,0,0] and before==_busy_record() and all_routes==app.traversal.routes,"Ten actual paused calls freeze every captured fact including FIFO wait ownership.")
+	await press("Build & buy");_exclude_inputs();var building:Dictionary=_busy_record()
+	check(app.mode=="build" and not app.traversal.routes.has("housemate_1"),"Actual Build entry leaves the waiting paint approach without inventing a traversal route.")
 	check(before.people==building.people and before.food==building.food and before.at==building.at and before.funds==building.funds and before.waits==building.waits,"Unchanged Build replan preserves bodies, full activities, needs, custody, clock, funds and FIFO facts.")
 	var build_routes:Dictionary=app.traversal.routes.duplicate(true)
 	for i:int in range(10):_exclude_inputs();app._process(.05);await frames(1)
-	check(building==_busy_record() and build_routes==app.traversal.routes,"Ordinary Build calls neither accrue observation age nor advance existing physical/queue state.")
+	check(building==_busy_record() and build_routes==app.traversal.routes,"Ordinary Build calls neither invent routes nor advance existing physical/queue state.")
 	await press("Live");_exclude_inputs();check(app.mode=="live" and _speeds()==[0,0,0,0,0],"Return Live restores the actual paused speed.")
-	var old_id:int=app.traversal.routes.housemate_1.identity
 	await press("▶");_exclude_inputs();app._process(.05);await frames(1)
-	var resumed:Dictionary=app.traversal.routes.housemate_1
-	check(resumed.identity==old_id and float(resumed.get("replan_observation",{}).get("age",-1))==.05,"Ordinary resumed movement begins a fresh bounded observation after the real Build replan.")
+	var resumed:Dictionary=app.motion_states.housemate_1
+	var resumed_action:Dictionary=sim.get_current_action()
+	check(str(resumed_action.id)=="paint" and str(resumed_action.phase)=="approach" and bool(resumed.waiting) and float(resumed.wait_started)==float(motion.wait_started) and not app.traversal.routes.has("housemate_1"),"Ordinary resumed play keeps the same unpaid paint FIFO wait without fabricating a route.")
 	audit.before_pause=before;audit.build=building;audit.final=_busy_record()
