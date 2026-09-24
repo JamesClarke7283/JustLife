@@ -1510,7 +1510,7 @@ func _outdoor_join_error(furniture_id: String, member_id: String) -> String:
 	var actor: LifeSim = member_sim(member_id)
 	if actor == null: return "That Lifelet is not part of this household."
 	var kind: String = _target_kind(furniture_id)
-	if not LifeOutdoorActs.can_ask_to_join(kind): return "Choose a pool or hot tub to invite company."
+	if not LifeOutdoorActs.can_ask_to_join(kind): return "Choose outdoor seating, a pool or a hot tub to invite company."
 	if actor.is_away(): return "This Lifelet is away from home. Finish or cancel that activity first."
 	if not actor.action_queue.is_empty(): return "This Lifelet has other plans. Finish or cancel them first."
 	if _member_cooperation(member_id) is Dictionary and not _member_cooperation(member_id).is_empty():
@@ -1526,7 +1526,7 @@ func _outdoor_join_error(furniture_id: String, member_id: String) -> String:
 func queue_outdoor_join(furniture_id: String, member_ids: Array, approach: Vector3 = Vector3.ZERO) -> Dictionary:
 	var kind: String = _target_kind(furniture_id)
 	if not LifeOutdoorActs.can_ask_to_join(kind):
-		return {"ok":false,"error":"Choose a pool or hot tub to invite company."}
+		return {"ok":false,"error":"Choose outdoor seating, a pool or a hot tub to invite company."}
 	var unique: Array[String] = []
 	for id: Variant in member_ids:
 		var member_id: String = str(id)

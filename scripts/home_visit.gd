@@ -4,6 +4,9 @@ class_name LifeHomeVisit
 const ARRIVAL_MINUTES:float=180.0
 const WELCOME_MINUTES:float=120.0
 const STAY_MINUTES:float=360.0
+## Asking a guest to stay over extends their visit by this many game minutes
+## from the moment they accept, overriding the ordinary leave timer.
+const STAY_OVER_EXTRA_MINUTES:float=720.0
 const GREETING_MINUTES:float=25.0
 ## An uninvited caller rings the doorbell and waits on the doorstep. They stay
 ## outside the whole time: ringing is the only way in, and letting them in is the
@@ -376,6 +379,32 @@ func _admit(guest:String,event_time:float)->void:
 	state.inside=inside;state.phase="entering";state.phase_at=event_time;state.admitted_at=event_time;state.route={"points":route,"point":0};state.greeting={};_welcome_action={}
 	app.show_notice(str(LifeResidents.PEOPLE[guest].name)+" is coming inside.")
 
+## Absolute game-minute when an inside guest should leave. Stay Over lengthens
+## this without rewriting phase_at, so meal and save clocks stay consistent.
+func stay_deadline() -> float:
+	if not active(): return 0.0
+	var base: float = float(state.get("phase_at", 0.0)) + STAY_MINUTES
+	if bool(state.get("stay_over", false)):
+		return base + STAY_OVER_EXTRA_MINUTES
+	return base
+
+
+## Ask the current guest to stay overnight. Overrides the ordinary leave timer.
+func ask_to_stay_over() -> bool:
+	if not active() or str(state.phase) != "inside":
+		if app != null: app.show_notice("Welcome your guest inside before asking them to stay.")
+		return false
+	if bool(state.get("stay_over", false)):
+		if app != null: app.show_notice("They are already staying over.")
+		return false
+	state["stay_over"] = true
+	var guest: String = str(state.guest)
+	var name: String = str(LifeResidents.PEOPLE.get(guest, {}).get("name", "Your guest")).split(" ")[0]
+	if app != null: app.show_notice("%s is delighted to stay over." % name)
+	if app != null and app.has_method("_refresh_guest_status"): app._refresh_guest_status()
+	return true
+
+
 func goodbye(message:String="Your guest is heading home after the current conversation.",event_time:float=-1.0)->void:
 	if not active() or str(state.phase)=="leaving":return
 	_departure_action={};state.departure={}
@@ -413,9 +442,10 @@ func tick(delta:float)->void:
 			bounded=started>=0 and started<=float(state.arrived_at)+WELCOME_MINUTES and now<=started+GREETING_MINUTES+.001
 			if bounded:state.greeting.active_at=started
 		if now>=float(state.arrived_at)+WELCOME_MINUTES and not bounded:goodbye("Your guest waited for a welcome and is heading home.")
-	if str(state.phase)=="inside" and now>=float(state.phase_at)+STAY_MINUTES:
-		meal.consume_until(float(state.phase_at)+STAY_MINUTES)
-		goodbye("It is time for your guest to head home.",float(state.phase_at)+STAY_MINUTES)
+	if str(state.phase)=="inside" and now>=stay_deadline():
+		var until:float=stay_deadline()
+		meal.consume_until(until)
+		goodbye("It is time for your guest to head home.",until)
 	phase=str(state.phase)
 	if meal.active():
 		meal.tick(delta)

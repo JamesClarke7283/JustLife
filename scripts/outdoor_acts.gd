@@ -137,10 +137,13 @@ const LEISURE: Dictionary = {
 	"outdoor_tv": ["watch", "watch_together"],
 	"bbq": ["snack", "host_a_chat"],
 	"garden_table": ["clear_table", "host_a_chat"],
+	"outdoor_swing": ["host_a_chat"],
 	"fence": [],
 	"car": ["drive_car"],
 	"car_electric": ["drive_car"],
+	"electric_car": ["drive_car"],
 	"garage": ["work"],
+	"car_garage": ["open_garage_door", "work"],
 	"helmet": [],
 }
 
@@ -264,14 +267,19 @@ static func is_not_a_toilet(kind: String) -> bool:
 	return bool(acts(kind).get("not_a_toilet", false))
 
 
-## Pool and hot tub are the garden furnishings that invite company with an
-## explicit Ask to Join. Other outdoor acts lift Social when someone happens to
-## be there already; these two open a partner panel so the player chooses who
-## comes in.
-const JOINABLE: Array[String] = ["pool", "hot_tub"]
+## Pool, hot tub and outdoor seating invite company with an explicit Ask to Join.
+## Other outdoor acts lift Social when someone happens to be there already; these
+## open a partner panel so the player chooses who comes along.
+const JOINABLE: Array[String] = ["pool", "hot_tub", "garden_table", "bbq", "outdoor_swing"]
 const MAX_JOIN: int = 4
 const JOIN_ACTION: String = "ask_to_join"
+const CALL_FRIEND_ACTION: String = "call_friend_over"
+const STAY_OVER_ACTION: String = "ask_to_stay_over"
 
 
 static func can_ask_to_join(kind: String) -> bool:
+	return kind in JOINABLE
+
+
+static func can_call_friend(kind: String) -> bool:
 	return kind in JOINABLE

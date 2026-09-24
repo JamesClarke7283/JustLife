@@ -300,7 +300,10 @@ const ITEMS = {
 	# roof block but its bays do not, so cars park inside it. `BLOCKING_PANELS`
 	# below carries the bands that really block. Remote already ships a `garage`
 	# family of its own, so this building keeps a name of its own.
-	"car_garage": {"label":"Two-car garage", "category":"Vehicles", "price":1800, "size":Vector2(4.6,5.8), "height":2.59, "color":"417a71"},
+	# Four parking bays: two side-by-side rows. The hollow interior is what lets
+	# cars snap onto the authored bay centres; the solid walls stay in BLOCKING_PANELS.
+	"car_garage": {"label":"Four-car garage", "category":"Vehicles", "price":2400, "size":Vector2(9.2,5.8), "height":2.59, "color":"417a71",
+		"vehicle_snaps":4},
 	"electric_car": {"label":"Quiet miles electric car", "category":"Vehicles", "price":1250, "size":Vector2(1.79,4.19), "height":1.4775, "color":"c6d2da", "paint":"c6d2da"}
 }
 
@@ -352,11 +355,27 @@ const CAR_PAINTS: Array[String] = [
 ## solid volume — kept next to the size the ordinary box is derived from.
 const BLOCKING_PANELS: Dictionary = {
 	"car_garage": [
-		{"x":0.0, "z":-2.835, "w":4.59, "d":0.12},
-		{"x":-2.235, "z":0.0, "w":0.12, "d":5.79},
-		{"x":2.235, "z":0.0, "w":0.12, "d":5.79}
+		{"x":0.0, "z":-2.835, "w":9.08, "d":0.12},
+		{"x":-4.54, "z":0.0, "w":0.12, "d":5.79},
+		{"x":4.54, "z":0.0, "w":0.12, "d":5.79},
+		{"x":0.0, "z":0.0, "w":0.12, "d":5.79}
 	]
 }
+
+## Local-space parking centres inside a garage. Four bays: left pair then right
+## pair, facing the open doorway (+z). An empty garage returns four snaps; a
+## kind without vehicle_snaps returns nothing.
+static func vehicle_snap_locals(kind: String) -> Array[Vector3]:
+	var data: Dictionary = ITEMS.get(kind, {})
+	var count: int = int(data.get("vehicle_snaps", 0))
+	if count <= 0:
+		return []
+	var snaps: Array[Vector3] = []
+	# Two columns of two bays across the four-car width.
+	var xs: Array[float] = [-3.2, -1.1, 1.1, 3.2]
+	for i: int in mini(count, xs.size()):
+		snaps.append(Vector3(xs[i], 0.0, 0.35))
+	return snaps
 
 ## The solid bands a kind occupies, in its own local metres: its authored ones
 ## when one box cannot describe it, otherwise the single box its declared size
@@ -481,10 +500,77 @@ static func starter_layout(lot: int = 0) -> Array:
 		entries = _juniper_entries()
 	elif lot == 5:
 		entries = nursery_room_preset()
+	elif lot == 6:
+		entries = _medium_entries()
+	elif lot == 7:
+		entries = _large_entries()
+	elif lot == 8:
+		entries = _ultramodern_entries()
+	elif lot == 9:
+		entries = _traditional_entries()
 	for i in range(entries.size()):
 		var e: Array = entries[i]
 		a.append({"id":"item_%d" % i,"kind":e[0],"x":e[1],"z":e[2],"rotation":e[3]})
 	return a
+
+## Medium Garden Home: two bedrooms, pool, outdoor table and barbecue.
+static func _medium_entries() -> Array:
+	return [
+		["fridge",-5.28,-4.3,0],["counter",-4.18,-4.4,0],["stove",-3.1,-4.4,0],["sink",-2.02,-4.4,0],
+		["dining",-3.5,-1.85,0],["chair",-3.5,-2.8,0],["chair",-3.5,-.92,180],
+		["rug",-2.9,2.43,0],["sofa",-3.4,3.75,180],["table",-3.1,2.17,0],["tv",-4.95,.65,90],
+		["bed",3.5,1.5,0],["nightstand",2.03,.65,0],["wardrobe",5.32,-0.35,-90],
+		["bed",4.8,-2.4,90],["nightstand",4.8,-1.2,0],["wardrobe",2.4,-4.2,180],
+		["shower",4.9,-4.13,0],["toilet",2.35,-4.1,0],["sink",5.15,-2.13,-90],
+		["pool",-8.5,2.0,0],["garden_table",-8.2,-2.4,0],["bbq",-10.2,-1.0,90],
+		["plant",-.05,4.15,0],["rubbish_bin",.1,-4.45,0],
+	]
+
+## Large Estate: four bedrooms, three baths, pool, hot tub, four-car garage.
+static func _large_entries() -> Array:
+	return [
+		["fridge",-5.28,-4.3,0],["counter",-4.18,-4.4,0],["counter",-3.1,-4.4,0],["stove",-2.02,-4.4,0],
+		["sink",-.94,-4.4,0],["dining",-4.2,-.6,0],["chair",-4.2,-1.6,0],["chair",-4.2,.4,180],
+		["rug",-3.5,3.1,0],["sofa",-4.4,4.0,180],["table",-3.0,3.0,0],["tv",-5.15,2.2,90],
+		["bed",2.4,-3.3,0],["nightstand",1.4,-3.3,0],["wardrobe",3.7,-4.2,180],
+		["bed",4.9,-1.2,90],["nightstand",4.9,-2.4,0],["wardrobe",2.4,-1.2,-90],
+		["bed",2.4,1.5,0],["nightstand",1.4,1.5,0],["wardrobe",3.7,3.6,180],
+		["bed",4.9,3.4,90],["nightstand",4.9,4.5,0],
+		["shower",5.2,-4.2,0],["bathtub",3.0,4.5,0],["toilet",.2,.6,0],["sink",.2,1.6,180],
+		["toilet",1.4,-.2,0],["sink",1.4,-1.2,180],["shower",5.2,1.8,0],
+		["pool",-9.5,1.5,0],["hot_tub",-9.5,-2.2,0],["garden_table",-7.0,-3.5,0],["bbq",-11.0,-3.0,90],
+		["car_garage",-9.0,8.5,180],["plant",.6,4.5,0],["rubbish_bin",.9,-4.45,0],
+	]
+
+## Ultra-Modern Residence: open living, garden seating, barbecue.
+static func _ultramodern_entries() -> Array:
+	return [
+		["fridge",-5.28,-4.3,0],["counter",-4.18,-4.4,0],["stove",-3.1,-4.4,0],["sink",-2.02,-4.4,0],
+		["dining",-3.2,-1.5,0],["chair",-3.2,-2.4,0],["chair",-3.2,-.6,180],
+		["sofa",-3.4,3.4,180],["table",-2.8,2.2,0],["tv",-5.0,.8,90],["lamp",-5.1,3.9,0],
+		["bed",3.6,1.6,0],["wardrobe",5.32,-0.2,-90],["bed",4.6,-2.6,90],["bed",2.2,3.6,0],
+		["shower",4.9,-4.13,0],["toilet",2.35,-4.1,0],["sink",5.15,-2.13,-90],
+		["toilet",.4,1.2,0],["sink",.4,2.2,180],
+		["garden_table",-8.0,-2.0,0],["bbq",-9.8,-.8,90],["outdoor_swing",-7.5,2.5,0],
+		["shrub",-10.5,2.0,0],["flowers",-10.2,-2.8,0],["tree_garden",-11.5,3.5,0],
+		["plant",-.05,4.15,0],["rubbish_bin",.1,-4.45,0],
+	]
+
+## Traditional Family House: classic rooms with a garden table and barbecue.
+static func _traditional_entries() -> Array:
+	return [
+		["fridge",-5.28,-4.3,0],["counter",-4.18,-4.4,0],["stove",-3.1,-4.4,0],["sink",-2.02,-4.4,0],
+		["dining",-3.5,-1.85,0],["chair",-3.5,-2.8,0],["chair",-3.5,-.92,180],["chair",-4.5,-1.85,90],
+		["rug",-2.9,2.43,0],["sofa",-3.4,3.75,180],["table",-3.1,2.17,0],["tv",-4.95,.65,90],
+		["bookshelf",-.05,-2.8,0],["piano",1.2,3.6,0],
+		["bed",3.5,1.5,0],["nightstand",2.03,.65,0],["wardrobe",5.32,-0.35,-90],
+		["bed",4.8,-2.4,90],["nightstand",4.8,-1.2,0],["bed",2.2,3.8,0],
+		["shower",4.9,-4.13,0],["toilet",2.35,-4.1,0],["sink",5.15,-2.13,-90],
+		["toilet",.2,.8,0],["sink",.2,1.8,180],
+		["garden_table",-8.0,-2.2,0],["bbq",-9.8,-1.0,90],["flowers",-10.5,1.5,0],
+		["shrub",-7.5,3.0,0],["tree_garden",-11.0,2.8,0],["plant",5.2,4.2,180],
+		["painting",-2.1,-4.91,0],["rubbish_bin",.1,-4.45,0],
+	]
 
 ## A ready nursery: cot, changing table, mobile, mat, rocking chair and paint
 ## accents. Offered as starter_layout(5) and as Build & buy's nursery preset pack

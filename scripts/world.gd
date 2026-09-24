@@ -802,6 +802,16 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 		_build_memorial(node)
 	node.position=Vector3(float(entry.get("x",0)),Building.level_y(level),float(entry.get("z",0)))
 	node.rotation_degrees.y=float(entry.get("rotation",0))
+	# Cars bought or placed near a garage snap into the next free bay so a
+	# four-car garage fills predictably instead of stacking on the driveway.
+	if kind in ["car", "car_electric", "electric_car"] and level == 0:
+		var bay: Dictionary = _nearest_garage_bay(node.position, str(entry.get("id", "")))
+		if not bay.is_empty():
+			node.position = Vector3(float(bay.x), Building.level_y(level), float(bay.z))
+			node.rotation_degrees.y = float(bay.rotation)
+			entry["x"] = node.position.x
+			entry["z"] = node.position.z
+			entry["rotation"] = node.rotation_degrees.y
 	if is_instance_valid(model):_apply_variant_colour(model,data,variant)
 	if kind=="house_window" and is_instance_valid(model):
 		# Authored origin is the pane centre; lift it to the usual wall height.
@@ -863,8 +873,107 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 		shape.position=Vector3(float(panel.x),float(info.height)/2,float(panel.z))
 		body.add_child(shape)
 	body.set_meta("item_id",info.id)
+	if kind == "car_garage":
+		node.set_meta("garage_door_open", bool(entry.get("garage_door_open", false)))
+		_apply_garage_door(node, bool(node.get_meta("garage_door_open")))
 	items.append(info)
+	if kind in ["car", "car_electric", "electric_car"] and level == 0:
+		# Snap after the car is registered so bay occupancy and transforms match
+		# the live item list the garage helper reads.
+		var bay: Dictionary = _nearest_garage_bay(node.position, str(info.id))
+		if not bay.is_empty():
+			node.position = Vector3(float(bay.x), Building.level_y(level), float(bay.z))
+			node.rotation_degrees.y = float(bay.rotation)
+			info["x"] = node.position.x
+			info["z"] = node.position.z
+			info["rotation"] = node.rotation_degrees.y
 	if rebuild:rebuild_navigation()
+
+## World-space parking bays for every garage on the lot. Occupied bays (another
+## car already within 1.2 m) are skipped so placement fills empty slots.
+func garage_vehicle_bays(exclude_id: String = "") -> Array:
+	var bays: Array = []
+	for item: Dictionary in items:
+		if str(item.get("kind", "")) != "car_garage": continue
+		var node: Node3D = item.get("node")
+		if not is_instance_valid(node): continue
+		var yaw: float = node.rotation.y
+		var basis_x := Vector3(cos(yaw), 0, -sin(yaw))
+		var basis_z := Vector3(sin(yaw), 0, cos(yaw))
+		for local: Vector3 in LifeCatalog.vehicle_snap_locals("car_garage"):
+			var world: Vector3 = node.global_position + basis_x * local.x + basis_z * local.z
+			var taken: bool = false
+			for other: Dictionary in items:
+				if str(other.get("id", "")) == exclude_id: continue
+				if str(other.get("kind", "")) not in ["car", "car_electric", "electric_car"]: continue
+				var other_node: Node3D = other.get("node")
+				if not is_instance_valid(other_node): continue
+				if other_node.global_position.distance_to(world) < 1.2:
+					taken = true
+					break
+			if taken: continue
+			bays.append({"x": world.x, "z": world.z, "rotation": node.rotation_degrees.y, "garage_id": str(item.id)})
+	return bays
+
+
+func _nearest_garage_bay(at: Vector3, exclude_id: String = "") -> Dictionary:
+	var best: Dictionary = {}
+	var best_d: float = 14.0
+	for bay: Dictionary in garage_vehicle_bays(exclude_id):
+		var d: float = at.distance_to(Vector3(float(bay.x), at.y, float(bay.z)))
+		if d < best_d:
+			best_d = d
+			best = bay
+	return best
+
+
+## Raise or lower the authored sectional door mesh when the player clicks it.
+func toggle_garage_door(item_id: String) -> bool:
+	for item: Dictionary in items:
+		if str(item.id) != item_id: continue
+		if str(item.kind) != "car_garage": return false
+		var node: Node3D = item.get("node")
+		if not is_instance_valid(node): return false
+		var open: bool = not bool(node.get_meta("garage_door_open", false))
+		node.set_meta("garage_door_open", open)
+		item["garage_door_open"] = open
+		_apply_garage_door(node, open)
+		return true
+	return false
+
+
+func _apply_garage_door(node: Node3D, open: bool) -> void:
+	# Prefer an authored Door / SectionalDoor child; otherwise nudge any mesh
+	# whose name suggests the door so opening is visible without a new asset.
+	var door: Node3D = null
+	for child: Node in node.find_children("*", "Node3D", true, false):
+		var n: String = str(child.name).to_lower()
+		if "door" in n or "sectional" in n or "shutter" in n:
+			door = child
+			break
+	if is_instance_valid(door):
+		door.position.y = 2.1 if open else 0.0
+		door.visible = not open or door.position.y > 0.01
+	else:
+		node.set_meta("garage_door_open", open)
+
+
+## After a house move, park every car in the next free garage bay.
+func _snap_all_vehicles_to_garages() -> void:
+	for item: Dictionary in items:
+		if str(item.get("kind", "")) not in ["car", "car_electric", "electric_car"]:
+			continue
+		var node: Node3D = item.get("node")
+		if not is_instance_valid(node):
+			continue
+		var bay: Dictionary = _nearest_garage_bay(node.global_position, str(item.id))
+		if bay.is_empty():
+			continue
+		node.position = Vector3(float(bay.x), node.position.y, float(bay.z))
+		node.rotation_degrees.y = float(bay.rotation)
+		item["x"] = node.position.x
+		item["z"] = node.position.z
+		item["rotation"] = node.rotation_degrees.y
 
 ## Paint a placed furnishing's own colour choice onto the authored surface the
 ## model reserves for it. A model with no such surface — every older furnishing

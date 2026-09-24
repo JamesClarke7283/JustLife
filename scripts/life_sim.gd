@@ -484,6 +484,7 @@ func _build_actions() -> void:
 	_define("pet_pet", "Pet", 12.0, {"fun": 10.0, "social": 12.0}, 0, "parenting", 6.0, "Stroke the coat. Warm affection for you both.")
 	_define("pet_train", "Train obedience", 25.0, {"fun": 8.0, "social": 10.0}, 0, "parenting", 18.0, "Patient repetition. Builds Obedience and your own Parenting.")
 	_define("drive_car", "Drive…", 0.0, {}, 0, "", 0.0, "Open the door, get in, and pick a destination on the town map. With a baby or child, buckle them into a car seat first.")
+	_define("open_garage_door", "Open garage door", 0.0, {}, 0, "", 0.0, "Raise or lower the garage door so cars can drive in and out.")
 	_define("push_pram", "Push the pram", 35.0, {"fun": 22.0, "social": 24.0, "energy": -6.0}, 0, "", 0.0, "Settle a baby in and stroll. Stops for chats fill Social and Fun.")
 	_define("push_pushchair", "Push the pushchair", 35.0, {"fun": 24.0, "social": 24.0, "energy": -6.0}, 0, "", 0.0, "Buckle a child in and walk the block.")
 	_define("change_nappy", "Change Nappy", 20.0, {"fun": 4.0, "hygiene": -6.0}, 0, "parenting", 16.0, "A clean nappy on the changing table. The baby's hygiene and bladder are seen to and they stop fussing.")

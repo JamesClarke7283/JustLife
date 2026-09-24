@@ -424,12 +424,30 @@ func party_options() -> Array:
    reason = "%s is away from home." % str(sim.character.name).split(" ")[0]
   elif app.traversal.busy(str(member.id)):
    reason = "%s is on the stairs." % str(sim.character.name).split(" ")[0]
+  var stage: String = str(sim.character.get("age_stage", "adult"))
+  var group: String = "adults"
+  if stage in ["baby", "infant", "toddler"]: group = "babies"
+  elif stage in ["child", "teen"]: group = "children"
   result.append({
    "id": str(member.id),
    "name": str(sim.character.name),
    "reason": reason,
    "available": reason.is_empty(),
    "selected": reason.is_empty(),
+   "stage": stage,
+   "group": group,
+   "kind": "lifelet",
+  })
+ for pet: Dictionary in app.household.pets.get("pets", []):
+  result.append({
+   "id": str(pet.get("id", "")),
+   "name": str(pet.get("name", "Pet")),
+   "reason": "",
+   "available": true,
+   "selected": true,
+   "stage": str(pet.get("species", "pet")),
+   "group": "pets",
+   "kind": "pet",
   })
  return result
 
@@ -456,6 +474,10 @@ func begin_trip(destination:String, party: Array = []) -> bool:
   if not party.is_empty() and not party.has(str(member.id)):continue
   if member.sim.is_away():app.show_notice("Wait until everyone coming is home before taking a trip.");return false
   travellers.append(member)
+ # Pets tick along as party tags but do not board as Lifelets; only members walk.
+ for pet:Dictionary in app.household.pets.get("pets", []):
+  if party.has(str(pet.get("id", ""))):
+   pass
  if travellers.is_empty():
   app.show_notice("Choose at least one Lifelet to come along.");return false
  # Everyone staying home steps out of the scene for the trip. They are not in
@@ -497,7 +519,8 @@ func begin_trip(destination:String, party: Array = []) -> bool:
  if not food_error.is_empty():app.show_notice(food_error);return false
  if not owned.is_empty():_remember_vehicle(owned)
  app.cancel_placement()
- if app.current_venue=="home":app.home_layout=app.world.serialize_items()
+ if app.current_venue=="home":
+  if app.pending_house_move.is_empty():app.home_layout=app.world.serialize_items()
  else:app.venue_layouts[app.current_venue]=app.world.serialize_items()
  var resume:int=app.pause_before_menu if app.overlay_pauses_sim else (app.speed_before_build if app.mode=="build" else app.sim.speed)
  app.close_overlay(false)
@@ -867,6 +890,16 @@ func _blocking_residents(boarder_id:String,from:Vector3,to:Vector3) -> Array:
 
 func _arrive() -> void:
  var destination:String=str(trip.destination)
+ var move_label:String=""
+ # A mid-game house move finishes here: the old lot is replaced by the pending
+ # layout, land and exterior before ordinary arrival placement runs.
+ if not app.pending_house_move.is_empty() and destination=="home":
+  var move:Dictionary=app.pending_house_move.duplicate(true)
+  move_label=str(move.get("name",""))
+  app.pending_house_move.clear()
+  LifeBuildingState.set_land(move.get("land",{}))
+  app.home_layout=move.get("layout",[])
+  trip.destination="home"
  # The party travels; everyone left behind stays home, so their own plans, needs
  # and bodies carry on where they were.
  var party:Array=trip.get("party",[])
@@ -879,6 +912,9 @@ func _arrive() -> void:
  var layout:Array=app.home_layout if destination=="home" else app.venue_layouts.get(destination,LifeNeighborhood.layout(destination))
  if destination=="home" and layout.is_empty():layout=LifeCatalog.starter_layout(app.selected_lot)
  app.loading_game=true;app.setup_live(layout);app.loading_game=false
+ if destination=="home":
+  app._apply_active_house_exterior()
+  app.world._snap_all_vehicles_to_garages()
  # setup_live puts every member on the new lot, because a household arriving is
  # normally everybody. The party is not everybody, so anyone left behind is
  # taken off this scene after it, and only the party is placed at the curb.
@@ -897,6 +933,7 @@ func _arrive() -> void:
    if body!=null:body.set_meta("left_behind",false)
  var note:=routine_note(destination)
  if not note.is_empty():app.show_notice(note)
+ elif not move_label.is_empty():app.show_notice("Welcome to %s." % move_label)
  var taken_spots:Array[Vector3]=[]
  var spot_index:int=0
  for index:int in range(app.household.members.size()):

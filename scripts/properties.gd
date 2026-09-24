@@ -51,10 +51,42 @@ const TYPES: Dictionary = {
 		"description": "Four bedrooms, two bathrooms, a formal dining room and a garden the full width of its plot. The most house the game sells.",
 		"rooms": 9, "beds": 4, "baths": 2,
 	},
+	"medium": {
+		"label": "Medium Garden Home", "layout": 6, "price": 1500,
+		"tagline": "Two bedrooms, a pool, and a place to eat outside.",
+		"description": "A medium furnished home with two bedrooms, a swimming pool, outdoor table and chairs, and a barbecue.",
+		"rooms": 5, "beds": 2, "baths": 1, "preset": true,
+		"architecture_styles": ["cottage", "ultra_modern", "traditional"],
+		"exterior_swatches": ["eae7d7","8faf9f","e6d8c5","c8d7e0","d9b7a3","7d8a99","efd9a0","a3ad7a","6b7d5a","4a5568"],
+	},
+	"large": {
+		"label": "Large Estate", "layout": 7, "price": 12000,
+		"tagline": "Four bedrooms, three baths, and a four-car garage.",
+		"description": "A large furnished estate with four bedrooms, three bathrooms, a pool, hot tub, four-car garage, outdoor table, chairs and barbecue.",
+		"rooms": 10, "beds": 4, "baths": 3, "preset": true,
+		"architecture_styles": ["villa", "ultra_modern", "traditional"],
+		"exterior_swatches": ["eae7d7","8faf9f","e6d8c5","c8d7e0","d9b7a3","7d8a99","efd9a0","a3ad7a","6b7d5a","4a5568"],
+	},
+	"ultramodern": {
+		"label": "Ultra-Modern Residence", "layout": 8, "price": 8500,
+		"tagline": "Clean lines, glass, and a landscaped garden.",
+		"description": "An ultra-modern preset with open living, a garden, outdoor seating and a barbecue. Three architecture finishes and ten exterior colour swatches.",
+		"rooms": 6, "beds": 3, "baths": 2, "preset": true,
+		"architecture_styles": ["ultra_modern", "minimal", "traditional"],
+		"exterior_swatches": ["eae7d7","8faf9f","e6d8c5","c8d7e0","d9b7a3","7d8a99","efd9a0","a3ad7a","6b7d5a","4a5568"],
+	},
+	"traditional": {
+		"label": "Traditional Family House", "layout": 9, "price": 6500,
+		"tagline": "A classic home with a proper garden.",
+		"description": "A traditional preset with a garden, outdoor table and chairs, barbecue, and three architecture styles including ultra-modern accents.",
+		"rooms": 6, "beds": 3, "baths": 2, "preset": true,
+		"architecture_styles": ["traditional", "cottage", "ultra_modern"],
+		"exterior_swatches": ["eae7d7","8faf9f","e6d8c5","c8d7e0","d9b7a3","7d8a99","efd9a0","a3ad7a","6b7d5a","4a5568"],
+	},
 }
 
 ## The order a picker should offer the types in: cheapest and simplest first.
-const ORDER: Array[String] = ["willow", "sage", "canvas", "rowan", "juniper"]
+const ORDER: Array[String] = ["willow", "sage", "canvas", "medium", "traditional", "ultramodern", "large", "rowan", "juniper"]
 
 ## What moving into a house the household already owns costs, on top of the
 ## house's own price. A move is a real expense, so moving is a decision.
@@ -148,6 +180,9 @@ static func grant(state: Dictionary, house_id: String, type_id: String, land: Di
 	after["houses"][house_id] = {
 		"id": house_id, "type": type_id, "land": land.duplicate(true),
 		"policy": "", "layout": [], "name": label(type_id),
+		"architecture_style": str(type_info(type_id).get("architecture_styles", ["cottage"])[0]),
+		"exterior_color": str(type_info(type_id).get("exterior_swatches", ["eae7d7"])[0]),
+		"trim_color": "8faf9f",
 	}
 	after["active"] = house_id
 	return {"ok": true, "state": after}
@@ -196,6 +231,9 @@ static func move_into(state: Dictionary, type_id: String, funds: int, house_id: 
 		after["houses"][target_id] = {
 			"id": target_id, "type": type_id, "land": land.duplicate(true),
 			"policy": "", "layout": [], "name": label(type_id),
+			"architecture_style": str(type_info(type_id).get("architecture_styles", ["cottage"])[0]),
+			"exterior_color": str(type_info(type_id).get("exterior_swatches", ["eae7d7"])[0]),
+			"trim_color": "8faf9f",
 		}
 	else:
 		# An owned house is kept as it was left: its own land and its own policy.
@@ -208,6 +246,61 @@ static func move_into(state: Dictionary, type_id: String, funds: int, house_id: 
 ## buying, because only the move is paid for.
 static func moving_fee() -> int:
 	return MOVING_FEE
+
+
+## Set architecture style / exterior colours on an owned house. Empty fields are
+## left alone. Style and swatch must belong to that house type's catalogue.
+static func set_exterior(state: Dictionary, house_id: String, style: String = "", wall: String = "", trim: String = "") -> Dictionary:
+	if not owns(state, house_id):
+		return {"ok": false, "error": "This household does not own that house."}
+	var type_id: String = str(house(state, house_id).get("type", ""))
+	var info: Dictionary = type_info(type_id)
+	var styles: Array = info.get("architecture_styles", [])
+	var swatches: Array = info.get("exterior_swatches", [])
+	if not style.is_empty() and not styles.is_empty() and not styles.has(style):
+		return {"ok": false, "error": "That architecture style is not offered on this house."}
+	if not wall.is_empty() and not swatches.is_empty() and not swatches.has(wall):
+		return {"ok": false, "error": "That exterior colour is not offered on this house."}
+	if not trim.is_empty() and not swatches.is_empty() and not swatches.has(trim):
+		return {"ok": false, "error": "That trim colour is not offered on this house."}
+	var after: Dictionary = state.duplicate(true)
+	if not style.is_empty(): after["houses"][house_id]["architecture_style"] = style
+	if not wall.is_empty(): after["houses"][house_id]["exterior_color"] = wall
+	if not trim.is_empty(): after["houses"][house_id]["trim_color"] = trim
+	return {"ok": true, "state": after}
+
+
+## Amenities a bought preset should keep even when the household carries its old
+## furniture into the new home: outdoor living and the garage.
+const CARRIED_AMENITIES: Array[String] = ["pool", "hot_tub", "bbq", "garden_table", "car_garage", "outdoor_swing", "tree_garden"]
+
+
+## Merge a household's carried furnishings with a preset's missing amenities so
+## nothing owned is dropped when buying a new property.
+static func merge_move_layout(carried: Array, starter: Array) -> Array:
+	var result: Array = []
+	var seen: Dictionary = {}
+	var next_id: int = 0
+	for entry: Variant in carried:
+		if not entry is Dictionary: continue
+		var item: Dictionary = (entry as Dictionary).duplicate(true)
+		var kind: String = str(item.get("kind", ""))
+		if kind.is_empty() or kind.begins_with("__"): continue
+		item["id"] = "move_%d" % next_id
+		next_id += 1
+		result.append(item)
+		seen[kind] = true
+	for entry: Variant in starter:
+		if not entry is Dictionary: continue
+		var kind: String = str(entry.get("kind", ""))
+		if not CARRIED_AMENITIES.has(kind): continue
+		if seen.has(kind): continue
+		var item: Dictionary = (entry as Dictionary).duplicate(true)
+		item["id"] = "move_%d" % next_id
+		next_id += 1
+		result.append(item)
+		seen[kind] = true
+	return result
 
 
 ## The policy in force on one house, or an empty dictionary.

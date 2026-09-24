@@ -50,6 +50,9 @@ var selected_lot: int = 0
 ## are going.
 var party_selection: Array[String] = []
 var _pending_trip_destination: String = ""
+## A mid-game house move that walks to the car and drives before the new lot is
+## built. Cleared on arrival or when the trip is refused.
+var pending_house_move: Dictionary = {}
 ## The homes this household owns, which one it lives in, and the insurance on
 ## each. Rides the save beside the land and the layouts.
 var properties: Dictionary = Properties.fresh()
@@ -1448,6 +1451,27 @@ func show_property_panel() -> void:
 		var note:Label=text_label(str(offer.reason) if not bool(offer.available) else detail,
 			Vector2(6,40),Vector2(548,24),11,P.CORAL if not bool(offer.available) else P.MUTED,false,row)
 		note.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+		var info:Dictionary=Properties.type_info(str(offer.get("id","")) if bool(offer.owned) else str(offer.id))
+		if bool(offer.owned) and bool(info.get("preset",false)):
+			row.custom_minimum_size=Vector2(560,118)
+			var styles:Array=info.get("architecture_styles",[])
+			var sx:float=6.0
+			for style:Variant in styles:
+				var style_id:String=str(style)
+				var style_btn:Button=button(style_id.replace("_"," ").capitalize(),Vector2(sx,66),Vector2(120,22),
+					func():_set_house_exterior(str(offer.id),style_id,"",""),false,row)
+				style_btn.add_theme_font_size_override("font_size",10)
+				sx+=126.0
+			var swatches:Array=info.get("exterior_swatches",[])
+			var cx:float=6.0
+			for colour:Variant in swatches:
+				var hex:String=str(colour)
+				var swatch:=ColorRect.new();swatch.color=Color(hex)
+				rect(swatch,Vector2(cx,92),Vector2(22,18),row)
+				var pick:Button=button("",Vector2(cx,92),Vector2(22,18),func():_set_house_exterior(str(offer.id),"",hex,""),false,row)
+				pick.modulate=Color(1,1,1,0.01)
+				pick.tooltip_text="Wall colour #"+hex
+				cx+=26.0
 	# The insurance of the home the household actually lives in, so a second
 	# property's cover is bought and cancelled where it is lived in.
 	var current_id:String=Properties.active(properties)
@@ -1498,6 +1522,16 @@ func _toggle_property_insurance(insured:bool) -> void:
 
 ## Buy a home and move the household into it, rebuilding the world from its own
 ## saved layout. The house left behind keeps its land and its policy.
+func _set_house_exterior(house_id:String, style:String, wall:String, trim:String) -> void:
+	var result:Dictionary=Properties.set_exterior(properties,house_id,style,wall,trim)
+	if not bool(result.ok):
+		show_notice(str(result.error));return
+	properties=result.state
+	if Properties.active(properties)==house_id:
+		_apply_active_house_exterior()
+	show_property_panel()
+
+
 func _move_house(house_id:String) -> void:
 	var house:Dictionary=Properties.houses(properties).get(house_id,{})
 	var type_id:String=str(house.get("type",house_id))
@@ -1505,8 +1539,9 @@ func _move_house(house_id:String) -> void:
 	# the record the move carries already holds it and a later move back returns
 	# to the same house on the same plot with the same furnishings.
 	var leaving:String=Properties.active(properties)
+	var leaving_layout:Array=world.serialize_items()
 	if not leaving.is_empty() and properties.get("houses",{}).has(leaving):
-		properties.houses[leaving]["layout"]=world.serialize_items()
+		properties.houses[leaving]["layout"]=leaving_layout
 		properties.houses[leaving]["land"]=LifeBuildingState.land.duplicate(true)
 	var result:Dictionary=Properties.move_into(properties,type_id,household.funds,house_id,LifeBuildingState.land)
 	if not bool(result.ok):
@@ -1515,17 +1550,69 @@ func _move_house(house_id:String) -> void:
 	household.set_funds(int(result.funds))
 	_apply_property_insurance()
 	# The new home is built from its own saved layout, or from its type's starter
-	# layout when it has never been lived in.
+	# layout when it has never been lived in. A brand-new purchase carries the
+	# household's furniture and keeps the preset's outdoor amenities.
 	var target:Dictionary=Properties.house(properties,house_id)
 	var layout:Array=target.get("layout",[])
-	if layout.is_empty():layout=LifeCatalog.starter_layout(int(Properties.type_info(type_id).layout))
-	current_venue="home"
-	LifeBuildingState.set_land(target.get("land",{}))
+	if layout.is_empty():
+		layout=LifeCatalog.starter_layout(int(Properties.type_info(type_id).layout))
+		if bool(result.get("bought",false)):
+			layout=Properties.merge_move_layout(leaving_layout,layout)
+	properties.houses[house_id]["layout"]=layout
+	var land:Dictionary=target.get("land",{})
+	pending_house_move={"house_id":house_id,"layout":layout,"land":land,"name":str(target.get("name","your new home")),"cost":int(result.cost)}
 	home_layout=layout
-	setup_live(layout)
-	refresh_hud()
-	show_notice("Moved in to %s for ℒ%s." % [str(target.get("name","your new home")),commas(int(result.cost))])
 	close_overlay()
+	# Everyone walks to the household car (or the shared city car) and drives to
+	# the new driveway. Arrival rebuilds the lot from pending_house_move.
+	var party:Array[String]=[]
+	for member:Dictionary in household.members:
+		party.append(str(member.id))
+	if current_venue=="home" and residents.begin_trip("home",party):
+		home_layout=layout
+		show_notice("Packing up for %s…" % str(pending_house_move.name))
+		return
+	_complete_house_move()
+
+
+## Finish a property move after the drive (or immediately when travel cannot start).
+func _complete_house_move() -> void:
+	if pending_house_move.is_empty():
+		return
+	var move:Dictionary=pending_house_move.duplicate(true)
+	pending_house_move.clear()
+	current_venue="home"
+	LifeBuildingState.set_land(move.get("land",{}))
+	home_layout=move.get("layout",[])
+	setup_live(home_layout)
+	_apply_active_house_exterior()
+	world._snap_all_vehicles_to_garages()
+	refresh_hud()
+	show_notice("Moved in to %s for ℒ%s." % [str(move.get("name","your new home")),commas(int(move.get("cost",0)))])
+	close_overlay()
+
+
+## Paint the active house's chosen exterior colour onto ground-floor walls when
+## a construction shell is present.
+func _apply_active_house_exterior() -> void:
+	var house_id:String=Properties.active(properties)
+	if house_id.is_empty():return
+	var record:Dictionary=Properties.house(properties,house_id)
+	var wall:String=str(record.get("exterior_color",""))
+	if wall.is_empty():return
+	floor_color=wall
+	if world.construction.building_state.is_empty():return
+	var changed:bool=false
+	for entry:Variant in world.construction.building_state.get("walls",[]):
+		if not entry is Dictionary:continue
+		if int(entry.get("level",0))!=0:continue
+		if str(entry.get("material",""))==wall:continue
+		entry["material"]=wall
+		entry["color"]=wall
+		changed=true
+	if changed:
+		world.construction.refresh_decorations()
+
 
 func select_creator_member(index:int) -> void:
 	if index<0 or index>=household_profiles.size():return
@@ -4099,7 +4186,11 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 				if bool(partner.available):any_free=true;break
 			if not any_free and join_reason.is_empty():
 				join_reason="Nobody else on the lot is free to join right now."
-			actions.insert(mini(1,actions.size()),{"id":LifeOutdoorActs.JOIN_ACTION,"label":"Ask to Join…","cost":0,"duration":int(LifeOutdoorActs.acts(str(item.kind)).get("duration",40)),"available":join_reason.is_empty(),"unavailable_reason":join_reason,"description":"Invite another household Lifelet into the water with you."})
+			actions.insert(mini(1,actions.size()),{"id":LifeOutdoorActs.JOIN_ACTION,"label":"Ask to Join…","cost":0,"duration":int(LifeOutdoorActs.acts(str(item.kind)).get("duration",40)),"available":join_reason.is_empty(),"unavailable_reason":join_reason,"description":"Invite another household Lifelet to join you outdoors."})
+		actions.insert(mini(2,actions.size()),{"id":LifeOutdoorActs.CALL_FRIEND_ACTION,"label":"Call Friend Over…","cost":0,"duration":0,"available":true,"description":"Invite someone from your contacts list to come over."})
+	if residents.home_visit.active() and residents.home_visit.owns(str(item.id)) and str(residents.home_visit.state.phase)=="inside":
+		var staying:bool=bool(residents.home_visit.state.get("stay_over",false))
+		actions.insert(0,{"id":LifeOutdoorActs.STAY_OVER_ACTION,"label":"Ask to Stay Over","cost":0,"duration":0,"available":not staying,"unavailable_reason":"They are already staying over." if staying else "","description":"Override their leave timer and ask them to stay the night."})
 	if str(item.kind)=="floor_lamp" and not _find_item(str(item.id)).is_empty():
 		var lamp:Dictionary=_find_item(str(item.id))
 		actions.append({"id":"switch_light","label":"Switch off" if world.item_lit(lamp) else "Switch on","cost":0,"duration":0,"available":true,"description":"A warm pool of light for evenings in."})
@@ -4145,12 +4236,23 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 			elif str(a.id)=="supported_homework":show_homework_helpers(item)
 			elif str(a.id)==LifeDancePlan.ACTION_ID:show_dance_partners(item)
 			elif str(a.id)==LifeOutdoorActs.JOIN_ACTION:show_outdoor_join_partners(item)
+			elif str(a.id)==LifeOutdoorActs.CALL_FRIEND_ACTION:show_call_friend_over()
+			elif str(a.id)==LifeOutdoorActs.STAY_OVER_ACTION:
+				residents.home_visit.ask_to_stay_over();close_overlay()
+			elif str(a.id)=="open_garage_door":
+				var was_open:bool=false
+				var garage:Dictionary=_find_item(str(item.id))
+				if not garage.is_empty() and is_instance_valid(garage.get("node")):
+					was_open=bool(garage.node.get_meta("garage_door_open",false))
+				if world.toggle_garage_door(str(item.id)):
+					show_notice("Garage door closes." if was_open else "Garage door opens.")
+				close_overlay()
 			elif str(a.id)=="drive_car":
-				# Pick the destination on the town map; the trip then walks the party
-				# to this car (or the shared car when the household owns none), opens
-				# the doors, buckles children in and drives off.
+				# Pick who is coming first (adults, children, babies, pets), then
+				# the destination. The trip walks to this household car when one
+				# is owned, otherwise the shared Juniper kerb stand.
 				residents.preferred_vehicle_id=str(item.id)
-				close_overlay();show_neighborhood()
+				close_overlay();show_drive_party()
 			elif str(a.id)==LifeBabyPlan.ACTION_ID:try_for_baby(item);close_overlay()
 			elif str(a.id)=="stop_try_for_baby":
 				household.cancel_cooperative_action(bound_member_id)
@@ -7885,7 +7987,7 @@ func show_trip_party(destination:String, reset:bool = true) -> void:
 	if reset:
 		party_selection.clear()
 		for entry:Dictionary in options:
-			if bool(entry.available):party_selection.append(str(entry.id))
+			if bool(entry.available) and str(entry.get("kind","lifelet"))=="lifelet":party_selection.append(str(entry.id))
 	else:
 		# A Lifelet who has since become unavailable is dropped rather than
 		# travelling while busy.
@@ -7902,6 +8004,7 @@ func show_trip_party(destination:String, reset:bool = true) -> void:
 	paragraph("Tick who is coming along. Anyone left behind stays home and carries on with their own day.",Vector2(502,254),Vector2(440,44),14,P.MUTED,overlay)
 	var y:float=312.0
 	for entry:Dictionary in options:
+		if str(entry.get("kind","lifelet"))!="lifelet":continue
 		var member_id:String=str(entry.id)
 		var chosen:bool=party_selection.has(member_id)
 		var label:String=str(entry.name).split(" ")[0]+("  ✓" if chosen else "")
@@ -7918,6 +8021,87 @@ func show_trip_party(destination:String, reset:bool = true) -> void:
 	go.disabled=party_selection.is_empty()
 	go.tooltip_text="Travel with the Lifelets you have chosen." if not party_selection.is_empty() else "Choose at least one Lifelet to come along."
 	button("Back",Vector2(502,y+62),Vector2(440,36),func():show_neighborhood(destination),false,overlay)
+
+
+## Who would like to go for a drive? Grouped tick boxes for adults, children,
+## babies and pets, then the town map.
+func show_drive_party(reset:bool = true) -> void:
+	var options:Array=residents.party_options()
+	if reset:
+		party_selection.clear()
+		for entry:Dictionary in options:
+			if bool(entry.available):party_selection.append(str(entry.id))
+	else:
+		for member_id:String in party_selection.duplicate():
+			var still_ok:bool=false
+			for entry:Dictionary in options:
+				if str(entry.id)==member_id and bool(entry.available):still_ok=true
+			if not still_ok:party_selection.erase(member_id)
+	_begin_pause_overlay()
+	var shade=ColorRect.new();shade.color=Color(.08,.17,.15,.28);rect(shade,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
+	card(Vector2(430,100),Vector2(560,700),P.WHITE,24,overlay)
+	small_caps("A drive",Vector2(462,122),Vector2(500,24),overlay)
+	text_label("Who would like to go for a drive?",Vector2(460,156),Vector2(500,52),28,P.INK,true,overlay)
+	paragraph("Tick adults, children, babies and pets. Then choose where to go on the town map.",Vector2(462,220),Vector2(500,44),14,P.MUTED,overlay)
+	var y:float=280.0
+	for group:String in ["adults","children","babies","pets"]:
+		var heading:String={"adults":"Adults","children":"Children","babies":"Babies","pets":"Pets"}[group]
+		text_label(heading,Vector2(462,y),Vector2(500,28),18,P.TEAL,true,overlay)
+		y+=34.0
+		var any:bool=false
+		for entry:Dictionary in options:
+			if str(entry.get("group",""))!=group:continue
+			any=true
+			var member_id:String=str(entry.id)
+			var chosen:bool=party_selection.has(member_id)
+			var label:String=str(entry.name).split(" ")[0]+("  ✓" if chosen else "")
+			var row:Button=button(label,Vector2(462,y),Vector2(496,36),
+				func():_toggle_drive_party_member(member_id),chosen,overlay)
+			row.name="DriveParty_"+member_id
+			row.disabled=not bool(entry.available)
+			y+=42.0
+		if not any:
+			text_label("None in this household.",Vector2(468,y),Vector2(480,22),12,P.MUTED,false,overlay)
+			y+=28.0
+		y+=8.0
+	var lifelets_chosen:bool=false
+	for entry:Dictionary in options:
+		if str(entry.get("kind","lifelet"))=="lifelet" and party_selection.has(str(entry.id)):
+			lifelets_chosen=true;break
+	var go:Button=button("Choose destination  →",Vector2(462,mini(y+8.0,720.0)),Vector2(496,44),func():show_neighborhood(),true,overlay)
+	go.name="DrivePartyGo"
+	go.disabled=not lifelets_chosen
+	button("Back to life",Vector2(462,mini(y+60.0,760.0)),Vector2(496,36),close_overlay,false,overlay)
+
+
+func _toggle_drive_party_member(member_id:String) -> void:
+	if party_selection.has(member_id):party_selection.erase(member_id)
+	else:party_selection.append(member_id)
+	show_drive_party(false)
+
+
+## Call a friend from the contacts list to come over as a guest.
+func show_call_friend_over() -> void:
+	_begin_pause_overlay()
+	var shade=ColorRect.new();shade.color=Color(.08,.17,.15,.28);rect(shade,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
+	card(Vector2(456,116),Vector2(528,654),P.WHITE,24,overlay)
+	small_caps("Call a friend",Vector2(487,138),Vector2(460,25),overlay)
+	text_label("Who should come over?",Vector2(485,177),Vector2(465,52),31,P.INK,true,overlay)
+	var scroll=ScrollContainer.new()
+	rect(scroll,Vector2(486,254),Vector2(470,415),overlay)
+	var column=VBoxContainer.new();column.add_theme_constant_override("separation",10);scroll.add_child(column)
+	for id:String in sim.relationship_order():
+		if not LifeResidents.PEOPLE.has(id):continue
+		var rel:Dictionary=sim.relationships[id]
+		var row:Control=Control.new();row.custom_minimum_size=Vector2(450,90);column.add_child(row)
+		text_label(str(rel.name),Vector2.ZERO,Vector2(444,32),20,P.INK,true,row)
+		text_label("%s · Friendship %d" % [rel.status,int(rel.friendship)],Vector2(8,36),Vector2(438,24),13,P.MUTED,false,row)
+		var reason:String=residents.home_visit.requirement(id)
+		var invite:Button=button("Call over",Vector2(8,60),Vector2(212,28),func():invite_neighbor(id),false,row)
+		invite.name="CallFriend_"+id
+		invite.disabled=not reason.is_empty()
+		invite.tooltip_text=reason if not reason.is_empty() else "Invite them to visit."
+	button("Back to life",Vector2(486,699),Vector2(470,43),close_overlay,true,overlay)
 
 
 ## Tick or untick one Lifelet for the trip.
@@ -8565,7 +8749,7 @@ func _refresh_guest_status()->void:
 		if is_instance_valid(guest_status_card):guest_status_card.queue_free()
 		guest_status_card=null;return
 	if not is_instance_valid(guest_status_card):
-		guest_status_card=card(Vector2(1038,206),Vector2(374,126),P.WHITE,16)
+		guest_status_card=card(Vector2(1038,206),Vector2(374,148),P.WHITE,16)
 		guest_status_card.name="GuestStatus"
 		guest_status_text=text_label("",Vector2(14,10),Vector2(346,54),15,P.INK,true,guest_status_card)
 		guest_status_text.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
@@ -8584,8 +8768,17 @@ func _refresh_guest_status()->void:
 		var remaining:int=maxi(0,ceili(float(visit.arrived_at)+LifeHomeVisit.WELCOME_MINUTES-residents.home_visit._now()))
 		guest_status_text.text+="\nWelcome within %d game min" % remaining
 	elif phase=="inside":
-		var remaining:int=maxi(0,ceili(float(visit.phase_at)+LifeHomeVisit.STAY_MINUTES-residents.home_visit._now()))
+		var remaining:int=maxi(0,ceili(residents.home_visit.stay_deadline()-residents.home_visit._now()))
 		guest_status_text.text+="\nLeaving in %d game min" % remaining
+		if bool(visit.get("stay_over",false)):guest_status_text.text+=" · staying over"
+		if not guest_status_card.has_node("StayOverGuest"):
+			var stay:Button=button("Ask to Stay Over",Vector2(14,112),Vector2(346,28),func():residents.home_visit.ask_to_stay_over(),false,guest_status_card)
+			stay.name="StayOverGuest"
+		var stay_btn:Button=guest_status_card.get_node("StayOverGuest")
+		stay_btn.visible=true
+		stay_btn.disabled=bool(visit.get("stay_over",false))
+	elif is_instance_valid(guest_status_card) and guest_status_card.has_node("StayOverGuest"):
+		guest_status_card.get_node("StayOverGuest").visible=false
 	guest_welcome_button.visible=phase=="waiting"
 	guest_welcome_button.disabled=phase!="waiting" or not visit.greeting.is_empty()
 	guest_welcome_button.text="Welcoming" if welcoming else ("Welcome queued" if not visit.greeting.is_empty() else "Welcome in")
