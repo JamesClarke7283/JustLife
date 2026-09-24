@@ -738,14 +738,20 @@ func _apply_spirit(node: Node) -> void:
 	if node is MeshInstance3D and node.mesh != null:
 		var mesh_node: MeshInstance3D = node
 		for surface_index: int in range(mesh_node.mesh.get_surface_count()):
+			# Duplicate before ghosting. Character GLBs share imported materials
+			# across every Lifelet; mutating them in place made remaining members
+			# inherit the departed spirit's transparency and look crushed/wrong.
 			var material: Material = mesh_node.get_surface_override_material(surface_index)
+			if material == null:
+				material = mesh_node.mesh.surface_get_material(surface_index)
 			if material is StandardMaterial3D:
-				var ghost: StandardMaterial3D = material
+				var ghost: StandardMaterial3D = (material as StandardMaterial3D).duplicate() as StandardMaterial3D
 				ghost.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 				ghost.albedo_color.a = 0.48
 				ghost.emission_enabled = true
 				ghost.emission = Color("8ec4c0")
 				ghost.emission_energy_multiplier = 0.18
+				mesh_node.set_surface_override_material(surface_index, ghost)
 	for child: Node in node.get_children():
 		_apply_spirit(child)
 

@@ -5038,8 +5038,40 @@ func _member_action_started(id:String,action:Dictionary) -> void:
 func _on_member_passed(id: String) -> void:
 	_refresh_aged_member(id)
 	_place_memorial(id)
+	# Keep control and HUD on a living Lifelet. A departed spirit stays selectable
+	# from the household bar, but must not leave the life box bound to zeroed
+	# needs or a ghosted mesh as if it were still the active person.
+	_restore_living_selection_after_departure(id)
 	if sound_enabled and is_instance_valid(chime_player) and chime_player.stream:
 		chime_player.play()
+
+## After someone passes, re-bind every living actor to its own profile and move
+## selection off the spirit when the player was controlling them.
+func _restore_living_selection_after_departure(departed_id: String) -> void:
+	for member: Dictionary in household.members:
+		var member_id: String = str(member.id)
+		if member_id == departed_id:
+			continue
+		var living: LifeSim = member.sim
+		if living == null or living.is_spirit():
+			continue
+		var actor: LifeActor = world.actors.get(member_id) as LifeActor
+		if not is_instance_valid(actor):
+			continue
+		var appearance: Dictionary = living.character.duplicate(true)
+		appearance["low_detail"] = bool(actor.profile.get("low_detail", false))
+		actor.configure(appearance)
+	if household.selected_id() == departed_id:
+		for index: int in range(household.members.size()):
+			var candidate: LifeSim = household.members[index].sim
+			if candidate != null and not candidate.is_spirit():
+				household.select(index)
+				break
+	_bind_member(household.selected_id())
+	if is_instance_valid(player):
+		player.set_selected(true)
+	if mode in ["live", "build"]:
+		draw_live()
 
 func _place_missing_memorials() -> void:
 	if current_venue != "home":

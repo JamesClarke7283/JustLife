@@ -597,14 +597,32 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		var availability: Dictionary = get_action_availability(id, target_id)
 		data["available"] = availability.available
 		data["unavailable_reason"] = availability.reason
+		# Kitchen stock pays for snacks and recipes; do not show a purse price.
+		if is_instance_valid(grocery_service) and id in ["cook", "snack"]:
+			data["cost"] = 0
 		result.append(data)
 	if kind=="fridge" and is_instance_valid(meal_service):
 		var out:Dictionary={"id":"put_in_fridge","label":"Put away the food left out","cost":0,"duration":5,"available":true,"description":"Gather the servings sitting out and return them to the fridge while they are still fresh."}
 		var reason:String=meal_service.action_availability(self,"put_in_fridge",target_id)
 		out["available"]=reason.is_empty();out["unavailable_reason"]=reason
 		result.append(out)
-		result.append({"id":"choose_leftovers","label":"Choose leftovers…","available":true,"cost":0,"duration":0,"description":"See the food stored in this fridge."})
+		var leftover_reason:String=_fridge_leftover_reason(target_id)
+		result.append({"id":"choose_leftovers","label":"Choose leftovers…","available":leftover_reason.is_empty(),"unavailable_reason":leftover_reason,"cost":0,"duration":0,"description":"See the food stored in this fridge."})
 	return result
+
+## Why this fridge has nothing to choose, or "" when leftovers are waiting.
+func _fridge_leftover_reason(fridge_id: String) -> String:
+	if not is_instance_valid(meal_service):
+		return "No leftovers yet."
+	for batch: Dictionary in meal_service.food().batches:
+		if str(batch.storage) != "fridge":
+			continue
+		if not fridge_id.is_empty() and str(batch.host) != fridge_id:
+			continue
+		if int(batch.remaining) <= 0:
+			continue
+		return ""
+	return "No leftovers yet. Grab a snack or cook while the kitchen is stocked."
 
 
 func get_action_definition(id: String) -> Dictionary:
@@ -996,13 +1014,13 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 			_emit_notice(household_service.action_availability(self,id,target_id))
 			return false
 		definition=household_service.study_definition(definition,subject)
-	if funds < int(definition["cost"]):
+	if funds < int(definition["cost"]) and not (is_instance_valid(grocery_service) and id in ["cook", "snack"]):
 		_emit_notice("You need ℒ%d for %s." % [int(definition["cost"]), str(definition["label"]).to_lower()])
 		return false
 	if id in ["job","career_day"] and int(career["worked_day"]) == day:
 		_emit_notice("Today's shift is complete. You can work again tomorrow.")
 		return false
-	if id in SOCIAL_ACTIONS or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or COMPUTER_MASTERY_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "bin_meal", "jog", "play_toys", "put_in_fridge", LifeGardenGames.ACTION_ID, LifeOutdoorActs.ACTION_ID, LifeOutdoorActs.PUSH_ID]:
+	if id in SOCIAL_ACTIONS or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or COMPUTER_MASTERY_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "snack", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "bin_meal", "jog", "play_toys", "put_in_fridge", LifeGardenGames.ACTION_ID, LifeOutdoorActs.ACTION_ID, LifeOutdoorActs.PUSH_ID]:
 		var availability: Dictionary = get_action_availability(id, target_id)
 		if not bool(availability.available):
 			_emit_notice(str(availability.reason))
@@ -1827,7 +1845,7 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 		reason = "Long runs around the block are for teens and adults."
 	elif id == "play_toys" and str(character.age_stage) != "child":
 		reason = "The toy chest is for children."
-	elif funds < int(_actions[id].cost):
+	elif funds < int(_actions[id].cost) and not (is_instance_valid(grocery_service) and id in ["cook", "snack"]):
 		reason = "Requires ℒ%d." % int(_actions[id].cost)
 	elif id == "job" and int(career.worked_day) == day:
 		reason = "Today's shift is already complete."
@@ -3030,12 +3048,19 @@ func _autonomy_need_ranks_earlier(need:String,preferred_id:String,other_id:Strin
 
 func _autonomy_need_choice(need:String,excluded_target_ids:Array=[],preparing:bool=false) -> Dictionary:
 	if need=="social":return _autonomy_social_choice(excluded_target_ids)
-	# A kitchen with nothing in it has no meal to choose, so the household's own
-	# shop is the recovery: a hungry Lifelet with an empty fridge and no delivery
-	# on its way orders one rather than queueing a meal it cannot cook.
-	if need=="hunger" and is_instance_valid(grocery_service) and str(grocery_service.grocery_availability()).is_empty():
-		var shopping:Dictionary=_autonomy_target_for("order_groceries",excluded_target_ids)
-		if not shopping.is_empty():return shopping
+	# Prefer food that is already here. Leftovers and a stocked kitchen feed a
+	# hungry Lifelet immediately; only an empty kitchen with nothing stored falls
+	# through to ordering a delivery.
+	if need=="hunger":
+		var leftover:Dictionary=_autonomy_target_for("eat_meal",excluded_target_ids)
+		if not leftover.is_empty():return leftover
+		if is_instance_valid(grocery_service) and str(grocery_service.cooking_availability(self,"")).is_empty():
+			var ready:Dictionary=_autonomy_target_for("snack",excluded_target_ids)
+			if ready.is_empty():ready=_autonomy_target_for("cook",excluded_target_ids)
+			if not ready.is_empty():return ready
+		elif is_instance_valid(grocery_service) and str(grocery_service.grocery_availability()).is_empty():
+			var shopping:Dictionary=_autonomy_target_for("order_groceries",excluded_target_ids)
+			if not shopping.is_empty():return shopping
 	var candidates:Array[String]=_autonomy_need_candidates(need,excluded_target_ids,preparing)
 	if candidates.is_empty():return {}
 	if need!="fun":

@@ -1068,6 +1068,9 @@ func sync_oven_presentations() -> void:
 
 
 func show_leftovers(fridge_id:String) -> void:
+	# Fridge food is hidden while stored, but the world item must exist before a
+	# leftover row can start a walk. Sync first so a hungry click never no-ops.
+	sync_world(true)
 	app._begin_pause_overlay()
 	app.dismiss_layer()
 	app.card(Vector2(410,165),Vector2(620,565),app.P.WHITE,22,app.overlay)
@@ -1081,16 +1084,44 @@ func show_leftovers(fridge_id:String) -> void:
 		shown+=1
 		var row:Button=Button.new();row.custom_minimum_size=Vector2(529,64)
 		var fresh:bool=now()<float(batch.expires)
+		var batch_id:String=str(batch.id)
 		row.text="%s · %d servings\n%s" % [str(LifeMeals.RECIPES[str(batch.recipe)].label),int(batch.remaining),("Fresh for about %d hours" % maxi(1,ceili((float(batch.expires)-now())/60.0))) if fresh else "Spoiled"]
 		row.disabled=false
 		if not fresh:row.text+=" · Clear spoiled food"
 		row.pressed.connect(func():
 			app.close_overlay()
-			var target:Dictionary=item(str(batch.id))
-			if not target.is_empty():app.queue_interaction(target,"eat_meal" if fresh else "discard_meal"))
+			_queue_fridge_leftover(fridge_id,batch_id,fresh))
 		column.add_child(row)
-	if shown==0:app.paragraph("No leftovers yet. Cook a meal and put away the extra servings.",Vector2(452,370),Vector2(518,92),20,app.P.MUTED,app.overlay)
+	if shown==0:app.paragraph("No leftovers yet. Cook a meal and put away the extra servings, or grab a snack while the kitchen is stocked.",Vector2(452,370),Vector2(518,92),20,app.P.MUTED,app.overlay)
 	app.button("Back to life",Vector2(734,657),Vector2(256,43),app.close_overlay,true,app.overlay)
+
+## Start eating or clearing a fridge leftover. Prefer the dish's own world item;
+## if it is missing, walk to the fridge and still target the batch id so a hungry
+## Lifelet is never left with a click that does nothing.
+func _queue_fridge_leftover(fridge_id:String,batch_id:String,fresh:bool) -> void:
+	var action_id:String="eat_meal" if fresh else "discard_meal"
+	var target:Dictionary=item(batch_id)
+	if not target.is_empty():
+		app.queue_interaction(target,action_id)
+		return
+	sync_world(true)
+	target=item(batch_id)
+	if not target.is_empty():
+		app.queue_interaction(target,action_id)
+		return
+	var fridge:Dictionary=item(fridge_id)
+	if fridge.is_empty():
+		app.show_notice("That food is no longer in the fridge.")
+		return
+	var sim:LifeSim=app.sim
+	if not is_instance_valid(sim) or sim.is_away():
+		app.show_notice("This Lifelet will be available after coming home.")
+		return
+	var at:Vector3=app.world.approach(fridge)
+	if not sim.queue_action(action_id,batch_id,at):
+		app.show_notice("That serving cannot be taken right now.")
+		return
+	app.refresh_hud()
 
 
 func action_title(action:Dictionary) -> String:
