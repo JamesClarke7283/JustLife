@@ -25,6 +25,13 @@ var preferred_vehicle_id:String=""
 ## shared Juniper stand-in.
 var trip_vehicle:Dictionary={}
 var _parked_hidden:Node3D=null
+## The household car left at a venue after arrival, so the party can click it
+## to drive home or on to another place without re-spawning at the shared kerb.
+var venue_car:Node3D=null
+const VENUE_CAR_ID:String="venue_trip_car"
+const DRIVE_DISTANCE:float=21.0
+const DEPARTURE_SECONDS:float=2.8
+const ARRIVAL_SECONDS:float=2.2
   # resident id -> absolute game day of their last self-started contact
 const INITIATE_RADIUS:=2.5
 ## Sidewalk lane per resident, derived from the catalogue so new roster
@@ -40,6 +47,7 @@ func _init(controller:Node) -> void:
 func reset() -> void:
  locations.clear();active_place="";trip.clear();car_entry=null;home_visit.reset();sidewalk_routes.clear();_initiated.clear();_anchor_cache.clear()
  preferred_vehicle_id="";trip_vehicle.clear();_parked_hidden=null
+ _clear_venue_car()
 
 ## A visiting resident with a household member nearby starts one contact per
 ## game day: a cheerful chat off hours, or looking for company when their
@@ -550,6 +558,8 @@ func _remember_vehicle(item:Dictionary) -> void:
 func _trip_car_transform(owned:Dictionary) -> Transform3D:
  if not owned.is_empty() and is_instance_valid(owned.get("node")):
   return (owned.node as Node3D).global_transform
+ if is_instance_valid(venue_car):
+  return venue_car.global_transform
  return Transform3D(Basis.from_euler(Vector3(0,PI*.5,0)),Vector3(0,0,10.25))
 
 ## Build the car that boards and drives: the household's own model and paint
@@ -588,6 +598,13 @@ func _tint_trip_car(model:Node3D,hex:String) -> void:
 ## it (hiding the parked body so there are not two), otherwise at the shared
 ## kerb stand for venues and households without a car.
 func _spawn_trip_car(owned:Dictionary,at:Transform3D) -> Node3D:
+ # Leaving a venue: take the car already parked there rather than a second body.
+ if is_instance_valid(venue_car) and owned.is_empty():
+  var parked:Node3D=venue_car
+  _unregister_venue_car_pick()
+  venue_car=null
+  car=parked
+  return parked
  var body:Node3D=_make_car()
  app.world.house.add_child(body)
  body.global_transform=at
@@ -598,6 +615,56 @@ func _spawn_trip_car(owned:Dictionary,at:Transform3D) -> Node3D:
  else:
   _parked_hidden=null
  return body
+
+## World-forward the car faces: local +Z, which is the authored nose of the
+## Juniper cars. Driving only along this axis kills the old side-to-side slide
+## that moved world X while a parked car still faced another way.
+func _car_forward(body:Node3D) -> Vector3:
+ if not is_instance_valid(body):return Vector3(1,0,0)
+ var ahead:Vector3=body.global_basis*Vector3(0,0,1)
+ ahead.y=0.0
+ return ahead.normalized() if ahead.length()>0.01 else Vector3(1,0,0)
+
+func _drive_ease(progress:float) -> float:
+ return smoothstep(0.0,1.0,clampf(progress,0.0,1.0))
+
+func _clear_venue_car() -> void:
+ _unregister_venue_car_pick()
+ if is_instance_valid(venue_car):venue_car.queue_free()
+ venue_car=null
+
+func _unregister_venue_car_pick() -> void:
+ if is_instance_valid(app) and is_instance_valid(app.world):
+  app.world.pick_extras.erase(VENUE_CAR_ID)
+
+## Leave the trip car parked at the venue curb so the party can click Drive…
+## again without walking to a missing body.
+func _park_venue_car() -> void:
+ if not is_instance_valid(car):return
+ venue_car=car
+ car=null
+ venue_car.position=Vector3(0,0,10.25)
+ venue_car.rotation.y=PI*.5
+ _register_venue_car_pick(venue_car)
+
+func _register_venue_car_pick(body:Node3D) -> void:
+ if not is_instance_valid(body) or not is_instance_valid(app.world):return
+ _unregister_venue_car_pick()
+ var pick:StaticBody3D=body.get_node_or_null("VenueCarPick") as StaticBody3D
+ if pick==null:
+  pick=StaticBody3D.new();pick.name="VenueCarPick"
+  pick.collision_layer=LifeWorld.PICK_GROUND
+  body.add_child(pick)
+  var shape:=CollisionShape3D.new()
+  var box:=BoxShape3D.new();box.size=Vector3(2.2,1.6,4.4)
+  shape.shape=box;shape.position=Vector3(0,.8,0)
+  pick.add_child(shape)
+ pick.set_meta("item_id",VENUE_CAR_ID)
+ var label:String="Household car" if not trip_vehicle.is_empty() else "Car"
+ app.world.pick_extras[VENUE_CAR_ID]={
+  "id":VENUE_CAR_ID,"kind":"car","label":label,"node":body,"size":Vector2(2.2,4.4),
+  "venue_trip":true
+ }
 
 func uses_household_car() -> bool:
  return not trip_vehicle.is_empty()
@@ -678,20 +745,46 @@ func tick_trip(delta:float) -> void:
    var caption:String=car_entry.caption()
    if not caption.is_empty():_trip_caption(caption)
    all_boarded=car_entry.tick(delta,bodies)
-  if all_boarded:car_entry=null;trip.phase="departure";trip.time=0.0;_trip_caption("Driving across Juniper Bay · 15 minutes")
+  if all_boarded:
+   car_entry=null
+   trip.phase="departure"
+   trip.time=0.0
+   if is_instance_valid(car):
+    trip["drive_from"]=[car.global_position.x,car.global_position.y,car.global_position.z]
+    trip["drive_yaw"]=car.rotation.y
+   _trip_caption("Driving across Juniper Bay · 15 minutes")
  elif phase=="departure":
-  car.position.x=minf(float(trip.time)/2.8,1.0)*21.0
-  app.world.camera_target.x=minf(car.position.x*.45,7.0);app.world.update_camera()
-  if float(trip.time)>=2.8:_arrive()
+  if is_instance_valid(car):
+   var from_data:Array=trip.get("drive_from",[car.global_position.x,car.global_position.y,car.global_position.z])
+   var from:=Vector3(float(from_data[0]),float(from_data[1]),float(from_data[2]))
+   car.rotation.y=float(trip.get("drive_yaw",car.rotation.y))
+   var t:float=_drive_ease(float(trip.time)/DEPARTURE_SECONDS)
+   car.global_position=from+_car_forward(car)*(t*DRIVE_DISTANCE)
+   app.world.camera_target.x=lerpf(from.x,from.x+_car_forward(car).x*DRIVE_DISTANCE*.45,t)
+   app.world.camera_target.z=lerpf(from.z,from.z+_car_forward(car).z*DRIVE_DISTANCE*.45,t)
+   app.world.update_camera()
+  if float(trip.time)>=DEPARTURE_SECONDS:_arrive()
  elif phase=="arrival":
-  car.position.x=lerpf(-19.0,0.0,minf(float(trip.time)/2.2,1.0))
-  if float(trip.time)>=2.2:
+  if is_instance_valid(car):
+   var t:float=_drive_ease(float(trip.time)/ARRIVAL_SECONDS)
+   # Arrival always faces the shared kerb (+X). Ease from off-lot into the park.
+   var park:=Vector3(0,0,10.25)
+   var start:=Vector3(-DRIVE_DISTANCE+2.0,0,10.25)
+   car.rotation.y=PI*.5
+   car.global_position=start.lerp(park,t)
+  if float(trip.time)>=ARRIVAL_SECONDS:
    var party:Array=trip.get("party",[])
    for member:Dictionary in app.household.members:
     if not party.is_empty() and not party.has(str(member.id)):continue
     var actor:LifeActor=app.world.actors[member.id]
     actor.visible=true
-   car.queue_free();car=null
+   var destination:String=str(trip.get("destination",app.current_venue))
+   if destination=="home":
+    if is_instance_valid(car):car.queue_free()
+    car=null
+    _clear_venue_car()
+   else:
+    _park_venue_car()
    var resume:int=int(trip.resume);trip.clear()
    app.close_overlay(false);app.mode="live";app.world.live_enabled=true;app.household.set_speed(resume)
    app.world.camera_target=Vector3(0,0,.25);app.world.update_camera();app.draw_live();app._sync_actor_sound()
@@ -817,13 +910,15 @@ func _arrive() -> void:
   member.sim.remember("A visit across town","Drove to "+str(LifeNeighborhood.place_name(destination))+".")
  app.world.refresh_actor_layers()
  app.clear_ui();app.mode="travel";app.world.live_enabled=false
- car=_make_car();app.world.house.add_child(car);car.position=Vector3(-19,0,10.25);car.rotation.y=PI*.5
+ _clear_venue_car()
+ car=_make_car();app.world.house.add_child(car);car.position=Vector3(-DRIVE_DISTANCE+2.0,0,10.25);car.rotation.y=PI*.5
  app.world.camera_target=Vector3(0,0,6.5);app.world.update_camera()
  app.overlay_open=true
  app.card(Vector2(440,730),Vector2(560,125),app.P.WHITE,18,app.overlay)
  app.text_label("Arriving at "+str(LifeNeighborhood.place_name(destination)),Vector2(463,744),Vector2(515,35),24,app.P.INK,true,app.overlay)
  app.paragraph("Pulling up outside · Saving is available when everyone steps out.",Vector2(464,791),Vector2(515,47),14,app.P.MUTED,app.overlay)
  trip.phase="arrival";trip.time=0.0
+ trip["drive_from"]=[-DRIVE_DISTANCE+2.0,0.0,10.25]
  if destination=="home":
   # Back on the lot: the parked body is in the layout again, and the outing's
   # remembered car is done.
