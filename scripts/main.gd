@@ -365,6 +365,7 @@ func _connect_live_nodes() -> void:
 	household.member_action_finished.connect(_member_action_finished)
 	household.baby_born.connect(_on_baby_born)
 	household.member_passed.connect(_on_member_passed)
+	household.member_passing_due.connect(_on_member_passing_due)
 	household.pregnancy_began.connect(_on_pregnancy_began)
 	household.member_age_changed.connect(func(id: String, _previous: String, _current: String): _refresh_aged_member.call_deferred(id,load_epoch,sender))
 	world.object_clicked.connect(on_object_clicked)
@@ -5313,8 +5314,78 @@ func _on_member_passed(id: String) -> void:
 	# from the household bar, but must not leave the life box bound to zeroed
 	# needs or a ghosted mesh as if it were still the active person.
 	_restore_living_selection_after_departure(id)
+	_fade_departed_actor(id)
 	if sound_enabled and is_instance_valid(chime_player) and chime_player.stream:
 		chime_player.play()
+
+## Death dialog: pause, play a sting, offer Extend / Change Age or OK to remove.
+func _on_member_passing_due(id: String, cause: String) -> void:
+	if loading_game or overlay_open:
+		return
+	var who: LifeSim = household.member_sim(id)
+	if who == null or who.is_spirit() or who.pending_passing_cause.is_empty():
+		return
+	household.set_speed(0)
+	if is_instance_valid(sim):
+		sim.set_speed(0)
+	if sound_enabled and is_instance_valid(chime_player) and chime_player.stream:
+		chime_player.play()
+	var name: String = str(who.character.name)
+	_begin_pause_overlay()
+	card(Vector2(420, 220), Vector2(640, 360), P.WHITE, 18, overlay)
+	text_label("%s has reached the end of their life!" % name, Vector2(452, 250), Vector2(580, 60), 26, P.INK, true, overlay)
+	paragraph("A quiet farewell. You can give them more time, change their age, or let them go.", Vector2(452, 320), Vector2(580, 50), 18, P.MUTED, overlay)
+	var stages: Array[String] = ["child", "teen", "young_adult", "adult", "elder"]
+	var age_index: Array = [maxi(0, stages.find(str(who.character.age_stage)))]
+	var age_label: Label = text_label("Age: %s" % str(LifeLifecycle.LABELS.get(stages[age_index[0]], stages[age_index[0]])), Vector2(452, 390), Vector2(400, 36), 18, P.INK, false, overlay)
+	var younger: Button = button("−", Vector2(860, 388), Vector2(48, 40), func():
+		age_index[0] = maxi(0, int(age_index[0]) - 1)
+		age_label.text = "Age: %s" % str(LifeLifecycle.LABELS.get(stages[age_index[0]], stages[age_index[0]]))
+	, true, overlay)
+	younger.tooltip_text = "Younger age for Extend / Change Age"
+	var older: Button = button("+", Vector2(920, 388), Vector2(48, 40), func():
+		age_index[0] = mini(stages.size() - 1, int(age_index[0]) + 1)
+		age_label.text = "Age: %s" % str(LifeLifecycle.LABELS.get(stages[age_index[0]], stages[age_index[0]]))
+	, true, overlay)
+	older.tooltip_text = "Older age for Extend / Change Age"
+	button("Extend / Change Age", Vector2(452, 460), Vector2(280, 48), func():
+		var living: LifeSim = household.member_sim(id)
+		if living != null:
+			living.cancel_pending_passing(stages[age_index[0]])
+			_refresh_aged_member(id)
+		close_overlay()
+		show_notice("%s will keep living." % name)
+		draw_live()
+	, true, overlay)
+	button("OK", Vector2(760, 460), Vector2(200, 48), func():
+		var living: LifeSim = household.member_sim(id)
+		if living != null and not living.is_spirit():
+			# Confirm once through the existing passing path — memorial and
+			# mourning moodlets land in _record_passing, with no second kill.
+			living.pass_on(str(cause))
+		close_overlay()
+		draw_live()
+	, true, overlay)
+
+## Fade the departed Lifelet out of the lot after the memorial is placed.
+func _fade_departed_actor(id: String) -> void:
+	var actor: LifeActor = world.actors.get(id) as LifeActor
+	if not is_instance_valid(actor):
+		return
+	var living: LifeSim = household.member_sim(id)
+	if living != null:
+		actor.configure(living.character.duplicate(true))
+	var tween: Tween = create_tween()
+	tween.set_parallel(true)
+	for mesh: Node in actor.find_children("*", "GeometryInstance3D", true, false):
+		if mesh is GeometryInstance3D:
+			tween.tween_property(mesh, "transparency", 1.0, 1.2)
+	tween.set_parallel(false)
+	tween.tween_callback(func():
+		if is_instance_valid(actor):
+			actor.visible = false
+			actor.set_meta("away", true)
+	)
 
 ## After someone passes, re-bind every living actor to its own profile and move
 ## selection off the spirit when the player was controlling them.

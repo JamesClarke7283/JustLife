@@ -6,6 +6,7 @@ signal member_age_changed(member_id: String, previous: String, current: String)
 signal member_action_started(member_id: String, action: Dictionary)
 signal member_action_finished(member_id: String, action: Dictionary)
 signal member_passed(member_id: String)
+signal member_passing_due(member_id: String, cause: String)
 signal baby_born(mother_id: String)
 ## Raised the moment a couple conceives, so the view can tell the player the
 ## news with a sound and a notice before the birth arrives days later.
@@ -132,6 +133,8 @@ func connect_member(id: String, sim: LifeSim) -> void:
 		if not restoring: member_age_changed.emit(id, previous, current))
 	sim.life_changed.connect(func(status: String):
 		if not restoring and status == "passed": _record_passing(id))
+	sim.passing_due.connect(func(cause: String):
+		if not restoring: member_passing_due.emit(id, cause))
 	sim.action_started.connect(func(action:Dictionary):
 		if not restoring:member_action_started.emit(id,action))
 	sim.action_finished.connect(func(action:Dictionary):
@@ -894,7 +897,8 @@ func _record_passing(member_id: String) -> void:
 	for member: Dictionary in members:
 		if str(member.id) == member_id or member.sim.is_spirit():
 			continue
-		member.sim.add_moodlet("In mourning","Sad","Someone beloved has passed.",960,2)
+		var grief_minutes: float = float(4320 + absi(int(hash(str(member.id) + member_id))) % 2881)
+		member.sim.add_moodlet("In mourning","Sad","Someone beloved has passed.",grief_minutes,2)
 		member.sim.trigger_fear("fear_of_loss")
 		member.sim.remember("A farewell","%s left a keepsake and ℒ%d for the household." % [str(who.character.name), ESTATE_GIFT])
 	member_passed.emit(member_id)

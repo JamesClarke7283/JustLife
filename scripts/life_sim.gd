@@ -27,6 +27,7 @@ signal notice(text: String)
 signal age_changed(previous: String, current: String)
 signal away_changed(state: Dictionary)
 signal life_changed(status: String)
+signal passing_due(cause: String)
 
 const SAVE_PATH: String = "user://justlife_save.json"
 const SAVE_VERSION: int = 1
@@ -226,6 +227,7 @@ const DEFERRED_PASSING_MINUTES: float = 240.0
 var starvation_minutes: float = 0.0
 var exhaustion_minutes: float = 0.0
 var deferred_passing_minutes: float = 0.0
+var pending_passing_cause: String = ""
 const RELATIONSHIP_ACTIONS: Array[String] = ["ask_partner", "commit", "break_up"]
 const SOCIAL_STAGES: Array[String] = ["met", "friends", "close_friends", "spark", "partners", "committed", "separated"]
 var social_history: Array = []
@@ -1236,8 +1238,12 @@ func _step(game_minutes: float) -> void:
 		_new_day()
 	_advance_age(game_minutes)
 	_update_passing_pressure(game_minutes)
-	if ready_to_starve() or ready_to_overexert() or ready_to_pass_on():
-		pass_on()
+	if pending_passing_cause.is_empty() and (ready_to_starve() or ready_to_overexert() or ready_to_pass_on()):
+		# Ask the player before the Lifelet actually passes, so Extend / Change
+		# Age can cancel the farewell and OK can remove them once.
+		var cause: String = "hunger" if ready_to_starve() else ("exhaustion" if ready_to_overexert() else "old_age")
+		pending_passing_cause = cause
+		_publish("passing_due", [cause])
 	_prune_school_actions()
 	for need_name: String in NEED_NAMES:
 		if need_name == "energy" and second_wind > 0.0:
@@ -4731,6 +4737,8 @@ func pass_on(cause: String = "") -> bool:
 	if is_spirit():
 		return false
 	if cause.is_empty():
+		cause = pending_passing_cause
+	if cause.is_empty():
 		if ready_to_starve():
 			cause = "hunger"
 		elif ready_to_overexert():
@@ -4741,12 +4749,13 @@ func pass_on(cause: String = "") -> bool:
 			return false
 	if cause not in PASSING_CAUSES:
 		return false
-	if cause == "old_age" and not LifeLifecycle.due_to_pass_on(str(character.age_stage), lifecycle):
+	if cause == "old_age" and not LifeLifecycle.due_to_pass_on(str(character.age_stage), lifecycle) and pending_passing_cause != "old_age":
 		return false
-	if cause == "hunger" and not ready_to_starve():
+	if cause == "hunger" and not ready_to_starve() and pending_passing_cause != "hunger":
 		return false
-	if cause == "exhaustion" and not ready_to_overexert():
+	if cause == "exhaustion" and not ready_to_overexert() and pending_passing_cause != "exhaustion":
 		return false
+	pending_passing_cause = ""
 	character["life_status"] = "passed"
 	character["passing_cause"] = cause
 	lifecycle["passed"] = true
@@ -4768,6 +4777,26 @@ func pass_on(cause: String = "") -> bool:
 	remember("Passed on", "Reached the end through %s." % why)
 	_emit_notice("%s has passed on, and remains as a gentle spirit." % str(character.name))
 	_publish("life_changed", ["passed"])
+	_emit_changed()
+	return true
+
+## Cancel a pending farewell: restore vital needs and clear the death clock so
+## the Lifelet stays living. Used by Extend / Change Age on the death dialog.
+func cancel_pending_passing(new_age_stage: String = "") -> bool:
+	if is_spirit() or pending_passing_cause.is_empty():
+		return false
+	pending_passing_cause = ""
+	starvation_minutes = 0.0
+	exhaustion_minutes = 0.0
+	deferred_passing_minutes = 0.0
+	needs.hunger = maxf(float(needs.hunger), 55.0)
+	needs.energy = maxf(float(needs.energy), 55.0)
+	if not new_age_stage.is_empty() and new_age_stage in LifeLifecycle.STAGES:
+		character.age_stage = new_age_stage
+		character.life_stage = LifeLifecycle.eligibility(new_age_stage)
+		lifecycle.progress = 0.0
+		lifecycle["passed"] = false
+	_emit_notice("%s will keep living a while longer." % str(character.name))
 	_emit_changed()
 	return true
 
@@ -4852,6 +4881,7 @@ func _publish(event: String, args: Array = []) -> void:
 		"age_changed": age_changed.emit(str(args[0]),str(args[1]))
 		"away_changed": away_changed.emit(args[0])
 		"life_changed": life_changed.emit(str(args[0]))
+		"passing_due": passing_due.emit(str(args[0]))
 
 func _emit_changed() -> void: _publish("changed")
 func _emit_notice(message: String) -> void: _publish("notice",[message])
