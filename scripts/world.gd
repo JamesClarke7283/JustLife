@@ -1850,7 +1850,7 @@ func create_public_venue(place:String,layout:Array) -> void:
 	furniture=Node3D.new();furniture.name="Furniture";house.add_child(furniture)
 	box(house,Vector3(0,-.3,0),Vector3(120,.3,120),"b8cdaa")
 	box(house,Vector3(0,-.025,0),Vector3(14,.25,12),"d3c9b6")
-	if place=="park":
+	if place=="park" or place=="dog_park":
 		box(house,Vector3(0,.105,0),Vector3(14,.045,12),"9bb683")
 		box(house,Vector3(0,.137,0),Vector3(2.5,.018,12),"ded7c2")
 		box(house,Vector3(0,.138,0),Vector3(14,.018,1.5),"ded7c2")
@@ -1867,6 +1867,12 @@ func create_public_venue(place:String,layout:Array) -> void:
 		for x in [-1.6,1.6]:
 			for z in [-5.1,-3.4]:box(house,Vector3(x,1.6,z),Vector3(.11,3,.11),"b79468")
 		for z in [-5.2,-4.8,-4.4,-4.0,-3.3]:box(house,Vector3(0,3.12,z),Vector3(3.7,.12,.10),"b79468")
+		if place=="dog_park":
+			# A low fence ring marks the run without blocking the sidewalk exit.
+			for x in [-5.5,5.5]:
+				box(house,Vector3(x,.55,0),Vector3(.08,.9,9.5),"c9c3a8")
+			for z in [-4.8,4.5]:
+				box(house,Vector3(0,.55,z),Vector3(11.2,.9,.08),"c9c3a8")
 	else:
 		var floor:String="cbb998" if place=="library" else "c4beb0"
 		box(house,Vector3(0,.105,0),Vector3(12,.045,10),floor)

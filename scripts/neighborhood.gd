@@ -68,7 +68,17 @@ static func layout(place:String) -> Array:
 		"leo_home":entries=[["bed",4.5,-2.6,0],["nightstand",5.1,.1,-90],["sofa",-3.4,-2.25,0],["table",-3.4,-.6,0],["rug",-3.4,-1.1,0],["bookshelf",-5,-3.3,0],["bookshelf",-1.7,-3.3,0],["desk",-4.5,2.6,180],["chair",-4.5,1.6,0],["fridge",.2,-3.2,0],["stove",1.6,-3.2,0],["sink",2.55,-3.2,0],["dining",.5,1.5,0],["chair",.5,2.5,180],["chair",.5,.5,0],["toilet",4.1,2.6,180],["shower",5.3,2.8,0],["plant",-5.1,.8,0]]
 		"priya_home":entries=[["bed",4.4,-2.7,0],["nightstand",5.0,-1.0,90],["bookshelf",-3.0,-3.2,0],["bookshelf",-4.9,1.0,90],["bookshelf",-4.9,2.8,90],["desk",4.3,1.0,90],["chair",3.6,1.0,0],["sofa",-2.6,2.6,180],["rug",-2.6,1.7,0],["table",-2.6,.75,0],["lamp",-4.3,3.35,0],["fridge",-.45,-3.2,0],["stove",1.6,-3.2,0],["sink",2.7,-3.2,0],["dining",.4,1.5,0],["chair",.4,2.5,180],["toilet",5.0,2.5,180],["shower",3.9,3.2,0],["plant",1.5,3.5,0]]
 		"tom_home":entries=[["bed",-4.4,-2.6,0],["nightstand",-5.0,-1.0,90],["desk",4.6,2.6,180],["chair",4.6,1.7,0],["sofa",.9,2.9,180],["rug",.9,1.9,0],["table",.9,.4,0],["fridge",-3.9,-3.2,0],["stove",-2.5,-3.3,0],["sink",-1.1,-3.3,0],["dining",-4.5,.5,0],["chair",-4.5,1.5,180],["toilet",-1.1,-2.0,0],["shower",-1.1,-.5,0],["plant",4.8,-3.3,0],["plant",5.1,3.5,0]]
-		"park":entries=[["bench",-3,1.8,20],["bench",3,1.8,-20],["plant",-3.7,-2.8,0],["plant",-2.4,-3.3,0],["plant",2.4,-3.3,0],["plant",3.7,-2.8,0],["easel",-5,0,60],["dining",4.6,-.6,0],["chair",4.6,.42,180],["chair",4.6,-1.62,0]]
+		"park":entries=[
+			["bench",-3,1.8,20],["bench",3,1.8,-20],
+			["plant",-3.7,-2.8,0],["plant",-2.4,-3.3,0],["plant",2.4,-3.3,0],["plant",3.7,-2.8,0],
+			["easel",-5,0,60],
+			# Park café kiosk: counter and stools for a light meal away from home.
+			["counter",4.2,-3.6,0],["counter",5.3,-3.6,0],["stool",4.2,-2.7,180],["stool",5.3,-2.7,180],
+			["fridge",5.6,-4.5,0],["sink",3.4,-4.4,0],
+			["dining",4.6,-.6,0],["chair",4.6,.42,180],["chair",4.6,-1.62,0],
+			# Public restrooms so bladder can be handled on a long outing.
+			["toilet",-5.2,3.6,90],["sink",-5.2,2.4,90],["rubbish_bin",-4.4,4.4,0],
+		]
 		"library":entries=[["bookshelf",-5.1,-4.2,0],["bookshelf",-3.4,-4.2,0],["bookshelf",-1.7,-4.2,0],["bookshelf",1.4,-4.2,0],["bookshelf",3.1,-4.2,0],["bookshelf",4.8,-4.2,0],["rug",-3,.3,0],["sofa",-3,-1.0,0],["table",-3,1.0,0],["lamp",-5.2,-1,0],["plant",-.5,-1.9,0],["desk",3.8,-.5,0],["chair",3.8,.48,180],["desk",3.8,3.2,180],["chair",3.8,2.22,0],["chair",-4.1,3.5,155],["chair",-2.2,3.5,205],["plant",5.4,4.1,180]]
 		"studio":entries=[["easel",-4.9,-3.4,0],["easel",-2.6,-3.4,0],["easel",-.3,-3.4,0],["easel",2,-3.4,0],["easel",4.4,-3.4,0],["desk",-4,3.7,180],["chair",-4,2.77,0],["sofa",3.5,3.4,180],["table",3.5,1.8,0],["rug",3.5,2.5,0],["plant",5.1,.4,0],["bookshelf",-5.2,-.4,90],["sink",5.4,-.8,-90],["painting",-4.5,-4.9,0],["painting",-.7,-4.9,0],["painting",3.2,-4.9,0]]
 	var result:Array=[]
@@ -76,3 +86,18 @@ static func layout(place:String) -> Array:
 		var e:Array=entries[i]
 		result.append({"id":place+"_%d" % i,"kind":e[0],"x":e[1],"z":e[2],"rotation":e[3]})
 	return result
+
+
+## Services a public place offers besides its furnishings. Working venues use
+## `LifeVenues.offers`; the gardens also run a café kiosk so hunger can be
+## handled away from home without driving to Bay Window Café.
+static func offers(place: String) -> Array:
+	if LifeVenues.has(place):
+		return LifeVenues.offers(place)
+	if place == "park":
+		return [
+			{"id":"park_cafe_lunch","label":"Café lunch","description":"A sandwich and a drink from the park kiosk. Sits hunger down for the afternoon."},
+			{"id":"park_cafe_cake","label":"Cake and a cuppa","description":"Something sweet from the counter, taken on a bench under the trees."},
+			{"id":"park_stroll","label":"A quiet stroll","description":"Walk the paths and take in the greenery. Free, and good for the mood."},
+		]
+	return []

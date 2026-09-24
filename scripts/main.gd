@@ -5565,7 +5565,7 @@ func show_university_panel() -> void:
 ## The services a venue offers a visitor, as the panel that lists them. A venue
 ## with no services of its own simply has none.
 func show_venue_services(place: String) -> void:
-	var offers:Array=LifeVenues.offers(place)
+	var offers:Array=LifeNeighborhood.offers(place)
 	if offers.is_empty():
 		show_notice("There is nothing to do here just now.")
 		return
@@ -5602,11 +5602,27 @@ func _use_venue_service(place: String, service_id: String) -> void:
 			# the wardrobe the game already styles with.
 			sim.add_moodlet("Fresh from the salon", "Confident", "A new look, and the walk home to match.", 480, 3)
 			show_notice("A fresh look from %s." % LifeNeighborhood.place_name(place))
-		"coffee_and_cake", "light_lunch", "takeaway_cup", "food_court":
+		"coffee_and_cake", "light_lunch", "takeaway_cup", "food_court", "park_cafe_lunch", "park_cafe_cake":
 			sim.needs.hunger = minf(100.0, float(sim.needs.hunger) + 34.0)
 			sim.needs.fun = minf(100.0, float(sim.needs.fun) + 12.0)
 			sim.add_moodlet("A treat out", "Content", "Something nice, taken at a table.", 240, 2)
 			show_notice("That hit the spot.")
+		"dog_social", "dog_run":
+			sim.needs.fun = minf(100.0, float(sim.needs.fun) + 22.0)
+			sim.needs.social = minf(100.0, float(sim.needs.social) + 18.0)
+			sim.needs.energy = maxf(0.0, float(sim.needs.energy) - 8.0)
+			_credit_dog_park_pets(service_id)
+			sim.add_moodlet("Dogs ran free", "Happy", "The pack had a proper outing.", 300, 3)
+			show_notice("The dogs had a wonderful time.")
+		"dog_water":
+			sim.needs.fun = minf(100.0, float(sim.needs.fun) + 10.0)
+			sim.needs.energy = minf(100.0, float(sim.needs.energy) + 6.0)
+			_credit_dog_park_pets(service_id)
+			show_notice("Water bowls filled and everyone settled.")
+		"park_stroll":
+			sim.needs.fun = minf(100.0, float(sim.needs.fun) + 14.0)
+			sim.needs.energy = minf(100.0, float(sim.needs.energy) + 4.0)
+			show_notice("A quiet walk among the trees.")
 		"workout", "yoga_class":
 			sim._gain_skill("fitness", 42.0)
 			sim.needs.hygiene = maxf(0.0, float(sim.needs.hygiene) - 12.0)
@@ -5631,6 +5647,28 @@ func _use_venue_service(place: String, service_id: String) -> void:
 			sim.needs.fun = minf(100.0, float(sim.needs.fun) + 10.0)
 			show_notice("A pleasant way to pass the time.")
 	refresh_hud()
+
+
+## Dogs that came to the park get a real lift from the outing, matching the
+## service the Lifelet just used. Cats stay home from this lot type.
+func _credit_dog_park_pets(service_id: String) -> void:
+	var pets: Array = household.pets.get("pets", []) if household.pets is Dictionary else []
+	for pet: Variant in pets:
+		if not pet is Dictionary: continue
+		var record: Dictionary = pet
+		if str(record.get("species", "")) != "dog": continue
+		var care: Dictionary = household.pet_care(str(record.get("id", "")))
+		if care.is_empty(): continue
+		var needs: Dictionary = care.get("needs", {})
+		if not needs is Dictionary: continue
+		var fun_lift: float = 12.0 if service_id == "dog_water" else 28.0
+		var social_lift: float = 22.0 if service_id == "dog_social" else 14.0
+		var energy_cost: float = 10.0 if service_id == "dog_run" else 4.0
+		needs["fun"] = minf(100.0, float(needs.get("fun", 50.0)) + fun_lift)
+		needs["social"] = minf(100.0, float(needs.get("social", 50.0)) + social_lift)
+		needs["energy"] = maxf(0.0, float(needs.get("energy", 50.0)) - energy_cost)
+		care["needs"] = needs
+		record["care"] = care
 
 
 ## Higher education: the three qualifications, what each costs, and what it is

@@ -27,6 +27,7 @@ const PLACES: Dictionary = {
 	"school":{"name":"Juniper Bay School","tag":"Class is in session","description":"The town's school gates. Willow School takes the youngest pupils and Morrow Secondary the teenagers; the office here enrols both and keeps the term's records.","color":"8a9ab5"},
 	"university":{"name":"Juniper Bay University","tag":"Study for something more","description":"A city campus of lecture rooms around a wide library, open to adults who want a degree. A qualification raises what the jobs that ask for one will pay, and a PHD is a doctor whatever the job.","color":"5a6f9a"},
 	"prison":{"name":"Blackmoor Prison","tag":"Visiting hours twice a week","description":"A remand and resettlement prison on the road out of town, where a Lifelet who was caught serves their sentence. The visiting room has tables for families and a desk at the door.","color":"7a7b76"},
+	"dog_park":{"name":"Willow Bark Dog Park","tag":"Where dogs meet dogs","description":"A fenced green with kennels, water bowls and open grass. Bring the household dogs to socialise, play and run off steam with the neighbours' pets.","color":"7a9a68"},
 }
 
 ## What each venue offers a visitor, in the order a counter or an office would
@@ -81,6 +82,11 @@ const _SERVICES: Dictionary = {
 		["visit_family","Visit an incarcerated family member","Book a visiting slot and sit with your family member in the visiting room. Visiting hours are posted at the gate."],
 		["hand_in_parcel","Hand in a parcel","Leave a small parcel of permitted items at the desk for a family member inside, to be collected at the next visit."],
 		["release_day","Meet them at the gate","Be waiting when the sentence ends, and walk them home rather than letting them find their own way back."],
+	],
+	"dog_park":[
+		["dog_social","Let the dogs socialise","Open the gate and let the household dogs meet others. Builds Social for Lifelets and Affection for the pets."],
+		["dog_run","A proper run","Chase and fetch across the grass until everyone is happily tired. Fun for Lifelets and pets alike."],
+		["dog_water","Water and a rest","Fill the bowls and settle on a bench while the dogs cool down. A quiet end to the outing."],
 	],
 }
 
@@ -202,6 +208,18 @@ static func layout(place: String) -> Array:
 			["bench",5.4,-2.0,-90],["bench",5.4,1.2,-90],
 			["toilet",5.3,3.8,180],["sink",3.6,4.3,180],
 			["plant",-5.4,-2.6,0],["rubbish_bin",-5.0,4.4,0],
+		]
+		# Open grass, kennels and bowls for visiting dogs, benches for owners,
+		# and a water tap so a long outing does not leave anyone thirsty.
+		"dog_park": entries = [
+			["kennel",-4.6,-3.6,0],["kennel",-2.8,-3.6,0],
+			["pet_bowl",-4.4,-2.2,0],["pet_bowl",-2.6,-2.2,0],["pet_bowl",1.2,-3.4,0],
+			["pet_bed_dog",3.2,-3.6,0],["pet_bed_dog",4.8,-3.6,0],
+			["pet_toy_dog",0.2,-2.8,0],["pet_toy_dog",1.6,-2.4,0],["dog_toy_box",-0.8,-3.8,0],
+			["bench",-4.8,2.4,90],["bench",4.8,2.4,-90],["bench",0.0,3.8,180],
+			["plant",-5.2,0.2,0],["plant",5.2,0.2,0],["plant",-5.2,4.2,0],["plant",5.2,4.2,0],
+			["garden_light",-3.0,4.6,0],["garden_light",3.0,4.6,0],
+			["rubbish_bin",5.0,4.4,0],["sink",-5.0,-1.0,90],
 		]
 	var result: Array = []
 	for i in range(entries.size()):
