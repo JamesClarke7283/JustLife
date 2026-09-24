@@ -2065,6 +2065,14 @@ func _pet_needs_errand(record:Dictionary,needs:Dictionary) -> String:
 	for need:String in ["hunger","energy"]:
 		if float(needs.get(need,100.0))<PET_NEED_URGENT:
 			return need
+	# A cat with a litter tray handles bladder indoors; dogs never do.
+	if float(needs.get("bladder",100.0))<PET_NEED_URGENT and str(record.get("species",""))=="cat":
+		if not world.closest_item("litter_tray",Vector3.ZERO).is_empty():
+			return "bladder"
+	# A toy on the floor (or still in its box) lets a pet play on its own indoors.
+	if float(needs.get("fun",100.0))<PET_NEED_URGENT:
+		if not _pet_play_toy(record).is_empty():
+			return "fun"
 	# A dirty dog waits for a person, so there is no errand for cleanliness.
 	return ""
 
@@ -2075,12 +2083,28 @@ func _pet_outdoor_wanted(record:Dictionary,needs:Dictionary) -> String:
 	for need:String in ["hunger","energy"]:
 		if float(needs.get(need,100.0))<PET_NEED_URGENT:
 			return ""
-	# A full bladder, then plain restlessness: both are answered outside.
+	# Dogs relieve outdoors only. Cats use a litter tray when one is placed;
+	# otherwise they also go outside.
 	if float(needs.get("bladder",100.0))<PET_NEED_URGENT:
+		if str(record.get("species",""))=="cat" and not world.closest_item("litter_tray",Vector3.ZERO).is_empty():
+			return ""
 		return "bladder"
+	# Indoor toys already cover fun when present; otherwise a garden wander.
 	if float(needs.get("fun",100.0))<PET_NEED_URGENT:
+		if not _pet_play_toy(record).is_empty():
+			return ""
 		return "fun"
 	return ""
+
+## A free toy this pet can play with: one on the floor for its species, or one
+## still nested in its toy box. Empty means it has to go outdoors instead.
+func _pet_play_toy(record:Dictionary) -> Dictionary:
+	var toy_kind:String="pet_toy_cat" if str(record.get("species","cat"))=="cat" else "pet_toy_dog"
+	for item:Dictionary in world.items:
+		if str(item.kind)!=toy_kind:continue
+		if bool(item.get("held",false)):continue
+		return item
+	return {}
 
 ## Where a pet goes outside: a tree to wee at, or a clear patch of garden to
 ## wander and play in. Both are real outdoor cells, so a pet never ends up
@@ -2151,15 +2175,45 @@ func _start_pet_outdoor_errand(id:String,actor:LifePetActor,record:Dictionary,ne
 func _start_pet_errand(id:String,actor:LifePetActor,record:Dictionary,needs:Dictionary) -> bool:
 	var need:String=_pet_needs_errand(record,needs)
 	if need.is_empty():return false
-	var kind:String="pet_bowl" if need in ["hunger","thirst"] else _pet_bed_kind(str(record.get("species","cat")))
-	var target:Dictionary=world.closest_item(kind,actor.position)
-	if target.is_empty():return false
+	var kind:String=""
+	var target:Dictionary={}
+	match need:
+		"hunger","thirst":
+			kind="pet_bowl";target=world.closest_item(kind,actor.position)
+		"energy":
+			kind=_pet_bed_kind(str(record.get("species","cat")));target=world.closest_item(kind,actor.position)
+		"bladder":
+			kind="litter_tray";target=world.closest_item(kind,actor.position)
+		"fun":
+			target=_pet_play_toy(record);kind=str(target.get("kind",""))
+			# A toy nested in its box is taken out onto the floor when the pet
+			# claims it, so play happens in the open rather than inside the box.
+			if not target.is_empty() and str(target.get("box_id",""))!="":
+				_pet_take_toy_from_box(target)
+	if target.is_empty() or kind.is_empty():return false
 	var at:Vector3=_pet_errand_spot(target)
+	# Energy: rest on the bed itself rather than beside it.
+	if need=="energy" and is_instance_valid(target.get("node")):
+		at=Vector3(target.node.position.x,LifeBuildingState.level_y(world.item_level(target)),target.node.position.z)
 	if not at.is_finite():return false
 	var walk:PackedVector3Array=_pet_route(id,actor.position,at)
 	if walk.is_empty() and actor.position.distance_to(at)>=.2:return false
 	pet_errands[id]={"need":need,"kind":kind,"target":str(target.id),"at":at,"path":walk,"index":0,"phase":"walking","elapsed":0.0,"walking":true}
 	return true
+
+## Pull a boxed toy onto the floor next to its box so a pet (or Lifelet) can use it.
+func _pet_take_toy_from_box(toy:Dictionary) -> void:
+	var box_id:String=str(toy.get("box_id",""))
+	if box_id.is_empty():return
+	var box:Dictionary=_find_item(box_id)
+	if box.is_empty() or not is_instance_valid(box.get("node")):return
+	var offset:=Vector3(0.45,0,0.1)
+	toy.erase("box_id")
+	toy["x"]=float(box.node.position.x)+offset.x
+	toy["z"]=float(box.node.position.z)+offset.z
+	if is_instance_valid(toy.get("node")):
+		toy.node.position=Vector3(toy.x,LifeBuildingState.level_y(world.item_level(toy)),toy.z)
+		toy.node.visible=true
 
 ## The bed a species sleeps in. A cat has its own cosy bed and a dog its own
 ## cushioned one, so an animal always goes to the bed bought for it.
@@ -2228,6 +2282,7 @@ func _advance_pet_errand(id:String,actor:LifePetActor,record:Dictionary,needs:Di
 		# A wee at a tree, or a play in the garden, settles in a moment rather
 		# than over a helping: the animal has already done the work by walking out.
 		"bladder":
+			# Indoor litter (cats) or an outdoor wee both settle in a moment.
 			needs[need]=LifePets.RELIEF_AMOUNT
 			pet_errands.erase(id)
 			_pet_walk_home(id,actor,record,needs)
@@ -3588,6 +3643,8 @@ func on_placement(kind:String,p:Vector3,angle:float,style:String="",size:String=
 	if _find_item(str(entry.id)).is_empty():return
 	if bool(data.get("cuts_doorway",false)):
 		_open_doorway_behind_leaf(entry)
+	if LifePets.TOY_BOX_TOYS.has(kind) and not moving:
+		_stock_toy_box(entry)
 	build_undo.append(snapshot)
 	household.set_funds(sim.funds-price)
 	build_transactions.furnishing_rebuilt(protection)
@@ -3626,6 +3683,30 @@ func _open_doorway_behind_leaf(entry: Dictionary) -> void:
 	})
 	if bool(quote.ok):
 		build_transactions.commit(quote)
+
+## Fill a newly bought toy box with its six matching toys, nested until a pet
+## or Lifelet takes one out to play.
+func _stock_toy_box(box: Dictionary) -> void:
+	var toy_kind: String = str(LifePets.TOY_BOX_TOYS.get(str(box.kind), ""))
+	if toy_kind.is_empty() or not LifeCatalog.ITEMS.has(toy_kind): return
+	var base := Vector3(float(box.x), LifeBuildingState.level_y(int(box.get("level", 0))), float(box.z))
+	for index: int in LifePets.TOYS_PER_BOX:
+		var angle: float = float(index) * TAU / float(LifePets.TOYS_PER_BOX)
+		var toy: Dictionary = {
+			"id": "toy_%s_%d" % [str(box.id), index],
+			"kind": toy_kind,
+			"x": base.x + cos(angle) * 0.12,
+			"z": base.z + sin(angle) * 0.12,
+			"rotation": float(index * 30),
+			"box_id": str(box.id),
+		}
+		if int(box.get("level", 0)) == 1: toy["level"] = 1
+		world.add_item(toy, false)
+		var placed: Dictionary = _find_item(str(toy.id))
+		if not placed.is_empty() and is_instance_valid(placed.get("node")):
+			placed.node.visible = false
+			placed["box_id"] = str(box.id)
+	world.rebuild_navigation()
 
 ## Place a ready room pack. The room itself is one structure transaction —
 ## walls that share whatever wall they meet, a standard doorway and a carpet
@@ -5400,7 +5481,14 @@ func _cancel_blocked_action(generation:int,action:Dictionary,member_id:String=""
 
 func on_action_finished(action:Dictionary) -> void:
 	if is_instance_valid(player):
-		player.speech({"arrive_home":"This feels like a new beginning.","school_day":"Learned something new today.","career_day":"Home after a busy day.","cook":"Ready to serve.","serve_meal":"Come and get it!","eat_meal":"That was lovely.","store_meal":"Something for later.","clean_plate":"All clean.","read":"One more chapter…","paint":"Made something lovely.","friendly":"Good to talk with you!","joke":"Ha!","deep_talk":"I understand.","hug":"That hug was just right.","share_interests":"We have so much in common!","water":"Looking greener.","work":"All done!","homework":"Ready for tomorrow.","help_homework":"We worked it out.","talk_to_myself":"Yes — I can do this."}.get(action.id,"That feels better."))
+		player.speech({"arrive_home":"This feels like a new beginning.","school_day":"Learned something new today.","career_day":"Home after a busy day.","cook":"Ready to serve.","serve_meal":"Come and get it!","eat_meal":"That was lovely.","store_meal":"Something for later.","clean_plate":"All clean.","read":"One more chapter…","paint":"Made something lovely.","friendly":"Good to talk with you!","joke":"Ha!","deep_talk":"I understand.","hug":"That hug was just right.","share_interests":"We have so much in common!","water":"Looking greener.","work":"All done!","homework":"Ready for tomorrow.","help_homework":"We worked it out.","talk_to_myself":"Yes — I can do this.","take_pet_toy":"Ready to play.","put_pet_toy":"Tucked away.","play_with_pet_toy":"That was fun!"}.get(action.id,"That feels better."))
+	var action_id:String=str(action.get("id",""))
+	if action_id=="take_pet_toy":
+		_lifelet_take_pet_toy(str(action.get("target_id","")))
+	elif action_id=="put_pet_toy":
+		_lifelet_put_pet_toy(str(action.get("target_id","")))
+	elif action_id=="play_with_pet_toy":
+		_lifelet_play_with_pet_toy(str(action.get("target_id","")))
 	# A mirror or dressing-table beat opens its own panel once the Lifelet has
 	# walked there and finished, so the click leads somewhere rather than only
 	# granting a moodlet.
@@ -5414,6 +5502,52 @@ func on_action_finished(action:Dictionary) -> void:
 			kind="makeup" if str(panel)=="do_makeup" else ("jewelry" if str(panel)=="change_jewelry" else "clothes")
 		show_wardrobe_panel(str(action.target_id),kind)
 	refresh_hud()
+
+## Take one toy out of a toy box onto the floor beside it.
+func _lifelet_take_pet_toy(box_id:String) -> void:
+	var box:Dictionary=_find_item(box_id)
+	if box.is_empty():return
+	for item:Dictionary in world.items:
+		if str(item.get("box_id",""))!=box_id:continue
+		_pet_take_toy_from_box(item)
+		show_notice("A toy is out of the box, ready to play.")
+		return
+	show_notice("Every toy from this box is already out.")
+
+## Nest a floor toy back into the matching toy box.
+func _lifelet_put_pet_toy(toy_id:String) -> void:
+	var toy:Dictionary=_find_item(toy_id)
+	if toy.is_empty():return
+	var box_kind:String="cat_toy_box" if str(toy.kind)=="pet_toy_cat" else "dog_toy_box"
+	var box:Dictionary=world.closest_item(box_kind,Vector3(float(toy.get("x",0)),.16,float(toy.get("z",0))))
+	if box.is_empty():
+		show_notice("Place a matching toy box first.");return
+	toy["box_id"]=str(box.id)
+	toy["x"]=float(box.x);toy["z"]=float(box.z)
+	if is_instance_valid(toy.get("node")):
+		toy.node.position=Vector3(toy.x,LifeBuildingState.level_y(world.item_level(toy)),toy.z)
+		toy.node.visible=false
+	show_notice("Toy put back in the box.")
+
+## Play with the household pet that matches this toy, restoring fun for both.
+func _lifelet_play_with_pet_toy(toy_id:String) -> void:
+	var toy:Dictionary=_find_item(toy_id)
+	if toy.is_empty():return
+	if str(toy.get("box_id",""))!="":
+		_pet_take_toy_from_box(toy)
+	var want:String="cat" if str(toy.kind)=="pet_toy_cat" else "dog"
+	var pets:Array=[]
+	if household.pets is Dictionary and household.pets.get("pets") is Array:
+		pets=household.pets.pets
+	for pet:Variant in pets:
+		if not pet is Dictionary:continue
+		if str(pet.get("species",""))!=want:continue
+		var care:Dictionary=pet.get("care",{})
+		if care is Dictionary and care.get("needs") is Dictionary:
+			care.needs["fun"]=clampf(float(care.needs.get("fun",50.0))+LifePets.PLAY_AMOUNT,0.0,100.0)
+		show_notice("Played with %s and the toy." % str(pet.get("name","your pet")))
+		return
+	show_notice("No matching pet is home to play with.")
 
 func show_notice(message:String) -> void:
 	if not is_instance_valid(ui):return

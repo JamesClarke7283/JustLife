@@ -473,6 +473,9 @@ func _build_actions() -> void:
 	_define("feed_baby_food", "Get Baby Food", 30.0, {"social": 10.0, "fun": 8.0, "energy": -4.0}, 0, "parenting", 24.0, "Take a jar from the fridge and spoon-feed the baby. A proper meal, and a messy face afterwards.")
 	_define("pet_feed", "Feed Dog", 15.0, {"social": 6.0}, 0, "parenting", 8.0, "Pick up the food and pour kibble into the bowl. Fills the dog's hunger.")
 	_define("pet_play", "Play with Dog", 30.0, {"fun": 18.0, "social": 14.0, "energy": -6.0}, 0, "fitness", 10.0, "Play until you are both out of breath.")
+	_define("take_pet_toy", "Take a toy", 8.0, {"fun": 4.0}, 0, "", 0.0, "Lift a toy out of the toy box onto the floor, ready to play.")
+	_define("put_pet_toy", "Put toy away", 8.0, {"fun": 2.0}, 0, "", 0.0, "Pick this toy up and nest it back in its toy box.")
+	_define("play_with_pet_toy", "Play with a pet", 30.0, {"fun": 18.0, "social": 14.0, "energy": -6.0}, 0, "fitness", 10.0, "Take this toy and play with the household pet that matches it.")
 	_define("pet_tug", "Tug-of-war", 22.0, {"fun": 24.0, "social": 14.0, "energy": -8.0}, 0, "fitness", 14.0, "Grab the rope toy and pull. Dog and Lifelet both love it.")
 	_define("pet_teach_trick", "Play Tricks", 35.0, {"fun": 20.0, "social": 12.0, "energy": -4.0}, 0, "logic", 26.0, "Hand signals and cues for the next trick. Builds the pet's trick skill.")
 	_define("pet_walk", "Take for a Walk", 40.0, {"fun": 16.0, "social": 14.0, "energy": -8.0}, 0, "fitness", 22.0, "Clip on a leash and walk the neighbourhood. You can stop and chat with neighbours.")
@@ -564,6 +567,8 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"urn", "tombstone", "memorial": ids = ["remember_life", "mourn", "leave_flowers", "remember_passed"]
 		"neighbor", "maya", "leo", "priya", "tom": ids = SOCIAL_ACTIONS
 		"pet": ids = ["pet_feed", "pet_pet", "pet_tummy_rub", "pet_play", "pet_tug", "pet_teach_trick", "pet_walk", "pet_train", "bathe_pet"]
+		"cat_toy_box", "dog_toy_box": ids = ["take_pet_toy"]
+		"pet_toy_cat", "pet_toy_dog": ids = ["put_pet_toy", "play_with_pet_toy"]
 		# Baby care. The changing table is where a nappy is changed, the toys are
 		# what play happens on, and the cot is where a cuddle happens without a
 		# toy in hand. Each is offered only when a baby is in the household.

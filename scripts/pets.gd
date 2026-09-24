@@ -61,28 +61,31 @@ const MARKING_LABELS: Dictionary = {"none": "Plain", "bicolour": "Bicolour", "tu
 ## each need a cat, and a kennel, a dog bed and a dog toy box each need a dog,
 ## so the shop only offers what the household can actually use. The two toys are
 ## the single pieces a toy box already holds six of.
-const ACCESSORY_KINDS: Array[String] = ["pet_bowl", "cat_tree", "kennel", "pet_bed_cat", "pet_bed_dog", "pet_toy_cat", "pet_toy_dog", "cat_toy_box", "dog_toy_box"]
+const ACCESSORY_KINDS: Array[String] = ["pet_bowl", "cat_tree", "kennel", "pet_bed_cat", "pet_bed_dog", "pet_toy_cat", "pet_toy_dog", "cat_toy_box", "dog_toy_box", "litter_tray"]
 const ACCESSORY_SPECIES: Dictionary = {
 	"pet_bowl": "", "cat_tree": "cat", "kennel": "dog",
 	"pet_bed_cat": "cat", "pet_bed_dog": "dog",
 	"pet_toy_cat": "cat", "pet_toy_dog": "dog",
 	"cat_toy_box": "cat", "dog_toy_box": "dog",
+	"litter_tray": "cat",
 }
 const ACCESSORY_LABELS: Dictionary = {
 	"pet_bowl": "Food & water bowl", "cat_tree": "Cat tree", "kennel": "Dog kennel",
 	"pet_bed_cat": "Cosy cat bed", "pet_bed_dog": "Cushioned dog bed",
 	"pet_toy_cat": "Feather mouse toy", "pet_toy_dog": "Knotted rope bone",
 	"cat_toy_box": "Cat Toy Box", "dog_toy_box": "Dog Toy Box",
+	"litter_tray": "Litter tray",
 }
 const ACCESSORY_PRICES: Dictionary = {
 	"pet_bowl": 60, "cat_tree": 240, "kennel": 320,
 	"pet_bed_cat": 120, "pet_bed_dog": 160,
 	"pet_toy_cat": 25, "pet_toy_dog": 30,
 	"cat_toy_box": 50, "dog_toy_box": 50,
+	"litter_tray": 80,
 }
 ## The six toys a toy box comes with, and where they sit inside it. Each box is
 ## sold full, and buying one places the box and its six toys as a set.
-const TOY_BOX_TOYS: Dictionary = {"cat_toy_box": "cat", "dog_toy_box": "dog"}
+const TOY_BOX_TOYS: Dictionary = {"cat_toy_box": "pet_toy_cat", "dog_toy_box": "pet_toy_dog"}
 const TOYS_PER_BOX: int = 6
 
 ## Everything a household can teach a pet. This is the canonical list the save

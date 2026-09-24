@@ -116,6 +116,8 @@ const ITEMS = {
 	"pet_toy_dog": {"label":"Knotted rope bone", "category":"Pets", "price":30, "size":Vector2(.26,.16), "height":.12, "color":"c97c4e"},
 	"cat_toy_box": {"label":"Cat Toy Box", "category":"Pets", "price":50, "size":Vector2(.56,.40), "height":.35, "color":"7fa8c6"},
 	"dog_toy_box": {"label":"Dog Toy Box", "category":"Pets", "price":50, "size":Vector2(.56,.40), "height":.35, "color":"7fa8c6"},
+	"litter_tray": {"label":"Litter tray", "category":"Pets", "price":80, "size":Vector2(.56,.40), "height":.14, "color":"c9c3a8", "tint":true,
+		"colors":["c9c3a8","8faf9f","6f8fa8","d9a0a0","4a4f55"]},
 	"urn": {"label":"Ceramic memorial urn", "category":"Decor", "price":120, "size":Vector2(.3,.3), "height":.42, "color":"3e6b65"},
 	"tombstone": {"label":"Carved stone gravestone", "category":"Decor", "price":180, "size":Vector2(.56,.36), "height":.85, "color":"52555a"},
 
@@ -313,7 +315,7 @@ const CATEGORIES: Array[String] = ["All", "Comfort", "Bedroom", "Baby & Kids", "
 const INSTRUMENTS: Array[String] = ["guitar", "violin"]
 
 # Floor coverings and wall decor: they never block routes, walls or other furnishings.
-const PASSABLE: Array[String] = ["rug", "child_rug", "painting", "wall_clock", "shelf", "yoga_mat", "room_light", "memorial", "curtains", "house_door", "house_window"]
+const PASSABLE: Array[String] = ["rug", "child_rug", "painting", "wall_clock", "shelf", "yoga_mat", "room_light", "memorial", "curtains", "house_door", "house_window", "pet_toy_cat", "pet_toy_dog"]
 ## Decor that hangs flat against a wall, kept as a list for the pieces that have
 ## always been authored that way. A catalogue entry may also declare
 ## `"wall_mounted": true` for itself, and `wall_mounted(kind)` is the one
