@@ -3841,7 +3841,10 @@ func on_object_clicked(item:Dictionary,screen:Vector2) -> void:
 		if household.member_sim(str(item.id)) and str(item.id)!=household.selected_id():
 			show_housemate_interactions(item,screen)
 		elif str(item.id)==household.selected_id():show_person()
-		elif str(item.get("kind",""))=="pet":show_interactions(item,screen)
+		elif str(item.get("kind",""))=="pet":
+			# A click on the animal opens its needs card (Hunger, Affection,
+			# Energy, Bladder, Logic), not only the care-action list.
+			show_pet_card(str(item.id))
 		elif str(item.get("kind",""))=="food_truck":show_food_truck()
 		else:show_interactions(item,screen)
 
@@ -4543,13 +4546,69 @@ func show_build_object(item:Dictionary,screen:Vector2) -> void:
 	close_overlay()
 	if bool(item.get("transient_food",false)) or not LifeCatalog.ITEMS.has(str(item.get("kind",""))):return
 	overlay_open=true;dismiss_layer()
+	var data:Dictionary=LifeCatalog.get_item(str(item.kind))
+	var colors:Array=Variants.colors(data)
+	var rows:int=3+(1 if colors.size()>1 else 0)
 	var p=Vector2(clampf(screen.x-140,300,1100),clampf(screen.y-70,99,440))
-	card(p,Vector2(290,228),P.WHITE,17,overlay)
+	card(p,Vector2(290,70.0+float(rows)*51.0),P.WHITE,17,overlay)
 	text_label(item.label,p+Vector2(18,14),Vector2(261,38),22,P.INK,true,overlay)
-	button("Sell  +ℒ%d" % sale_value(str(item.kind),str(item.get("size",""))),p+Vector2(16,71),Vector2(258,40),func():sell_item(item);close_overlay(),false,overlay)
-	button("Move furnishing",p+Vector2(16,122),Vector2(258,40),func():move_item(item);close_overlay(),false,overlay)
-	var store=button("Put in storage",p+Vector2(16,173),Vector2(258,40),func():store_item(item);close_overlay(),false,overlay)
+	var y:float=71.0
+	button("Sell  +ℒ%d" % sale_value(str(item.kind),str(item.get("size",""))),p+Vector2(16,y),Vector2(258,40),func():sell_item(item);close_overlay(),false,overlay)
+	y+=51.0
+	button("Move furnishing",p+Vector2(16,y),Vector2(258,40),func():move_item(item);close_overlay(),false,overlay)
+	y+=51.0
+	if colors.size()>1:
+		button("Change colour…",p+Vector2(16,y),Vector2(258,40),func():show_placed_colour_picker(item),false,overlay).tooltip_text="Repaint this furnishing. Curtains, rugs and tinted decor update on the mesh you already placed."
+		y+=51.0
+	var store=button("Put in storage",p+Vector2(16,y),Vector2(258,40),func():store_item(item);close_overlay(),false,overlay)
 	store.tooltip_text="File this furnishing away in the household storage unit ("+str(household_flow.storage_count())+"/%d used)." % LifeHouseholdFlow.MAX_STORAGE
+
+## Recolour a placed tintable furnishing (curtains, rugs, garden decor). The
+## swatch updates the live mesh immediately and stores the colour on the item so
+## a save resumes the same fabric.
+func show_placed_colour_picker(item:Dictionary) -> void:
+	var existing:Dictionary=_find_item(str(item.get("id","")))
+	if existing.is_empty():return
+	var data:Dictionary=LifeCatalog.get_item(str(existing.kind))
+	var colors:Array=Variants.colors(data)
+	if colors.size()<=1:return
+	var current:Dictionary=Variants.resolve(data,existing.get("variant",existing))
+	close_overlay();overlay_open=true;dismiss_layer()
+	var p:=Vector2(420,180)
+	card(p,Vector2(560,420),P.WHITE,20,overlay)
+	small_caps("Change colour",p+Vector2(28,22),Vector2(500,22),overlay)
+	text_label(str(existing.get("label",data.label)),p+Vector2(26,52),Vector2(500,36),26,P.INK,true,overlay)
+	paragraph("Pick a swatch. The colour applies to the furnishing already in the room.",p+Vector2(28,96),Vector2(500,40),15,P.MUTED,overlay)
+	var per_row:int=5
+	var swatch:float=56.0
+	var gap:float=12.0
+	for i:int in colors.size():
+		var column:int=i%per_row
+		var line:int=i/per_row
+		var at:=p+Vector2(28.0+float(column)*(swatch+gap),150.0+float(line)*(swatch+gap))
+		var hex:String=str(colors[i])
+		var chosen:bool=hex==str(current.color)
+		var chip=button("•" if chosen else "",at,Vector2(swatch,swatch),func():_recolour_placed_item(str(existing.id),hex),false,overlay)
+		chip.name="PlacedColor_%d" % i
+		chip.tooltip_text="#"+hex.to_upper()
+		chip.add_theme_stylebox_override("normal",P.panel(Color(hex),16,P.TEAL if chosen else Color("dbe2d7"),3 if chosen else 1))
+		chip.add_theme_stylebox_override("hover",P.panel(Color(hex).lightened(.08),16,P.TEAL,3))
+		if chosen:chip.add_theme_color_override("font_color",Color.WHITE)
+		compact_button(chip);chip.size=Vector2(swatch,swatch)
+	button("Back",p+Vector2(28,360),Vector2(200,42),func():show_build_object(existing,Vector2(850,380)),false,overlay)
+
+func _recolour_placed_item(item_id:String,color:String) -> void:
+	var existing:Dictionary=_find_item(item_id)
+	if existing.is_empty() or not is_instance_valid(existing.get("node")):return
+	var data:Dictionary=LifeCatalog.get_item(str(existing.kind))
+	if not Variants.color_offered(color,data):return
+	var current:Dictionary=Variants.resolve(data,existing.get("variant",existing))
+	var next:Dictionary=Variants.record(data,str(current.style),color,str(current.size))
+	existing["variant"]=next
+	existing["color"]=color
+	world._apply_variant_colour(existing.node,data,next)
+	show_notice("A fresh colour for your %s." % str(data.label).to_lower())
+	show_placed_colour_picker(existing)
 
 func store_item(item:Dictionary) -> void:
 	if mode!="build":return
