@@ -32,6 +32,7 @@ var paint_scope:String="wall"  # "wall" repaints one segment; "room" repaints ev
 var paint_palette:String="home"
 var paint_pattern:String="stars"
 var roof_edit_id:String=""
+var grab_id:String=""
 var build_level:int=0
 var last_error:String=""
 ## Why the last staircase search found nowhere to stand, in the player's words.
@@ -276,14 +277,22 @@ func begin(name: String) -> void:
 	add_child(preview)
 
 func cancel() -> void:
-	tool="";anchored=false;proposal.clear();roof_edit_id=""
+	tool="";anchored=false;proposal.clear();roof_edit_id="";grab_id=""
 	set_roof_visibility(roofs_visible)
 	_preview_signature=""
 	if is_instance_valid(preview):preview.queue_free()
 	preview=null
 
 func snap(p: Vector3) -> Vector3:
-	return Vector3(clampf(snappedf(p.x,.5),-8,8),Building.level_y(build_level),clampf(snappedf(p.z,.5),-6.5,7))
+	# Snap inside the owned lot, not a fixed starter footprint, so Build tools
+	# cover every bought plot while the street-side south edge stays the bound.
+	var ground:Rect2=Building.lot()
+	var pad:float=.14
+	return Vector3(
+		clampf(snappedf(p.x,.5),ground.position.x+pad,ground.end.x-pad),
+		Building.level_y(build_level),
+		clampf(snappedf(p.z,.5),ground.position.y+pad,ground.end.y-pad)
+	)
 
 func update_preview(p: Vector3) -> void:
 	if tool.is_empty() or not is_instance_valid(preview):return
@@ -338,10 +347,15 @@ func click(p: Vector3) -> Dictionary:
 			if int(roof.level)==build_level and Building.rect(roof).has_point(Vector2(p.x,p.z)):
 				roof_edit_id=str(roof.id);roof_pitch=float(roof.pitch);roof_material=str(roof.material);world.placement_angle=int(roof.rotation);return {}
 		return {"error":"Select an existing roof on this level."}
+	if tool=="grab" and grab_id.is_empty():
+		var pick:Dictionary=_nearest_wall(p)
+		if pick.is_empty():return {"error":"Point at a wall on this level."}
+		grab_id=str(pick.id);anchored=true;anchor=snap(p);return {}
 	if tool in ["wall","room","floor","roof","roof_edit"] and not anchored:
 		anchor=snap(p);anchored=true;return {}
 	var data=make_proposal(snap(p))
 	if data.is_empty() or not bool(data.get("valid",false)):return {"error":str(data.get("error","That construction overlaps a furnishing, wall, or the edge of the lot."))}
+	if tool=="grab" and bool(data.get("valid",false)):grab_id="";anchored=false
 	return data
 
 func make_proposal(p: Vector3) -> Dictionary:
@@ -353,6 +367,14 @@ func make_proposal(p: Vector3) -> Dictionary:
 		if tool in ["wall","room"]:
 			if not anchored:return {}
 			operation.merge({"ax":anchor.x,"az":anchor.z,"bx":p.x,"bz":p.z})
+		elif tool=="grab":
+			if grab_id.is_empty():return {}
+			var wall:Dictionary={}
+			for record:Dictionary in records:
+				if str(record.id)==grab_id:wall=record;break
+			if wall.is_empty():return {"valid":false,"error":"The selected wall has changed."}
+			operation["id"]=grab_id
+			operation["line"]=p.z if float(wall.w)>float(wall.d) else p.x
 		elif tool in ["door","erase","paint"]:
 			if not data.has("remove_id"):return {"valid":false,"error":"Point at a wall on this level."}
 			operation["id"]=str(data.remove_id)
@@ -376,6 +398,17 @@ func make_proposal(p: Vector3) -> Dictionary:
 	if not bool(converted.ok):data["valid"]=false;data["error"]=str(converted.error)
 	else:data["building_state"]=converted.state
 	return data
+
+func _nearest_wall(p: Vector3) -> Dictionary:
+	var nearest:Dictionary={}
+	var best:float=.55
+	for e in records:
+		if int(e.get("level",0))!=build_level:continue
+		var r=wall_rect(e)
+		var q=Vector2(clampf(p.x,r.position.x,r.end.x),clampf(p.z,r.position.y,r.end.y))
+		var distance=q.distance_to(Vector2(p.x,p.z))
+		if distance<best:best=distance;nearest=e
+	return nearest
 
 func _make_roof_proposal(p:Vector3)->Dictionary:
 	var result:Dictionary=validated_state()
@@ -623,15 +656,20 @@ func _convert_proposal(data:Dictionary) -> Dictionary:
 	return {"ok":true,"state":state} if error.is_empty() else {"ok":false,"error":error}
 
 func _make_legacy_proposal(p: Vector3) -> Dictionary:
-	if tool in ["door","erase","paint"]:
-		var nearest:Dictionary={}
-		var best:float=.55
+	if tool=="grab":
+		if grab_id.is_empty():return {}
+		var wall:Dictionary={}
 		for e in records:
-			if int(e.get("level",0))!=build_level:continue
-			var r=wall_rect(e)
-			var q=Vector2(clampf(p.x,r.position.x,r.end.x),clampf(p.z,r.position.y,r.end.y))
-			var distance=q.distance_to(Vector2(p.x,p.z))
-			if distance<best:best=distance;nearest=e
+			if str(e.id)==grab_id:wall=e;break
+		if wall.is_empty():return {}
+		var horizontal:bool=float(wall.w)>float(wall.d)
+		var moved:Dictionary=wall.duplicate(true);moved.erase("id")
+		if horizontal:moved.z=p.z
+		else:moved.x=p.x
+		var delta:float=absf((p.z if horizontal else p.x)-(float(wall.z) if horizontal else float(wall.x)))
+		return {"op":"grab","remove_id":grab_id,"walls":[moved],"cost":int(maxf(.5,delta)*maxf(float(wall.w),float(wall.d))*12),"valid":delta>=.25}
+	if tool in ["door","erase","paint"]:
+		var nearest:Dictionary=_nearest_wall(p)
 		if nearest.is_empty():return {}
 		if tool=="erase":return {"op":"erase","remove_id":nearest.id,"walls":[],"cost":-int(maxf(nearest.w,nearest.d)*20),"valid":true}
 		if tool=="paint":return {"op":"paint","remove_id":nearest.id,"walls":[],"cost":int(maxf(nearest.w,nearest.d)*6),"valid":true}

@@ -12,7 +12,7 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 	if not operation is Dictionary or operation.get("op")!="structure" or not Building.number(funds,0,1e9,true):return _error("Invalid structure edit.")
 	if int(current.revision)>=1000000000:return _error("Building revision limit reached.")
 	var tool:Variant=operation.get("tool");var level:Variant=operation.get("level")
-	if not tool is String or tool not in ["wall","room","door","erase","finish","paint","room_pack"] or not Building.number(level,0,1,true):return _error("Invalid structure tool or level.")
+	if not tool is String or tool not in ["wall","room","door","erase","finish","paint","room_pack","grab"] or not Building.number(level,0,1,true):return _error("Invalid structure tool or level.")
 	var after:Dictionary=current.duplicate(true);var cost:int=0
 	if tool=="room_pack":
 		var built:Dictionary=_room_pack(after,operation,int(level))
@@ -24,6 +24,19 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 		for floor:Dictionary in after.floors:
 			if int(floor.level)==int(level) and floor.material!=operation.material:floor.material=operation.material;changed=true
 		if not changed:return _error("The floors on this level already use that finish.")
+	elif tool=="grab":
+		# Select an existing wall, then push or pull it along its normal so the
+		# room resizes. Connected end walls stretch to keep the corners closed.
+		if not Building.identifier(operation.get("id")):return _error("Choose an existing wall on this level.")
+		if not Building.number(operation.get("line"),-Building.Land.MAX_SPAN,Building.Land.MAX_SPAN):return _error("Push or pull the wall to a new position.")
+		var grabbed:Dictionary=Building.find(after,str(operation.id))
+		if grabbed.is_empty() or Building._group_of(after,str(operation.id))!="walls" or int(grabbed.level)!=int(level):return _error("The selected wall has changed.")
+		var was_horizontal:bool=float(grabbed.w)>float(grabbed.d)
+		var old_line:float=float(grabbed.z) if was_horizontal else float(grabbed.x)
+		var grab_length:float=maxf(float(grabbed.w),float(grabbed.d))
+		var grab_error:String=_grab_wall(after,grabbed,float(operation.line),int(level))
+		if not grab_error.is_empty():return _error(grab_error)
+		cost=int(maxf(.5,absf(float(operation.line)-old_line))*grab_length*12)
 	elif tool in ["wall","room"]:
 		for key:String in ["ax","az","bx","bz"]:
 			if not Building.number(operation.get(key),-Building.Land.MAX_SPAN,Building.Land.MAX_SPAN):return _error("Choose two valid construction points.")
@@ -122,6 +135,53 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 	if int(funds)-cost>1000000000:return _error("This refund exceeds the wallet limit.")
 	after.revision=int(current.revision)+1
 	return {"ok":true,"operation":operation.duplicate(true),"before":Building.fingerprint(current),"after":after,"cost":cost,"funds_before":int(funds),"funds_after":int(funds)-cost}
+
+## Push or pull one wall along its normal. Orthogonal walls that meet either
+## end stretch so the room stays closed; the wall itself stays the same length.
+static func _grab_wall(after:Dictionary,wall:Dictionary,line:float,level:int) -> String:
+	var horizontal:bool=float(wall.w)>float(wall.d)
+	var old_line:float=float(wall.z) if horizontal else float(wall.x)
+	var new_line:float=snappedf(line,.5)
+	var delta:float=new_line-old_line
+	if absf(delta)<.25:return "Push or pull the wall at least a quarter metre."
+	var length:float=maxf(float(wall.w),float(wall.d))
+	var along:float=float(wall.x) if horizontal else float(wall.z)
+	var low_end:float=along-length*.5
+	var high_end:float=along+length*.5
+	var moved:Dictionary=wall.duplicate(true)
+	if horizontal:moved.z=new_line
+	else:moved.x=new_line
+	if not Building.lot().encloses(Building.rect(moved).grow(-.02)):return "That would put the wall outside the lot."
+	for other:Dictionary in after.walls:
+		if int(other.level)!=level or str(other.id)==str(wall.id):continue
+		var other_horizontal:bool=float(other.w)>float(other.d)
+		if other_horizontal==horizontal:continue
+		# Perpendicular run: its fixed axis sits on one of this wall's ends, and
+		# one of its own ends meets the wall we are moving.
+		var other_line:float=float(other.x) if horizontal else float(other.z)
+		var on_low:bool=absf(other_line-low_end)<=.16
+		var on_high:bool=absf(other_line-high_end)<=.16
+		if not on_low and not on_high:continue
+		var span:float=maxf(float(other.w),float(other.d))
+		var mid:float=float(other.z) if horizontal else float(other.x)
+		var span_low:float=mid-span*.5
+		var span_high:float=mid+span*.5
+		var touch_low:bool=absf(span_low-old_line)<=.2
+		var touch_high:bool=absf(span_high-old_line)<=.2
+		if not touch_low and not touch_high:continue
+		if touch_low:span_low=new_line
+		if touch_high:span_high=new_line
+		if span_high-span_low<.5:return "That push would leave a connecting wall too short."
+		if horizontal:
+			other.z=(span_low+span_high)*.5
+			other.d=span_high-span_low
+		else:
+			other.x=(span_low+span_high)*.5
+			other.w=span_high-span_low
+		if not Building.lot().encloses(Building.rect(other).grow(-.02)):return "A connecting wall would leave the lot."
+	if horizontal:wall.z=new_line
+	else:wall.x=new_line
+	return ""
 
 ## Drop this wall and every collinear panel overlapping it, so a doorway cut
 ## across a bought-plot boundary cannot leave a second stacked panel sealed.

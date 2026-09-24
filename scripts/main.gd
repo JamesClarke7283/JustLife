@@ -3272,7 +3272,9 @@ func draw_build_catalog() -> void:
 			button("Pale stone",Vector2(465,784),Vector2(150,47),func():change_floor("dcd6c6"))
 			button("Walnut",Vector2(625,784),Vector2(150,47),func():change_floor("896953"))
 		button("Wall view",Vector2(785,784),Vector2(130,47),func():world.set_cutaway(not world.cutaway))
-		button("Remove wall",Vector2(925,784),Vector2(140,47),func():begin_construction("erase"))
+		button("Remove wall",Vector2(775,784),Vector2(140,47),func():begin_construction("erase"))
+		var grab=button("Grab wall",Vector2(925,784),Vector2(140,47),func():begin_construction("grab"),world.construction.tool=="grab")
+		grab.tooltip_text="Select a wall, then click where to push or pull it. Connected walls stretch to keep the room closed."
 		var paint=button("Paint wall",Vector2(1075,784),Vector2(150,47),func():begin_construction("paint"),world.construction.tool=="paint")
 		paint.tooltip_text="Pick the tool, choose a home or nursery finish, then click a wall to repaint that segment."
 		var whole=button("Whole room",Vector2(1235,784),Vector2(144,47),func():
@@ -3521,6 +3523,7 @@ func begin_construction(tool:String) -> void:
 	elif tool=="floor" and world.view_level==0:show_notice("This paints the ground-floor finish. For a second storey, press Upper first — it starts the upper floor tool for you.")
 	elif tool=="stairs":world.placement_angle=0;show_notice("Point near the upper slab's free edge. R rotates; the stair snaps to the nearest clear spot with its opening and guard included.")
 	elif tool=="remove_structure":show_notice("Point at a floor or staircase to review its removal. Esc cancels.")
+	elif tool=="grab":show_notice("Select a wall, then click where to push or pull it. Connected walls stretch so the room stays closed. Esc cancels.")
 	else:show_notice("Click two corners to create a %s. Esc cancels." % tool if tool in ["wall","room","floor"] else "Click a wall to %s. Esc cancels." % ("add a doorway" if tool=="door" else "remove it"))
 
 func on_construction(data:Dictionary) -> void:

@@ -337,11 +337,7 @@ func create_home(layout: Array = []) -> void:
 		for i in range(12):
 			var p=Vector3(x+rng.randf_range(-.9,.9),-.09,6.8+rng.randf_range(-.45,.45))
 			flower_clump(p, rng, "d4868e" if i%2 else "f5e5ad")
-	grid = Node3D.new()
-	house.add_child(grid)
-	for i in range(-12,13):box(grid,Vector3(i*.5,.17,0),Vector3(.012,.005,10),"a6bca9")
-	for i in range(-10,11):box(grid,Vector3(0,.17,i*.5),Vector3(12,.005,.012),"a6bca9")
-	grid.visible = false
+	rebuild_build_grid()
 	# Structural state must exist before an upper furnishing is instantiated,
 	# regardless of the serialized record ordering.
 	for entry:Dictionary in layout:
@@ -687,6 +683,39 @@ func draw_ground() -> void:
 	box(parent,Vector3(2,.52,7.8),Vector3(.10,1.1,.10),"ab7951")
 	box(parent,Vector3(2,1.06,7.8),Vector3(.45,.35,.33),"397e70")
 	box(parent,Vector3(2,1.07,7.98),Vector3(.26,.05,.008),"c8a562")
+	rebuild_build_grid()
+
+
+## The Build-mode construction grid covers the whole owned lot (every bought
+## plot), not only the starter footprint. The street/south sidewalk stays outside
+## the lot rectangle, so growing the grid never swallows the car exit.
+func rebuild_build_grid() -> void:
+	if not is_instance_valid(house):return
+	var was_visible:bool=is_instance_valid(grid) and grid.visible
+	if is_instance_valid(grid):
+		grid.queue_free()
+		grid=null
+	grid=Node3D.new();grid.name="BuildGrid";house.add_child(grid)
+	var ground:Rect2=Building.lot()
+	var step:float=.5
+	var x0:float=snappedf(ground.position.x,step)
+	var x1:float=snappedf(ground.end.x,step)
+	var z0:float=snappedf(ground.position.y,step)
+	var z1:float=snappedf(ground.end.y,step)
+	var cx:float=ground.get_center().x
+	var cz:float=ground.get_center().y
+	var width:float=maxf(step,ground.size.x)
+	var depth:float=maxf(step,ground.size.y)
+	var x:float=x0
+	while x<=x1+0.001:
+		box(grid,Vector3(x,.17,cz),Vector3(.012,.005,depth),"a6bca9")
+		x+=step
+	var z:float=z0
+	while z<=z1+0.001:
+		box(grid,Vector3(cx,.17,z),Vector3(width,.005,.012),"a6bca9")
+		z+=step
+	grid.visible=was_visible or build_enabled
+	grid.position.y=Building.RISE*float(view_level)
 
 
 func neighbor_home(p: Vector3) -> void:
@@ -1165,6 +1194,7 @@ func simulation_targets() -> Array:
 
 func set_build(enabled:bool) -> void:
 	build_enabled=enabled
+	if enabled:rebuild_build_grid()
 	if grid:grid.visible=enabled
 	if not enabled:clear_placement()
 
