@@ -69,6 +69,48 @@ func run() -> void:
 		var floor_after: Dictionary = Building.find(after, "f0")
 		check(not floor_after.is_empty() and float(floor_after.d) >= 4.9, "Existing floor slab grew with the room (d=%s)" % str(floor_after.get("d", "?")))
 
+	# Collinear doorway stubs ride with the grab so the opening stays intact.
+	var doorway: Dictionary = Building.fresh()
+	doorway.walls = [
+		{"id": "n", "level": 0, "x": 0.0, "z": -2.0, "w": 4.0, "d": 0.14, "height": 2.6, "cut": true, "material": "eae7d7"},
+		{"id": "s_l", "level": 0, "x": -1.5, "z": 2.0, "w": 1.8, "d": 0.14, "height": 2.6, "cut": true, "material": "eae7d7"},
+		{"id": "s_r", "level": 0, "x": 1.5, "z": 2.0, "w": 1.8, "d": 0.14, "height": 2.6, "cut": true, "material": "eae7d7"},
+		{"id": "w", "level": 0, "x": -2.0, "z": 0.0, "w": 0.14, "d": 4.0, "height": 2.6, "cut": true, "material": "eae7d7"},
+		{"id": "e", "level": 0, "x": 2.0, "z": 0.0, "w": 0.14, "d": 4.0, "height": 2.6, "cut": true, "material": "eae7d7"},
+	]
+	doorway.floors = [
+		{"id": "f0", "level": 0, "x": 0.0, "z": 0.0, "w": 4.0, "d": 4.0, "material": "cfa97e"},
+	]
+	var door_grab: Dictionary = Edits.propose(doorway, {"op": "structure", "tool": "grab", "level": 0, "id": "s_l", "line": 3.0}, 5000)
+	check(bool(door_grab.ok), "Grab on a doorway stub succeeds (%s)" % str(door_grab.get("error", "")))
+	if bool(door_grab.ok):
+		var left: Dictionary = Building.find(door_grab.after, "s_l")
+		var right: Dictionary = Building.find(door_grab.after, "s_r")
+		check(is_equal_approx(float(left.z), 3.0), "Grabbed doorway stub moved to the new line")
+		check(is_equal_approx(float(right.z), 3.0), "Collinear doorway stub moved with the grab")
+
+	# Roof footprint follows the outermost walls after a grab.
+	Building.set_land(Land.fresh())
+	var roofed: Dictionary = Building.fresh()
+	roofed.walls = [
+		{"id": "n", "level": 0, "x": 0.0, "z": -2.0, "w": 4.0, "d": 0.14, "height": 2.6, "cut": true, "material": "eae7d7"},
+		{"id": "s", "level": 0, "x": 0.0, "z": 2.0, "w": 4.0, "d": 0.14, "height": 2.6, "cut": true, "material": "eae7d7"},
+		{"id": "w", "level": 0, "x": -2.0, "z": 0.0, "w": 0.14, "d": 4.0, "height": 2.6, "cut": true, "material": "eae7d7"},
+		{"id": "e", "level": 0, "x": 2.0, "z": 0.0, "w": 0.14, "d": 4.0, "height": 2.6, "cut": true, "material": "eae7d7"},
+	]
+	roofed.floors = [
+		{"id": "f0", "level": 0, "x": 0.0, "z": 0.0, "w": 4.0, "d": 4.0, "material": "cfa97e"},
+	]
+	roofed.roofs = [
+		{"id": "r0", "level": 0, "x": 0.0, "z": 0.0, "w": 4.0, "d": 4.0, "pitch": 0.5, "rotation": 0, "material": "57736a", "supports": ["w", "e"]},
+	]
+	var roof_grab: Dictionary = Edits.propose(roofed, {"op": "structure", "tool": "grab", "level": 0, "id": "s", "line": 3.0}, 5000)
+	check(bool(roof_grab.ok), "Grab with a roof succeeds (%s)" % str(roof_grab.get("error", "")))
+	if bool(roof_grab.ok):
+		var roof: Dictionary = Building.find(roof_grab.after, "r0")
+		check(not roof.is_empty() and float(roof.d) >= 4.7, "Roof depth grew with the outermost walls (d=%s)" % str(roof.get("d", "?")))
+		check(absf(float(roof.z) - 0.5) < 0.2, "Roof centre shifted with the expanded footprint (z=%s)" % str(roof.get("z", "?")))
+
 	# Empty shell (no floor yet): grab must add a slab over the new footprint.
 	var shell: Dictionary = Building.fresh()
 	shell.walls = [
@@ -179,6 +221,49 @@ func run() -> void:
 			var moved: Dictionary = Building.find(app.world.construction.building_state, wall_id)
 			var moved_line: float = float(moved.z) if horizontal else float(moved.x)
 			check(absf(moved_line - new_line) < 0.1, "Committed grab moves the live wall")
+
+	# Live window rides with its host wall under Grab.
+	app.sim.funds = maxi(int(app.sim.funds), 5000)
+	var win_wall_quote: Dictionary = app.build_transactions.prepare({
+		"op": "structure", "tool": "wall", "level": 0,
+		"ax": 18.0, "az": 2.0, "bx": 26.0, "bz": 2.0
+	})
+	check(bool(win_wall_quote.ok), "Seed wall for window grab succeeds (%s)" % str(win_wall_quote.get("error", "")))
+	if bool(win_wall_quote.ok):
+		check(bool(app.build_transactions.commit(win_wall_quote).ok), "Seed wall for window grab commits")
+		var win_snap: Dictionary = app.world.wall_snap("house_window", Vector3(22.0, 0.16, 2.2), 2.0)
+		check(not win_snap.is_empty(), "Window snaps to the grab seed wall")
+		if not win_snap.is_empty():
+			app.set_build_mode(true)
+			app.on_placement("house_window", win_snap.position, float(win_snap.angle), "a", "")
+			await frames(2)
+			var win_item: Dictionary = {}
+			for item: Dictionary in app.world.items:
+				if str(item.kind) == "house_window":
+					win_item = item; break
+			check(not win_item.is_empty(), "Window was placed for grab sync")
+			var host_id: String = ""
+			for wall: Dictionary in app.world.construction.building_state.get("walls", []):
+				if int(wall.get("level", 0)) != 0: continue
+				if absf(float(wall.z) - 2.0) < 0.15 and float(wall.w) > 2.0:
+					host_id = str(wall.id); break
+			check(not host_id.is_empty(), "Host wall for window grab found")
+			if not host_id.is_empty() and not win_item.is_empty():
+				var before_z: float = float(win_item.z)
+				app.world.construction.quote_provider = app.build_transactions.prepare
+				var win_grab: Dictionary = app.build_transactions.prepare({
+					"op": "structure", "tool": "grab", "level": 0, "id": host_id, "line": 3.0
+				})
+				check(bool(win_grab.ok), "Grab quote with window succeeds (%s)" % str(win_grab.get("error", "")))
+				if bool(win_grab.ok):
+					check(bool(app.build_transactions.commit(win_grab).ok), "Grab with window commits")
+					await frames(2)
+					var after_win: Dictionary = {}
+					for item: Dictionary in app.world.items:
+						if str(item.id) == str(win_item.id):
+							after_win = item; break
+					check(not after_win.is_empty() and absf(float(after_win.z) - (before_z + 1.0)) < 0.2,
+						"Window moved with its wall (z %s -> %s)" % [str(before_z), str(after_win.get("z", "?"))])
 
 	print("BUILD_GRID_GRAB_PROBE %d/%d" % [checks - failures.size(), checks])
 	for failure: String in failures:

@@ -191,8 +191,73 @@ static func _grab_wall(after:Dictionary,wall:Dictionary,line:float,level:int) ->
 		if not Building.lot().encloses(Building.rect(other).grow(-.02)):return "A connecting wall would leave the lot."
 	if horizontal:wall.z=new_line
 	else:wall.x=new_line
+	# Doorway stubs and other collinear panels on the same line move together so
+	# an opening cut into the wall keeps both leaves and its door leaf aligned.
+	for other:Dictionary in after.walls:
+		if int(other.level)!=level or str(other.id)==str(wall.id):continue
+		var other_horizontal:bool=float(other.w)>float(other.d)
+		if other_horizontal!=horizontal:continue
+		var other_line:float=float(other.z) if horizontal else float(other.x)
+		if absf(other_line-old_line)>.08:continue
+		var other_mid:float=float(other.x) if horizontal else float(other.z)
+		var other_half:float=maxf(float(other.w),float(other.d))*.5
+		# Only panels that share this wall's run (including a doorway gap of up
+		# to 1.4 m) ride along; a distant collinear fence stays put.
+		if other_mid+other_half<low_end-1.4 or other_mid-other_half>high_end+1.4:continue
+		if horizontal:other.z=new_line
+		else:other.x=new_line
+		if not Building.lot().encloses(Building.rect(other).grow(-.02)):return "A collinear wall would leave the lot."
 	var floor_error:String=_grab_extend_floors(after,horizontal,old_line,new_line,low_end,high_end,level)
 	if not floor_error.is_empty():return floor_error
+	var roof_error:String=_grab_sync_roofs(after,level)
+	if not roof_error.is_empty():return roof_error
+	return ""
+
+## Resize every roof on this storey so its support footprint matches the
+## outermost wall centre-lines around the floors beneath it. Pitch, rotation,
+## finish and identity stay; only the plan grows or shrinks with the room.
+static func _grab_sync_roofs(after:Dictionary,level:int) -> String:
+	if after.roofs.is_empty():return ""
+	var min_x:float=INF;var max_x:float=-INF;var min_z:float=INF;var max_z:float=-INF
+	var have:bool=false
+	for wall:Dictionary in after.walls:
+		if int(wall.level)!=level:continue
+		have=true
+		var horizontal:bool=float(wall.w)>float(wall.d)
+		if horizontal:
+			min_x=minf(min_x,float(wall.x)-float(wall.w)*.5)
+			max_x=maxf(max_x,float(wall.x)+float(wall.w)*.5)
+			min_z=minf(min_z,float(wall.z));max_z=maxf(max_z,float(wall.z))
+		else:
+			min_z=minf(min_z,float(wall.z)-float(wall.d)*.5)
+			max_z=maxf(max_z,float(wall.z)+float(wall.d)*.5)
+			min_x=minf(min_x,float(wall.x));max_x=maxf(max_x,float(wall.x))
+	if not have:return ""
+	var support:=Rect2(Vector2(min_x,min_z),Vector2(max_x-min_x,max_z-min_z))
+	if support.size.x<1.5 or support.size.y<1.5:return "That push would leave the roof too small."
+	for roof:Dictionary in after.roofs:
+		if int(roof.level)!=level:continue
+		# Only roofs that already sit on this storey's slab grow with it; a
+		# detached outbuilding roof on another pad is left alone.
+		var current:Rect2=Building.rect(roof)
+		if not support.grow(.5).intersects(current):continue
+		roof.x=support.get_center().x
+		roof.z=support.get_center().y
+		roof.w=support.size.x
+		roof.d=support.size.y
+		# Re-pick opposite bearing walls so validation still finds supports after
+		# the grabbed wall and its connectors moved.
+		var supported:bool=false
+		for first:Dictionary in after.walls:
+			if int(first.level)!=level:continue
+			for second:Dictionary in after.walls:
+				if int(second.level)!=level or str(first.id)==str(second.id):continue
+				roof["supports"]=[str(first.id),str(second.id)]
+				if Building._perimeter_support_error(after,roof,level).is_empty():
+					supported=true;break
+			if supported:break
+		if not supported:return "The roof needs two complete opposite bearing walls after that push."
+		if not Building.lot().encloses(Building.rect(roof).grow(.28)):return "That would push the roof eaves outside the lot."
 	return ""
 
 ## Grow or shrink floors that abut the grabbed wall so the strip between the old

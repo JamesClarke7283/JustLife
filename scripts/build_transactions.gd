@@ -9,6 +9,7 @@ const Edits=preload("res://scripts/building_edits.gd")
 const Land=preload("res://scripts/land.gd")
 const Navigation=preload("res://scripts/lot_navigation.gd")
 const Protection=preload("res://scripts/build_protection.gd")
+const Variants=preload("res://scripts/catalog_variants.gd")
 var app:Node
 var _busy:bool=false
 var _cache_key:String=""
@@ -417,6 +418,10 @@ func _apply(before:Dictionary,after:Dictionary,funds:int)->Dictionary:
 	if not error.is_empty():
 		app.world.construction.restore(before);app.world.last_layout_error="";app.world.rebuild_navigation()
 		_busy=false;return _error(error)
+	# Windows and doors stay on the wall face they hung from: when Grab wall
+	# pushes a segment (and its collinear doorway stubs), shift those openings
+	# by the same normal delta so they are not left floating in the old plane.
+	_sync_wall_mounted_after_structure(before,after)
 	# State and graph are installed before the single wallet mutation. No action
 	# is canceled, advanced or rewarded by this transaction.
 	Protection.acknowledge_rebuild(app,protection,Protection.unchanged_routes(protection,before,after,app.world.lot_navigation))
@@ -424,3 +429,66 @@ func _apply(before:Dictionary,after:Dictionary,funds:int)->Dictionary:
 	else:app.sim.funds=funds
 	_cache_key="";_cache.clear();_busy=false
 	return {"ok":true}
+
+## Move wall-mounted furnishings whose host wall line shifted between `before`
+## and `after`. Along-wall sliding is unchanged; only the push/pull normal moves.
+func _sync_wall_mounted_after_structure(before:Dictionary,after:Dictionary)->void:
+	if not is_instance_valid(app) or not is_instance_valid(app.world):return
+	var line_delta:Dictionary={}
+	for wall:Dictionary in after.get("walls",[]):
+		var old:Dictionary=Building.find(before,str(wall.id))
+		if old.is_empty():continue
+		var horizontal:bool=float(wall.w)>float(wall.d)
+		var old_line:float=float(old.z) if horizontal else float(old.x)
+		var new_line:float=float(wall.z) if horizontal else float(wall.x)
+		var delta:float=new_line-old_line
+		if absf(delta)<.05:continue
+		line_delta[str(wall.id)]={"horizontal":horizontal,"delta":delta,"old":old,"new":wall}
+	# Collinear stubs that vanished and reshaped still share a line shift when
+	# any surviving panel on that old line moved; gather by old line key too.
+	var line_shifts:Array=[]
+	for info:Dictionary in line_delta.values():
+		var key:String=("%s:%.3f" % ["h" if bool(info.horizontal) else "v", float(info.old.z) if bool(info.horizontal) else float(info.old.x)])
+		var found:bool=false
+		for entry:Dictionary in line_shifts:
+			if str(entry.key)==key:
+				found=true;break
+		if not found:line_shifts.append({"key":key,"horizontal":bool(info.horizontal),"delta":float(info.delta),"old_line":float(info.old.z) if bool(info.horizontal) else float(info.old.x)})
+	if line_shifts.is_empty():return
+	for item:Dictionary in app.world.items:
+		var kind:String=str(item.get("kind",""))
+		if not LifeCatalog.wall_mounted(kind):continue
+		if not is_instance_valid(item.get("node")):continue
+		var level:int=int(item.get("level",0))
+		var pos:=Vector3(float(item.x),Building.level_y(level),float(item.z))
+		var angle:float=float(item.get("rotation",item.node.rotation_degrees.y))
+		var size_choice:String=""
+		var variant:Variant=item.get("variant",{})
+		if variant is Dictionary:size_choice=str(variant.get("size",""))
+		var size:Vector2=Variants.footprint(LifeCatalog.get_item(kind),size_choice)
+		var forward:Vector3=Basis(Vector3.UP,deg_to_rad(angle))*Vector3(0,0,1)
+		var back:Vector3=pos-forward*(size.y*.5+.06)
+		var sample:=Vector2(back.x,back.z)
+		var moved:bool=false
+		for info:Dictionary in line_delta.values():
+			if int(info.old.get("level",0))!=level:continue
+			if not Building.rect(info.old).grow(.16).has_point(sample):continue
+			if bool(info.horizontal):
+				item.x=float(item.x);item.z=float(item.z)+float(info.delta)
+				item.node.position.z+=float(info.delta)
+			else:
+				item.x=float(item.x)+float(info.delta);item.z=float(item.z)
+				item.node.position.x+=float(info.delta)
+			moved=true;break
+		if moved:continue
+		# Door leaf in a doorway gap: not inside either stub, but on the old line.
+		for shift:Dictionary in line_shifts:
+			var on_line:float=sample.y if bool(shift.horizontal) else sample.x
+			if absf(on_line-float(shift.old_line))>.35:continue
+			if bool(shift.horizontal):
+				item.z=float(item.z)+float(shift.delta)
+				item.node.position.z+=float(shift.delta)
+			else:
+				item.x=float(item.x)+float(shift.delta)
+				item.node.position.x+=float(shift.delta)
+			break
