@@ -262,3 +262,16 @@ static func shares_company(kind: String) -> bool:
 ## toilet. The simulation consults this before offering a bladder action here.
 static func is_not_a_toilet(kind: String) -> bool:
 	return bool(acts(kind).get("not_a_toilet", false))
+
+
+## Pool and hot tub are the garden furnishings that invite company with an
+## explicit Ask to Join. Other outdoor acts lift Social when someone happens to
+## be there already; these two open a partner panel so the player chooses who
+## comes in.
+const JOINABLE: Array[String] = ["pool", "hot_tub"]
+const MAX_JOIN: int = 4
+const JOIN_ACTION: String = "ask_to_join"
+
+
+static func can_ask_to_join(kind: String) -> bool:
+	return kind in JOINABLE

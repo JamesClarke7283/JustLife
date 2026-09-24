@@ -3914,6 +3914,7 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 		if stored.has("target_kind"): action["target_kind"] = str(stored.target_kind)
 		for key: String in ["cooperation_id","cooperation_role","meal_source","meal_stage","meal_plate","meal_seat","seat_slot"]:
 			if stored.has(key): action[key] = str(stored[key])
+		if stored.has("swim_lane"): action["swim_lane"] = int(stored.swim_lane)
 		if stored.has("cooperation_primary"): action["cooperation_primary"] = bool(stored.cooperation_primary)
 		if stored.has("partner_id"): action["partner_id"] = str(stored.partner_id)
 		if stored.has("meal_standing"): action["meal_standing"] = stored.meal_standing

@@ -1489,6 +1489,69 @@ func queue_dance_together(furniture_id: String, member_ids: Array, positions: Di
 	_end_cooperation_change()
 	return {"ok":true,"session_id":token}
 
+## Who may Ask to Join a pool swim or hot-tub soak with this Lifelet. Other
+## household members who are home and free are listed with an honest refusal
+## when they cannot; guests and away members stay off the panel.
+func outdoor_join_partners(furniture_id: String, member_id: String) -> Array:
+	var result: Array = []
+	var kind: String = _target_kind(furniture_id)
+	if not LifeOutdoorActs.can_ask_to_join(kind): return result
+	for member: Dictionary in members:
+		if str(member.id) == member_id: continue
+		var reason: String = _outdoor_join_error(furniture_id, str(member.id))
+		result.append({"id":str(member.id),"name":str(member.sim.character.name),"available":reason.is_empty(),"reason":reason})
+	return result
+
+func _outdoor_join_error(furniture_id: String, member_id: String) -> String:
+	var actor: LifeSim = member_sim(member_id)
+	if actor == null: return "That Lifelet is not part of this household."
+	var kind: String = _target_kind(furniture_id)
+	if not LifeOutdoorActs.can_ask_to_join(kind): return "Choose a pool or hot tub to invite company."
+	if actor.is_away(): return "This Lifelet is away from home. Finish or cancel that activity first."
+	if not actor.action_queue.is_empty(): return "This Lifelet has other plans. Finish or cancel them first."
+	if _member_cooperation(member_id) is Dictionary and not _member_cooperation(member_id).is_empty():
+		return "This Lifelet is already sharing an activity."
+	var availability: Dictionary = actor.get_action_availability(LifeOutdoorActs.ACTION_ID, furniture_id)
+	if not bool(availability.available): return str(availability.reason)
+	return ""
+
+## Queue a shared outdoor soak or swim: the inviting Lifelet and one partner
+## each take their own lane (or rim seat) at the same furnishing. No shared
+## clock — company is counted by `_company_at` once both are active. `approach`
+## is the standing spot at the water's edge; every joiner walks there first.
+func queue_outdoor_join(furniture_id: String, member_ids: Array, approach: Vector3 = Vector3.ZERO) -> Dictionary:
+	var kind: String = _target_kind(furniture_id)
+	if not LifeOutdoorActs.can_ask_to_join(kind):
+		return {"ok":false,"error":"Choose a pool or hot tub to invite company."}
+	var unique: Array[String] = []
+	for id: Variant in member_ids:
+		var member_id: String = str(id)
+		if unique.has(member_id): continue
+		if member_sim(member_id) == null: return {"ok":false,"error":"That Lifelet is not part of this household."}
+		unique.append(member_id)
+	if unique.size() < 2: return {"ok":false,"error":"Invite at least one other Lifelet to join."}
+	if unique.size() > LifeOutdoorActs.MAX_JOIN:
+		return {"ok":false,"error":"Only %d Lifelets fit in the water together." % LifeOutdoorActs.MAX_JOIN}
+	for member_id: String in unique:
+		var reason: String = _outdoor_join_error(furniture_id, member_id)
+		if not reason.is_empty(): return {"ok":false,"error":reason}
+	if _target(furniture_id).is_empty(): return {"ok":false,"error":"That furnishing is no longer here."}
+	var destination: Vector3 = approach
+	if not destination.is_finite() or destination == Vector3.ZERO:
+		var item: Dictionary = _target(furniture_id)
+		destination = Vector3(float(item.get("x",0)), .16, float(item.get("z",0)))
+	for index: int in range(unique.size()):
+		var member_id: String = unique[index]
+		var actor: LifeSim = member_sim(member_id)
+		if not actor.queue_action(LifeOutdoorActs.ACTION_ID, furniture_id, destination):
+			return {"ok":false,"error":"Could not queue the outdoor activity for %s." % str(actor.character.name)}
+		for action: Dictionary in actor.action_queue:
+			if str(action.get("id","")) == LifeOutdoorActs.ACTION_ID and str(action.get("target_id","")) == furniture_id:
+				action["swim_lane"] = index
+				action["target_kind"] = kind
+				break
+	return {"ok":true,"members":unique}
+
 func _member_cooperation(member_id: String) -> Dictionary:
 	for session: Dictionary in cooperations:
 		if _cooperation_member_ids(session).has(member_id): return session

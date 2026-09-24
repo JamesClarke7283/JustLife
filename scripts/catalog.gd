@@ -345,13 +345,17 @@ const BLOCKING_PANELS: Dictionary = {
 
 ## The solid bands a kind occupies, in its own local metres: its authored ones
 ## when one box cannot describe it, otherwise the single box its declared size
-## and depth describe. Only a kind the catalogue does not know returns nothing.
-static func local_panels(kind: String) -> Array:
+## and depth describe. `size` is the buy-catalogue size id; a sized pool or
+## hot tub blocks the footprint it really occupies so walkers path around the
+## water rather than across it. Only a kind the catalogue does not know returns
+## nothing. Authored multi-band kinds keep their authored metres.
+static func local_panels(kind: String, size: String = "") -> Array:
 	var panels: Array = BLOCKING_PANELS.get(kind, [])
 	if not panels.is_empty(): return panels
 	var data: Dictionary = ITEMS.get(kind, {})
 	if data.is_empty(): return []
-	return [{"x":0.0, "z":0.0, "w":data.size.x, "d":data.size.y}]
+	var span: Vector2 = (data.size as Vector2) * LifeCatalogVariants.size_scale(size)
+	return [{"x":0.0, "z":0.0, "w":span.x, "d":span.y}]
 
 ## Whether a kind is bought in a colour of the player's own choosing.
 static func paints(kind: String) -> bool:

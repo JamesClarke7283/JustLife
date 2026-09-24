@@ -422,8 +422,14 @@ func _furnishing_basis(entry:Dictionary) -> Basis:
 func furnishing_panels(entry:Dictionary) -> Array[Rect2]:
 	var origin:=Vector2(float(entry.get("x",0)),float(entry.get("z",0)))
 	var basis:Basis=_furnishing_basis(entry)
+	# The buy size rides the layout record or the live variant; either way the
+	# solid bands must match the water or furniture the mesh really covers.
+	var size_choice:String=str(entry.get("size",""))
+	var variant_data:Variant=entry.get("variant",{})
+	if size_choice.is_empty() and variant_data is Dictionary:
+		size_choice=str((variant_data as Dictionary).get("size",""))
 	var result:Array[Rect2]=[]
-	for panel:Dictionary in LifeCatalog.local_panels(str(entry.get("kind",""))):
+	for panel:Dictionary in LifeCatalog.local_panels(str(entry.get("kind","")),size_choice):
 		result.append(_oriented_panel(origin,basis,panel))
 	return result
 
@@ -441,7 +447,8 @@ func _oriented_panel(origin:Vector2,basis:Basis,panel:Dictionary) -> Rect2:
 
 ## The same bands for a placed item, read off the node the live world owns.
 func item_panels(item:Dictionary) -> Array[Rect2]:
-	var source:Dictionary={"kind":str(item.kind),"x":item.node.position.x,"z":item.node.position.z,"rotation":item.node.rotation_degrees.y}
+	var variant:Dictionary=item.get("variant",{}) if item.get("variant",{}) is Dictionary else {}
+	var source:Dictionary={"kind":str(item.kind),"x":item.node.position.x,"z":item.node.position.z,"rotation":item.node.rotation_degrees.y,"size":str(variant.get("size",""))}
 	return furnishing_panels(source)
 
 ## The navigation obstacle records an entry contributes: one per solid band, and
@@ -813,7 +820,7 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	# ordinary furnishing gets exactly the single box it always had while a
 	# kind with an open interior keeps its bays walkable — which is what lets a
 	# car park inside the two-car garage and the player click its wall to sell it.
-	for panel:Dictionary in LifeCatalog.local_panels(kind):
+	for panel:Dictionary in LifeCatalog.local_panels(kind,str(variant.size)):
 		var shape=CollisionShape3D.new()
 		var bounds=BoxShape3D.new()
 		bounds.size=Vector3(float(panel.w),info.height,float(panel.d))
@@ -1694,19 +1701,26 @@ func _clear_coaching_space(at:Vector3) -> bool:
 ## standing at its edge, a ring or noodle floats in that water, and a soaker sits
 ## on the hot tub's bench in the water (authored at 0.16 m and 0.60 m by
 ## tools/create_outdoor_water.py). Pool furniture is used in the nearest pool.
-func outdoor_water_anchor(item:Dictionary) -> Dictionary:
+## `swim_lane` spreads company across parallel lanes or rim seats so two
+## Lifelets who Ask to Join do not occupy the same body of water.
+func outdoor_water_anchor(item:Dictionary,landmarks:Dictionary={}) -> Dictionary:
 	var kind:String=str(item.get("kind",""))
+	var lane:int=clampi(int(landmarks.get("swim_lane",0)),0,LifeOutdoorActs.MAX_JOIN-1)
 	if kind=="hot_tub":
 		var tub:Node3D=item.node
-		return {"position":tub.to_global(Vector3(0,.40,-.46)),"yaw":tub.global_rotation.y,"kind":"seat","outdoor_kind":kind}
+		var angle:float=float(lane)*(TAU/float(LifeOutdoorActs.MAX_JOIN))
+		var local:=Vector3(sin(angle)*.38,.40,-.46+cos(angle)*.12)
+		return {"position":tub.to_global(local),"yaw":tub.global_rotation.y+angle,"kind":"seat","outdoor_kind":kind}
 	if kind not in ActorMotion.POOL_KINDS:return {}
 	var pool:Dictionary=item if kind=="pool" else closest_item("pool",item.node.global_position,6.0)
 	if pool.is_empty():return {}
 	var basin:Node3D=pool.node
 	var scale:float=Variants.size_scale(str((pool.get("variant",{}) as Dictionary).get("size","")))
 	var reach:float=maxf(.4,float(LifeCatalog.get_item("pool").size.x)*scale*.5-1.05)
-	var from:Vector3=basin.to_global(Vector3(-reach,.16*scale,0))
-	var to:Vector3=basin.to_global(Vector3(reach,.16*scale,0))
+	var half_width:float=maxf(.2,float(LifeCatalog.get_item("pool").size.y)*scale*.5-0.55)
+	var lane_z:float=(-half_width*.7)+half_width*1.4*(float(lane)/float(maxi(1,LifeOutdoorActs.MAX_JOIN-1)))
+	var from:Vector3=basin.to_global(Vector3(-reach,.16*scale,lane_z))
+	var to:Vector3=basin.to_global(Vector3(reach,.16*scale,lane_z))
 	return {"position":from,"yaw":atan2(to.x-from.x,to.z-from.z),"kind":"swim","outdoor_kind":kind,"swim_from":from,"swim_to":to}
 
 func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -> Dictionary:
@@ -1720,7 +1734,7 @@ func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -
 		at.y=node.global_position.y
 		return {"position":at,"yaw":atan2(toward.x,toward.z),"kind":"standing","mop_contact":node.global_position}
 	if action_id==LifeOutdoorActs.ACTION_ID:
-		var water:Dictionary=outdoor_water_anchor(item)
+		var water:Dictionary=outdoor_water_anchor(item,landmarks)
 		if not water.is_empty():return water
 	if str(item.kind)=="stove" and action_id=="cook" and str(landmarks.get("recipe",""))=="harvest_bake":
 		var at:Vector3=landmarks.get("cooking_position",oven_approach(item))

@@ -3933,6 +3933,21 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 		# the partner panel rather than queueing a lone action.
 		var dance_reason:String=sim.get_action_availability(LifeDancePlan.ACTION_ID,str(item.id)).reason
 		actions.insert(mini(1,actions.size()),{"id":"dance_together","label":"Dance together…","cost":0,"duration":35,"available":dance_reason.is_empty(),"unavailable_reason":dance_reason,"description":"Put on one record and dance with up to five household Lifelets at once."})
+	if LifeOutdoorActs.can_ask_to_join(str(item.kind)) and not _find_item(str(item.id)).is_empty():
+		# Ask to Join only when another household Lifelet is on the lot.
+		var partners:Array=household.outdoor_join_partners(str(item.id),bound_member_id)
+		var others_on_lot:bool=false
+		for partner:Dictionary in partners:
+			var other:LifeSim=household.member_sim(str(partner.id))
+			if other!=null and not other.is_away():others_on_lot=true;break
+		if others_on_lot:
+			var join_reason:String=sim.get_action_availability(LifeOutdoorActs.ACTION_ID,str(item.id)).reason
+			var any_free:bool=false
+			for partner:Dictionary in partners:
+				if bool(partner.available):any_free=true;break
+			if not any_free and join_reason.is_empty():
+				join_reason="Nobody else on the lot is free to join right now."
+			actions.insert(mini(1,actions.size()),{"id":LifeOutdoorActs.JOIN_ACTION,"label":"Ask to Join…","cost":0,"duration":int(LifeOutdoorActs.acts(str(item.kind)).get("duration",40)),"available":join_reason.is_empty(),"unavailable_reason":join_reason,"description":"Invite another household Lifelet into the water with you."})
 	if str(item.kind)=="floor_lamp" and not _find_item(str(item.id)).is_empty():
 		var lamp:Dictionary=_find_item(str(item.id))
 		actions.append({"id":"switch_light","label":"Switch off" if world.item_lit(lamp) else "Switch on","cost":0,"duration":0,"available":true,"description":"A warm pool of light for evenings in."})
@@ -3977,6 +3992,7 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 			elif str(a.id)=="order_groceries":show_grocery_order()
 			elif str(a.id)=="supported_homework":show_homework_helpers(item)
 			elif str(a.id)==LifeDancePlan.ACTION_ID:show_dance_partners(item)
+			elif str(a.id)==LifeOutdoorActs.JOIN_ACTION:show_outdoor_join_partners(item)
 			elif str(a.id)=="drive_car":
 				# Pick the destination on the town map; the trip then walks the party
 				# to this car (or the shared car when the household owns none), opens
@@ -4056,6 +4072,51 @@ func show_dance_partners(item:Dictionary) -> void:
 	var cap_reason:String=("Only %d Lifelets fit around the record player." % LifeDancePlan.MAX_DANCERS) if joinable>LifeDancePlan.MAX_DANCERS else ""
 	paragraph(cap_reason if not cap_reason.is_empty() else "%d of %d places would be filled. Canceling one dancer leaves the others dancing." % [joinable,LifeDancePlan.MAX_DANCERS],Vector2(374,top+list_height+243),Vector2(680,47),13,P.MUTED,overlay)
 	button("Back to life",Vector2(820,top+list_height+292),Vector2(246,34),close_overlay,false,overlay)
+
+## Who may join a swim or hot-tub soak. Each row invites one household
+## Lifelet into the water with the selected member; both walk to the edge and
+## take parallel lanes (or rim seats) so company is real rather than stacked.
+func show_outdoor_join_partners(item:Dictionary) -> void:
+	_begin_pause_overlay()
+	var partners:Array=household.outdoor_join_partners(str(item.id),bound_member_id)
+	var list_height:float=clampf(partners.size()*76.0-10.0,66.0,320.0)
+	var panel_height:float=336.0+list_height
+	var top:float=(900.0-panel_height)*.5
+	var shade=ColorRect.new();shade.color=Color(.08,.17,.15,.28);rect(shade,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
+	card(Vector2(338,top),Vector2(764,panel_height),P.WHITE,24,overlay)
+	var kind:String=str(item.kind)
+	var water_word:String="pool" if kind=="pool" else "hot tub"
+	small_caps("Company in the water",Vector2(373,top+22),Vector2(670,23),overlay)
+	text_label("Ask to Join",Vector2(370,top+60),Vector2(686,57),36,P.INK,true,overlay)
+	paragraph("Choose who joins %s in the %s. Up to %d Lifelets fit together, each in their own place in the water." % [str(sim.character.name),water_word,LifeOutdoorActs.MAX_JOIN],Vector2(374,top+132),Vector2(686,77),16,P.MUTED,overlay)
+	var scroll=ScrollContainer.new();scroll.name="OutdoorJoinPartners";rect(scroll,Vector2(371,top+227),Vector2(692,list_height),overlay)
+	var column=VBoxContainer.new();column.add_theme_constant_override("separation",10);scroll.add_child(column)
+	var lead_row=Control.new();lead_row.custom_minimum_size=Vector2(670,66);column.add_child(lead_row)
+	card(Vector2.ZERO,Vector2(670,66),Color("f3f4ed"),12,lead_row)
+	text_label(str(sim.character.name),Vector2(17,8),Vector2(425,27),20,P.INK,true,lead_row)
+	paragraph("Going in · choosing company",Vector2(17,36),Vector2(425,26),12,P.MUTED,lead_row)
+	var lead_action:Button=button("Joins",Vector2(464,12),Vector2(189,43),func():pass,true,lead_row)
+	lead_action.disabled=true
+	for partner:Dictionary in partners:
+		var row=Control.new();row.custom_minimum_size=Vector2(670,66);column.add_child(row)
+		card(Vector2.ZERO,Vector2(670,66),Color("f3f4ed"),12,row)
+		text_label(str(partner.name),Vector2(17,8),Vector2(425,27),20,P.INK,true,row)
+		paragraph(str(partner.reason) if not bool(partner.available) else "Ready to join",Vector2(17,36),Vector2(425,26),12,P.MUTED,row)
+		var join:Button=button("Join",Vector2(464,12),Vector2(189,43),_queue_outdoor_join.bind(str(item.id),[bound_member_id,str(partner.id)]),true,row)
+		join.name="OutdoorJoin_"+str(partner.id)
+		join.disabled=not bool(partner.available)
+		join.tooltip_text=str(partner.reason)
+	paragraph("Canceling one Lifelet leaves the others in the water.",Vector2(374,top+list_height+243),Vector2(680,47),13,P.MUTED,overlay)
+	button("Back to life",Vector2(820,top+list_height+292),Vector2(246,34),close_overlay,false,overlay)
+
+func _queue_outdoor_join(furniture_id:String,member_ids:Array) -> void:
+	var item:Dictionary=_find_item(furniture_id)
+	if item.is_empty():show_notice("That is no longer here.");return
+	var result:Dictionary=household.queue_outdoor_join(furniture_id,member_ids,world.approach(item))
+	if not bool(result.ok):show_notice(str(result.error));return
+	close_overlay();refresh_hud()
+	var water_word:String="pool" if str(item.kind)=="pool" else "hot tub"
+	show_notice("Everyone is heading to the %s together." % water_word)
 
 func _dance_positions(item:Dictionary,member_ids:Array) -> Dictionary:
 	# One real standing spot per dancer, spread around the record player and
@@ -6945,6 +7006,7 @@ func _update_activity_facing(delta:float,action:Dictionary,action_id:String) -> 
 		if action_id=="cook":landmarks.merge({"recipe":str(action.get("recipe","")),"cooking_position":action.target_position})
 		if action_id=="mop_puddle":landmarks["standing_position"]=action.target_position
 		if action.has("seat_slot"):landmarks["seat_slot"]=str(action.seat_slot)
+		if action.has("swim_lane"):landmarks["swim_lane"]=int(action.swim_lane)
 		var anchor:Dictionary=world.activity_anchor(item,action_id,landmarks)
 		if attention is Vector3:anchor["attention_target"]=attention
 		if player.has_method("set_activity_anchor"):
