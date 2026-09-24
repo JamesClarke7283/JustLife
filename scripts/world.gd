@@ -803,6 +803,12 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	node.position=Vector3(float(entry.get("x",0)),Building.level_y(level),float(entry.get("z",0)))
 	node.rotation_degrees.y=float(entry.get("rotation",0))
 	if is_instance_valid(model):_apply_variant_colour(model,data,variant)
+	if kind=="house_window" and is_instance_valid(model):
+		# Authored origin is the pane centre; lift it to the usual wall height.
+		model.position.y=1.62
+		node.set_meta("window_aperture",Rect2(-.878,-.692,1.756,1.384))
+		node.set_meta("window_frame_bounds",Rect2(-1.09,-.825,2.18,1.655))
+		node.set_meta("wall_decoration",true)
 	if kind=="mirror" and is_instance_valid(model):_dress_mirror(node,model)
 	if kind=="floor_lamp":
 		# The arc lamp's warm pool of light is runtime state: the menu switch
@@ -1361,12 +1367,23 @@ func window_snap(kind:String,p:Vector3,angle:float,reach:float=1.6) -> Vector3:
 	var forward:Vector3=Basis(Vector3.UP,deg_to_rad(angle))*Vector3(0,0,1)
 	var along:Vector3=Vector3(forward.z,0,-forward.x)
 	var best:Vector3=p;var best_distance:float=reach
+	var windows:Array=[]
 	for window:Node in house.get_children():
+		windows.append(window)
+	if is_instance_valid(furniture):
+		for window:Node in furniture.get_children():
+			windows.append(window)
+	for window:Node in windows:
 		if not window is Node3D or not window.has_meta("window_aperture") or not window.visible:continue
 		if absf(window.global_basis.z.normalized().dot(forward))<.99:continue
-		var offset:Vector3=window.global_position-p
+		# Catalogue windows sit on the floor with the pane raised in the model;
+		# starter window_panel nodes already sit at pane height.
+		var pane_y:float=window.global_position.y
+		if is_instance_valid(furniture) and window.get_parent()==furniture:
+			pane_y+=1.62
+		var offset:Vector3=Vector3(window.global_position.x,pane_y,window.global_position.z)-p
 		if absf(offset.dot(forward))>.45:continue
-		var height:float=window.global_position.y-p.y
+		var height:float=pane_y-p.y
 		if height<.9 or height>2.5:continue
 		var slide:float=offset.dot(along)
 		if absf(slide)>=best_distance:continue

@@ -126,9 +126,15 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 			_remove_collinear(after,wall,int(level))
 			cost=-int(maxf(float(wall.w),float(wall.d))*20)
 		else:
-			var door_error:String=_cut_door(after,wall,operation.get("center"),int(level))
-			if not door_error.is_empty():return _error(door_error)
-			cost=90
+			# Prefer relocating an existing doorway when the click lands in a gap
+			# between collinear wall stubs; otherwise cut a new opening.
+			var moved:Dictionary=_relocate_doorway(after,operation.get("center"),int(level))
+			if bool(moved.get("ok",false)):
+				cost=40
+			else:
+				var door_error:String=_cut_door(after,wall,operation.get("center"),int(level))
+				if not door_error.is_empty():return _error(door_error)
+				cost=90
 	error=Building.validate(after)
 	if not error.is_empty():return _error(error)
 	if int(funds)<cost:return _error("Not enough funds for this construction.")
@@ -211,6 +217,56 @@ static func _cut_door(after:Dictionary,wall:Dictionary,center_value:Variant,leve
 		else:part.z=(low+high)*.5;part.d=high-low
 		after.walls.append(part)
 	return ""
+
+## When a click lands in the gap of an existing doorway, merge the two stubs and
+## cut again at the new centre so the opening slides along the wall.
+static func _relocate_doorway(after:Dictionary,center_value:Variant,level:int) -> Dictionary:
+	if not Building.number(center_value,-Building.Land.MAX_SPAN,Building.Land.MAX_SPAN):return {"ok":false}
+	var want:float=float(center_value)
+	var best:Dictionary={}
+	var best_score:float=1.2
+	for first:Dictionary in after.walls:
+		if int(first.level)!=level:continue
+		var first_h:bool=float(first.w)>float(first.d)
+		var first_line:float=float(first.z) if first_h else float(first.x)
+		var first_mid:float=float(first.x) if first_h else float(first.z)
+		var first_half:float=maxf(float(first.w),float(first.d))*.5
+		for second:Dictionary in after.walls:
+			if str(second.id)==str(first.id) or int(second.level)!=level:continue
+			var second_h:bool=float(second.w)>float(second.d)
+			if second_h!=first_h:continue
+			var second_line:float=float(second.z) if second_h else float(second.x)
+			if absf(second_line-first_line)>.08:continue
+			var second_mid:float=float(second.x) if second_h else float(second.z)
+			var second_half:float=maxf(float(second.w),float(second.d))*.5
+			var a_low:float=first_mid-first_half;var a_high:float=first_mid+first_half
+			var b_low:float=second_mid-second_half;var b_high:float=second_mid+second_half
+			if a_low>b_low:
+				var swap_low:float=a_low;var swap_high:float=a_high
+				a_low=b_low;a_high=b_high;b_low=swap_low;b_high=swap_high
+			var gap:float=b_low-a_high
+			if gap<.9 or gap>1.35:continue
+			var gap_mid:float=(a_high+b_low)*.5
+			var score:float=absf(want-gap_mid)
+			if score>=best_score:continue
+			best_score=score
+			best={"horizontal":first_h,"line":first_line,"low":a_low,"high":b_high,"material":str(first.material),"pattern":str(first.get("pattern","")),"cut":bool(first.get("cut",true)),"height":float(first.get("height",2.6)),"ids":[str(first.id),str(second.id)]}
+	if best.is_empty():return {"ok":false}
+	var remove:Dictionary={}
+	for id:String in best.ids:remove[id]=true
+	after.walls=after.walls.filter(func(record:Dictionary)->bool:return not remove.has(str(record.id)))
+	var merged:Dictionary={"id":Building._new_id(after,"walls"),"level":level,"height":best.height,"cut":best.cut,"material":best.material}
+	if not str(best.pattern).is_empty():merged["pattern"]=best.pattern
+	if bool(best.horizontal):
+		merged.x=(float(best.low)+float(best.high))*.5;merged.z=float(best.line)
+		merged.w=float(best.high)-float(best.low);merged.d=.14
+	else:
+		merged.z=(float(best.low)+float(best.high))*.5;merged.x=float(best.line)
+		merged.d=float(best.high)-float(best.low);merged.w=.14
+	after.walls.append(merged)
+	var door_error:String=_cut_door(after,merged,want,level)
+	if not door_error.is_empty():return {"ok":false,"error":door_error}
+	return {"ok":true}
 
 ## ------------------------------------------------------------ room packs
 ##

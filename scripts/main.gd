@@ -3586,6 +3586,8 @@ func on_placement(kind:String,p:Vector3,angle:float,style:String="",size:String=
 	_cancel_all_cooperative_actions()
 	world.add_item(entry)
 	if _find_item(str(entry.id)).is_empty():return
+	if bool(data.get("cuts_doorway",false)):
+		_open_doorway_behind_leaf(entry)
 	build_undo.append(snapshot)
 	household.set_funds(sim.funds-price)
 	build_transactions.furnishing_rebuilt(protection)
@@ -3598,6 +3600,32 @@ func on_placement(kind:String,p:Vector3,angle:float,style:String="",size:String=
 	refresh_hud()
 	play_click()
 	show_notice("%s moved into place." % LifeCatalog.ITEMS[kind].label if moving else "%s added to your home. −ℒ%d" % [LifeCatalog.ITEMS[kind].label,price])
+
+## Cut a doorway in the wall a catalogue door leaf hangs on, so the leaf sits in
+## a real opening rather than in front of a solid panel.
+func _open_doorway_behind_leaf(entry: Dictionary) -> void:
+	if not is_instance_valid(world) or not is_instance_valid(world.construction):return
+	var level: int = int(entry.get("level", 0))
+	var p := Vector3(float(entry.x), LifeBuildingState.level_y(level), float(entry.z))
+	var nearest: Dictionary = {}
+	var best: float = 0.7
+	for wall: Dictionary in world.construction.records:
+		if int(wall.get("level", 0)) != level: continue
+		var r: Rect2 = world.construction.wall_rect(wall)
+		var q := Vector2(clampf(p.x, r.position.x, r.end.x), clampf(p.z, r.position.y, r.end.y))
+		var distance: float = q.distance_to(Vector2(p.x, p.z))
+		if distance < best:
+			best = distance
+			nearest = wall
+	if nearest.is_empty(): return
+	var center: float = p.x if float(nearest.w) > float(nearest.d) else p.z
+	world.construction.quote_provider = build_transactions.prepare
+	var quote: Dictionary = build_transactions.prepare({
+		"op": "structure", "tool": "door", "level": level,
+		"id": str(nearest.id), "center": center
+	})
+	if bool(quote.ok):
+		build_transactions.commit(quote)
 
 ## Place a ready room pack. The room itself is one structure transaction —
 ## walls that share whatever wall they meet, a standard doorway and a carpet

@@ -196,6 +196,19 @@ const ITEMS = {
 		"style_labels":{"01":"Pinch pleat","02":"Tab top","03":"Tied back","04":"Café","05":"Box pelmet","06":"Swag and tails","07":"Layered sheer","08":"Eyelet","09":"Shaped pelmet","10":"Nursery scallop"},
 		"colors":["c97c66","417a71","efeadb","7195b3","bd9b68","3d4145","d9a0a0","6e5470","8faf9f","a8674f"],
 		"wall_mounted":true, "window_snap":true},
+	# Structure openings: five authored silhouettes × ten Tint colours
+	# (tools/create_doors_windows.py). Doors hang in a cut doorway; windows
+	# carry an aperture so curtains can centre on them.
+	"house_door": {"label":"Door", "category":"Decor", "price":120, "size":Vector2(.96,.08), "height":2.1, "color":"8faf9f", "tint":true,
+		"styles":["a","b","c","d","e"],
+		"style_labels":{"a":"Panel","b":"Half-lite","c":"Arched","d":"Cottage","e":"French"},
+		"colors":["8faf9f","6f8fa8","c9a05a","a8674f","7d6b93","c9c3a8","5b7c6a","d9a0a0","4a4f55","e6d8c5"],
+		"wall_mounted":true, "cuts_doorway":true},
+	"house_window": {"label":"Window", "category":"Decor", "price":90, "size":Vector2(1.9,.1), "height":1.5, "color":"efeadb", "tint":true,
+		"styles":["a","b","c","d","e"],
+		"style_labels":{"a":"Cross","b":"Two-lite","c":"Six-pane","d":"Arch bar","e":"Picture"},
+		"colors":["efeadb","8faf9f","6f8fa8","c9a05a","a8674f","7d6b93","c9c3a8","d9a0a0","4a4f55","7195b3"],
+		"wall_mounted":true, "window_aperture":true},
 	# A bike is ridden: riding needs a helmet, and `ride_from` names the youngest
 	# life stage that may ride each one, so a child takes the small bike.
 	"bike_adult": {"label":"Adult bicycle", "category":"Vehicles", "price":120, "size":Vector2(1.7,.5), "height":1.1, "color":"4a6b5c", "tint":true,
@@ -300,7 +313,7 @@ const CATEGORIES: Array[String] = ["All", "Comfort", "Bedroom", "Baby & Kids", "
 const INSTRUMENTS: Array[String] = ["guitar", "violin"]
 
 # Floor coverings and wall decor: they never block routes, walls or other furnishings.
-const PASSABLE: Array[String] = ["rug", "child_rug", "painting", "wall_clock", "shelf", "yoga_mat", "room_light", "memorial", "curtains"]
+const PASSABLE: Array[String] = ["rug", "child_rug", "painting", "wall_clock", "shelf", "yoga_mat", "room_light", "memorial", "curtains", "house_door", "house_window"]
 ## Decor that hangs flat against a wall, kept as a list for the pieces that have
 ## always been authored that way. A catalogue entry may also declare
 ## `"wall_mounted": true` for itself, and `wall_mounted(kind)` is the one
