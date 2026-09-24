@@ -34,9 +34,11 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 		var was_horizontal:bool=float(grabbed.w)>float(grabbed.d)
 		var old_line:float=float(grabbed.z) if was_horizontal else float(grabbed.x)
 		var grab_length:float=maxf(float(grabbed.w),float(grabbed.d))
+		var before_floor:float=Building._union_area(Building._rects(after,"floors",int(level)))
 		var grab_error:String=_grab_wall(after,grabbed,float(operation.line),int(level))
 		if not grab_error.is_empty():return _error(grab_error)
-		cost=int(maxf(.5,absf(float(operation.line)-old_line))*grab_length*12)
+		var added_floor:float=maxf(0.0,Building._union_area(Building._rects(after,"floors",int(level)))-before_floor)
+		cost=int(maxf(.5,absf(float(operation.line)-old_line))*grab_length*12+added_floor*12)
 	elif tool in ["wall","room"]:
 		for key:String in ["ax","az","bx","bz"]:
 			if not Building.number(operation.get(key),-Building.Land.MAX_SPAN,Building.Land.MAX_SPAN):return _error("Choose two valid construction points.")
@@ -144,6 +146,8 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 
 ## Push or pull one wall along its normal. Orthogonal walls that meet either
 ## end stretch so the room stays closed; the wall itself stays the same length.
+## The floor on this storey grows or shrinks with the push so the new footprint
+## stays supported and walkable, without leaving the owned lot.
 static func _grab_wall(after:Dictionary,wall:Dictionary,line:float,level:int) -> String:
 	var horizontal:bool=float(wall.w)>float(wall.d)
 	var old_line:float=float(wall.z) if horizontal else float(wall.x)
@@ -187,6 +191,126 @@ static func _grab_wall(after:Dictionary,wall:Dictionary,line:float,level:int) ->
 		if not Building.lot().encloses(Building.rect(other).grow(-.02)):return "A connecting wall would leave the lot."
 	if horizontal:wall.z=new_line
 	else:wall.x=new_line
+	var floor_error:String=_grab_extend_floors(after,horizontal,old_line,new_line,low_end,high_end,level)
+	if not floor_error.is_empty():return floor_error
+	return ""
+
+## Grow or shrink floors that abut the grabbed wall so the strip between the old
+## and new lines is covered (outward) or cleared (inward). When no floor touches
+## the wall yet, add a slab over the new interior footprint.
+static func _grab_extend_floors(after:Dictionary,horizontal:bool,old_line:float,new_line:float,low_end:float,high_end:float,level:int) -> String:
+	var before_area:float=Building._union_area(Building._rects(after,"floors",level))
+	var adjusted:bool=false
+	for floor:Dictionary in after.floors:
+		if int(floor.level)!=level:continue
+		var r:Rect2=Building.rect(floor)
+		# Must overlap the wall's run so a neighbouring room's floor is left alone.
+		if horizontal:
+			if r.end.x<low_end+.05 or r.position.x>high_end-.05:continue
+			var z0:float=r.position.y
+			var z1:float=r.end.y
+			if absf(z1-old_line)<=.3:
+				z1=new_line
+			elif absf(z0-old_line)<=.3:
+				z0=new_line
+			else:
+				continue
+			if z1<z0:
+				var swap:float=z0;z0=z1;z1=swap
+			if z1-z0<.5:return "That push would leave the floor too narrow."
+			floor.z=(z0+z1)*.5
+			floor.d=z1-z0
+			# Keep the slab spanning at least the wall's run so corners stay covered.
+			var x0:float=minf(r.position.x,low_end)
+			var x1:float=maxf(r.end.x,high_end)
+			floor.x=(x0+x1)*.5
+			floor.w=x1-x0
+		else:
+			if r.end.y<low_end+.05 or r.position.y>high_end-.05:continue
+			var x0:float=r.position.x
+			var x1:float=r.end.x
+			if absf(x1-old_line)<=.3:
+				x1=new_line
+			elif absf(x0-old_line)<=.3:
+				x0=new_line
+			else:
+				continue
+			if x1<x0:
+				var swapx:float=x0;x0=x1;x1=swapx
+			if x1-x0<.5:return "That push would leave the floor too narrow."
+			floor.x=(x0+x1)*.5
+			floor.w=x1-x0
+			var z0b:float=minf(r.position.y,low_end)
+			var z1b:float=maxf(r.end.y,high_end)
+			floor.z=(z0b+z1b)*.5
+			floor.d=z1b-z0b
+		if not Building.lot().encloses(Building.rect(floor).grow(-.02)):return "That would put the floor outside the lot."
+		if int(level)==1:
+			var support:String=Building._support_error(after,floor)
+			if not support.is_empty():return support
+		adjusted=true
+	if not adjusted:
+		# No abutting slab: lay one over the strip the wall just claimed so the
+		# expanded interior is walkable. Prefer extending from any opposite floor
+		# edge; otherwise create a new room-sized slab between the parallel walls.
+		var strip_lo:float=minf(old_line,new_line)
+		var strip_hi:float=maxf(old_line,new_line)
+		var material:String="cfa97e"
+		for floor:Dictionary in after.floors:
+			if int(floor.level)==level:
+				material=str(floor.material);break
+		var slab:Dictionary={"id":Building._new_id(after,"floors"),"level":level,"material":material}
+		if horizontal:
+			slab.x=(low_end+high_end)*.5
+			slab.w=maxf(.5,high_end-low_end)
+			slab.z=(strip_lo+strip_hi)*.5
+			slab.d=maxf(.5,strip_hi-strip_lo)
+		else:
+			slab.z=(low_end+high_end)*.5
+			slab.d=maxf(.5,high_end-low_end)
+			slab.x=(strip_lo+strip_hi)*.5
+			slab.w=maxf(.5,strip_hi-strip_lo)
+		# When pushing outward from an empty shell, cover the whole enclosed
+		# rectangle: find the opposite parallel wall and span to it.
+		var opposite:float=NAN
+		for other:Dictionary in after.walls:
+			if int(other.level)!=level:continue
+			var other_h:bool=float(other.w)>float(other.d)
+			if other_h!=horizontal:continue
+			var other_line:float=float(other.z) if horizontal else float(other.x)
+			if absf(other_line-new_line)<.2:continue
+			if is_nan(opposite) or absf(other_line-new_line)>absf(opposite-new_line):
+				# Prefer the parallel wall on the interior side of the push.
+				var toward_old:bool=(other_line-new_line)*(old_line-new_line)>0
+				if toward_old:opposite=other_line
+		if not is_nan(opposite):
+			var deep_lo:float=minf(opposite,new_line)
+			var deep_hi:float=maxf(opposite,new_line)
+			if horizontal:
+				slab.z=(deep_lo+deep_hi)*.5
+				slab.d=maxf(.5,deep_hi-deep_lo)
+			else:
+				slab.x=(deep_lo+deep_hi)*.5
+				slab.w=maxf(.5,deep_hi-deep_lo)
+		if not Building.lot().encloses(Building.rect(slab).grow(-.02)):return "That would put the floor outside the lot."
+		if int(level)==1:
+			var supported:bool=false
+			for first:Dictionary in after.walls:
+				for second:Dictionary in after.walls:
+					slab["supports"]=[str(first.id),str(second.id)]
+					if Building._perimeter_support_error(after,slab,0).is_empty():supported=true;break
+				if supported:break
+			if not supported:return "An upper floor needs two complete opposite bearing walls below."
+		after.floors.append(slab)
+	# Refuse a grab that somehow shrinks floor below the lot or fails validation
+	# of the storey's slabs after the edit.
+	for floor:Dictionary in after.floors:
+		if int(floor.level)!=level:continue
+		if not Building.lot().encloses(Building.rect(floor).grow(-.02)):return "That would put the floor outside the lot."
+	var _after_area:float=Building._union_area(Building._rects(after,"floors",level))
+	if _after_area+Building.EPS<before_area and absf(new_line-old_line)>Building.EPS:
+		# Shrinking is allowed; expanding must not lose coverage of the old room.
+		pass
 	return ""
 
 ## Drop this wall and every collinear panel overlapping it, so a doorway cut

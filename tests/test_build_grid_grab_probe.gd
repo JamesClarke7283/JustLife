@@ -35,13 +35,17 @@ func run() -> void:
 	check(grown.size.x > base.size.x + 1.0, "Buying east land widens the lot")
 	check(not Land.SIDES.has("south"), "South/street side is not a purchasable plot")
 
-	# Detached grab: push a room wall and stretch its connectors.
+	# Detached grab: push a room wall, stretch connectors, and grow the floor so
+	# the new interior stays supported and walkable.
 	var room: Dictionary = Building.fresh()
 	room.walls = [
 		{"id": "n", "level": 0, "x": 0.0, "z": -2.0, "w": 4.0, "d": 0.14, "height": 2.6, "cut": true, "material": "eae7d7"},
 		{"id": "s", "level": 0, "x": 0.0, "z": 2.0, "w": 4.0, "d": 0.14, "height": 2.6, "cut": true, "material": "eae7d7"},
 		{"id": "w", "level": 0, "x": -2.0, "z": 0.0, "w": 0.14, "d": 4.0, "height": 2.6, "cut": true, "material": "eae7d7"},
 		{"id": "e", "level": 0, "x": 2.0, "z": 0.0, "w": 0.14, "d": 4.0, "height": 2.6, "cut": true, "material": "eae7d7"},
+	]
+	room.floors = [
+		{"id": "f0", "level": 0, "x": 0.0, "z": 0.0, "w": 4.0, "d": 4.0, "material": "cfa97e"},
 	]
 	Building.set_land(Land.fresh())
 	var grab: Dictionary = Edits.propose(room, {"op": "structure", "tool": "grab", "level": 0, "id": "s", "line": 3.0}, 5000)
@@ -54,6 +58,36 @@ func run() -> void:
 		var east_wall: Dictionary = Building.find(after, "e")
 		check(is_equal_approx(float(west.d), 5.0) and is_equal_approx(float(east_wall.d), 5.0), "Connecting side walls stretch to the new south line")
 		check(int(grab.cost) > 0, "Grab wall charges for the push")
+		# Interior just inside the new south wall must sit on a floor slab.
+		var interior := Vector2(0.0, 2.7)
+		var covered: bool = false
+		for floor: Dictionary in after.floors:
+			if int(floor.level) != 0: continue
+			if Building.rect(floor).has_point(interior):
+				covered = true; break
+		check(covered, "Floor covers the pushed wall's new interior at %s" % interior)
+		var floor_after: Dictionary = Building.find(after, "f0")
+		check(not floor_after.is_empty() and float(floor_after.d) >= 4.9, "Existing floor slab grew with the room (d=%s)" % str(floor_after.get("d", "?")))
+
+	# Empty shell (no floor yet): grab must add a slab over the new footprint.
+	var shell: Dictionary = Building.fresh()
+	shell.walls = [
+		{"id": "n", "level": 0, "x": 0.0, "z": -2.0, "w": 4.0, "d": 0.14, "height": 2.6, "cut": true, "material": "eae7d7"},
+		{"id": "s", "level": 0, "x": 0.0, "z": 2.0, "w": 4.0, "d": 0.14, "height": 2.6, "cut": true, "material": "eae7d7"},
+		{"id": "w", "level": 0, "x": -2.0, "z": 0.0, "w": 0.14, "d": 4.0, "height": 2.6, "cut": true, "material": "eae7d7"},
+		{"id": "e", "level": 0, "x": 2.0, "z": 0.0, "w": 0.14, "d": 4.0, "height": 2.6, "cut": true, "material": "eae7d7"},
+	]
+	var shell_grab: Dictionary = Edits.propose(shell, {"op": "structure", "tool": "grab", "level": 0, "id": "s", "line": 3.0}, 5000)
+	check(bool(shell_grab.ok), "Grab on an empty shell succeeds (%s)" % str(shell_grab.get("error", "")))
+	if bool(shell_grab.ok):
+		var shell_interior := Vector2(0.0, 2.7)
+		var shell_covered: bool = false
+		for floor: Dictionary in shell_grab.after.floors:
+			if int(floor.level) != 0: continue
+			if Building.rect(floor).has_point(shell_interior):
+				shell_covered = true; break
+		check(shell_covered, "Grab adds a floor covering the new interior when none existed")
+		check(shell_grab.after.floors.size() >= 1, "Empty-shell grab creates at least one floor slab")
 
 	app = load("res://scenes/main.tscn").instantiate()
 	root.add_child(app)
