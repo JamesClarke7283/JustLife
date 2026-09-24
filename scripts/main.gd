@@ -2539,7 +2539,7 @@ func draw_live() -> void:
 	icon_button("zoom_in","Zoom in (mouse wheel)",Vector2(1359,481),Vector2(46,42),func():world.camera.size=maxf(world.camera.size-LifeWorld.CAMERA_BUTTON_ZOOM_STEP,LifeWorld.CAMERA_MIN_ZOOM)).name="CameraZoomIn"
 	icon_button("rotate_left","Rotate camera left (Q)",Vector2(1306,530),Vector2(46,42),func():world.camera_angle-=PI/4;world.update_camera()).name="CameraRotateLeft"
 	icon_button("rotate_right","Rotate camera right (E)",Vector2(1306,481),Vector2(46,42),func():world.camera_angle+=PI/4;world.update_camera()).name="CameraRotateRight"
-	button("Walls",Vector2(1306,585),Vector2(99,38),func():world.set_cutaway(not world.cutaway))
+	button("Walls",Vector2(1306,585),Vector2(99,38),func():toggle_house_view())
 	if mode=="build":draw_build_catalog()
 	else:
 		draw_goal_card()
@@ -3326,25 +3326,42 @@ func draw_build_catalog() -> void:
 			button("Warm oak",Vector2(305,784),Vector2(150,47),func():change_floor("cfa97e"))
 			button("Pale stone",Vector2(465,784),Vector2(150,47),func():change_floor("dcd6c6"))
 			button("Walnut",Vector2(625,784),Vector2(150,47),func():change_floor("896953"))
-		button("Wall view",Vector2(785,784),Vector2(130,47),func():world.set_cutaway(not world.cutaway))
-		button("Remove wall",Vector2(775,784),Vector2(140,47),func():begin_construction("erase"))
-		var grab=button("Grab wall",Vector2(925,784),Vector2(140,47),func():begin_construction("grab"),world.construction.tool=="grab")
+		var house_view:Button=button("Full house" if world.cutaway or not world.construction.roofs_visible else "Walls cutaway",Vector2(785,784),Vector2(130,47),func():toggle_house_view(),not world.cutaway and world.construction.roofs_visible)
+		house_view.tooltip_text="Toggle walls cutaway versus the full house with its roof visible."
+		button("Remove wall",Vector2(925,784),Vector2(140,47),func():begin_construction("erase"))
+		var grab=button("Grab wall",Vector2(1075,784),Vector2(140,47),func():begin_construction("grab"),world.construction.tool=="grab")
 		grab.tooltip_text="Select a wall, then click where to push or pull it. Connected walls stretch to keep the room closed."
-		var paint=button("Paint wall",Vector2(1075,784),Vector2(150,47),func():begin_construction("paint"),world.construction.tool=="paint")
+		var paint=button("Paint wall",Vector2(1225,784),Vector2(150,47),func():begin_construction("paint"),world.construction.tool=="paint")
 		paint.tooltip_text="Pick the tool, choose a home or nursery finish, then click a wall to repaint that segment."
-		var whole=button("Whole room",Vector2(1235,784),Vector2(144,47),func():
+		var whole=button("Whole room",Vector2(1235,831),Vector2(144,31),func():
 			world.construction.paint_scope="wall" if world.construction.paint_scope=="room" else "room"
 			draw_live(),world.construction.paint_scope=="room")
 		whole.tooltip_text="Paints the enclosed room on the side you click; a wall shared with the next room changes for both rooms."
-		button("New roof",Vector2(305,841),Vector2(146,31),func():begin_construction("roof"))
-		button("Edit roof",Vector2(461,841),Vector2(146,31),func():begin_construction("roof_edit"))
-		button("Remove roof",Vector2(617,841),Vector2(146,31),func():begin_construction("roof_remove"))
-		button("Low",Vector2(773,841),Vector2(85,31),func():set_roof_pitch(.25),is_equal_approx(world.construction.roof_pitch,.25))
-		button("Medium",Vector2(868,841),Vector2(85,31),func():set_roof_pitch(.5),is_equal_approx(world.construction.roof_pitch,.5))
-		button("Steep",Vector2(963,841),Vector2(85,31),func():set_roof_pitch(.75),is_equal_approx(world.construction.roof_pitch,.75))
-		roof_visibility_button=button("Hide roofs" if world.construction.roofs_visible else "Show roofs",Vector2(1058,841),Vector2(144,31),func():world.construction.set_roof_visibility(not world.construction.roofs_visible);draw_live())
-		button("Sage",Vector2(1212,841),Vector2(78,31),func():set_roof_finish("57736a"),world.construction.roof_material=="57736a")
-		button("Slate",Vector2(1300,841),Vector2(79,31),func():set_roof_finish("56606b"),world.construction.roof_material=="56606b")
+		button("New roof",Vector2(305,841),Vector2(110,31),func():begin_construction("roof"))
+		button("Edit roof",Vector2(425,841),Vector2(110,31),func():begin_construction("roof_edit"))
+		button("Remove roof",Vector2(545,841),Vector2(120,31),func():begin_construction("roof_remove"))
+		# Roof panel: five architecture styles plus a colour tint on the tiles.
+		var style_labels:Dictionary={"gabled":"Gable","hipped":"Hip","flat":"Flat","mansard":"Mansard","a_frame":"A-frame"}
+		var style_order:Array[String]=["gabled","hipped","flat","mansard","a_frame"]
+		for i in range(style_order.size()):
+			var style:String=style_order[i]
+			var style_btn:Button=button(str(style_labels[style]),Vector2(305+i*108,876),Vector2(100,28),func():set_roof_style(style),world.construction.roof_style==style)
+			style_btn.tooltip_text="Roof style: %s" % str(style_labels[style])
+		button("Low",Vector2(675,841),Vector2(70,31),func():set_roof_pitch(.25),is_equal_approx(world.construction.roof_pitch,.25))
+		button("Med",Vector2(755,841),Vector2(70,31),func():set_roof_pitch(.5),is_equal_approx(world.construction.roof_pitch,.5))
+		button("Steep",Vector2(835,841),Vector2(70,31),func():set_roof_pitch(.75),is_equal_approx(world.construction.roof_pitch,.75))
+		roof_visibility_button=button("Hide roofs" if world.construction.roofs_visible else "Show roofs",Vector2(915,841),Vector2(130,31),func():
+			world.construction.set_roof_visibility(not world.construction.roofs_visible)
+			if world.construction.roofs_visible:world.set_cutaway(false)
+			draw_live())
+		var tints:Array[String]=["57736a","56606b","8b5a3c","4a5568","c4a574","6b3a4a","2f4f4f","b87333"]
+		var tint_names:Array[String]=["Sage","Slate","Terracotta","Lead","Straw","Wine","Pine","Copper"]
+		for i in range(tints.size()):
+			var tint:String=tints[i]
+			var swatch:Button=button("",Vector2(1055+i*40,841),Vector2(34,31),func():set_roof_finish(tint),world.construction.roof_material==tint)
+			swatch.tooltip_text=tint_names[i]+" roof tint"
+			swatch.add_theme_stylebox_override("normal",P.panel(Color(tint),10,P.TEAL if world.construction.roof_material==tint else Color("ffffff"),2))
+			swatch.add_theme_stylebox_override("hover",P.panel(Color(tint).lightened(.1),10,P.TEAL,2))
 		return
 	if LifeCatalog.paints(world.placement_kind):
 		# A paintable furnishing is being placed, so the swatch row replaces the
@@ -3564,6 +3581,28 @@ func set_roof_pitch(value:float)->void:
 func set_roof_finish(value:String)->void:
 	if mode!="build":return
 	world.construction.roof_material=value;draw_live()
+
+func set_roof_style(value:String)->void:
+	if mode!="build":return
+	world.construction.roof_style=LifeRoofGeometry.normalize_style(value)
+	if world.construction.roof_style=="flat":
+		world.construction.roof_pitch=.05
+	elif world.construction.roof_style=="a_frame" and world.construction.roof_pitch<.75:
+		world.construction.roof_pitch=.95
+	elif is_equal_approx(world.construction.roof_pitch,.05):
+		world.construction.roof_pitch=.5
+	draw_live()
+
+## Walls cutaway versus the full house with roof visible.
+func toggle_house_view()->void:
+	if not is_instance_valid(world):return
+	if world.cutaway or not world.construction.roofs_visible:
+		world.set_cutaway(false)
+		world.construction.set_roof_visibility(true)
+	else:
+		world.set_cutaway(true)
+		world.construction.set_roof_visibility(false)
+	draw_live()
 
 func begin_construction(tool:String) -> void:
 	if mode!="build":return

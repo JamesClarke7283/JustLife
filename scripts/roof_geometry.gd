@@ -2,17 +2,56 @@ extends RefCounted
 class_name LifeRoofGeometry
 ## Parameterized original roof using the Blender-authored native tile/trim kit.
 ## Geometry is rebuilt at real thickness; complete fixture GLBs are never scaled.
+## Styles reuse the same kit: gabled (default), hipped, flat, mansard, A-frame.
 const EAVE:float=.28
 const SHELL:float=.10
 const TILE_SIZE:=Vector2(.36,.32)
 const KIT="res://assets/models/roof_gable_modules.glb"
+const STYLES:Array[String]=["gabled","hipped","flat","mansard","a_frame"]
 
 const Rules=preload("res://scripts/roof_rules.gd")
-static func parameters(record:Dictionary)->Dictionary:return Rules.parameters(record)
-static func envelope(record:Dictionary)->AABB:return Rules.envelope(record)
+static func parameters(record:Dictionary)->Dictionary:
+	var base:Dictionary=Rules.parameters(record)
+	var style:String=normalize_style(record.get("style","gabled"))
+	# Style reshapes pitch used for decks without rewriting the stored pitch for
+	# gabled/mansard choices the player already made.
+	match style:
+		"flat":
+			base.pitch=.05;base.height=base.pitch*float(base.span)*.5
+			base.sec=sqrt(1.0+base.pitch*base.pitch);base.sn=base.pitch/base.sec;base.cs=1.0/base.sec
+		"a_frame":
+			base.pitch=maxf(float(base.pitch),.95);base.height=base.pitch*float(base.span)*.5
+			base.sec=sqrt(1.0+base.pitch*base.pitch);base.sn=base.pitch/base.sec;base.cs=1.0/base.sec
+		"mansard":
+			base.pitch=maxf(float(base.pitch),.55);base.height=base.pitch*float(base.span)*.5
+			base.sec=sqrt(1.0+base.pitch*base.pitch);base.sn=base.pitch/base.sec;base.cs=1.0/base.sec
+	base["style"]=style
+	return base
+static func envelope(record:Dictionary)->AABB:
+	var p:Dictionary=parameters(record)
+	var low:float=-p.pitch*EAVE+SHELL*p.sec-.205
+	var high:float=p.height+SHELL*p.sec+.065
+	return AABB(Vector3(float(record.x)-float(record.w)*.5-EAVE,.16+3.0*int(record.level)+2.6+low,float(record.z)-float(record.d)*.5-EAVE),Vector3(float(record.w)+2*EAVE,high-low,float(record.d)+2*EAVE))
+
+static func normalize_style(value:Variant)->String:
+	var style:String=str(value).to_lower().replace("-","_").replace(" ","_")
+	if style in ["gable","gabled"]:return "gabled"
+	if style in ["hip","hipped"]:return "hipped"
+	if style in ["aframe","a_frame"]:return "a_frame"
+	if style in STYLES:return style
+	return "gabled"
 
 static func _material(hex:String,roughness:float=.75)->StandardMaterial3D:
 	var material:=StandardMaterial3D.new();material.albedo_color=Color(hex);material.roughness=roughness;return material
+
+static func _tint_hex(record:Dictionary,shade_index:int=0)->String:
+	var base:String=str(record.get("material","57736a"))
+	if base=="57736a":
+		return ["57736a","526e64","5c776e","506b62"][posmod(shade_index,4)]
+	# Custom tint: nudge neighbouring tiles slightly so the deck still reads.
+	var color:=Color(base)
+	var shift:float=float(posmod(shade_index,4))*.03-.045
+	return color.lightened(shift).to_html(false)
 
 static func _triangle(a:Vector3,b:Vector3,c:Vector3,normal:Vector3,vertices:PackedVector3Array,normals:PackedVector3Array,uvs:PackedVector2Array)->void:
 	# Godot front faces are clockwise. Keep explicit geometric outward normals.
@@ -73,9 +112,17 @@ static func _native(parent:Node3D,name:String,mesh:Mesh,at:Vector3,length:float)
 	var node:=MeshInstance3D.new();node.name=name;node.mesh=mesh;node.position=at;node.scale.z=length;parent.add_child(node);node.set_meta("native_module",true);return node
 
 static func create(record:Dictionary)->Node3D:
+	var style:String=normalize_style(record.get("style","gabled"))
+	var styled:Dictionary=record.duplicate(true);styled["style"]=style
+	match style:
+		"flat":return _create_flat(styled)
+		"hipped","mansard":return _create_hipped(styled,style=="mansard")
+		_:return _create_gabled(styled)
+
+static func _create_gabled(record:Dictionary)->Node3D:
 	var p:Dictionary=parameters(record);var model:=Node3D.new();model.name="Roof_"+str(record.id)
 	model.position=Vector3(float(record.x),.16+3.0*int(record.level)+2.6,float(record.z));model.rotation_degrees.y=float(record.rotation)
-	model.set_meta("roof_id",str(record.id));model.set_meta("building_level",int(record.level));model.set_meta("parameters",record.duplicate(true));model.set_meta("envelope",envelope(record))
+	model.set_meta("roof_id",str(record.id));model.set_meta("building_level",int(record.level));model.set_meta("parameters",record.duplicate(true));model.set_meta("envelope",envelope(record));model.set_meta("roof_style",str(p.style))
 	var kit:Node3D=load(KIT).instantiate()
 	var native_tile:Mesh=(kit.find_child("Tile_036x032",true,false) as MeshInstance3D).mesh
 	var native_fascia:Mesh=(kit.find_child("Fascia_100",true,false) as MeshInstance3D).mesh
@@ -100,8 +147,49 @@ static func create(record:Dictionary)->Node3D:
 	for index:int in range(8,-1,-1):ridge_profile.append(ridge_profile[index]-Vector2(0,.027))
 	var count:int=maxi(1,ceili((2*p.z-.04)/.80));var section:float=(2*p.z-.04)/count
 	for index:int in range(count):_extrude(model,"RidgeCap_%02d"%index,ridge_profile,-p.z+.02+index*section,-p.z+.02+(index+1)*section-.002,ridge)
+	_scatter_tiles(model,record,p,native_tile)
+	_add_edge_handles(model,p)
+	kit.free();return model
+
+## Flat roof: a shallow deck with fascia, reusing kit tile colours as a membrane.
+static func _create_flat(record:Dictionary)->Node3D:
+	var p:Dictionary=parameters(record);var model:=Node3D.new();model.name="Roof_"+str(record.id)
+	model.position=Vector3(float(record.x),.16+3.0*int(record.level)+2.6,float(record.z));model.rotation_degrees.y=float(record.rotation)
+	model.set_meta("roof_id",str(record.id));model.set_meta("building_level",int(record.level));model.set_meta("parameters",record.duplicate(true));model.set_meta("envelope",envelope(record));model.set_meta("roof_style","flat")
+	var cream:Material=_material("e4dccb");var oak:Material=_material("927353")
+	var deck_h:float=.12
+	_box(model,"FlatDeck",Vector3(-p.span*.5-EAVE*.2,0,-p.length*.5-EAVE*.2),Vector3(p.span*.5+EAVE*.2,deck_h,p.length*.5+EAVE*.2),_material(_tint_hex(record),.85))
+	_box(model,"FlatFascia",Vector3(-p.span*.5-EAVE*.25,-.02,-p.length*.5-EAVE*.25),Vector3(p.span*.5+EAVE*.25,.04,p.length*.5+EAVE*.25),cream)
+	_box(model,"FlatOakLip",Vector3(-p.span*.5-EAVE*.15,-.08,-p.length*.5-EAVE*.15),Vector3(p.span*.5+EAVE*.15,-.02,p.length*.5+EAVE*.15),oak)
+	_add_edge_handles(model,p)
+	return model
+
+## Hipped (and mansard): slopes on all four sides into a short ridge.
+static func _create_hipped(record:Dictionary,mansard:bool)->Node3D:
+	var p:Dictionary=parameters(record);var model:=Node3D.new();model.name="Roof_"+str(record.id)
+	model.position=Vector3(float(record.x),.16+3.0*int(record.level)+2.6,float(record.z));model.rotation_degrees.y=float(record.rotation)
+	model.set_meta("roof_id",str(record.id));model.set_meta("building_level",int(record.level));model.set_meta("parameters",record.duplicate(true));model.set_meta("envelope",envelope(record));model.set_meta("roof_style","mansard" if mansard else "hipped")
+	var cream:Material=_material("e4dccb");var oak:Material=_material("927353");var tile:Material=_material(_tint_hex(record),.80)
+	var ridge_half:float=minf(p.span,p.length)*.12
+	var hip_h:float=p.height*(.55 if mansard else 1.0)
+	var break_h:float=hip_h*.45 if mansard else hip_h
+	_extrude(model,"HipDeck_N",PackedVector2Array([Vector2(-p.span*.5,0),Vector2(p.span*.5,0),Vector2(ridge_half,break_h),Vector2(-ridge_half,break_h)]),-p.length*.5,-ridge_half,tile)
+	_extrude(model,"HipDeck_S",PackedVector2Array([Vector2(-p.span*.5,0),Vector2(p.span*.5,0),Vector2(ridge_half,break_h),Vector2(-ridge_half,break_h)]),ridge_half,p.length*.5,tile)
+	var west:MeshInstance3D=_extrude(model,"HipDeck_W",PackedVector2Array([Vector2(-p.length*.5,0),Vector2(p.length*.5,0),Vector2(ridge_half,break_h),Vector2(-ridge_half,break_h)]),-p.span*.5,-ridge_half,tile)
+	west.rotation_degrees.y=90
+	var east:MeshInstance3D=_extrude(model,"HipDeck_E",PackedVector2Array([Vector2(-p.length*.5,0),Vector2(p.length*.5,0),Vector2(ridge_half,break_h),Vector2(-ridge_half,break_h)]),ridge_half,p.span*.5,tile)
+	east.rotation_degrees.y=90
+	if mansard:
+		_box(model,"MansardCrown",Vector3(-ridge_half*1.2,break_h,-ridge_half*1.2),Vector3(ridge_half*1.2,hip_h,ridge_half*1.2),tile)
+	_box(model,"HipFascia",Vector3(-p.span*.5-EAVE*.15,-.02,-p.length*.5-EAVE*.15),Vector3(p.span*.5+EAVE*.15,.05,p.length*.5+EAVE*.15),cream)
+	_box(model,"HipOak",Vector3(-p.span*.5,-.08,-p.length*.5),Vector3(p.span*.5,-.02,p.length*.5),oak)
+	_add_edge_handles(model,p)
+	return model
+
+static func _scatter_tiles(model:Node3D,record:Dictionary,p:Dictionary,native_tile:Mesh)->void:
 	var groups:Dictionary={};var tile_count:int=0;var native_count:int=0
 	var slope_length:float=(p.x-.065)*p.sec;var ridge_length:float=2*p.z-.04
+	var top:Callable=func(x:float)->float:return p.height-p.pitch*absf(x)+SHELL*p.sec
 	for side:int in [-1,1]:
 		var row:int=0;var along_slope:float=0.0
 		while along_slope<slope_length-.01:
@@ -111,7 +199,7 @@ static func create(record:Dictionary)->Node3D:
 				var width:float=minf(.36,ridge_length-along_ridge);var zc:float=-p.z+.02+along_ridge+width*.5
 				var shade:int=posmod(row*37+col*17+side,4);var key:String="%.5f_%.5f_%d"%[width,depth,shade]
 				if not groups.has(key):
-					var hex:String=["57736a","526e64","5c776e","506b62"][shade] if str(record.material)=="57736a" else str(record.material)
+					var hex:String=_tint_hex(record,shade)
 					var material:Material=_material(hex,.80);var mesh:Mesh
 					if is_equal_approx(width,.36) and is_equal_approx(depth,.32):mesh=native_tile.duplicate();mesh.surface_set_material(0,material)
 					else:mesh=_cropped_tile(width,depth,material)
@@ -127,9 +215,24 @@ static func create(record:Dictionary)->Node3D:
 		for index:int in range(mesh.instance_count):mesh.set_instance_transform(index,group.transforms[index])
 		var node:=MultiMeshInstance3D.new();node.name="RoofTiles_"+key;node.multimesh=mesh;model.add_child(node)
 	model.set_meta("tile_count",tile_count);model.set_meta("native_tile_count",native_count)
+
+static func _add_edge_handles(model:Node3D,p:Dictionary)->void:
 	for side:int in [-1,1]:
 		for end:int in [-1,1]:
 			var marker:=Marker3D.new();marker.name="Support_%d_%d"%[side,end];marker.position=Vector3(side*p.span*.5,0,end*p.length*.5);model.add_child(marker)
+		var handle:=MeshInstance3D.new()
+		handle.name="EdgeHandle_%s" % ("W" if side<0 else "E")
+		var ball:=SphereMesh.new();ball.radius=.18;ball.height=.36
+		handle.mesh=ball;handle.material_override=_material("397e70",.4)
+		handle.position=Vector3(side*p.span*.5,maxf(.35,p.height*.35),0)
+		handle.set_meta("roof_edge","x");handle.set_meta("roof_edge_sign",side)
+		handle.visible=false;model.add_child(handle)
 	for end:int in [-1,1]:
 		var marker:=Marker3D.new();marker.name="RidgeStart" if end<0 else "RidgeEnd";marker.position=Vector3(0,p.height,end*p.length*.5);model.add_child(marker)
-	kit.free();return model
+		var handle:=MeshInstance3D.new()
+		handle.name="EdgeHandle_%s" % ("N" if end<0 else "S")
+		var ball:=SphereMesh.new();ball.radius=.18;ball.height=.36
+		handle.mesh=ball;handle.material_override=_material("397e70",.4)
+		handle.position=Vector3(0,maxf(.35,p.height*.35),end*p.length*.5)
+		handle.set_meta("roof_edge","z");handle.set_meta("roof_edge_sign",end)
+		handle.visible=false;model.add_child(handle)

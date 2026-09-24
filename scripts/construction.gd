@@ -25,6 +25,7 @@ var roof_nodes:Dictionary={}
 var roofs_visible:bool=false
 var roof_pitch:float=.5
 var roof_material:String="57736a"
+var roof_style:String="gabled"
 var paint_material:String="8faf9f"
 var paint_scope:String="wall"  # "wall" repaints one segment; "room" repaints every wall joined to it corner to corner
 ## "home" is the eight house colours at ℒ6/m; "nursery" is the five patterns and
@@ -33,6 +34,7 @@ var paint_palette:String="home"
 var paint_pattern:String="stars"
 var roof_edit_id:String=""
 var grab_id:String=""
+var roof_edge:Dictionary={}
 var build_level:int=0
 var last_error:String=""
 ## Why the last staircase search found nowhere to stand, in the player's words.
@@ -207,6 +209,62 @@ func set_roof_visibility(value:bool)->void:
 	roofs_visible=value
 	for id:String in roof_nodes:
 		var node:Node3D=roof_nodes[id];node.visible=value and int(node.get_meta("building_level",0))<=world.view_level
+		_set_roof_handles_visible(node,value and world.build_enabled)
+
+func _set_roof_handles_visible(node:Node3D,show:bool)->void:
+	for child:Node in node.get_children():
+		if child is MeshInstance3D and child.has_meta("roof_edge"):
+			(child as MeshInstance3D).visible=show
+
+## Nearest roof edge handle under the pointer, for drag-to-extend in Build.
+func nearest_roof_edge(p:Vector3,reach:float=.55)->Dictionary:
+	var best:Dictionary={};var best_distance:float=reach
+	for id:String in roof_nodes:
+		var node:Node3D=roof_nodes[id]
+		if not is_instance_valid(node) or not node.visible:continue
+		for child:Node in node.get_children():
+			if not child is MeshInstance3D or not child.has_meta("roof_edge"):continue
+			var at:Vector3=(child as MeshInstance3D).global_position
+			var distance:float=Vector2(at.x,at.z).distance_to(Vector2(p.x,p.z))
+			if distance>=best_distance:continue
+			best_distance=distance
+			best={"id":id,"axis":str(child.get_meta("roof_edge")),"sign":int(child.get_meta("roof_edge_sign")),"handle":child}
+	return best
+
+## Build a roof_edit quote that pushes one edge out to `p` while keeping the
+## opposite edge fixed.
+func make_roof_edge_proposal(edge:Dictionary,p:Vector3)->Dictionary:
+	var state:Dictionary=validated_state()
+	if not bool(state.ok):return {"valid":false,"error":str(state.error)}
+	var old:Dictionary=Building.find(state.state,str(edge.id))
+	if old.is_empty() or Building._group_of(state.state,str(edge.id))!="roofs":return {"valid":false,"error":"That roof is no longer available."}
+	var record:Dictionary=old.duplicate(true);record.erase("id")
+	var axis:String=str(edge.axis);var sign:int=int(edge.sign)
+	if axis=="x":
+		var fixed:float=float(old.x)-sign*float(old.w)*.5
+		var moving:float=snappedf(p.x,.5)
+		if sign*(moving-fixed)<1.5:return {"valid":false,"error":"Choose a roof at least1.5 metres wide and deep."}
+		record.w=absf(moving-fixed);record.x=(fixed+moving)*.5
+	else:
+		var fixed_z:float=float(old.z)-sign*float(old.d)*.5
+		var moving_z:float=snappedf(p.z,.5)
+		if sign*(moving_z-fixed_z)<1.5:return {"valid":false,"error":"Choose a roof at least1.5 metres wide and deep."}
+		record.d=absf(moving_z-fixed_z);record.z=(fixed_z+moving_z)*.5
+	if not record.has("style"):record["style"]=Roof.normalize_style(old.get("style","gabled"))
+	var supported:bool=false
+	for first:Dictionary in state.state.walls:
+		for second:Dictionary in state.state.walls:
+			record["supports"]=[str(first.id),str(second.id)]
+			if Building._perimeter_support_error(state.state,record,int(record.level)).is_empty():supported=true;break
+		if supported:break
+	if not supported:return {"valid":false,"error":"The roof needs two complete opposite bearing walls on this level."}
+	if not quote_provider.is_valid():return {"valid":false,"error":"The building transaction service is unavailable."}
+	var quote:Dictionary=quote_provider.call({"op":"roof_edit","id":str(edge.id),"record":record})
+	var view:Dictionary={"valid":bool(quote.ok),"roof_preview":record.duplicate(true)}
+	view.roof_preview["id"]=str(edge.id)
+	if bool(quote.ok):view["build_quote"]=quote;view["cost"]=int(quote.cost)
+	else:view["error"]=str(quote.error)
+	return view
 
 func _render_guard(stair:Dictionary) -> void:
 	var parent:=Node3D.new();parent.name="Guard_"+str(stair.id);add_child(parent)
@@ -277,7 +335,7 @@ func begin(name: String) -> void:
 	add_child(preview)
 
 func cancel() -> void:
-	tool="";anchored=false;proposal.clear();roof_edit_id="";grab_id=""
+	tool="";anchored=false;proposal.clear();roof_edit_id="";grab_id="";roof_edge.clear()
 	set_roof_visibility(roofs_visible)
 	_preview_signature=""
 	if is_instance_valid(preview):preview.queue_free()
@@ -298,8 +356,11 @@ func update_preview(p: Vector3) -> void:
 	if tool.is_empty() or not is_instance_valid(preview):return
 	if not p.is_finite():return
 	var point=snap(p)
-	proposal=make_proposal(point)
-	var signature:String=var_to_str([tool,point,anchor,anchored,proposal]).sha256_text()
+	if tool=="roof_edge" and not roof_edge.is_empty():
+		proposal=make_roof_edge_proposal(roof_edge,point)
+	else:
+		proposal=make_proposal(point)
+	var signature:String=var_to_str([tool,point,anchor,anchored,proposal,roof_edge]).sha256_text()
 	if signature==_preview_signature:return
 	_preview_signature=signature
 	for n in preview.get_children():n.queue_free()
@@ -335,17 +396,31 @@ func update_preview(p: Vector3) -> void:
 	if proposal.has("roof_preview"):
 		var roof:Node3D=Roof.create(proposal.roof_preview);preview.add_child(roof);roof.position.y+=.015
 		for geometry:GeometryInstance3D in roof.find_children("*","GeometryInstance3D",true,false):geometry.material_override=preview_mat
-		if not roof_edit_id.is_empty() and roof_nodes.has(roof_edit_id):roof_nodes[roof_edit_id].visible=false
+		var hide_id:String=roof_edit_id if not roof_edit_id.is_empty() else str(roof_edge.get("id",""))
+		if not hide_id.is_empty() and roof_nodes.has(hide_id):roof_nodes[hide_id].visible=false
 
 func click(p: Vector3) -> Dictionary:
-	if tool.is_empty():return {}
+	if tool.is_empty():
+		# With roofs visible in Build, edge handles drag to extend a roof without
+		# entering Edit roof first.
+		if roofs_visible and world.build_enabled and roof_edge.is_empty():
+			var edge:Dictionary=nearest_roof_edge(p)
+			if not edge.is_empty():
+				if not is_instance_valid(preview):
+					preview=Node3D.new();add_child(preview)
+				roof_edge=edge;anchored=true;tool="roof_edge";return {}
+		return {}
 	if not p.is_finite():return {"error":"Point inside the lot."}
+	if tool=="roof_edge":
+		var data:Dictionary=make_roof_edge_proposal(roof_edge,snap(p))
+		roof_edge.clear();anchored=false;tool=""
+		return data
 	if tool=="roof_edit" and roof_edit_id.is_empty():
 		var state:Dictionary=validated_state()
 		if not bool(state.ok):return {"error":str(state.error)}
 		for roof:Dictionary in state.state.roofs:
 			if int(roof.level)==build_level and Building.rect(roof).has_point(Vector2(p.x,p.z)):
-				roof_edit_id=str(roof.id);roof_pitch=float(roof.pitch);roof_material=str(roof.material);world.placement_angle=int(roof.rotation);return {}
+				roof_edit_id=str(roof.id);roof_pitch=float(roof.pitch);roof_material=str(roof.material);roof_style=Roof.normalize_style(roof.get("style","gabled"));world.placement_angle=int(roof.rotation);return {}
 		return {"error":"Select an existing roof on this level."}
 	if tool=="grab" and grab_id.is_empty():
 		var pick:Dictionary=_nearest_wall(p)
@@ -423,7 +498,7 @@ func _make_roof_proposal(p:Vector3)->Dictionary:
 		if not anchored:return {}
 		var width:float=absf(p.x-anchor.x);var depth:float=absf(p.z-anchor.z)
 		if width<1.5 or depth<1.5:return {"valid":false,"error":"Choose a roof at least1.5 metres wide and deep."}
-		var record:Dictionary={"level":build_level,"x":(p.x+anchor.x)*.5,"z":(p.z+anchor.z)*.5,"w":width,"d":depth,"pitch":roof_pitch,"rotation":posmod(roundi(world.placement_angle),180),"material":roof_material}
+		var record:Dictionary={"level":build_level,"x":(p.x+anchor.x)*.5,"z":(p.z+anchor.z)*.5,"w":width,"d":depth,"pitch":roof_pitch,"rotation":posmod(roundi(world.placement_angle),180),"material":roof_material,"style":Roof.normalize_style(roof_style)}
 		var preview_record:Dictionary=record.duplicate(true);preview_record["id"]="preview" if roof_edit_id.is_empty() else roof_edit_id;view["roof_preview"]=preview_record
 		var supported:bool=false
 		for first:Dictionary in state.walls:

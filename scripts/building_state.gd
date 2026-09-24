@@ -284,7 +284,11 @@ static func validate(state:Variant) -> String:
 				if group in ["walls","floors","roofs"] and not _material(value.get("material")):return "A building material is invalid."
 				if group=="walls" and (not number(value.get("height"),2.6,2.6) or not value.get("cut") is bool):return "A wall has invalid height or cutaway data."
 				if group=="openings" and (value.level!=1 or not identifier(value.get("stair"))):return "An opening has no valid owning staircase."
-				if group=="roofs" and (not number(value.get("pitch"),.2,1.0) or not number(value.get("rotation"),0,90,true) or int(value.rotation)%90!=0):return "Invalid gable roof parameters."
+				if group=="roofs" and (not number(value.get("pitch"),.05,1.0) or not number(value.get("rotation"),0,90,true) or int(value.rotation)%90!=0):return "Invalid roof parameters."
+				if group=="roofs":
+					var style:String=LifeRoofGeometry.normalize_style(value.get("style","gabled"))
+					if style not in LifeRoofGeometry.STYLES:return "Choose a valid roof style."
+					if style!="flat" and float(value.pitch)<.2:return "Invalid roof pitch for that style."
 	for floor:Dictionary in state.floors:
 		var error:String=_support_error(state,floor)
 		if not error.is_empty():return error

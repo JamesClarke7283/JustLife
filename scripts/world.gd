@@ -1444,10 +1444,10 @@ func floor_point(screen:Vector2) -> Vector3:
 
 func pick(screen:Vector2) -> void:
 	if not live_enabled:return
-	if build_enabled and construction and not construction.tool.is_empty():
+	if build_enabled and construction and (not construction.tool.is_empty() or construction.roofs_visible):
 		var proposal:Dictionary=construction.click(floor_point(screen))
 		if not proposal.is_empty():construction_requested.emit(proposal)
-		return
+		if not construction.tool.is_empty() or not proposal.is_empty():return
 	if build_enabled and placement_kind!="":
 		if ghost_valid:placement_requested.emit(placement_kind,ghost_position,placement_angle,placement_style,placement_size)
 		return
