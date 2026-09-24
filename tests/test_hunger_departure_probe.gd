@@ -38,6 +38,10 @@ func run() -> void:
 	var tom: LifeSim = app.household.member_sim("player")
 	var liz: LifeSim = app.household.member_sim("housemate_1")
 	check(tom != null and liz != null, "Two Lifelets start in the household")
+	var spawn_actor: LifeActor = app.world.actors.get("player")
+	check(is_instance_valid(spawn_actor), "Tom's actor exists at spawn")
+	if is_instance_valid(spawn_actor):
+		check(_first_albedo_alpha(spawn_actor) > 0.9, "Tom's body materials are opaque at spawn (alpha=%.2f)" % _first_albedo_alpha(spawn_actor))
 	tom.needs.hunger = 0.0
 	liz.needs.hunger = 40.0
 	app.household.select(0)

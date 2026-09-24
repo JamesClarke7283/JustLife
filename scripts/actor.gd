@@ -341,6 +341,7 @@ func configure(new_profile: Dictionary) -> void:
 	set_outfit(clampi(int(profile.get("outfit",0)),0,OUTFIT_NAMES.size()-1))
 	set_bottom(clampi(int(profile.get("bottom",0)),0,BOTTOM_NAMES.size()-1))
 	_recolor(_model, {})
+	_ensure_living_opaque(_model)
 	_apply_spirit(_model)
 	_apply_look_layers()
 	_create_props()
@@ -467,6 +468,7 @@ func apply_wardrobe(look: Dictionary = {}) -> void:
 	set_hair(int(profile.get("hair", 0)))
 	if _model != null:
 		_recolor(_model, {})
+		_ensure_living_opaque(_model)
 		_apply_spirit(_model)
 		_apply_face_accessories()
 		_apply_look_layers()
@@ -756,6 +758,54 @@ func _apply_spirit(node: Node) -> void:
 		_apply_spirit(child)
 
 
+## Living bodies must read solid. Imported GLB materials sometimes keep alpha
+## blending or a sub-opaque albedo; force those opaque while leaving intentional
+## glass, hair cards, lashes and makeup shells alone.
+func _ensure_living_opaque(node: Node) -> void:
+	if str(profile.get("life_status", "living")) == "passed":
+		return
+	if node is GeometryInstance3D:
+		(node as GeometryInstance3D).transparency = 0.0
+	if node is MeshInstance3D and (node as MeshInstance3D).mesh != null:
+		var mesh_node: MeshInstance3D = node
+		var keep_alpha: bool = _keeps_authored_alpha(mesh_node)
+		for surface_index: int in range(mesh_node.mesh.get_surface_count()):
+			var material: Material = mesh_node.get_surface_override_material(surface_index)
+			if material == null:
+				material = mesh_node.mesh.surface_get_material(surface_index)
+			if not material is StandardMaterial3D:
+				continue
+			var standard: StandardMaterial3D = material as StandardMaterial3D
+			if keep_alpha:
+				continue
+			if standard.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED and standard.albedo_color.a >= 0.99:
+				continue
+			var solid: StandardMaterial3D = standard.duplicate() as StandardMaterial3D
+			solid.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+			var color: Color = solid.albedo_color
+			color.a = 1.0
+			solid.albedo_color = color
+			mesh_node.set_surface_override_material(surface_index, solid)
+	for child: Node in node.get_children():
+		_ensure_living_opaque(child)
+
+
+func _keeps_authored_alpha(mesh_node: MeshInstance3D) -> bool:
+	var names: PackedStringArray = PackedStringArray([str(mesh_node.name)])
+	if mesh_node.mesh != null:
+		for surface_index: int in range(mesh_node.mesh.get_surface_count()):
+			var material: Material = mesh_node.get_surface_override_material(surface_index)
+			if material == null:
+				material = mesh_node.mesh.surface_get_material(surface_index)
+			if material != null and not str(material.resource_name).is_empty():
+				names.append(str(material.resource_name))
+	for name: String in names:
+		var key: String = name.to_lower()
+		if key.contains("glass") or key.contains("lens") or key.contains("hair") or key.contains("lash") or key.contains("makeup") or key.contains("sclera"):
+			return true
+	return false
+
+
 func _look_family() -> String:
 	return _model_age if _model_age in ["child", "teen", "elder"] else "adult"
 
@@ -810,6 +860,7 @@ func _apply_look_layers() -> void:
 	_apply_outfit_visibility(_model, group)
 	_apply_look_variation(_look_root, category, int(profile.get("outfit", 0)))
 	_recolor(_look_root, {})
+	_ensure_living_opaque(_look_root)
 	_apply_spirit(_look_root)
 
 
