@@ -526,6 +526,7 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"dining", "counter", "coffee_table": ids = ["clear_table", "deep_clean"]
 		"rubbish_bin": ids = ["empty_bin"]
 		"bed": ids = ["sleep", "nap", "try_for_baby"]
+		"child_bed": ids = ["sleep", "nap"]
 		"shower", "bath": ids = ["shower"]
 		"toilet": ids = ["toilet"]
 		"sofa", "chair", "armchair", "loveseat", "stool": ids = ["relax", "nap", "host_a_chat"]
@@ -699,6 +700,61 @@ func _target_kind_of(target_id: String) -> String:
 	for target: Dictionary in _targets:
 		if str(target.get("id", "")) == target_id: return str(target.get("kind", ""))
 	return ""
+
+
+## Why this Lifelet may not sleep or nap here, or "" when they may.
+## A free child bed outranks an adult bed for a child. Adults keep adult beds.
+## A child bed that is not on the lot is not silently replaced by an adult bed
+## while one can still be bought; the adult bed remains only when it cannot.
+func _rest_bed_reason(target_id: String) -> String:
+	var kind: String = _target_kind_of(target_id)
+	if kind not in ["bed", "child_bed", "cot"]: return ""
+	var stage: String = str(character.age_stage)
+	var child_here: bool = _target_kind_present("child_bed")
+	var child_free: bool = _target_kind_free("child_bed")
+	var cot_here: bool = _target_kind_present("cot")
+	var cot_free: bool = _target_kind_free("cot")
+	if stage == "child":
+		if kind == "child_bed": return ""
+		if kind == "bed":
+			if child_free: return "A child sleeps in a child's own bed when one is free."
+			if not child_here and _furnishing_can_be_bought("child_bed"):
+				return "Buy a child's own bed. A child does not sleep in an adult bed."
+			return ""
+		if kind == "cot" and (child_free or child_here or _furnishing_can_be_bought("child_bed")):
+			return "A child sleeps in a child's own bed."
+		return ""
+	if stage == "baby":
+		if kind == "cot": return ""
+		if kind == "child_bed": return "That bed is for a child."
+		if kind == "bed":
+			if cot_free: return "A baby sleeps in the cot when one is free."
+			if not cot_here and _furnishing_can_be_bought("cot"):
+				return "Buy a nursery cot. A baby does not sleep in an adult bed."
+		return ""
+	if kind == "child_bed": return "This bed is for a child."
+	if kind == "cot": return "That cot is for a baby."
+	return ""
+
+
+func _target_kind_present(kind: String) -> bool:
+	for target: Dictionary in _targets:
+		if str(target.get("kind", "")) == kind: return true
+	return false
+
+
+func _target_kind_free(kind: String) -> bool:
+	for target: Dictionary in _targets:
+		if str(target.get("kind", "")) != kind: continue
+		if _autonomy_target_load(str(target.get("id", ""))) <= 0.0: return true
+	return false
+
+
+func _furnishing_can_be_bought(kind: String) -> bool:
+	var item: Dictionary = LifeCatalog.get_item(kind)
+	if item.is_empty() or not item.has("price"): return false
+	var price: int = int(item.get("price", -1))
+	return price >= 0 and funds >= price
 
 
 func is_away() -> bool:
@@ -1028,7 +1084,7 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 	if id in ["job","career_day"] and int(career["worked_day"]) == day:
 		_emit_notice("Today's shift is complete. You can work again tomorrow.")
 		return false
-	if id in SOCIAL_ACTIONS or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or COMPUTER_MASTERY_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "snack", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "bin_meal", "jog", "play_toys", "put_in_fridge", LifeGardenGames.ACTION_ID, LifeOutdoorActs.ACTION_ID, LifeOutdoorActs.PUSH_ID]:
+	if id in SOCIAL_ACTIONS or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or COMPUTER_MASTERY_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "snack", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "bin_meal", "jog", "play_toys", "sleep", "nap", "put_in_fridge", LifeGardenGames.ACTION_ID, LifeOutdoorActs.ACTION_ID, LifeOutdoorActs.PUSH_ID]:
 		var availability: Dictionary = get_action_availability(id, target_id)
 		if not bool(availability.available):
 			_emit_notice(str(availability.reason))
@@ -1802,6 +1858,10 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 	var stage_reason: String = LifeStagePolicy.action_error(str(character.age_stage), str(character.life_stage), id)
 	if not stage_reason.is_empty():
 		return {"available":false, "reason":stage_reason}
+	if id in ["sleep", "nap"]:
+		var bed_reason: String = _rest_bed_reason(target_id)
+		if not bed_reason.is_empty():
+			return {"available":false, "reason":bed_reason}
 	# A garden game's own gate names the game, so the reason a player reads says
 	# which game is too old for them rather than naming only the action.
 	if id == LifeGardenGames.ACTION_ID:

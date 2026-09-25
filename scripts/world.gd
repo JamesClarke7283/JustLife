@@ -1913,6 +1913,10 @@ func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -
 			local=Vector3(0,.615,.12);yaw=node.rotation.y;kind="seat"
 		"bed":
 			local=Vector3(0,.80,.015)+seat_slot_offset(item,str(landmarks.get("seat_slot","left")));yaw=node.rotation.y;kind="bed"
+		"child_bed":
+			local=Vector3(0,.46,.02);yaw=node.rotation.y;kind="bed"
+		"cot":
+			local=Vector3(0,.36,0);yaw=node.rotation.y;kind="bed"
 		"shower":
 			local=Vector3(0,.166,.01);yaw=node.rotation.y+PI
 		"armchair":
