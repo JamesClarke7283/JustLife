@@ -12,7 +12,8 @@ class_name LifeStagePolicy
 ## refused rather than offered and then rendered identically.
 const BABY_ACTIONS: Array[String] = [
 	"sleep", "nap", "snack", "eat_meal", "shower", "bath", "toilet", "relax",
-	"play_toys", "birthday", "change_outfit",
+	"play_toys", "play_rattle", "play_baby_mat", "play_dollhouse", "child_desk_study", "use_potty",
+	"birthday", "change_outfit",
 	"wear_casual", "wear_everyday", "wear_formal", "wear_athletic", "wear_sleep", "wear_party",
 ]
 

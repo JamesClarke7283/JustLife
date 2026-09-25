@@ -193,7 +193,10 @@ const EMOTION_ACTIONS: Dictionary = {"paint_masterpiece":"Inspired", "study_hard
 const AGE_GATED_ACTIONS: Array[String] = ["jog", "play_toys", "morning_run", LifeGardenGames.ACTION_ID]
 ## Built once from the skill roster: the computer's mastery actions, one per skill.
 const COMPUTER_MASTERY_ACTIONS: Array[String] = ["computer_cooking", "computer_creativity", "computer_charisma", "computer_logic", "computer_gardening", "computer_parenting", "computer_fitness", "computer_music"]
-const LEISURE_ACTIONS: Array[String] = ["paint", "read", "watch", "relax", "play_piano", "play_chess", "dance", "play_games", "practice_speech", "stretch", "warm_up", "jog", "play_toys", "sketch_for_fun", "deep_read", "experiment_recipe", "morning_run", "push_through", LifeGardenGames.ACTION_ID]
+const LEISURE_ACTIONS: Array[String] = ["paint", "read", "watch", "relax", "play_piano", "play_chess", "dance", "play_games", "practice_speech", "stretch", "warm_up", "jog", "play_toys", "play_dollhouse", "child_desk_study", "sketch_for_fun", "deep_read", "experiment_recipe", "morning_run", "push_through", LifeGardenGames.ACTION_ID, LifeOutdoorActs.ACTION_ID]
+## Outdoor pieces a child can use alone. A push from an older Lifelet is extra,
+## not a requirement for the swing, slide, frame or sand pit.
+const CHILD_SOLO_OUTDOOR: Array[String] = ["kids_slide", "kids_swing", "climbing_frame", "sand_pit"]
 const PRE_DUTY_LEISURE: Array[String] = ["relax", "read", "watch", "stretch", "warm_up", "paint"]  # brief pastimes before a school or work day; the short ones sit ahead of the canvas
 const DEPARTURE_WALK: float = 15.0  # game minutes allowed for the walk from a pastime to the lot exit in a busy home
 const LEISURE_APPROACH: float = 10.0  # game minutes allowed for the walk to a pastime before it starts
@@ -548,7 +551,7 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"yoga_mat": ids = ["stretch"]
 		"stereo": ids = ["dance"]
 		"coffee_machine": ids = ["drink_coffee"]
-		"toybox": ids = ["play_toys"]  # adults see the disabled entry with its reason
+		"toybox", "toy_chest": ids = ["play_toys"]  # adults see the disabled entry with its reason
 		"wardrobe":
 			var worn_category: String = LifeCharacterIdentity.normalize_category(character.get("outfit_category", "everyday"))
 			# The wardrobe opens the styling panel, where every option is shown on
@@ -580,13 +583,13 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"baby_toys": ids = ["play_with_baby"] if _has_baby() else []
 		"cot": ids = ["cuddle_baby", "talk_to_baby", "sleep", "nap"] if _has_baby() else ["sleep", "nap"]
 		"baby_mobile": ids = ["spin_baby_mobile"] if _has_baby() else []
-		"baby_rattle": ids = ["play_rattle"] if _infant_at_least(LifeBabyPlan.INFANT_SITTING) else []
-		"baby_mat": ids = ["play_baby_mat"] if _infant_at_least(LifeBabyPlan.INFANT_SITTING) else []
+		"baby_rattle": ids = ["play_rattle"] if _may_play_rattle() else []
+		"baby_mat": ids = ["play_baby_mat"] if _may_play_mat() else []
 		"rocking_chair": ids = ["cuddle_baby", "relax"] if _has_baby() else ["relax"]
-		"potty": ids = ["use_potty"] if _infant_at_least(LifeBabyPlan.INFANT_TODDLER) else []
-		"dollhouse": ids = ["play_dollhouse"] if _infant_at_least(LifeBabyPlan.INFANT_TODDLER) else []
-		"child_desk": ids = ["child_desk_study"] if _infant_at_least(LifeBabyPlan.INFANT_TODDLER) or str(character.age_stage)=="child" else []
-		"train_set": ids = ["play_toys"] if _infant_at_least(LifeBabyPlan.INFANT_TODDLER) or str(character.age_stage)=="child" else []
+		"potty": ids = ["use_potty"] if _may_use_potty() else []
+		"dollhouse": ids = ["play_dollhouse"] if _may_play_dollhouse() else []
+		"child_desk": ids = ["child_desk_study"] if _may_use_child_desk() else []
+		"train_set": ids = ["play_toys"] if _may_play_toys() else []
 
 	if LifeGardenGames.is_game(kind): ids = [LifeGardenGames.ACTION_ID]
 	elif LifeOutdoorActs.is_outdoor_act(kind):
@@ -873,6 +876,16 @@ func autonomy_need_choice(need:String,excluded_target_ids:Array=[]) -> Dictionar
 	# directed fix respects queues, loads and fitting pre-duty pastimes.
 	return _autonomy_need_choice(need,excluded_target_ids)
 
+## Queue a solo play session for a child. The object they walk to is the one
+## autonomy would pick, and the action is the same one a click on that object runs.
+func make_child_play() -> bool:
+	if str(character.age_stage) != "child": return false
+	var choice: Dictionary = _autonomy_need_choice("fun")
+	var id: String = str(choice.get("id", ""))
+	if id not in ["play_toys", "play_dollhouse", "child_desk_study", LifeOutdoorActs.ACTION_ID, LifeGardenGames.ACTION_ID]:
+		return false
+	return queue_action(id, str(choice.get("target_id", "")), choice.get("position", Vector3.ZERO))
+
 func request_return_home() -> bool:
 	if not is_away(): return false
 	if str(away_state.phase) == "returning": return true
@@ -1084,7 +1097,19 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 	if id in ["job","career_day"] and int(career["worked_day"]) == day:
 		_emit_notice("Today's shift is complete. You can work again tomorrow.")
 		return false
-	if id in SOCIAL_ACTIONS or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or COMPUTER_MASTERY_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "snack", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "bin_meal", "jog", "play_toys", "sleep", "nap", "put_in_fridge", LifeGardenGames.ACTION_ID, LifeOutdoorActs.ACTION_ID, LifeOutdoorActs.PUSH_ID]:
+	if id in ["play_dollhouse", "play_rattle", "play_baby_mat"] and str(character.age_stage) in ["baby", "child"]:
+		definition = definition.duplicate(true)
+		definition["skill"] = "creativity" if str(character.age_stage) == "child" else "logic"
+		if id == "play_dollhouse":
+			definition["changes"] = {"fun": 36.0, "social": 16.0}
+			definition["xp"] = 10.0
+		elif id == "play_rattle":
+			definition["changes"] = {"fun": 22.0}
+			definition["xp"] = 4.0
+		else:
+			definition["changes"] = {"fun": 26.0, "social": 18.0}
+			definition["xp"] = 6.0
+	if id in SOCIAL_ACTIONS or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or COMPUTER_MASTERY_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "snack", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "bin_meal", "jog", "play_toys", "play_dollhouse", "child_desk_study", "play_rattle", "play_baby_mat", "use_potty", "sleep", "nap", "put_in_fridge", LifeGardenGames.ACTION_ID, LifeOutdoorActs.ACTION_ID, LifeOutdoorActs.PUSH_ID]:
 		var availability: Dictionary = get_action_availability(id, target_id)
 		if not bool(availability.available):
 			_emit_notice(str(availability.reason))
@@ -1677,12 +1702,10 @@ func _finish_front() -> void:
 			household_service.bathe_pet(str(action.get("target_id","")),str(character.get("name","")))
 		_emit_notice("%s is clean and fluffy again." % str(action.get("pet_name","The dog")))
 	elif id in ["feed_baby_bottle", "feed_baby_food", "change_nappy", "cuddle_baby", "play_with_baby", "talk_to_baby", "spin_baby_mobile", "play_rattle", "play_baby_mat", "use_potty", "play_dollhouse"]:
-		# The caregiver completes the action, but the need it answers is the
-		# baby's own: feeding fills their hunger, a nappy their hygiene and
-		# bladder, a cuddle and play their social and fun. The caregiver also
-		# gains a little Parenting, because caring for a child is how it is
-		# learned.
-		_care_for_baby(id)
+		# A baby or child doing this themselves already received the play through
+		# the action. A caregiver still answers the baby's needs on top.
+		if not (str(character.age_stage) in ["baby", "child"] and id in ["play_rattle", "play_baby_mat", "play_dollhouse", "use_potty"]):
+			_care_for_baby(id)
 	_activity_memory(id)
 	_record_chapter_activity(id, earned, _social_target(str(action.get("target_id", ""))) if bool(action.get("social_accepted", false)) else "")
 	for want: Dictionary in wants:
@@ -1915,8 +1938,18 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 		reason = "The treadmill is for teens and adults."
 	elif id == "morning_run" and str(character.age_stage) == "child":
 		reason = "Long runs around the block are for teens and adults."
-	elif id == "play_toys" and str(character.age_stage) != "child":
+	elif id == "play_toys" and not _may_play_toys():
 		reason = "The toy chest is for children."
+	elif id == "play_dollhouse" and not _may_play_dollhouse():
+		reason = "The dollhouse is for a toddler or a child."
+	elif id == "child_desk_study" and not _may_use_child_desk():
+		reason = "That desk is for a toddler or a child."
+	elif id == "play_rattle" and not _may_play_rattle():
+		reason = "A sitting baby shakes the rattle."
+	elif id == "play_baby_mat" and not _may_play_mat():
+		reason = "A sitting baby uses the play mat."
+	elif id == "use_potty" and not _may_use_potty():
+		reason = "Potty practice starts once a baby is a toddler."
 	elif funds < int(_actions[id].cost) and not (is_instance_valid(grocery_service) and id in ["cook", "snack"]):
 		reason = "Requires ℒ%d." % int(_actions[id].cost)
 	elif id == "job" and int(career.worked_day) == day:
@@ -2010,6 +2043,37 @@ func _infant_at_least(phase: String) -> bool:
 	var order: Array[String] = [LifeBabyPlan.INFANT_NEWBORN, LifeBabyPlan.INFANT_SITTING, LifeBabyPlan.INFANT_TODDLER]
 	var have: String = LifeBabyPlan.advance_infant_phase(baby.character, day)
 	return order.find(have) >= order.find(phase)
+
+func _own_infant_phase() -> String:
+	if str(character.age_stage) != "baby": return ""
+	return LifeBabyPlan.advance_infant_phase(character, day)
+
+func _own_infant_at_least(phase: String) -> bool:
+	var order: Array[String] = [LifeBabyPlan.INFANT_NEWBORN, LifeBabyPlan.INFANT_SITTING, LifeBabyPlan.INFANT_TODDLER]
+	var have: int = order.find(_own_infant_phase())
+	var need: int = order.find(phase)
+	return have >= 0 and need >= 0 and have >= need
+
+## Solo play for the Lifelet in front of the object. A household toddler also
+## lets an older caregiver start the same action for them.
+func _may_play_toys() -> bool:
+	return str(character.age_stage) == "child" or _own_infant_at_least(LifeBabyPlan.INFANT_TODDLER)
+
+func _may_play_dollhouse() -> bool:
+	return _may_play_toys() or (_infant_at_least(LifeBabyPlan.INFANT_TODDLER) and str(character.age_stage) != "child")
+
+func _may_use_child_desk() -> bool:
+	return _may_play_dollhouse()
+
+func _may_use_potty() -> bool:
+	return _own_infant_at_least(LifeBabyPlan.INFANT_TODDLER) or (_infant_at_least(LifeBabyPlan.INFANT_TODDLER) and str(character.age_stage) != "child")
+
+func _may_play_rattle() -> bool:
+	if str(character.age_stage) == "child": return false
+	return _own_infant_at_least(LifeBabyPlan.INFANT_SITTING) or _infant_at_least(LifeBabyPlan.INFANT_SITTING)
+
+func _may_play_mat() -> bool:
+	return _may_play_rattle()
 
 ## Hospital stay after birth: mother and newborn wait off-lot until Welcome Baby
 ## Home clears this away-state. No school-style auto-return.
@@ -2956,6 +3020,9 @@ func _autonomy_target_for(id:String,excluded_target_ids:Array=[]) -> Dictionary:
 		# home shifts, but a busy shelf must still yield to an idle desk:
 		# one queued assignment is a longer wait than the protection is worth.
 		if id=="homework" and str(target.kind) in ["desk","computer"]:cost+=15.0
+		# A free slide, swing or climbing frame beats a pool when a child is choosing play.
+		if id == LifeOutdoorActs.ACTION_ID and str(character.age_stage) == "child" and str(target.kind) not in CHILD_SOLO_OUTDOOR:
+			cost += 30.0
 		if cost<lowest:
 			lowest=cost;selected={"id":id,"target_id":str(target.id),"position":target.position,"load":cost}
 	return selected
@@ -3088,10 +3155,10 @@ func _autonomy_need_candidates(need:String,excluded_target_ids:Array=[],preparin
 				if not briefing and float(needs.hygiene)<70.0:candidates.insert(3,"bath")
 				# Outgoing Lifelets rehearse at the mirror early; Creative ones keep the easel first.
 				if _has_trait("Outgoing") and candidates.has("practice_speech"):candidates.erase("practice_speech");candidates.insert(mini(3,candidates.size()),"practice_speech")
-			# Children reach for their toys first on a free day, and last when a school morning needs brief recovery.
-			if str(character.age_stage)=="child":
-				if candidates[0]=="relax":candidates.append("play_toys")
-				else:candidates.insert(0,"play_toys")
+			if str(character.age_stage)=="baby":
+				candidates=_baby_play_candidates()
+			elif str(character.age_stage)=="child":
+				candidates=_child_play_candidates(candidates)
 			if briefing:
 				# Before a day away only pastimes that end in time for the walk to
 				# the lot exit are offered, so the rotation cannot pick a canvas
@@ -3107,6 +3174,29 @@ func _autonomy_need_candidates(need:String,excluded_target_ids:Array=[],preparin
 					fitting.append_array(overflow)
 				candidates=fitting
 	return candidates
+
+func _baby_play_candidates() -> Array[String]:
+	var play: Array[String] = []
+	if _own_infant_at_least(LifeBabyPlan.INFANT_SITTING):
+		play.append("play_rattle")
+		play.append("play_baby_mat")
+	if _own_infant_at_least(LifeBabyPlan.INFANT_TODDLER):
+		play.append("play_toys")
+		play.append("play_dollhouse")
+		play.append("child_desk_study")
+	return play
+
+func _child_play_candidates(existing: Array[String]) -> Array[String]:
+	# Toys, the dollhouse, the desk, the slide and garden games come first.
+	# Adult-only work (the stove, the treadmill, a paid shift) stays off the list.
+	var play: Array[String] = ["play_toys", "play_dollhouse", "child_desk_study", LifeOutdoorActs.ACTION_ID, LifeGardenGames.ACTION_ID]
+	var merged: Array[String] = []
+	for id: String in play:
+		if not merged.has(id): merged.append(id)
+	for id: String in existing:
+		if id in ["jog", "morning_run", "push_through", "water", "cook", "work", "job"]: continue
+		if not merged.has(id): merged.append(id)
+	return merged
 
 func _autonomy_need_ranks_earlier(need:String,preferred_id:String,other_id:String) -> bool:
 	# Catalogue order only: used to allow read→paint while Fun is critical without
