@@ -487,6 +487,10 @@ func _build_actions() -> void:
 	_define("pet_pet", "Pet", 12.0, {"fun": 10.0, "social": 12.0}, 0, "parenting", 6.0, "Stroke the coat. Warm affection for you both.")
 	_define("pet_train", "Train obedience", 25.0, {"fun": 8.0, "social": 10.0}, 0, "parenting", 18.0, "Patient repetition. Builds Obedience and your own Parenting.")
 	_define("drive_car", "Drive…", 0.0, {}, 0, "", 0.0, "Open the door, get in, and pick a destination on the town map. With a baby or child, buckle them into a car seat first.")
+	_define("drive_to_work", "Drive to work", 25.0, {"energy": -6.0}, 0, "", 0.0, "Walk out to the car and drive it to work.")
+	_define("board_school_bus", "Board the school bus", 20.0, {"fun": 8.0, "social": 6.0}, 0, "", 0.0, "The school bus has pulled up. Walk out and board it.")
+	_define("put_baby_for_nap", "Nap", 15.0, {}, 0, "parenting", 8.0, "Lay the baby in the cot for a nap.")
+	_define("put_baby_for_night", "Nighttime Sleep", 20.0, {}, 0, "parenting", 12.0, "Settle the baby in the cot for the night.")
 	_define("open_garage_door", "Open garage door", 0.0, {}, 0, "", 0.0, "Raise or lower the garage door so cars can drive in and out.")
 	_define("push_pram", "Push the pram", 35.0, {"fun": 22.0, "social": 24.0, "energy": -6.0}, 0, "", 0.0, "Settle a baby in and stroll. Stops for chats fill Social and Fun.")
 	_define("push_pushchair", "Push the pushchair", 35.0, {"fun": 24.0, "social": 24.0, "energy": -6.0}, 0, "", 0.0, "Buckle a child in and walk the block.")
@@ -529,7 +533,10 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"dining", "counter", "coffee_table": ids = ["clear_table", "deep_clean"]
 		"rubbish_bin": ids = ["empty_bin"]
 		"bed": ids = ["sleep", "nap", "try_for_baby"]
-		"child_bed": ids = ["sleep", "nap"]
+		"child_bed":
+			ids = ["sleep", "nap", "relax"]
+		"school_bus":
+			ids = ["board_school_bus"] if str(character.age_stage) in ["child", "teen"] else []
 		"shower", "bath": ids = ["shower"]
 		"toilet": ids = ["toilet"]
 		"sofa", "chair", "armchair", "loveseat", "stool": ids = ["relax", "nap", "host_a_chat"]
@@ -591,6 +598,12 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"child_desk": ids = ["child_desk_study"] if _may_use_child_desk() else []
 		"train_set": ids = ["play_toys"] if _may_play_toys() else []
 
+	if kind == "cot" and _has_baby() and str(character.age_stage) in ["teen", "young_adult", "adult", "elder"]:
+		ids.append("put_baby_for_nap")
+		ids.append("put_baby_for_night")
+	if kind == "school_bus":
+		ids = ["board_school_bus"] if str(character.age_stage) in ["child", "teen"] else []
+
 	if LifeGardenGames.is_game(kind): ids = [LifeGardenGames.ACTION_ID]
 	elif LifeOutdoorActs.is_outdoor_act(kind):
 		ids = [LifeOutdoorActs.ACTION_ID]
@@ -603,12 +616,33 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 	if str(character.age_stage) in LifeEducation.SCHOOL_STAGES:
 		if kind in ["desk","computer"]: ids = ["school","homework","study","study_hard"] + (["play_games"] if kind == "computer" else [])
 		elif kind == "bookshelf": ids = ["read","homework","study","study_book","buy_book","deep_read"]
+	if kind in ["car", "car_electric", "electric_car"] and str(character.life_stage) == "adult" and not ids.has("drive_to_work"):
+		ids.append("drive_to_work")
+	if str(character.age_stage) == "child" and kind in ["desk", "child_desk", "dining", "table", "coffee_table"]:
+		var study: Array = ["child_desk_study", "read"]
+		if minutes >= 900.0 or int(education.get("last_attendance_day", 0)) == day:
+			study.push_front("homework")
+		ids = study
 	var result: Array = []
 	for id: String in ids:
 		var data: Dictionary = _actions[id].duplicate(true)
 		var availability: Dictionary = get_action_availability(id, target_id)
 		data["available"] = availability.available
 		data["unavailable_reason"] = availability.reason
+		if kind == "child_bed":
+			if str(data.id) == "sleep": data["label"] = "Go to Bed"
+			elif str(data.id) == "nap": data["label"] = "Take a Nap"
+			elif str(data.id) == "relax": data["label"] = "Relax"
+		elif kind == "cot" and str(data.id) == "sleep":
+			data["label"] = "Nighttime Sleep"
+		elif kind == "cot" and str(data.id) == "nap":
+			data["label"] = "Nap"
+		elif str(character.age_stage) == "child" and str(data.id) == "homework":
+			data["label"] = "Do Homework"
+		elif str(character.age_stage) == "child" and str(data.id) == "read":
+			data["label"] = "Read a Book"
+		elif str(character.age_stage) == "child" and str(data.id) == "child_desk_study":
+			data["label"] = "Skill Up"
 		# Kitchen stock pays for snacks and recipes; do not show a purse price.
 		if is_instance_valid(grocery_service) and id in ["cook", "snack"]:
 			data["cost"] = 0
@@ -3293,6 +3327,8 @@ func _autonomous_choice(excluded_target_ids:Array=[]) -> Dictionary:
 			var recovery:Dictionary=_autonomy_need_choice(preparation,excluded_target_ids,true)
 			if not recovery.is_empty():return recovery
 		elif not duty.is_empty():
+			var ride: Dictionary = _commute_choice(duty, excluded_target_ids)
+			if not ride.is_empty(): return ride
 			var choice:Dictionary=_autonomy_target_for(duty,excluded_target_ids)
 			if not choice.is_empty():return choice
 	for need:String in priorities:
@@ -3303,6 +3339,14 @@ func _autonomous_choice(excluded_target_ids:Array=[]) -> Dictionary:
 	# preparation and current responsibilities. Explicit queues remain untouched.
 	if duty.is_empty() and preparing.is_empty() and is_instance_valid(meal_service):
 		return meal_service.autonomous_cleanup_choice(self,excluded_target_ids)
+	return {}
+
+func _commute_choice(duty: String, excluded_target_ids: Array) -> Dictionary:
+	# An adult who owns a car walks to it and drives. A child walks out to the bus.
+	if duty == "career_day" and str(character.life_stage) == "adult" and _target_kind_present("car"):
+		return _autonomy_target_for("drive_to_work", excluded_target_ids)
+	if duty == "school_day" and str(character.age_stage) in ["child", "teen"] and _target_kind_present("school_bus"):
+		return _autonomy_target_for("board_school_bus", excluded_target_ids)
 	return {}
 
 func _autonomy_eating_owned_portion(action: Dictionary) -> bool:

@@ -78,6 +78,11 @@ const DANCE_TOKEN_PREFIX: String = "dance_"
 const DANCE_DURATION: float = 35.0
 const MAX_DANCERS: int = 5
 
+## The purse a new household starts with. One Lifelet begins on ℒ2500; each
+## extra person adds ℒ1250, so a household of three starts on ℒ5000.
+static func starting_funds(count: int) -> int:
+	return 2500 + 1250 * maxi(0, count - 1)
+
 func new_household(profiles: Array) -> void:
 	journeys.clear()
 	adoptions=LifeAdoption.fresh()
@@ -96,9 +101,10 @@ func new_household(profiles: Array) -> void:
 	members.clear()
 	family_graph = LifeFamilyGraph.fresh()
 	_family_roles.clear()
-	selected_index=0;funds=2500;speed=1;day=1;minutes=480
+	selected_index=0;funds=starting_funds(1);speed=1;day=1;minutes=480
 	for profile in profiles.slice(0,MAX_MEMBERS):add_member(profile)
 	if members.is_empty():add_member({})
+	funds = starting_funds(members.size())
 	_sync_wallet()
 
 func add_member(profile: Dictionary) -> String:
@@ -494,6 +500,71 @@ func configure_family(links:Array) -> Dictionary:
 	for member:Dictionary in members:
 		if not member.sim.action_queue.is_empty() or not member.sim.social_history.is_empty():
 			return {"ok":false,"error":"Finish family setup before beginning household activities."}
+	return _commit_family(links)
+
+## Change one relationship from the family tree: `parent` means `other_id` is
+## the parent of `subject_id`, `child` the reverse, and `sibling` a declared pair.
+func edit_family_link(subject_id: String, other_id: String, role: String) -> Dictionary:
+	if subject_id.is_empty() or other_id.is_empty() or subject_id == other_id:
+		return {"ok":false,"error":"Choose two different Lifelets."}
+	if role not in ["parent", "child", "sibling"]:
+		return {"ok":false,"error":"Choose parent, child, or sibling."}
+	if member_sim(subject_id) == null or member_sim(other_id) == null:
+		return {"ok":false,"error":"That Lifelet is not in this household."}
+	var links: Array = _family_links_keeping_partners().filter(func(link: Dictionary) -> bool:
+		var a: String = str(link.a)
+		var b: String = str(link.b)
+		return not ((a == subject_id and b == other_id) or (a == other_id and b == subject_id)))
+	if role == "parent":
+		links.append({"a": other_id, "b": subject_id, "role": "parent"})
+	elif role == "child":
+		links.append({"a": subject_id, "b": other_id, "role": "parent"})
+	else:
+		links.append({"a": subject_id, "b": other_id, "role": "siblings"})
+	return _commit_family(links)
+
+## Give a child a mother, a father, or both. An empty id clears that parent.
+## Two children who share a parent are siblings.
+func assign_child_parents(child_id: String, mother_id: String, father_id: String) -> Dictionary:
+	if member_sim(child_id) == null:
+		return {"ok":false,"error":"That child is not in this household."}
+	var links: Array = []
+	for edge: Dictionary in family_graph.get("parents", []):
+		if str(edge.b) == child_id: continue
+		links.append({"a": str(edge.a), "b": str(edge.b), "role": "parent"})
+	for edge: Dictionary in family_graph.get("siblings", []):
+		links.append({"a": str(edge.a), "b": str(edge.b), "role": "siblings"})
+	for edge: Dictionary in _partner_links():
+		links.append(edge)
+	for parent_id: String in [mother_id, father_id]:
+		if parent_id.is_empty(): continue
+		if parent_id == child_id or member_sim(parent_id) == null:
+			return {"ok":false,"error":"Choose a parent from this household."}
+		links.append({"a": parent_id, "b": child_id, "role": "parent"})
+	return _commit_family(links)
+
+func _partner_links() -> Array:
+	var links: Array = []
+	var seen: Dictionary = {}
+	for member: Dictionary in members:
+		var partner: String = str(member.sim.romantic_partner)
+		if partner.is_empty() or member_sim(partner) == null: continue
+		var key: String = str(member.id) + "|" + partner if str(member.id) < partner else partner + "|" + str(member.id)
+		if seen.has(key): continue
+		seen[key] = true
+		links.append({"a": str(member.id), "b": partner, "role": "partners"})
+	return links
+
+func _family_links_keeping_partners() -> Array:
+	var links: Array = []
+	for edge: Dictionary in family_graph.get("parents", []):
+		links.append({"a": str(edge.a), "b": str(edge.b), "role": "parent"})
+	for edge: Dictionary in family_graph.get("siblings", []):
+		links.append({"a": str(edge.a), "b": str(edge.b), "role": "siblings"})
+	links.append_array(_partner_links())
+	return links
+
+func _commit_family(links: Array) -> Dictionary:
 	var by_id:Dictionary={}
 	var profiles:Dictionary={}
 	var states:Array=[]

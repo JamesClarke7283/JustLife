@@ -83,10 +83,22 @@ const TYPES: Dictionary = {
 		"architecture_styles": ["traditional", "cottage", "ultra_modern"],
 		"exterior_swatches": ["eae7d7","8faf9f","e6d8c5","c8d7e0","d9b7a3","7d8a99","efd9a0","a3ad7a","6b7d5a","4a5568"],
 	},
+	"lumen": {
+		"label": "Lumen House", "layout": 10, "price": 0,
+		"tagline": "A modern two-bedroom house with a pool.",
+		"description": "A modern two-bedroom, two-bathroom house with a pool, a furnished child room, and room to live outside.",
+		"rooms": 6, "beds": 2, "baths": 2, "pool": true, "child_room": true,
+	},
+	"haven": {
+		"label": "Haven", "layout": 11, "price": 0, "family_only": true,
+		"tagline": "Two bedrooms, with a nursery and a child room already made up.",
+		"description": "A two-bedroom house offered when a baby or child is moving in. The nursery and the child room are already furnished.",
+		"rooms": 6, "beds": 2, "baths": 2, "child_room": true, "nursery": true,
+	},
 }
 
 ## The order a picker should offer the types in: cheapest and simplest first.
-const ORDER: Array[String] = ["willow", "sage", "canvas", "medium", "traditional", "ultramodern", "large", "rowan", "juniper"]
+const ORDER: Array[String] = ["willow", "sage", "canvas", "lumen", "haven", "medium", "traditional", "ultramodern", "large", "rowan", "juniper"]
 
 ## What moving into a house the household already owns costs, on top of the
 ## house's own price. A move is a real expense, so moving is a decision.
@@ -137,9 +149,22 @@ static func is_starter(type_id: String) -> bool:
 
 ## Every starter type, in the order the opening picker should show them.
 static func starters() -> Array[String]:
+	return starters_for([])
+
+
+## Starter homes for this household. Lumen House is always a new-player option.
+## Haven, with a nursery and a child room, is offered when a baby or child is moving in.
+static func starters_for(profiles: Array) -> Array[String]:
+	var young: bool = false
+	for person: Variant in profiles:
+		if not person is Dictionary: continue
+		var stage: String = LifeLifecycle.stage_for(person)
+		if stage in ["baby", "child"]: young = true
 	var result: Array[String] = []
 	for type_id: String in ORDER:
-		if is_starter(type_id): result.append(type_id)
+		if not is_starter(type_id): continue
+		if bool(type_info(type_id).get("family_only", false)) and not young: continue
+		result.append(type_id)
 	return result
 
 

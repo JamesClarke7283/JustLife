@@ -517,10 +517,37 @@ static func starter_layout(lot: int = 0) -> Array:
 		entries = _ultramodern_entries()
 	elif lot == 9:
 		entries = _traditional_entries()
+	elif lot == 10:
+		entries = _lumen_entries()
+	elif lot == 11:
+		entries = _haven_entries()
 	for i in range(entries.size()):
 		var e: Array = entries[i]
 		a.append({"id":"item_%d" % i,"kind":e[0],"x":e[1],"z":e[2],"rotation":e[3]})
 	return a
+
+## Lumen House: modern two bedrooms, two bathrooms, and a pool.
+static func _lumen_entries() -> Array:
+	return [
+		["fridge",-5.28,-4.3,0],["counter",-4.18,-4.4,0],["stove",-3.1,-4.4,0],["sink",-2.02,-4.4,0],
+		["dining",-3.5,-1.6,0],["sofa",-3.4,3.4,180],["table",-3.0,2.2,0],
+		["bed",4.6,1.6,0],["nightstand",3.4,1.6,0],["wardrobe",5.3,3.2,-90],
+		["child_bed",2.2,-2.6,0],["child_desk",3.4,-3.8,180],["child_chair",3.4,-3.0,0],["toy_chest",1.4,-3.6,0],
+		["shower",5.1,-4.1,0],["toilet",3.6,-4.1,0],["sink",5.15,-2.4,-90],
+		["bathtub",1.2,-4.2,90],["toilet",-.2,-4.1,0],["sink",-.2,-2.8,0],
+		["pool",-8.4,1.6,0],["plant",-.2,4.2,0],
+	]
+
+## Haven: two bedrooms with a nursery and a child room already furnished.
+static func _haven_entries() -> Array:
+	return [
+		["fridge",-5.0,-4.2,0],["stove",-3.4,-4.2,0],["sink",-2.2,-4.2,0],
+		["bed",4.6,1.4,0],["nightstand",3.4,1.4,0],
+		["child_bed",2.0,-1.6,0],["child_desk",3.2,-3.2,180],["toy_chest",1.2,-3.2,0],["dollhouse",1.2,-1.2,0],
+		["cot",4.4,-2.6,0],["changing_table",5.2,-3.8,0],["rocking_chair",3.2,-4.0,0],["baby_mat",4.2,-4.2,0],
+		["shower",5.1,4.0,0],["toilet",3.4,4.0,0],["bathtub",1.0,4.1,90],["toilet",-.4,4.0,0],
+		["sofa",-3.2,2.8,180],
+	]
 
 ## Medium Garden Home: two bedrooms, pool, outdoor table and barbecue.
 static func _medium_entries() -> Array:

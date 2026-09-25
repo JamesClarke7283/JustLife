@@ -28,6 +28,7 @@ const PLACES: Dictionary = {
 	"university":{"name":"Juniper Bay University","tag":"Study for something more","description":"A city campus of lecture rooms around a wide library, open to adults who want a degree. A qualification raises what the jobs that ask for one will pay, and a PHD is a doctor whatever the job.","color":"5a6f9a"},
 	"prison":{"name":"Blackmoor Prison","tag":"Visiting hours twice a week","description":"A remand and resettlement prison on the road out of town, where a Lifelet who was caught serves their sentence. The visiting room has tables for families and a desk at the door.","color":"7a7b76"},
 	"dog_park":{"name":"Willow Bark Dog Park","tag":"Where dogs meet dogs","description":"A fenced green with kennels, water bowls and open grass. Bring the household dogs to socialise, play and run off steam with the neighbours' pets.","color":"7a9a68"},
+	"kids_park":{"name":"Playground Green","tag":"A park for children","description":"A children's park with a restroom, a small food café, benches, and other children already playing. Household children and pets meet the ones who walk the street outside.","color":"8faf6a","child_npcs":["nio","suki","leap"],"passers":["child","child","pet"]},
 }
 
 ## What each venue offers a visitor, in the order a counter or an office would
@@ -87,6 +88,11 @@ const _SERVICES: Dictionary = {
 		["dog_social","Let the dogs socialise","Open the gate and let the household dogs meet others. Builds Social for Lifelets and Affection for the pets."],
 		["dog_run","A proper run","Chase and fetch across the grass until everyone is happily tired. Fun for Lifelets and pets alike."],
 		["dog_water","Water and a rest","Fill the bowls and settle on a bench while the dogs cool down. A quiet end to the outing."],
+	],
+	"kids_park":[
+		["restroom","Public restroom","Toilets and a sink just off the play area, so a long afternoon out does not mean rushing home."],
+		["cafe","Food café","A counter with snacks and a drink, eaten at the park tables rather than carried away."],
+		["play","Play with the other children","Slides, swings and the children who are already here. Household children and pets can meet the ones walking past."],
 	],
 }
 
@@ -220,6 +226,14 @@ static func layout(place: String) -> Array:
 			["plant",-5.2,0.2,0],["plant",5.2,0.2,0],["plant",-5.2,4.2,0],["plant",5.2,4.2,0],
 			["garden_light",-3.0,4.6,0],["garden_light",3.0,4.6,0],
 			["rubbish_bin",5.0,4.4,0],["sink",-5.0,-1.0,90],
+		]
+		"kids_park": entries = [
+			["toilet",5.2,-4.0,180],["sink",3.6,-4.2,180],["toilet",5.2,-2.4,180],
+			["counter",-4.6,-4.2,0],["fridge",-3.2,-4.2,0],["stool",-4.4,-3.3,180],
+			["dining",-3.2,-1.2,0],["chair",-3.2,-0.3,180],["chair",-3.2,-2.1,0],
+			["bench",-5.0,2.2,90],["bench",0.2,3.6,180],["sofa",4.2,2.4,-90],
+			["kids_slide",-1.2,1.4,0],["kids_swing",1.6,1.2,0],["climbing_frame",-3.4,1.6,0],
+			["plant",-5.2,0.4,0],["plant",5.2,0.6,0],["rubbish_bin",4.6,4.4,0],
 		]
 	var result: Array = []
 	for i in range(entries.size()):

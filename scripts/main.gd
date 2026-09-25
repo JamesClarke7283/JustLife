@@ -1384,8 +1384,8 @@ func show_lot_selection() -> void:
 	world.sun.rotation_degrees=Vector3(-52,-35,0)
 	# The starter houses are the property policy's own list, so the opening
 	# picker and a mid-game move offer the same homes by the same rules.
-	selected_lot=clampi(selected_lot,0,Properties.starters().size()-1)
-	world.create_home(LifeCatalog.starter_layout(int(Properties.type_info(Properties.starters()[selected_lot]).layout)))
+	selected_lot=clampi(selected_lot,0,Properties.starters_for(household_profiles).size()-1)
+	world.create_home(LifeCatalog.starter_layout(int(Properties.type_info(Properties.starters_for(household_profiles)[selected_lot]).layout)))
 	world.camera.projection=Camera3D.PROJECTION_ORTHOGONAL
 	world.camera.size=19.5
 	world.camera_angle=.65
@@ -1397,18 +1397,19 @@ func show_lot_selection() -> void:
 	small_caps("Welcome to",Vector2(57,140))
 	text_label("Juniper Bay",Vector2(54,171),Vector2(300,58),39,P.INK,true)
 	paragraph("Tree-lined streets. Friendly faces.\nA little space to make your own.",Vector2(58,242),Vector2(274,57),16)
-	var starter_ids:Array[String]=Properties.starters()
+	var starter_ids:Array[String]=Properties.starters_for(household_profiles)
+	var pitch:float=78.0 if starter_ids.size()>3 else 95.0
 	for i in range(starter_ids.size()):
 		var info:Dictionary=Properties.type_info(starter_ids[i])
-		var b=button(str(info.label),Vector2(54,331+i*95),Vector2(292,50),func():selected_lot=i;show_lot_selection(),selected_lot==i)
+		var b=button(str(info.label),Vector2(54,331+i*pitch),Vector2(292,46),func():selected_lot=i;show_lot_selection(),selected_lot==i)
 		b.alignment=HORIZONTAL_ALIGNMENT_LEFT
-		text_label(str(info.tagline),Vector2(61,382+i*95),Vector2(282,30),12,P.MUTED)
+		text_label(str(info.tagline),Vector2(61,376+i*pitch),Vector2(282,24),12,P.MUTED)
 	var chosen:Dictionary=Properties.type_info(starter_ids[selected_lot])
 	text_label("%d BED  /  %d BATH  /  %d ROOMS  /  GARDEN" % [int(chosen.beds),int(chosen.baths),int(chosen.rooms)],Vector2(57,640),Vector2(280,27),11,P.MUTED)
 	card(Vector2(476,750),Vector2(920,118),Color("f9faf2"))
 	small_caps("Move-in ready",Vector2(500,764))
 	text_label(str(chosen.label),Vector2(498,795),Vector2(360,43),30,P.INK,true)
-	text_label("Household funds after move-in\nℒ %s" % ("4,500" if not bool(chosen.price) else "2,500"),Vector2(814,782),Vector2(310,58),14,P.MUTED)
+	text_label("Household funds after move-in\nℒ %s" % commas(LifeHousehold.starting_funds(household_profiles.size())),Vector2(814,782),Vector2(310,58),14,P.MUTED)
 	button("Start living  →",Vector2(1136,779),Vector2(234,62),start_household,true)
 	button("←  Back to my Lifelet",Vector2(40,805),Vector2(280,50),show_creator)
 
@@ -5801,6 +5802,15 @@ func show_help() -> void:
 	paragraph("CAMERA   Mouse wheel to zoom · right-drag to orbit\n                  Shift-drag / WASD to pan · Q / E to rotate\nTIME          Space to pause · 1 / 2 / 3 for speed\nHOME       B for Build & buy · R to rotate furniture\nSAVE         F5 to save · F9 to continue your save\nMENU       Esc to close a panel or pause",Vector2(458,473),Vector2(514,164),15,P.MUTED,overlay)
 	button("Let's live",Vector2(458,659),Vector2(522,48),close_overlay,true,overlay)
 
+func _queue_kind(kind: String, action_id: String) -> void:
+	for item: Dictionary in world.items:
+		if str(item.kind) != kind: continue
+		if sim.queue_action(action_id, str(item.id), item.node.position):
+			close_overlay()
+			show_notice("%s." % str(sim.get_current_action().get("label", action_id)))
+			return
+	show_notice("That is not in the home yet.")
+
 func show_person() -> void:
 	close_overlay();overlay_open=true;dismiss_layer()
 	card(Vector2(492,167),Vector2(456,560),P.WHITE,24,overlay)
@@ -5813,6 +5823,10 @@ func show_person() -> void:
 	personal_name.tooltip_text=str(sim.character.name) if sim._degree()=="none" else "%s holds a %s." % [str(sim.character.name),LifeCareers.degree_label(sim._degree())]
 	personal_name.mouse_filter=Control.MOUSE_FILTER_PASS
 	text_label(LifeLifecycle.description(str(sim.character.age_stage),sim.lifecycle),Vector2(525,297),Vector2(385,22),12,P.MUTED,false,overlay)
+	if str(sim.character.age_stage)=="child":
+		button("Go to Bed",Vector2(525,328),Vector2(120,28),func():_queue_kind("child_bed","sleep"),false,overlay)
+		button("Relax",Vector2(650,328),Vector2(90,28),func():_queue_kind("child_bed","relax"),false,overlay)
+		button("Take a Nap",Vector2(746,328),Vector2(130,28),func():_queue_kind("child_bed","nap"),false,overlay)
 	text_label("Aspiration  ·  "+sim.character.aspiration,Vector2(525,320),Vector2(385,32),19,P.TEAL,false,overlay)
 	if household and not household.heirlooms.is_empty():
 		var keepsake:Dictionary=household.inspect_keepsake(household.heirlooms.size()-1)
@@ -8325,6 +8339,27 @@ func show_creator_connections() -> void:
 		rect(choice,Vector2(300,3),Vector2(263,42),row)
 		choice.set_meta("connection_member",i)
 		choice.item_selected.connect(func(selected:int):set_creator_connection(i,roles[selected]))
+	if str(profile.get("age_stage",""))=="child":
+		var guardian_row:=Control.new();guardian_row.custom_minimum_size=Vector2(568,86);column.add_child(guardian_row)
+		text_label("Mother",Vector2(2,4),Vector2(120,28),16,P.INK,false,guardian_row)
+		text_label("Father",Vector2(290,4),Vector2(120,28),16,P.INK,false,guardian_row)
+		var mother_pick:=OptionButton.new();mother_pick.name="CreatorMother"
+		var father_pick:=OptionButton.new();father_pick.name="CreatorFather"
+		mother_pick.add_item("None");mother_pick.set_item_metadata(0,-1)
+		father_pick.add_item("None");father_pick.set_item_metadata(0,-1)
+		for i:int in range(household_profiles.size()):
+			if i==creator_index:continue
+			if str(household_profiles[i].get("age_stage","")) not in ["young_adult","adult","elder"]:continue
+			mother_pick.add_item(str(household_profiles[i].name));mother_pick.set_item_metadata(mother_pick.item_count-1,i)
+			father_pick.add_item(str(household_profiles[i].name));father_pick.set_item_metadata(father_pick.item_count-1,i)
+		rect(mother_pick,Vector2(2,36),Vector2(260,40),guardian_row)
+		rect(father_pick,Vector2(290,36),Vector2(260,40),guardian_row)
+		var apply_guardians:=func(_selected:int=0)->void:
+			var mother_index:int=int(mother_pick.get_item_metadata(mother_pick.selected))
+			var father_index:int=int(father_pick.get_item_metadata(father_pick.selected))
+			set_child_guardians(mother_index,father_index)
+		mother_pick.item_selected.connect(apply_guardians)
+		father_pick.item_selected.connect(apply_guardians)
 	button("Back to creating",Vector2(426,680),Vector2(586,44),close_overlay,true,overlay)
 
 func set_creator_connection(other_index:int,role:String) -> void:
@@ -8342,6 +8377,21 @@ func set_creator_connection(other_index:int,role:String) -> void:
 	if result.ok:creator_family_links=links
 	show_creator_connections()
 	if not result.ok:show_notice(str(result.error))
+
+func set_child_guardians(mother_index:int,father_index:int) -> void:
+	if str(profile.get("age_stage",""))!="child":return
+	var child_id:String=creator_member_id(creator_index)
+	var links:Array=creator_family_links.filter(func(link:Dictionary)->bool:
+		return not (str(link.role)=="parent" and str(link.b)==child_id))
+	for index:int in [mother_index,father_index]:
+		if index<0 or index==creator_index or index>=household_profiles.size():continue
+		links.append({"a":creator_member_id(index),"b":child_id,"role":"parent"})
+	var validator:=LifeHousehold.new()
+	validator.new_household(household_profiles)
+	var result:Dictionary=validator.configure_family(links)
+	validator.free()
+	if result.ok:creator_family_links=links
+	elif not str(result.get("error","")).is_empty():show_notice(str(result.error))
 
 func _minimal_sibling_links(links:Array) -> Array:
 	var result:Array=[]
@@ -8503,7 +8553,7 @@ func show_family_tree(focus_id:String="") -> void:
 	var deepest:int=0
 	for level:int in rows:widest=maxi(widest,rows[level].size());deepest=maxi(deepest,level)
 	var scroll:=ScrollContainer.new();scroll.name="FamilyTreeScroll"
-	rect(scroll,Vector2(200,265),Vector2(1040,430),overlay)
+	rect(scroll,Vector2(200,265),Vector2(1040,390),overlay)
 	var diagram:=Control.new();diagram.name="FamilyDiagram"
 	diagram.custom_minimum_size=Vector2(maxf(1020,widest*222+32),maxf(426,(deepest+1)*138+12))
 	diagram.mouse_filter=Control.MOUSE_FILTER_PASS;scroll.add_child(diagram)
@@ -8546,9 +8596,30 @@ func show_family_tree(focus_id:String="") -> void:
 	text_label("Parent → child",Vector2(207,705),Vector2(153,25),12,P.TEAL,false,overlay)
 	text_label("Partners",Vector2(374,705),Vector2(108,25),12,Color("b86e5b"),false,overlay)
 	text_label("Declared siblings",Vector2(496,705),Vector2(165,25),12,P.MUTED,false,overlay)
+	_family_edit_row(focus_id)
 	button("People",Vector2(203,747),Vector2(218,43),show_relationships,false,overlay)
 	button("Back to life",Vector2(986,747),Vector2(249,43),close_overlay,true,overlay)
 	_restore_family_scroll(scroll,diagram.get_node("FamilyCard_"+focus_id),scroll_position)
+
+func _family_edit_row(focus_id: String) -> void:
+	var others: Array = []
+	for member: Dictionary in household.members:
+		if str(member.id) != focus_id: others.append(member)
+	if others.is_empty(): return
+	var pick := OptionButton.new()
+	pick.name = "FamilyEditTarget"
+	for member: Dictionary in others:
+		pick.add_item(str(member.sim.character.name))
+		pick.set_item_metadata(pick.item_count - 1, str(member.id))
+	rect(pick, Vector2(203, 658), Vector2(200, 34), overlay)
+	var apply := func(role: String) -> void:
+		var other_id: String = str(pick.get_item_metadata(pick.selected))
+		var result: Dictionary = household.edit_family_link(focus_id, other_id, role)
+		if not bool(result.ok): show_notice(str(result.error))
+		else: show_family_tree(focus_id)
+	button("Set parent", Vector2(412, 658), Vector2(118, 34), func(): apply.call("parent"), false, overlay).name = "FamilySetParent"
+	button("Set child", Vector2(538, 658), Vector2(110, 34), func(): apply.call("child"), false, overlay).name = "FamilySetChild"
+	button("Set sibling", Vector2(656, 658), Vector2(124, 34), func(): apply.call("sibling"), false, overlay).name = "FamilySetSibling"
 
 func _restore_family_scroll(scroll:ScrollContainer,focused:Control,position:Vector2i) -> void:
 	await get_tree().process_frame
