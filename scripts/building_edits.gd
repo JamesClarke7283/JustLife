@@ -81,6 +81,10 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 		walls=placed
 		for wall:Dictionary in walls:
 			wall.merge({"id":Building._new_id(after,"walls"),"level":int(level),"height":2.6,"cut":true,"material":"eae7d7"});after.walls.append(wall)
+		_close_run_gaps(after,int(level))
+		if tool=="room":
+			var room_area:=Rect2(Vector2(minf(a.x,b.x),minf(a.y,b.y)),(b-a).abs())
+			_ensure_room_opening(after,room_area,int(level))
 		cost=int(length*55+floor_cost) # Preserve legacy whole-quote currency truncation.
 	elif tool=="paint":
 		# Repaint one wall segment, or every wall joined to it corner to corner;
@@ -211,6 +215,7 @@ static func _grab_wall(after:Dictionary,wall:Dictionary,line:float,level:int) ->
 	if not floor_error.is_empty():return floor_error
 	var roof_error:String=_grab_sync_roofs(after,level)
 	if not roof_error.is_empty():return roof_error
+	_close_run_gaps(after,level)
 	return ""
 
 ## Resize every roof on this storey so its support footprint matches the
@@ -406,6 +411,98 @@ static func _cut_door(after:Dictionary,wall:Dictionary,center_value:Variant,leve
 		else:part.z=(low+high)*.5;part.d=high-low
 		after.walls.append(part)
 	return ""
+
+## Join collinear wall panels that miss each other by less than a doorway.
+## A real doorway (about 1.06 m) stays open; a sliver left by an extend or a
+## new run does not.
+static func _close_run_gaps(after:Dictionary,level:int) -> void:
+	for _guard:int in range(24):
+		var joined:bool=false
+		var walls:Array=after.walls
+		for index:int in range(walls.size()):
+			var first:Dictionary=walls[index]
+			if int(first.level)!=level:continue
+			var first_h:bool=float(first.w)>float(first.d)
+			var first_line:float=float(first.z) if first_h else float(first.x)
+			var first_mid:float=float(first.x) if first_h else float(first.z)
+			var first_half:float=maxf(float(first.w),float(first.d))*.5
+			for other_index:int in range(index+1,walls.size()):
+				var second:Dictionary=walls[other_index]
+				if int(second.level)!=level or str(second.id)==str(first.id):continue
+				var second_h:bool=float(second.w)>float(second.d)
+				if second_h!=first_h:continue
+				var second_line:float=float(second.z) if second_h else float(second.x)
+				if absf(second_line-first_line)>.08:continue
+				var second_mid:float=float(second.x) if second_h else float(second.z)
+				var second_half:float=maxf(float(second.w),float(second.d))*.5
+				var low_a:float=first_mid-first_half
+				var high_a:float=first_mid+first_half
+				var low_b:float=second_mid-second_half
+				var high_b:float=second_mid+second_half
+				if low_a>low_b:
+					var swap_low:float=low_a
+					var swap_high:float=high_a
+					low_a=low_b
+					high_a=high_b
+					low_b=swap_low
+					high_b=swap_high
+				var gap:float=low_b-high_a
+				if gap>=.85:continue
+				var low:float=minf(low_a,low_b)
+				var high:float=maxf(high_a,high_b)
+				if first_h:
+					first.x=(low+high)*.5
+					first.w=high-low
+				else:
+					first.z=(low+high)*.5
+					first.d=high-low
+				var drop:String=str(second.id)
+				after.walls=after.walls.filter(func(record:Dictionary)->bool:return str(record.id)!=drop)
+				joined=true
+				break
+			if joined:break
+		if not joined:return
+
+## A closed room gets a real doorway. An open gap in the run is not the way
+## through, and a solid loop with no opening would seal whoever is inside.
+static func _ensure_room_opening(after:Dictionary,area:Rect2,level:int) -> void:
+	var widest:float=0.0
+	for side:String in ROOM_PACK_SIDES:
+		var edge:Dictionary=_pack_edge(area,side)
+		for span:Vector2 in _uncovered_spans(after,edge,level):
+			widest=maxf(widest,span.y-span.x)
+	if widest>=.8:return
+	var sides:Array[String]=["south","north","west","east"]
+	sides.sort_custom(func(a:String,b:String)->bool:return _opening_rank(after,area,a,level)<_opening_rank(after,area,b,level))
+	for side:String in sides:
+		var edge:Dictionary=_pack_edge(area,side)
+		if float(edge.high)-float(edge.low)<1.55:continue
+		var door_at:float=(float(edge.low)+float(edge.high))*.5
+		var host:Dictionary={}
+		for wall:Dictionary in after.walls:
+			if int(wall.level)!=level or (float(wall.w)>=float(wall.d))!=bool(edge.horizontal):continue
+			var line:float=float(wall.z) if edge.horizontal else float(wall.x)
+			var center:float=float(wall.x) if edge.horizontal else float(wall.z)
+			var half:float=maxf(float(wall.w),float(wall.d))*.5
+			if absf(line-float(edge.line))<=.08 and absf(door_at-center)<=half-.6:
+				host=wall
+				break
+		if host.is_empty():continue
+		if _cut_door(after,host,door_at,level).is_empty():return
+
+## Lower rank is a better automatic exit: an edge that opens onto another room's
+## floor waits behind a garden edge, and south is the tie-break.
+static func _opening_rank(after:Dictionary,area:Rect2,side:String,level:int) -> float:
+	var edge:Dictionary=_pack_edge(area,side)
+	var mid:float=(float(edge.low)+float(edge.high))*.5
+	var normal:Vector2={"north":Vector2(0,-1),"south":Vector2(0,1),"west":Vector2(-1,0),"east":Vector2(1,0)}[side]
+	var point:Vector2=(Vector2(mid,float(edge.line)) if edge.horizontal else Vector2(float(edge.line),mid))
+	var rank:float=float(["south","north","west","east"].find(side))
+	for floor:Rect2 in Building._rects(after,"floors",level):
+		if floor.has_point(point+normal*.6) and not area.has_point(point+normal*.6):
+			rank+=4.0
+			break
+	return rank
 
 ## When a click lands in the gap of an existing doorway, merge the two stubs and
 ## cut again at the new centre so the opening slides along the wall.
