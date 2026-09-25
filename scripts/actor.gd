@@ -62,6 +62,7 @@ var _book: Node3D
 var _brush: Node3D
 var _snack: Node3D
 var _watering_can: Node3D
+var _doll: Node3D
 var _toothbrush: Node3D
 var _instrument: Node3D
 var _books: Array[Node3D] = []
@@ -1032,6 +1033,17 @@ func _create_props() -> void:
 	brush_bristles.position = Vector3(0, 0.010, 0.212)
 	_toothbrush.scale = Vector3.ONE * _proportion
 	_toothbrush.visible = false
+	# A doll the child pulls out of the dollhouse. It lives on the body so the
+	# child stays in front of the house and the doll travels from the shelf to
+	# their hands.
+	_doll = Node3D.new()
+	_doll.name = "DollhouseDoll"
+	visual.add_child(_doll)
+	var doll_body: MeshInstance3D = _box(_doll, Vector3(0.08, 0.12, 0.045), Color("d9a0a0"))
+	doll_body.position = Vector3(0, 0.06, 0)
+	var doll_head: MeshInstance3D = _box(_doll, Vector3(0.055, 0.055, 0.045), Color("f0c7a8"))
+	doll_head.position = Vector3(0, 0.15, 0)
+	_doll.visible = false
 	# An instrument in the left hand: the authored model differs, the anchor does not.
 	_instrument = _hand_anchor("Instrument", "L")
 	_instrument.scale = Vector3.ONE * _proportion
@@ -1439,6 +1451,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 	_brush.visible = false
 	_watering_can.visible = false
 	if is_instance_valid(_toothbrush):_toothbrush.visible = false
+	if is_instance_valid(_doll):_doll.visible = false
 	if is_instance_valid(_instrument):_instrument.visible = false
 	for held_book: Node3D in _books:if is_instance_valid(held_book):held_book.visible = false
 	_mop.visible=false
@@ -1672,6 +1685,19 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 				_reach_hand(pose,"R",Vector3(.14*_proportion,_hip_height+(.20+.08*(1.0-play))*_proportion,.32*_proportion),Vector3(.7,-.8,-.1))
 				pose["Head"] = Vector3(0.30, 0.06 * sin(t * 1.5), 0)
 				lean.x = 0.12
+			"play_dollhouse":
+				# Lean in, lift a doll out of the house, then act the scene with it.
+				# The child stays at the approach point, in front of the house.
+				var pull: float = 0.5 + 0.5 * sin(t * 1.7)
+				visible = true
+				_reach_hand(pose,"L",Vector3(-.10*_proportion,_hip_height+(.08+.16*pull)*_proportion,(.42-.16*pull)*_proportion),Vector3(-.6,-.7,-.1))
+				_reach_hand(pose,"R",Vector3(.08*_proportion,_hip_height+(.10+.18*pull)*_proportion,(.40-.14*pull)*_proportion),Vector3(.6,-.7,-.1))
+				pose["Head"] = Vector3(0.38 - 0.08 * pull, 0.05 * sin(t * 1.2), 0)
+				lean.x = 0.22
+				if is_instance_valid(_doll):
+					_doll.visible = true
+					_doll.position = Vector3(0.04 * _proportion, (_hip_height + 0.06 + 0.22 * pull) * _proportion, (0.48 - 0.22 * pull) * _proportion)
+					_doll.rotation = Vector3(0.4 * (1.0 - pull), 0.2 * sin(t * 1.4), 0)
 			"wash_hands":
 				# Both hands under the tap at the basin, a small rubbing motion.
 				var rub: float = sin(t * 4.2) * 0.05
@@ -2503,6 +2529,7 @@ func _reset_stair_pose()->void:
 	stair_pose_valid=true;stair_pose_error=""
 	_book.visible=false;_brush.visible=false;_watering_can.visible=false
 	if is_instance_valid(_toothbrush):_toothbrush.visible=false
+	if is_instance_valid(_doll):_doll.visible=false
 	if is_instance_valid(_instrument):_instrument.visible=false
 	for held_book:Node3D in _books:if is_instance_valid(held_book):held_book.visible=false
 	var pose:Dictionary={}
