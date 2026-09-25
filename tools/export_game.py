@@ -54,6 +54,25 @@ def installed_templates(version):
     return data / "godot/export_templates" / version
 
 
+LFS_POINTER = b"version https://git-lfs.github.com/spec/v1\n"
+
+
+def assert_lfs_smudged(snapshot):
+    """Fail before Godot tries to parse pointer text as glTF JSON."""
+    pointers = []
+    for path in snapshot.rglob("*"):
+        if not path.is_file() or path.stat().st_size > 1024:
+            continue
+        with path.open("rb") as stream:
+            if stream.read(len(LFS_POINTER)) == LFS_POINTER:
+                pointers.append(path.relative_to(snapshot).as_posix())
+    if pointers:
+        sample = ", ".join(pointers[:8])
+        raise RuntimeError(
+            f"Git LFS files were not downloaded ({len(pointers)}): {sample}"
+        )
+
+
 def prepare_snapshot(source, snapshot, platform=None):
     def excluded_studies(directory, names):
         relative = Path(directory).relative_to(source)
@@ -221,6 +240,7 @@ def run(argv=None, *, default_platform=None, default_output=None):
     package.mkdir()
     print(f"SNAPSHOT={snapshot}", flush=True)
     prepare_snapshot(source, snapshot, args.platform)
+    assert_lfs_smudged(snapshot)
     if args.reuse_import_cache and (source / ".godot/imported").is_dir():
         shutil.copytree(
             source / ".godot/imported", snapshot / ".godot/imported",
