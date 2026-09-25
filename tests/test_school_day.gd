@@ -262,6 +262,8 @@ func _empty_away_queue_can_come_home() -> void:
 	sim.action_queue.clear()
 	check(sim.request_return_home() and str(sim.away_state.phase) == "returning" and not sim.away_state.completed,
 		"An away Lifelet whose action queue is already empty can still come home.")
+	check(sim.complete_away_return() and not sim.is_away(),
+		"Coming home with no queued action ends the trip instead of crashing.")
 
 
 func _corrupt_saves() -> void:

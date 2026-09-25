@@ -1030,13 +1030,18 @@ func _validate_visit_away_state(state: Dictionary) -> String:
 func complete_away_return() -> bool:
 	if not is_away() or str(away_state.phase) != "returning": return false
 	# Arrival is owned by the world; never teleport or begin the later queue here.
-	var action: Dictionary = action_queue.pop_front()
-	action.phase = "complete" if bool(away_state.completed) else "cancelled"
-	action["attendance_earned"] = bool(away_state.completed)
+	# A trip that already lost its action still has to end, or the curb loop
+	# assigns nil into a Dictionary every frame and the household clock dies.
+	var earned: bool = bool(away_state.get("completed", false))
+	var action: Dictionary = {}
+	if not action_queue.is_empty():
+		action = action_queue.pop_front()
+		action.phase = "complete" if earned else "cancelled"
+		action["attendance_earned"] = earned
 	away_state = {}
 	_idle_minutes = 0.0
 	_publish("away_changed",[{}])
-	if bool(action.attendance_earned): _emit_action_finished(action)
+	if earned and not action.is_empty(): _emit_action_finished(action)
 	_start_front()
 	_emit_changed()
 	return true
