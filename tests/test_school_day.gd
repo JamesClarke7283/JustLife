@@ -73,6 +73,7 @@ func run() -> void:
 	_late_route_and_birthday()
 	_recovery_and_bell_regressions()
 	_early_return_is_a_player_choice()
+	_empty_away_queue_can_come_home()
 	_corrupt_saves()
 	check(observer_count > 40 and observer_errors.is_empty(),"Every observed school callback exposes a complete loadable state: "+str(observer_errors))
 	for sim: LifeSim in owned:sim.free()
@@ -252,6 +253,16 @@ func _late_route_and_birthday() -> void:
 	advance(after_bell,420.0)
 	check(after_bell.celebrate_birthday() and after_bell.away_state.completed and after_bell.education.records[0].attended == 1,"A birthday on the return walk preserves the school day already earned.")
 	check(setup("young_adult").restore_state(snapshot(after_bell)).ok and after_bell.complete_away_return(),"The completed school return remains loadable after its attendance moves into an archived term.")
+
+func _empty_away_queue_can_come_home() -> void:
+	var sim: LifeSim = setup("child", 600.0)
+	sim.away_state = {"version":1,"activity":"school","phase":"away","departure_day":sim.day,
+		"departure_minutes":480.0,"return_day":sim.day,"return_minutes":900.0,
+		"exit_id":"lot_exit","exit_position":Vector3.ZERO,"age_stage":"baby","completed":false,"ended_at":0.0}
+	sim.action_queue.clear()
+	check(sim.request_return_home() and str(sim.away_state.phase) == "returning" and not sim.away_state.completed,
+		"An away Lifelet whose action queue is already empty can still come home.")
+
 
 func _corrupt_saves() -> void:
 	var sim: LifeSim = setup()

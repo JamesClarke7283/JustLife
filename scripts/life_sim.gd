@@ -923,12 +923,16 @@ func make_child_play() -> bool:
 func request_return_home() -> bool:
 	if not is_away(): return false
 	if str(away_state.phase) == "returning": return true
-	var action: Dictionary = action_queue[0]
-	var elapsed: float = clampf(_autonomy_now()-(float(away_state.departure_day-1)*1440.0+float(away_state.departure_minutes)),0.0,float(action.duration))
-	var gained: float = maxf(0.0,elapsed-float(action.elapsed))
-	action.elapsed = elapsed
-	action.progress = elapsed/float(action.duration)
-	_apply_continuous_effects(action,gained/float(action.duration))
+	# A birthday, a new day, or a cancelled trip can ask someone home after the
+	# action that took them away is already gone. Indexing an empty queue
+	# crashes the household clock.
+	if not action_queue.is_empty():
+		var action: Dictionary = action_queue[0]
+		var elapsed: float = clampf(_autonomy_now()-(float(away_state.departure_day-1)*1440.0+float(away_state.departure_minutes)),0.0,float(action.duration))
+		var gained: float = maxf(0.0,elapsed-float(action.elapsed))
+		action.elapsed = elapsed
+		action.progress = elapsed/float(action.duration)
+		_apply_continuous_effects(action,gained/float(action.duration))
 	var returning_from_work:bool=str(away_state.activity)=="career"
 	defer_autonomous_responsibility("career_day" if returning_from_work else "school_day",maxf(1.0,721.0-minutes))
 	away_state.phase = "returning"
