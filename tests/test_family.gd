@@ -42,7 +42,7 @@ func run() -> void:
 	check(first.relationships.housemate_1.family_role == "siblings" and sibling.relationships.player.family_role == "siblings", "Sibling roles must be reciprocal.")
 	check(first.relationships.housemate_1.status == "Sibling" and first.relationships.housemate_1.romance == 0.0, "Sibling status must be clear and nonromantic.")
 	check(third.romantic_partner == "housemate_3" and fourth.romantic_partner == "housemate_2", "An explicit starting couple must initialize reciprocal partners.")
-	check(home.funds == 2500 and first.social_history.is_empty() and third.social_history.is_empty(), "Creator setup must not grant currency or invent newly earned milestone history.")
+	check(home.funds == LifeHousehold.starting_funds(4) and first.social_history.is_empty() and third.social_history.is_empty(), "Creator setup must not grant currency or invent newly earned milestone history.")
 	for action_id: String in ["flirt", "ask_partner", "commit", "break_up"]:
 		check(not first.get_action_availability(action_id, "housemate_1").available and not first.queue_action(action_id, "housemate_1"), "Sibling pairs must block romantic action %s." % action_id)
 	check(first.queue_action("friendly", "housemate_1"), "Siblings must retain ordinary friendly conversations.")

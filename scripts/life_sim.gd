@@ -1598,6 +1598,20 @@ func _finish_front() -> void:
 		_apply_education_result(result)
 		if id == "school": add_moodlet("Something learned","Focused","Online lessons are complete for today.",120,2)
 		else: add_moodlet("Ready for class","Focused","The next assignment is prepared.",120,1)
+	elif id == "board_school_bus":
+		if LifeSchoolBus.active != null:
+			LifeSchoolBus.active.note_boarded()
+		var exit_id: String = ""
+		var exit_position: Vector3 = LifeSchoolBus.CURB
+		for target: Dictionary in _targets:
+			if str(target.kind) == "lot_exit":
+				exit_id = str(target.id)
+				exit_position = target.position
+				break
+		if not exit_id.is_empty() and _school_departure_error(exit_id).is_empty() and float(needs.hunger) >= 12.0 and float(needs.energy) >= 12.0 and float(needs.bladder) >= 12.0:
+			_begin_school_departure({"id": "school_day", "target_id": exit_id, "target_position": exit_position, "changes": {}, "autonomous": bool(action.get("autonomous", false))})
+		else:
+			_emit_notice("%s boards the school bus." % str(character.name).split(" ")[0])
 	elif id == "birthday":
 		if str(action.get("birthday_from_stage","")) == str(character.age_stage): celebrate_birthday(false)
 	elif id == "paint" or id == "paint_masterpiece":
@@ -3328,6 +3342,8 @@ func _autonomous_choice(excluded_target_ids:Array=[]) -> Dictionary:
 			if not recovery.is_empty():return recovery
 		elif not duty.is_empty():
 			var ride: Dictionary = _commute_choice(duty, excluded_target_ids)
+			if bool(ride.get("wait_for_bus", false)):
+				return {}
 			if not ride.is_empty(): return ride
 			var choice:Dictionary=_autonomy_target_for(duty,excluded_target_ids)
 			if not choice.is_empty():return choice
@@ -3342,11 +3358,18 @@ func _autonomous_choice(excluded_target_ids:Array=[]) -> Dictionary:
 	return {}
 
 func _commute_choice(duty: String, excluded_target_ids: Array) -> Dictionary:
-	# An adult who owns a car walks to it and drives. A child walks out to the bus.
+	# An adult who owns a car walks to it and drives. A child waits for the
+	# morning bus to reach the curb, then walks out and boards it.
+	if duty == "school_day" and str(character.age_stage) in ["child", "teen"]:
+		var bus: LifeSchoolBus = LifeSchoolBus.active
+		if bus != null and bus.phase == "approaching":
+			return {"wait_for_bus": true}
+		if bus != null and bus.waiting():
+			return {"id": "board_school_bus", "target_id": "school_bus_stop", "position": LifeSchoolBus.CURB, "load": 0.0}
+		if _target_kind_present("school_bus"):
+			return _autonomy_target_for("board_school_bus", excluded_target_ids)
 	if duty == "career_day" and str(character.life_stage) == "adult" and _target_kind_present("car"):
 		return _autonomy_target_for("drive_to_work", excluded_target_ids)
-	if duty == "school_day" and str(character.age_stage) in ["child", "teen"] and _target_kind_present("school_bus"):
-		return _autonomy_target_for("board_school_bus", excluded_target_ids)
 	return {}
 
 func _autonomy_eating_owned_portion(action: Dictionary) -> bool:

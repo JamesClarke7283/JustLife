@@ -268,7 +268,7 @@ func _create_composed()->void:
 		await frames(2)
 		await press(["Curls","Bob","Crop","Bob"][index])
 	await press_member(NAMES[0]);await press("Find my home",true);await press("Willow Cottage");await press("Start living",true);await press("Ⅱ")
-	check(app.household.members.size()==4 and app.household.funds==2500 and app.household.day==1 and app.household.minutes==480,"Ordinary public move-in starts four Lifelets at Day 1 08:00 with ℒ2500.")
+	check(app.household.members.size()==4 and app.household.funds==6250 and app.household.day==1 and app.household.minutes==480,"Ordinary public move-in starts four Lifelets at Day 1 08:00 with ℒ6250.")
 	for i:int in range(4):
 		var sim:LifeSim=app.household.members[i].sim
 		check(sim.character.name==NAMES[i] and sim.character.age_stage==AGES[i].to_lower() and sim.autonomy,"Public member identity, age and default autonomy: "+NAMES[i])
@@ -279,14 +279,14 @@ func _create_composed()->void:
 	check(app.household.funds==funds_before-864,"Supported partial upper floor charges its actual ℒ864 area quote.")
 	if not failures.is_empty():return
 	await press("Ground");await press("Stairs");await _ground_click(Vector3(-1.5,.16,-2.5))
-	check(app.world.construction.snapshot().stairs.size()==1 and app.household.funds==986,"Public stair click installs a paid supported stair and opening for ℒ650.")
+	check(app.world.construction.snapshot().stairs.size()==1 and app.household.funds==4736,"Public stair click installs a paid supported stair and opening for ℒ650.")
 	if not failures.is_empty():return
 	await press("Upper")
 	await _buy_control("bed","Comfort",Vector3(-4.25,3.16,-1.0))
-	check(app.household.funds==146,"Honest two-storey furnishing budget retains ℒ146 before earned income and cooking.")
+	check(app.household.funds==3896,"Honest two-storey furnishing budget retains ℒ3896 before earned income and cooking.")
 	check(Building.validate(app.world.construction.snapshot()).is_empty(),"Publicly purchased architecture validates.")
 	await press("Live")
-	audit["fixture"]={"lot":"Willow Cottage","starting_funds":2500,"remaining_funds":app.household.funds,"world":app.world.serialize_items(),"members":app.household.members.map(func(m:Dictionary):return {"id":m.id,"name":m.sim.character.name,"age":m.sim.character.age_stage}),"controls":"Menu/button signals; structural viewport click events; furnishing catalog buttons and production placement_requested signal. No native pointer/preview proof. app automatic processing disabled; ordinary manual _process(.05) at public speed 8."}
+	audit["fixture"]={"lot":"Willow Cottage","starting_funds":6250,"remaining_funds":app.household.funds,"world":app.world.serialize_items(),"members":app.household.members.map(func(m:Dictionary):return {"id":m.id,"name":m.sim.character.name,"age":m.sim.character.age_stage}),"controls":"Menu/button signals; structural viewport click events; furnishing catalog buttons and production placement_requested signal. No native pointer/preview proof. app automatic processing disabled; ordinary manual _process(.05) at public speed 8."}
 	for m:Dictionary in app.household.members:
 		audit.members[m.id]={"minimum_needs":m.sim.needs.duplicate(true),"critical_minutes":{},"waiting_minutes":0.0,"idle_minutes":0.0,"max_stationary_approach":0.0,"stationary_minutes":0.0,"last_position":[],"last_signature":""}
 		for need:String in LifeSim.NEED_NAMES:audit.members[m.id].critical_minutes[need]=0.0

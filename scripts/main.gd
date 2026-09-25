@@ -197,6 +197,10 @@ var sanitation_flow:LifeSanitationFlow
 ## The weekly food truck. It owns the van's schedule and the shop's money; the
 ## controller only asks it to present the van and routes its click to the shop.
 var food_truck:LifeFoodTruck
+var school_bus:LifeSchoolBus
+var street_life:LifeStreetLife
+var _bus_body:Node3D
+var _street_bodies:Dictionary={}
 ## The game day the controller last reconciled the van against, so the arrival
 ## notice fires once when the clock turns the day over and not every frame.
 var _truck_seen_day:int=-1
@@ -233,6 +237,9 @@ func setup_services() -> void:
 	# The weekly food truck owns its own schedule, wallet charge and delivery
 	# receipt; the controller owns only the van's presentation in the world.
 	food_truck=LifeFoodTruck.new(self);add_child(food_truck)
+	school_bus=LifeSchoolBus.new()
+	LifeSchoolBus.active=school_bus
+	street_life=LifeStreetLife.new()
 	idle_space=preload("res://scripts/idle_space.gd").new();idle_space.app=self
 	adoption_flow=LifeAdoptionFlow.new(self)
 	pet_shop=LifePetShopFlow.new(self)
@@ -1842,6 +1849,68 @@ func _tick_food_truck() -> void:
 	if _truck_seen_day==visit_day:return
 	_truck_seen_day=visit_day
 	show_notice("A delivery van has parked on the sidewalk for the day. It is open %s–%s; click it to order." % [LifeFoodTruck._clock(LifeFoodTruck.OPEN_MINUTES),LifeFoodTruck._clock(LifeFoodTruck.CLOSE_MINUTES)])
+
+
+## Weekday mornings the school bus drives in from off the lot and waits at the
+## curb. Children and pets keep walking the lane in front of the house.
+func _tick_curb_life(delta:float) -> void:
+	if current_venue!="home" or not is_instance_valid(household) or school_bus==null or street_life==null:
+		return
+	var game_minutes:float=delta*float(household.speed)*LifeSim.GAME_MINUTES_PER_SECOND
+	var pupils:int=0
+	for member:Dictionary in household.members:
+		var stage:String=str(member.sim.character.get("age_stage",""))
+		if stage in ["child","teen"] and int(member.sim.education.get("last_attendance_day",0))!=int(household.day):
+			pupils+=1
+	school_bus.consider(LifeEducation.weekday(int(household.day)),float(household.minutes),pupils)
+	school_bus.tick(game_minutes)
+	street_life.tick(game_minutes)
+	_sync_bus_body()
+	_sync_street_bodies()
+
+
+func _sync_bus_body() -> void:
+	if not is_instance_valid(world) or not is_instance_valid(world.house):return
+	if school_bus.phase=="gone":
+		if is_instance_valid(_bus_body):_bus_body.visible=false
+		return
+	if not is_instance_valid(_bus_body):
+		_bus_body=Node3D.new();_bus_body.name="SchoolBus"
+		world.house.add_child(_bus_body)
+		var shell:=MeshInstance3D.new()
+		var box_mesh:=BoxMesh.new();box_mesh.size=Vector3(6.2,2.4,2.2)
+		shell.mesh=box_mesh
+		var paint:=StandardMaterial3D.new();paint.albedo_color=Color("e6d36a")
+		shell.material_override=paint
+		shell.position.y=1.2
+		_bus_body.add_child(shell)
+	_bus_body.visible=true
+	_bus_body.position=school_bus.position
+
+
+func _sync_street_bodies() -> void:
+	if not is_instance_valid(world) or not is_instance_valid(world.house):return
+	for passer:Dictionary in street_life.passers:
+		var id:String=str(passer.id)
+		var body:Node3D=_street_bodies.get(id)
+		if not is_instance_valid(body):
+			if str(passer.kind)=="pet":
+				var pet:=LifePetActor.new()
+				pet.name=id
+				world.house.add_child(pet)
+				pet.configure(id,"dog",{},"Lane dog","female")
+				body=pet
+			else:
+				var child:=LifeActor.new()
+				child.name=id
+				world.house.add_child(child)
+				child.configure({"name":"Lane child","age_stage":"child","low_detail":true})
+				child.voice_enabled=false
+				body=child
+			_street_bodies[id]=body
+		body.visible=true
+		body.position=street_life.position_of(passer)
+		body.rotation.y=0.0 if int(passer.dir)>0 else PI
 
 
 ## Open the weekly food truck's shop. A click on the van arrives here, so there
@@ -6935,6 +7004,7 @@ func _process(delta:float) -> void:
 			autonomy_values[member.id]=member.sim.autonomy
 			if bool(motion_states.get(member.id,_empty_motion()).walk) or traversal.busy(str(member.id)):member.sim.autonomy=false
 		var day_before:int=household.day
+		_tick_curb_life(delta)
 		household.tick(delta)
 		# A new day is when the post could have something new in it, so the box is
 		# refilled once per day rather than checked every frame.

@@ -24,7 +24,7 @@ func run() -> void:
 		check(home.family_relationship(entry[1],entry[0])==Graph.inverse(entry[2]),"Every role has a correct directional inverse: "+str(entry))
 		check(home.member_sim(entry[0]).relationships[entry[1]].family_role==entry[2],"Simulation relationship role matches graph: "+str(entry))
 	check(home.family_parent_links().size()==6 and home.get_family_links().size()==6,"Editable declarations contain actual parent edges, not inferred cousins or grandparents.")
-	check(home.funds==2500 and home.selected().social_history.is_empty(),"Genealogy setup grants no money or earned social history.")
+	check(home.funds==LifeHousehold.starting_funds(profiles().size()) and home.selected().social_history.is_empty(),"Genealogy setup grants no money or earned social history.")
 	var loaded: LifeHousehold = Household.new();root.add_child(loaded)
 	var state: Dictionary = home.get_state()
 	var original: Dictionary = state.duplicate(true)

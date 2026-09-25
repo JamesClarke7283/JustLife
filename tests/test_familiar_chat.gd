@@ -20,16 +20,16 @@ func run()->void:
 	check(home.configure_family([{"a":"player","b":"housemate_1","role":"parent"}]).ok,"A starting family is configured.")
 	for member:Dictionary in home.members:member.sim.autonomy=false
 	for i:int in range(10):home.tick(3.0/LifeSim.GAME_MINUTES_PER_SECOND)
-	check(home.funds==2500 and home.selected().satisfaction==0,"Existing family friendship does not pay an opening reward without conversation.")
+	check(home.funds==3750 and home.selected().satisfaction==0,"Existing family friendship does not pay an opening reward without conversation.")
 	check(friend_want(home.selected()).progress==0 and not friend_want(home.selected()).complete,"Fresh familiar-face want waits for participation.")
 	var json:JSON=JSON.new();json.parse(JSON.stringify(home.get_state()))
 	var restored:=LifeHousehold.new();root.add_child(restored)
 	check(restored.restore_state(json.data).ok and friend_want(restored.selected()).metric=="familiar_chat","An unfinished new goal restores through JSON.")
 	for i:int in range(4):restored.tick(3.0/LifeSim.GAME_MINUTES_PER_SECOND)
-	check(restored.funds==2500,"Restoring before a conversation grants no reward.")
+	check(restored.funds==3750,"Restoring before a conversation grants no reward.")
 	check(home.selected().queue_action("friendly","housemate_1"),"A partial family conversation queues.")
 	home.begin_action("player");home.tick(1.5/LifeSim.GAME_MINUTES_PER_SECOND);home.selected().cancel_action()
-	check(home.funds==2500 and not friend_want(home.selected()).complete,"Canceled partial conversation grants no familiar-face reward.")
+	check(home.funds==3750 and not friend_want(home.selected()).complete,"Canceled partial conversation grants no familiar-face reward.")
 	finish(home,"player","housemate_1")
 	check(friend_want(home.selected()).complete and friend_want(home.member_sim("housemate_1")).complete,"Both participating Lifelets complete their fresh familiar-face goal.")
 	# Each participant is paid the want's 80 once. The acting Lifelet may also earn
@@ -38,16 +38,16 @@ func run()->void:
 	# total, and "exactly once" is proved by repeating the conversation below.
 	var parent_sat:int=home.selected().satisfaction
 	var child_sat:int=home.member_sim("housemate_1").satisfaction
-	check(home.funds==2660 and parent_sat>=80 and child_sat>=80,"Both rewards enter the shared wallet exactly once.")
+	check(home.funds==3910 and parent_sat>=80 and child_sat>=80,"Both rewards enter the shared wallet exactly once.")
 	finish(home,"player","housemate_1","joke")
-	check(home.funds==2660,"A second conversation cannot repeat either reward.")
+	check(home.funds==3910,"A second conversation cannot repeat either reward.")
 	check(home.selected().satisfaction==parent_sat and home.member_sim("housemate_1").satisfaction==child_sat,"A second conversation cannot repeat either satisfaction reward.")
 	home.new_household([{"name":"First","aspiration":"Maker"},{"name":"Second","aspiration":"Maker"}])
 	for member:Dictionary in home.members:member.sim.autonomy=false
 	finish(home,"player","housemate_1")
-	check(home.funds==2500 and not friend_want(home.selected()).complete,"A completed conversation below35 friendship does not satisfy the threshold.")
+	check(home.funds==3750 and not friend_want(home.selected()).complete,"A completed conversation below35 friendship does not satisfy the threshold.")
 	finish(home,"player","housemate_1")
-	check(home.funds==2660,"The next completed conversation reaching35 friendship fulfills both goals.")
+	check(home.funds==3910,"The next completed conversation reaching35 friendship fulfills both goals.")
 	# Earlier saves retain their original absolute-friendship goal semantics.
 	home.new_household([{"aspiration":"Maker"},{"aspiration":"Maker"}]);home.configure_family([{"a":"player","b":"housemate_1","role":"siblings"}])
 	var legacy:Dictionary=home.get_state()
@@ -59,10 +59,10 @@ func run()->void:
 	check(restored.restore_state(legacy).ok,"An older unfinished friendship goal remains loadable.")
 	for member:Dictionary in restored.members:member.sim.autonomy=false
 	restored.tick(3.0/LifeSim.GAME_MINUTES_PER_SECOND)
-	check(restored.funds==2660 and friend_want(restored.selected()).complete,"Legacy absolute-threshold goal keeps its prior behavior.")
+	check(restored.funds==3910 and friend_want(restored.selected()).complete,"Legacy absolute-threshold goal keeps its prior behavior.")
 	var earned:Dictionary=restored.get_state()
 	check(home.restore_state(earned).ok,"Already earned legacy friendship rewards remain loadable.")
 	home.tick(3.0/LifeSim.GAME_MINUTES_PER_SECOND)
-	check(home.funds==2660,"Loading an already earned legacy reward does not award it again.")
+	check(home.funds==3910,"Loading an already earned legacy reward does not award it again.")
 	home.queue_free();restored.queue_free();await process_frame
 	print("FAMILIAR CHAT TESTS: %d checks, %d failures"%[checks,failures]);quit(0 if failures==0 else 1)

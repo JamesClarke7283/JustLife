@@ -24,7 +24,7 @@ func run() -> void:
 	b.queue_action("read","shelf",Vector3.ZERO)
 	home.begin_action("player")
 	home.begin_action("housemate_1")
-	check(a.funds==2496 and b.funds==2496 and home.funds==2496,"One ingredient expense updates the shared wallet")
+	check(a.funds==3746 and b.funds==3746 and home.funds==3746,"One ingredient expense updates the shared wallet")
 	home.tick(18.0/LifeSim.GAME_MINUTES_PER_SECOND)
 	check(a.needs.hunger>40 and b.needs.hunger<80,"Eating changes only the acting Lifelet's need")
 	check(a.action_queue.is_empty() and b.action_queue.size()==1,"Action queues progress independently")
@@ -34,11 +34,11 @@ func run() -> void:
 	check(home.selected()==b and home.selected_id()=="housemate_1","Selection changes the active Lifelet")
 	b.funds+=145
 	home.tick(.1)
-	check(a.funds==2641 and home.funds==2641,"Selected-member UI income synchronizes to household")
+	check(a.funds==3891 and home.funds==3891,"Selected-member UI income synchronizes to household")
 	home.day=1;home.minutes=1439
 	home.tick(3.0/LifeSim.GAME_MINUTES_PER_SECOND)
 	check(home.day==2,"Household advances across midnight")
-	check(home.funds==2641,"Midnight issues a bill instead of silently charging the household")
+	check(home.funds==3891,"Midnight issues a bill instead of silently charging the household")
 	check(int(a.pending_bill.amount)==LifeSim.bill_amount_for(0) and a.pending_bill==b.pending_bill,"One bill is owned by the household and mirrored to every member")
 	home.set_funds(5000)
 	var paid:Dictionary=home.pay_bill()
