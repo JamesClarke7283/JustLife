@@ -79,7 +79,7 @@ const ITEMS = {
 	"nursery_room_pack": {"label":"Nursery room pack", "category":"Baby & Kids", "price":2000, "size":Vector2(4.5,4.0), "height":2.2, "color":"8faf9f", "room_pack":true,
 		"description":"Builds a carpeted 4.5 × 4 m nursery with its own doorway, sharing any wall it meets, then furnishes it: cot, mobile, changing table, rocking chair, play mat, pictures and curtains. ℒ2000 all in."},
 	"child_bedroom_pack": {"label":"Child bedroom pack", "category":"Baby & Kids", "price":2000, "size":Vector2(4.5,4.0), "height":2.2, "color":"d7ae7e", "room_pack":true,
-		"description":"Builds a carpeted 4.5 × 4 m child's bedroom with its own doorway, sharing any wall it meets, then furnishes it: bed, desk and chair, bookcase, toy chest, pictures and curtains. ℒ2000 all in."},
+		"description":"Builds a carpeted 4.5 × 4 m child's bedroom with its own doorway, sharing any wall it meets, then furnishes it: bed, bedside table, floor lamp, rug, painting, and a desk with a home computer and chair. ℒ2000 all in."},
 	"computer": {"label":"Home office computer", "category":"Activities", "price":900, "size":Vector2(1.45,.75), "height":1.4, "color":"ab7951"},
 	"piano": {"label":"Parlour upright piano", "category":"Activities", "price":1200, "size":Vector2(1.55,1.3), "height":1.36, "color":"624435"},
 	"chess": {"label":"Quiet strategy games table", "category":"Activities", "price":240, "size":Vector2(.85,2.0), "height":.85, "color":"ab7951"},
@@ -619,13 +619,14 @@ static func nursery_room_preset() -> Array:
 		["child_rug",3.2,2.4,0],["lamp",5.1,3.6,0],["curtains",3.4,4.85,180],
 	]
 
-## Child bedroom preset pack (ℒ2000): bed, desk, rug, pictures and curtains.
+## Child bedroom preset pack (ℒ2000). There is no bedside-lamp or laptop item, so
+## the pack uses the floor lamp beside the nightstand and a desk with the home
+## office computer and a chair.
 static func child_bedroom_preset() -> Array:
 	return [
-		["child_bed",3.6,1.5,0],["child_desk",5.0,3.2,-90],["child_chair",4.4,3.2,0],
-		["child_rug",3.0,2.6,0],["children_picture",3.4,4.91,180],["children_picture",5.0,4.91,180],
-		["toy_chest",1.6,2.8,90],["lamp",5.1,1.2,0],["curtains",3.4,4.85,180],
-		["bookshelf",1.4,4.2,180],
+		["child_bed",3.6,1.5,0],["nightstand",2.5,1.5,0],["floor_lamp",2.5,2.4,0],
+		["child_desk",5.0,3.2,-90],["child_chair",4.4,3.2,0],["computer",5.0,1.6,-90],
+		["child_rug",3.0,2.6,0],["painting",5.0,4.91,180],["curtains",3.4,4.85,180],
 	]
 
 ## How a room pack furnishes the room it builds, relative to that room rather
@@ -651,15 +652,14 @@ static func room_pack_layout(kind: String) -> Array:
 		]
 	if kind == "child_bedroom_pack":
 		return [
-			{"kind":"child_bed","x":-.55,"z":1.0,"facing":"door"},
-			{"kind":"toy_chest","x":-.55,"z":-.3,"facing":"door"},
-			{"kind":"child_desk","x":1.0,"z":.35,"facing":"left"},
-			{"kind":"child_chair","x":.62,"z":.35,"facing":"right"},
-			{"kind":"bookshelf","x":.45,"z":1.0,"facing":"door"},
-			{"kind":"child_rug","x":.2,"z":-.15,"facing":"door","size":"medium"},
-			{"kind":"lamp","x":-1.0,"z":-1.0,"facing":"right"},
-			{"kind":"children_picture","wall":"left","along":.5,"style":"02"},
-			{"kind":"children_picture","wall":"right","along":-.6,"style":"04"},
+			{"kind":"child_bed","x":-.35,"z":1.0,"facing":"door"},
+			{"kind":"nightstand","x":-1.0,"z":1.0,"facing":"door"},
+			{"kind":"floor_lamp","x":-1.0,"z":.5,"facing":"door"},
+			{"kind":"child_desk","x":1.0,"z":.45,"facing":"left"},
+			{"kind":"child_chair","x":.52,"z":.45,"facing":"right"},
+			{"kind":"computer","x":1.0,"z":-.72,"facing":"left"},
+			{"kind":"child_rug","x":.1,"z":-.05,"facing":"door","size":"medium"},
+			{"kind":"painting","wall":"left","along":-.35},
 			{"kind":"curtains","wall":"back","along":0.0,"style":"03","color":"7195b3"},
 		]
 	return []

@@ -3394,7 +3394,8 @@ func draw_build_catalog() -> void:
 	# running the last category off the canvas where it could not be pressed.
 	var category_scroll:=ScrollContainer.new()
 	category_scroll.name="CatalogCategories"
-	category_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
+	category_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
+	category_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
 	rect(category_scroll,Vector2(294,663),Vector2(940,37))
 	var category_row:=HBoxContainer.new()
 	category_row.add_theme_constant_override("separation",6)
@@ -3428,43 +3429,57 @@ func draw_build_catalog() -> void:
 		show_land_panel()
 		return
 	if catalog_category=="Structure":
-		button("Wall",Vector2(305,725),Vector2(146,46),func():begin_construction("wall"))
-		button("Room",Vector2(461,725),Vector2(146,46),func():begin_construction("room"))
-		button("Door",Vector2(617,725),Vector2(146,46),func():begin_construction("door"))
-		button("Floor",Vector2(773,725),Vector2(146,46),func():begin_construction("floor"))
-		button("Stairs",Vector2(929,725),Vector2(146,46),func():begin_construction("stairs"))
-		button("Remove floor / stairs",Vector2(1085,725),Vector2(294,46),func():begin_construction("remove_structure"))
+		# Roof styles sit below the card. The whole tool block scrolls inside the
+		# card, and a scrollbar appears only when the block is taller or wider.
+		var tools_scroll:=ScrollContainer.new()
+		tools_scroll.name="StructureTools"
+		tools_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
+		tools_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
+		rect(tools_scroll,Vector2(300,718),Vector2(1108,164))
+		var tools:=Control.new()
+		tools.name="StructureToolsBody"
+		tools.mouse_filter=Control.MOUSE_FILTER_IGNORE
+		tools.custom_minimum_size=Vector2(1088,196)
+		tools_scroll.add_child(tools)
+		var tools_origin:=Vector2(300,718)
+		var at:=func(point:Vector2)->Vector2:return point-tools_origin
+		button("Wall",at.call(Vector2(305,725)),Vector2(146,46),func():begin_construction("wall"),false,tools)
+		button("Room",at.call(Vector2(461,725)),Vector2(146,46),func():begin_construction("room"),false,tools)
+		button("Door",at.call(Vector2(617,725)),Vector2(146,46),func():begin_construction("door"),false,tools)
+		button("Floor",at.call(Vector2(773,725)),Vector2(146,46),func():begin_construction("floor"),false,tools)
+		button("Stairs",at.call(Vector2(929,725)),Vector2(146,46),func():begin_construction("stairs"),false,tools)
+		button("Remove floor / stairs",at.call(Vector2(1085,725)),Vector2(294,46),func():begin_construction("remove_structure"),false,tools)
 		if world.construction.tool=="paint":
 			# While the paint tool is active the wall swatches take this row and
 			# the floor finishes drop one row down, so both stay reachable.
 			var nursery_set:Dictionary=LifeCatalog.get_item("nursery_paint")
 			var using_nursery:bool=world.construction.paint_palette=="nursery"
-			button("Home",Vector2(305,756),Vector2(88,28),func():
+			button("Home",at.call(Vector2(305,756)),Vector2(88,28),func():
 				world.construction.paint_palette="home"
 				world.construction.paint_pattern=""
 				if not ["eae7d7","8faf9f","e6d8c5","c8d7e0","d9b7a3","7d8a99","efd9a0","a3ad7a"].has(world.construction.paint_material):
 					world.construction.paint_material="8faf9f"
-				draw_live(),not using_nursery)
-			button("Nursery",Vector2(401,756),Vector2(110,28),func():
+				draw_live(),not using_nursery,tools)
+			button("Nursery",at.call(Vector2(401,756)),Vector2(110,28),func():
 				world.construction.paint_palette="nursery"
 				if world.construction.paint_pattern.is_empty():
 					world.construction.paint_pattern=str(LifeCatalogVariants.styles(nursery_set).front())
 				if not LifeCatalogVariants.color_offered(world.construction.paint_material,nursery_set):
 					world.construction.paint_material=str(LifeCatalogVariants.colors(nursery_set).front())
-				draw_live(),using_nursery).tooltip_text="Five patterns and ten colours at ℒ5 per square metre."
+				draw_live(),using_nursery,tools).tooltip_text="Five patterns and ten colours at ℒ5 per square metre."
 			if using_nursery:
 				var patterns:Array=LifeCatalogVariants.styles(nursery_set)
 				var pattern_labels:Dictionary={"stars":"Stars","clouds":"Clouds","animals":"Animals","dots":"Dots","stripes":"Stripes"}
 				for i in range(patterns.size()):
 					var pattern:String=str(patterns[i])
-					var chip=button(str(pattern_labels.get(pattern,pattern.capitalize())),Vector2(525+i*92,756),Vector2(88,28),func():
-						world.construction.paint_pattern=pattern;draw_live(),world.construction.paint_pattern==pattern)
+					var chip=button(str(pattern_labels.get(pattern,pattern.capitalize())),at.call(Vector2(525+i*92,756)),Vector2(88,28),func():
+						world.construction.paint_pattern=pattern;draw_live(),world.construction.paint_pattern==pattern,tools)
 					chip.tooltip_text="%s nursery pattern" % str(pattern_labels.get(pattern,pattern))
 				var colours:Array=LifeCatalogVariants.colors(nursery_set)
 				for i in range(colours.size()):
 					var colour:String=str(colours[i])
 					var col:int=i%10
-					var swatch=button("",Vector2(305+col*58,791),Vector2(50,32),func():world.construction.paint_material=colour;draw_live())
+					var swatch=button("",at.call(Vector2(305+col*58,791)),Vector2(50,32),func():world.construction.paint_material=colour;draw_live(),false,tools)
 					swatch.tooltip_text="Nursery wall paint · ℒ5/m²"
 					swatch.add_theme_stylebox_override("normal",P.panel(Color(colour),16,P.TEAL if world.construction.paint_material==colour else Color("ffffff"),3))
 					swatch.add_theme_stylebox_override("hover",P.panel(Color(colour).lightened(.1),16,P.TEAL,3))
@@ -3472,51 +3487,53 @@ func draw_build_catalog() -> void:
 			else:
 				for i in range(8):
 					var colour:String=["eae7d7","8faf9f","e6d8c5","c8d7e0","d9b7a3","7d8a99","efd9a0","a3ad7a"][i]
-					var swatch=button("",Vector2(305+i*58,791),Vector2(50,32),func():world.construction.paint_material=colour;draw_live())
+					var swatch=button("",at.call(Vector2(305+i*58,791)),Vector2(50,32),func():world.construction.paint_material=colour;draw_live(),false,tools)
 					swatch.tooltip_text=["Cream","Sage","Blush","Sky","Clay","Dusk","Butter","Moss"][i]+" wall paint"
 					swatch.add_theme_stylebox_override("normal",P.panel(Color(colour),16,P.TEAL if world.construction.paint_material==colour else Color("ffffff"),3))
 					swatch.add_theme_stylebox_override("hover",P.panel(Color(colour).lightened(.1),16,P.TEAL,3))
 					if world.construction.paint_material==colour:swatch.text="•";swatch.add_theme_color_override("font_color",Color.WHITE)
-			button("Warm oak",Vector2(305,836),Vector2(146,31),func():change_floor("cfa97e"))
-			button("Pale stone",Vector2(461,836),Vector2(146,31),func():change_floor("dcd6c6"))
-			button("Walnut",Vector2(617,836),Vector2(146,31),func():change_floor("896953"))
+			button("Warm oak",at.call(Vector2(305,836)),Vector2(146,31),func():change_floor("cfa97e"),false,tools)
+			button("Pale stone",at.call(Vector2(461,836)),Vector2(146,31),func():change_floor("dcd6c6"),false,tools)
+			button("Walnut",at.call(Vector2(617,836)),Vector2(146,31),func():change_floor("896953"),false,tools)
 		else:
-			button("Warm oak",Vector2(305,784),Vector2(150,47),func():change_floor("cfa97e"))
-			button("Pale stone",Vector2(465,784),Vector2(150,47),func():change_floor("dcd6c6"))
-			button("Walnut",Vector2(625,784),Vector2(150,47),func():change_floor("896953"))
-		var house_view:Button=button("Full house" if world.cutaway or not world.construction.roofs_visible else "Walls cutaway",Vector2(785,784),Vector2(130,47),func():toggle_house_view(),not world.cutaway and world.construction.roofs_visible)
+			button("Warm oak",at.call(Vector2(305,784)),Vector2(150,47),func():change_floor("cfa97e"),false,tools)
+			button("Pale stone",at.call(Vector2(465,784)),Vector2(150,47),func():change_floor("dcd6c6"),false,tools)
+			button("Walnut",at.call(Vector2(625,784)),Vector2(150,47),func():change_floor("896953"),false,tools)
+		var house_view:Button=button("Full house" if world.cutaway or not world.construction.roofs_visible else "Walls cutaway",at.call(Vector2(785,784)),Vector2(130,47),func():toggle_house_view(),not world.cutaway and world.construction.roofs_visible,tools)
 		house_view.tooltip_text="Toggle walls cutaway versus the full house with its roof visible."
-		button("Remove wall",Vector2(925,784),Vector2(140,47),func():begin_construction("erase"))
-		var grab=button("Grab wall",Vector2(1075,784),Vector2(140,47),func():begin_construction("grab"),world.construction.tool=="grab")
+		button("Remove wall",at.call(Vector2(925,784)),Vector2(140,47),func():begin_construction("erase"),false,tools)
+		var grab=button("Grab wall",at.call(Vector2(1075,784)),Vector2(140,47),func():begin_construction("grab"),world.construction.tool=="grab",tools)
 		grab.tooltip_text="Select a wall, then click where to push or pull it. Connected walls stretch to keep the room closed."
-		var paint=button("Paint wall",Vector2(1225,784),Vector2(150,47),func():begin_construction("paint"),world.construction.tool=="paint")
+		var paint=button("Paint wall",at.call(Vector2(1225,784)),Vector2(150,47),func():begin_construction("paint"),world.construction.tool=="paint",tools)
 		paint.tooltip_text="Pick the tool, choose a home or nursery finish, then click a wall to repaint that segment."
-		var whole=button("Whole room",Vector2(1235,831),Vector2(144,31),func():
+		var whole=button("Whole room",at.call(Vector2(1235,831)),Vector2(144,31),func():
 			world.construction.paint_scope="wall" if world.construction.paint_scope=="room" else "room"
-			draw_live(),world.construction.paint_scope=="room")
+			draw_live(),world.construction.paint_scope=="room",tools)
 		whole.tooltip_text="Paints the enclosed room on the side you click; a wall shared with the next room changes for both rooms."
-		button("New roof",Vector2(305,841),Vector2(110,31),func():begin_construction("roof"))
-		button("Edit roof",Vector2(425,841),Vector2(110,31),func():begin_construction("roof_edit"))
-		button("Remove roof",Vector2(545,841),Vector2(120,31),func():begin_construction("roof_remove"))
+		button("New roof",at.call(Vector2(305,841)),Vector2(110,31),func():begin_construction("roof"),false,tools)
+		button("Edit roof",at.call(Vector2(425,841)),Vector2(110,31),func():begin_construction("roof_edit"),false,tools)
+		button("Remove roof",at.call(Vector2(545,841)),Vector2(120,31),func():begin_construction("roof_remove"),false,tools)
 		# Roof panel: five architecture styles plus a colour tint on the tiles.
 		var style_labels:Dictionary={"gabled":"Gable","hipped":"Hip","flat":"Flat","mansard":"Mansard","a_frame":"A-frame"}
 		var style_order:Array[String]=["gabled","hipped","flat","mansard","a_frame"]
 		for i in range(style_order.size()):
 			var style:String=style_order[i]
-			var style_btn:Button=button(str(style_labels[style]),Vector2(305+i*108,876),Vector2(100,28),func():set_roof_style(style),world.construction.roof_style==style)
+			var style_btn:Button=button(str(style_labels[style]),at.call(Vector2(305+i*108,876)),Vector2(100,28),func():set_roof_style(style),world.construction.roof_style==style,tools)
+			style_btn.name="RoofStyle_"+style
 			style_btn.tooltip_text="Roof style: %s" % str(style_labels[style])
-		button("Low",Vector2(675,841),Vector2(70,31),func():set_roof_pitch(.25),is_equal_approx(world.construction.roof_pitch,.25))
-		button("Med",Vector2(755,841),Vector2(70,31),func():set_roof_pitch(.5),is_equal_approx(world.construction.roof_pitch,.5))
-		button("Steep",Vector2(835,841),Vector2(70,31),func():set_roof_pitch(.75),is_equal_approx(world.construction.roof_pitch,.75))
-		roof_visibility_button=button("Hide roofs" if world.construction.roofs_visible else "Show roofs",Vector2(915,841),Vector2(130,31),func():
+		button("Low",at.call(Vector2(675,841)),Vector2(70,31),func():set_roof_pitch(.25),is_equal_approx(world.construction.roof_pitch,.25),tools)
+		button("Med",at.call(Vector2(755,841)),Vector2(70,31),func():set_roof_pitch(.5),is_equal_approx(world.construction.roof_pitch,.5),tools)
+		button("Steep",at.call(Vector2(835,841)),Vector2(70,31),func():set_roof_pitch(.75),is_equal_approx(world.construction.roof_pitch,.75),tools)
+		roof_visibility_button=button("Hide roofs" if world.construction.roofs_visible else "Show roofs",at.call(Vector2(915,841)),Vector2(130,31),func():
 			world.construction.set_roof_visibility(not world.construction.roofs_visible)
 			if world.construction.roofs_visible:world.set_cutaway(false)
-			draw_live())
+			draw_live(),false,tools)
 		var tints:Array[String]=["57736a","56606b","8b5a3c","4a5568","c4a574","6b3a4a","2f4f4f","b87333"]
 		var tint_names:Array[String]=["Sage","Slate","Terracotta","Lead","Straw","Wine","Pine","Copper"]
 		for i in range(tints.size()):
 			var tint:String=tints[i]
-			var swatch:Button=button("",Vector2(1055+i*40,841),Vector2(34,31),func():set_roof_finish(tint),world.construction.roof_material==tint)
+			var swatch:Button=button("",at.call(Vector2(1055+i*40,841)),Vector2(34,31),func():set_roof_finish(tint),world.construction.roof_material==tint,tools)
+			swatch.name="RoofTint_"+tint
 			swatch.tooltip_text=tint_names[i]+" roof tint"
 			swatch.add_theme_stylebox_override("normal",P.panel(Color(tint),10,P.TEAL if world.construction.roof_material==tint else Color("ffffff"),2))
 			swatch.add_theme_stylebox_override("hover",P.panel(Color(tint).lightened(.1),10,P.TEAL,2))
@@ -3529,7 +3546,8 @@ func draw_build_catalog() -> void:
 		return
 	var scroll=ScrollContainer.new()
 	scroll.name="CatalogStrip"
-	scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
+	scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
 	rect(scroll,Vector2(292,717),Vector2(1108,153))
 	var row=HBoxContainer.new();row.add_theme_constant_override("separation",10);scroll.add_child(row)
 	for kind in LifeCatalog.ITEMS:
@@ -5097,8 +5115,10 @@ func pick_furnishing(kind:String,working:Dictionary={}) -> void:
 		small_caps("Style",p+Vector2(30,y),Vector2(200,22),overlay)
 		y+=28
 		var style_scroll:=ScrollContainer.new()
-		style_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
-		rect(style_scroll,p+Vector2(28,y),Vector2(panel_width-56,44),overlay)
+		style_scroll.name="VariantStyles"
+		style_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
+		style_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
+		rect(style_scroll,p+Vector2(28,y),Vector2(panel_width-56,56),overlay)
 		var style_row:=HBoxContainer.new();style_row.add_theme_constant_override("separation",8)
 		style_scroll.add_child(style_row)
 		for style_id:String in styles:
@@ -5107,15 +5127,18 @@ func pick_furnishing(kind:String,working:Dictionary={}) -> void:
 			var option=button(Variants.style_label(str(style_id),data),Vector2.ZERO,Vector2(124,40),pick_furnishing.bind(kind,held),str(style_id)==str(working.style),style_row)
 			option.name="VariantStyle_"+str(style_id)
 			option.tooltip_text=str(style_id)
-			compact_button(option);option.size=Vector2(124,40)
-		y+=56
+			option.custom_minimum_size=Vector2(124,40)
+			compact_button(option)
+		y+=68
 	var sizes:Array=Variants.sizes(data)
 	if sizes.size()>1:
 		small_caps("Size",p+Vector2(30,y),Vector2(200,22),overlay)
 		y+=28
 		var size_scroll:=ScrollContainer.new()
-		size_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
-		rect(size_scroll,p+Vector2(28,y),Vector2(panel_width-56,44),overlay)
+		size_scroll.name="VariantSizes"
+		size_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
+		size_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
+		rect(size_scroll,p+Vector2(28,y),Vector2(panel_width-56,56),overlay)
 		var size_row:=HBoxContainer.new();size_row.add_theme_constant_override("separation",8)
 		size_scroll.add_child(size_row)
 		for size_id:String in sizes:
@@ -5125,32 +5148,50 @@ func pick_furnishing(kind:String,working:Dictionary={}) -> void:
 			option.name="VariantSize_"+str(size_id)
 			var holds:int=Variants.seats(data,str(size_id))
 			if holds>0:option.tooltip_text="Holds %d." % holds
-			compact_button(option);option.size=Vector2(178,40)
-		y+=56
+			option.custom_minimum_size=Vector2(178,40)
+			compact_button(option)
+		y+=68
 	var colors:Array=Variants.colors(data)
 	if colors.size()>1:
 		small_caps("Colour",p+Vector2(30,y),Vector2(200,22),overlay)
 		y+=28
-		# Ten or more swatches wrap inside the panel, so every colour stays
-		# reachable rather than running past the card edge.
+		# Swatches wrap, and the row scrolls when that wrap is taller than the
+		# room left above the place button. A row that fits shows no bar.
 		var per_row:int=10
 		var swatch:float=40.0
 		var gap:float=8.0
+		var colour_rows:int=ceili(float(colors.size())/float(per_row))
+		var colour_block:float=float(colour_rows)*(swatch+gap)
+		var colour_limit:float=maxf(swatch,p.y+680.0-y-118.0)
+		var colour_parent:Node=overlay
+		if colour_block>colour_limit+1.0:
+			var colour_scroll:=ScrollContainer.new()
+			colour_scroll.name="VariantColours"
+			colour_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
+			colour_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
+			rect(colour_scroll,p+Vector2(28,y),Vector2(panel_width-56,colour_limit),overlay)
+			var colour_body:=Control.new()
+			colour_body.custom_minimum_size=Vector2(panel_width-56,colour_block)
+			colour_body.mouse_filter=Control.MOUSE_FILTER_IGNORE
+			colour_scroll.add_child(colour_body)
+			colour_parent=colour_body
 		for i:int in colors.size():
 			var column:int=i%per_row
 			var line:int=i/per_row
-			var at:=p+Vector2(28.0+float(column)*(swatch+gap),y+float(line)*(swatch+gap))
+			var chip_at:=Vector2(float(column)*(swatch+gap),float(line)*(swatch+gap))
+			if colour_parent==overlay:chip_at=p+chip_at+Vector2(28,y)
 			var chosen:bool=str(colors[i])==str(working.color)
 			var held:Dictionary=working.duplicate(true)
 			held["color"]=colors[i]
-			var chip=button("•" if chosen else "",at,Vector2(swatch,swatch),pick_furnishing.bind(kind,held),false,overlay)
+			var chip=button("•" if chosen else "",chip_at,Vector2(swatch,swatch),pick_furnishing.bind(kind,held),false,colour_parent)
 			chip.name="VariantColor_%d" % i
 			chip.tooltip_text=str(colors[i])
+			chip.custom_minimum_size=Vector2(swatch,swatch)
 			chip.add_theme_stylebox_override("normal",P.panel(Color(colors[i]),14,P.TEAL if chosen else Color("dbe2d7"),3 if chosen else 1))
 			chip.add_theme_stylebox_override("hover",P.panel(Color(colors[i]).lightened(.08),14,P.TEAL,3))
 			if chosen:chip.add_theme_color_override("font_color",Color.WHITE)
 			compact_button(chip);chip.size=Vector2(swatch,swatch)
-		y+=float(ceili(float(colors.size())/float(per_row)))*(swatch+gap)+6.0
+		y+=minf(colour_block,colour_limit)+6.0
 	var price:int=Variants.price(data,str(working.size))
 	var holds:int=Variants.seats(data,str(working.size))
 	var detail:String="ℒ%d" % price
