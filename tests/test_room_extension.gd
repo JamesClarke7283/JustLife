@@ -35,6 +35,41 @@ func _state() -> Dictionary:
 	return app.world.construction.validated_state().state
 
 
+func _doorway_gap() -> float:
+	var doorway: float = 0.0
+	var walls: Array = _state().walls
+	for first: Dictionary in walls:
+		if int(first.level) != 0: continue
+		var first_h: bool = float(first.w) > float(first.d)
+		var first_line: float = float(first.z) if first_h else float(first.x)
+		var first_mid: float = float(first.x) if first_h else float(first.z)
+		var first_half: float = maxf(float(first.w), float(first.d)) * .5
+		for second: Dictionary in walls:
+			if str(second.id) == str(first.id) or int(second.level) != 0: continue
+			if first_mid < 6.5 or float(second.x if float(second.w) > float(second.d) else second.z) < 6.5: continue
+			var second_h: bool = float(second.w) > float(second.d)
+			if second_h != first_h: continue
+			var second_line: float = float(second.z) if second_h else float(second.x)
+			if absf(second_line - first_line) > .08: continue
+			var second_mid: float = float(second.x) if second_h else float(second.z)
+			var second_half: float = maxf(float(second.w), float(second.d)) * .5
+			var low_a: float = first_mid - first_half
+			var high_a: float = first_mid + first_half
+			var low_b: float = second_mid - second_half
+			var high_b: float = second_mid + second_half
+			if low_a > low_b:
+				var swap: float = low_a
+				low_a = low_b
+				low_b = swap
+				swap = high_a
+				high_a = high_b
+				high_b = swap
+			var gap: float = low_b - high_a
+			if gap > .05 and gap < .85: return -gap
+			if gap > .9 and gap < 1.35: doorway = gap
+	return doorway
+
+
 func _wall_at(x: float, z: float, level: int = 0) -> Dictionary:
 	for wall: Dictionary in _state().walls:
 		if int(wall.level) == level and absf(float(wall.x) - x) < .2 and absf(float(wall.z) - z) < 1.2:
@@ -84,7 +119,8 @@ func _run() -> void:
 	var funds_before: int = app.household.funds
 	var first: Dictionary = _build_room(Vector2(7.0, -4.0), Vector2(10.5, -0.5))
 	check(bool(first.ok), "A room can be added on the open ground (%s)." % str(first.get("error", "")))
-	check(_state().walls.size() == start_walls + 4, "An added room really raises four walls (%d -> %d)." % [start_walls, _state().walls.size()])
+	check(_state().walls.size() == start_walls + 5, "An added room raises four sides and splits one for a doorway (%d -> %d)." % [start_walls, _state().walls.size()])
+	check(_doorway_gap() > .9 and _doorway_gap() < 1.35, "The new room has a walkable doorway, not a sliver (%.2f m)." % _doorway_gap())
 	check(_state().floors.size() == start_floors + 1, "An added room really lays a floor (%d -> %d)." % [start_floors, _state().floors.size()])
 	check(app.household.funds == funds_before - int(first.cost), "The room cost exactly its quote (ℒ%d)." % int(first.cost))
 	var dividing: Dictionary = _wall_at(10.5, -2.25)
@@ -96,12 +132,13 @@ func _run() -> void:
 	var before_second: int = _state().walls.size()
 	var second: Dictionary = _build_room(Vector2(10.5, -4.0), Vector2(14.0, -0.5))
 	check(bool(second.ok), "A room can be added against an existing room (%s)." % str(second.get("error", "")))
-	check(_state().walls.size() == before_second + 3,
-		"A room built against another shares the dividing wall instead of doubling it (+%d walls)." % (_state().walls.size() - before_second))
+	check(_state().walls.size() == before_second + 2,
+		"Extending joins the shared runs and gives the new room its own doorway (+%d walls)." % (_state().walls.size() - before_second))
 	var shared_count: int = 0
 	for wall: Dictionary in _state().walls:
-		if int(wall.level) == 0 and absf(float(wall.x) - 10.5) < .2: shared_count += 1
+		if int(wall.level) == 0 and absf(float(wall.x) - 10.5) < .2 and float(wall.w) < float(wall.d): shared_count += 1
 	check(shared_count == 1, "Exactly one wall divides the two rooms (%d)." % shared_count)
+	check(_doorway_gap() > .9 and _doorway_gap() < 1.35, "The extended rooms still have a walkable doorway (%.2f m)." % _doorway_gap())
 
 	# ------------------------------- breaking the wall to make one bigger room
 	var funds_before_break: int = app.household.funds
@@ -112,7 +149,7 @@ func _run() -> void:
 	var broke: Dictionary = app.build_transactions.commit(break_quote)
 	check(bool(broke.ok), "Breaking the dividing wall commits.")
 	check(app.household.funds == funds_before_break - int(break_quote.cost), "The break refunds exactly its quote.")
-	check(_state().walls.size() == before_second + 2, "The dividing wall is really gone (%d walls left)." % _state().walls.size())
+	check(_state().walls.size() == before_second + 1, "The dividing wall is really gone (%d walls left)." % _state().walls.size())
 	# The two rooms are now one open space: a walker can cross where the wall was.
 	var inside := Vector3(10.5, .16, -2.25)
 	check(app.world.lot_navigation.point_clear(0, inside), "The two rooms are one space: the middle is walkable where the wall stood.")
