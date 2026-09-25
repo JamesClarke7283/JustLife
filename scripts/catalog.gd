@@ -206,6 +206,11 @@ const ITEMS = {
 		"style_labels":{"a":"Panel","b":"Half-lite","c":"Arched","d":"Cottage","e":"French"},
 		"colors":["8faf9f","6f8fa8","c9a05a","a8674f","7d6b93","c9c3a8","5b7c6a","d9a0a0","4a4f55","e6d8c5"],
 		"wall_mounted":true, "cuts_doorway":true},
+	"archway": {"label":"Archway", "category":"Structure", "price":90, "size":Vector2(1.24,.14), "height":2.4, "color":"eae7d7", "tint":true,
+		"styles":["round","roman","tudor"],
+		"style_labels":{"round":"Round","roman":"Roman","tudor":"Tudor"},
+		"colors":["eae7d7","8faf9f","6f8fa8","c9a05a","a8674f","7d6b93","c9c3a8","d9a0a0","4a4f55","5b7c6a"],
+		"wall_mounted":true, "cuts_doorway":true},
 	"house_window": {"label":"Window", "category":"Decor", "price":90, "size":Vector2(1.9,.1), "height":1.5, "color":"efeadb", "tint":true,
 		"styles":["a","b","c","d","e"],
 		"style_labels":{"a":"Cross","b":"Two-lite","c":"Six-pane","d":"Arch bar","e":"Picture"},
@@ -354,6 +359,10 @@ const CAR_PAINTS: Array[String] = [
 ## staircase's own pattern — `stair_rect` plus `guard_footprints` rather than one
 ## solid volume — kept next to the size the ordinary box is derived from.
 const BLOCKING_PANELS: Dictionary = {
+	"archway": [
+		{"x":-0.54, "z":0.0, "w":0.16, "d":0.14},
+		{"x":0.54, "z":0.0, "w":0.16, "d":0.14}
+	],
 	"car_garage": [
 		{"x":0.0, "z":-2.835, "w":9.08, "d":0.12},
 		{"x":-4.54, "z":0.0, "w":0.12, "d":5.79},
