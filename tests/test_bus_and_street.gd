@@ -42,6 +42,21 @@ func _initialize() -> void:
 	child.begin_current_action()
 	child.tick((float(child.get_current_action().duration) + 0.5) / LifeSim.GAME_MINUTES_PER_SECOND)
 	check(bus.phase == "departing" and bus.boarded == 1, "Boarding sends the bus on its way.")
+	var away: int = 0
+	while bus.phase == "departing" and away < 40:
+		bus.tick(1.0)
+		away += 1
+	check(bus.phase == "gone", "The morning bus leaves the street during the school day.")
+	bus.consider(true, 895.0, 0)
+	check(bus.phase == "returning", "The bus comes back at the end of the school day.")
+	var homeward: int = 0
+	while bus.phase == "returning" and homeward < 20:
+		bus.tick(1.0)
+		homeward += 1
+	check(bus.phase == "dropping" and bus.position.distance_to(LifeSchoolBus.CURB) < 0.2, "The afternoon bus stops at the same curb to drop the children.")
+	for _wait in 14:
+		bus.tick(1.0)
+	check(bus.phase == "leaving" or bus.phase == "gone", "After the drop-off the bus drives away again.")
 	var street := LifeStreetLife.new()
 	for _step in 40:
 		street.tick(1.0)

@@ -23,6 +23,9 @@ signal insurance_changed(policy_id: String)
 var members: Array = []
 var selected_index: int = 0
 var funds: int = 2500
+## Why the purse last changed, so the money on screen can be read after the
+## toast has gone. Empty until a break-in or a bill actually moves it.
+var last_purse_note: String = ""
 var speed: int = 1
 var day: int = 1
 var minutes: float = 480
@@ -295,10 +298,15 @@ func tick(delta: float) -> void:
 		# simply plays, rather than waiting to be asked for.
 		var robber:LifeSim=bill_owner()
 		if robber!=null:
+			var purse_before:int=funds
 			robber.funds=funds
-			robber.robbery_check()
+			var rolled:Dictionary=robber.robbery_check()
 			funds=robber.funds
 			_sync_wallet()
+			if funds<purse_before:
+				last_purse_note="A burglar took ℒ%d on day %d. Home insurance from the phone pays a break-in back." % [purse_before-funds, day]
+			elif int(rolled.get("reimbursed",0))>0:
+				last_purse_note="A burglar broke in on day %d. Insurance paid it back." % day
 		# Every Lifelet on the criminal line of work takes their own chance of
 		# being caught once a day, on the shared clock, so a practised thief's
 		# lower risk is something the player sees rather than reads about.
@@ -306,11 +314,11 @@ func tick(delta: float) -> void:
 		# A sentence ends on the shared clock, so a Lifelet really comes home on
 		# the day their record says they are free.
 		_prison_release_tick()
-		# A bill that has reached its due day is settled from the shared purse, so
-		# the utilities are not lost for good while nobody is at the phone. A bill
-		# still inside its window stays the player's own decision.
-		if not bill().is_empty():
-			pay_due_bill()
+		# A bill stays the player's own payment, from the phone or its letter.
+		# Settling it here took the savings while the player was simply watching
+		# the day pass, and the notice was buried under the morning's other
+		# lines, so the money looked as if it had vanished. An unpaid bill still
+		# adds its late fee and cuts the utilities when it is overdue.
 	# A grocery delivery arrives when its van does, on the shared clock, so a
 	# household that ordered one is restocked while the player simply plays.
 	_grocery_tick()
@@ -1097,18 +1105,14 @@ func pay_bill() -> Dictionary:
 		funds = owner.funds
 		_sync_bill_mirror()
 		_sync_wallet()
+		last_purse_note = "Bills paid: ℒ%d." % int(result.get("paid", 0))
 	return result
 
 
-## Settle the outstanding bill from the shared purse.
-##
-## A player pays from the phone or by reading the bill's letter, and an
-## autonomous household must be able to do the same: a bill nobody ever settles
-## cuts the utilities for good, so a home with a full fridge and a healthy purse
-## can no longer cook, bathe or watch anything. That is what an unattended
-## ninety-day run found — the household ate snacks beside fourteen unused meals
-## for eighty-four days. Called on the household's own clock when a bill falls
-## due, so the upkeep a player would do is done rather than forgotten.
+## Settle a bill that has reached its due day. The phone and the letter pay
+## through `pay_bill` whenever the player chooses. The clock does not call this:
+## taking the money as the day rolled spent the purse while the player was
+## only watching, and the receipt was buried under the morning's other notices.
 func pay_due_bill() -> Dictionary:
 	var owner: LifeSim = bill_owner()
 	if owner == null:
@@ -1424,10 +1428,15 @@ func robbery() -> Dictionary:
 	var owner: LifeSim = bill_owner()
 	if owner == null:
 		return {"ok": false, "reason": "There is no household to rob."}
+	var purse_before: int = funds
 	owner.funds = funds
 	var result: Dictionary = owner.robbery()
 	funds = owner.funds
 	_sync_wallet()
+	if funds < purse_before:
+		last_purse_note = "A burglar took ℒ%d on day %d. Home insurance from the phone pays a break-in back." % [purse_before - funds, day]
+	elif int(result.get("reimbursed", 0)) > 0:
+		last_purse_note = "A burglar broke in on day %d. Insurance paid it back." % day
 	return result
 
 # Cooperative homework has one authoritative clock: the learner's ordinary

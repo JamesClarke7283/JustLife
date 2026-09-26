@@ -238,9 +238,11 @@ func _board(step: Dictionary, beat: Dictionary, actors: Dictionary, delta: float
 			var at: Vector3 = stand.lerp(seat_point(door), smoothstep(0.0, 1.0, p))
 			_pose(body, at, lerp_angle(facing_car(), facing_forward(), smoothstep(.1, .8, p)), "car_get_in", {"care_progress": p}, delta)
 		"close":
-			# Seated inside, the door swings shut behind them.
+			# Stay seated and visible while the door swings shut, then disappear
+			# into the cabin. Hiding on the first frame of the close was a pop.
 			set_door(door, 1.0 - p)
-			body.visible = false
+			_pose(body, seat_point(door), facing_forward(), "car_seated", {"care_progress": 1.0}, delta)
+			body.visible = p < 0.82
 	return [id]
 
 

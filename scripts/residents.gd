@@ -30,7 +30,8 @@ var _parked_hidden:Node3D=null
 var venue_car:Node3D=null
 const VENUE_CAR_ID:String="venue_trip_car"
 const DRIVE_DISTANCE:float=21.0
-const DEPARTURE_SECONDS:float=2.8
+const DEPARTURE_SECONDS:float=6.0
+const TRAVEL_MINUTES:float=15.0
 const ARRIVAL_SECONDS:float=2.2
   # resident id -> absolute game day of their last self-started contact
 const INITIATE_RADIUS:=2.5
@@ -780,12 +781,24 @@ func tick_trip(delta:float) -> void:
   if is_instance_valid(car):
    var from_data:Array=trip.get("drive_from",[car.global_position.x,car.global_position.y,car.global_position.z])
    var from:=Vector3(float(from_data[0]),float(from_data[1]),float(from_data[2]))
-   car.rotation.y=float(trip.get("drive_yaw",car.rotation.y))
    var t:float=_drive_ease(float(trip.time)/DEPARTURE_SECONDS)
-   car.global_position=from+_car_forward(car)*(t*DRIVE_DISTANCE)
-   app.world.camera_target.x=lerpf(from.x,from.x+_car_forward(car).x*DRIVE_DISTANCE*.45,t)
-   app.world.camera_target.z=lerpf(from.z,from.z+_car_forward(car).z*DRIVE_DISTANCE*.45,t)
+   var ahead:Vector3=_car_forward(car)
+   car.global_position=from+ahead*(t*DRIVE_DISTANCE)
+   # Follow the car the whole way off the lot. Stopping the camera halfway
+   # and then cutting made the exit look like a hitch.
+   var look:Vector3=from+ahead*(t*DRIVE_DISTANCE)
+   app.world.camera_target.x=look.x
+   app.world.camera_target.z=look.z-2.2
    app.world.update_camera()
+  # The quarter-hour the drive represents is stepped across these frames,
+  # so the lot change is not one frozen tick of the whole household.
+  var travelled:float=float(trip.get("travel_sim",0.0))
+  if travelled<TRAVEL_MINUTES and delta>0.0:
+   var slice:float=minf(TRAVEL_MINUTES-travelled,delta/DEPARTURE_SECONDS*TRAVEL_MINUTES)
+   app.household.set_speed(1)
+   app.household.tick(slice/LifeSim.GAME_MINUTES_PER_SECOND)
+   app.household.set_speed(0)
+   trip["travel_sim"]=travelled+slice
   if float(trip.time)>=DEPARTURE_SECONDS:_arrive()
  elif phase=="arrival":
   if is_instance_valid(car):
@@ -903,10 +916,15 @@ func _arrive() -> void:
  # The party travels; everyone left behind stays home, so their own plans, needs
  # and bodies carry on where they were.
  var party:Array=trip.get("party",[])
- var automatic:Array=[]
- for member:Dictionary in app.household.members:automatic.append(member.sim.autonomy);member.sim.autonomy=false
- app.household.set_speed(1);app.household.tick(15.0/LifeSim.GAME_MINUTES_PER_SECOND);app.household.set_speed(0)
- for index:int in range(app.household.members.size()):app.household.members[index].sim.autonomy=automatic[index]
+ var travelled:float=float(trip.get("travel_sim",0.0))
+ if travelled<TRAVEL_MINUTES:
+  var automatic:Array=[]
+  for member:Dictionary in app.household.members:automatic.append(member.sim.autonomy);member.sim.autonomy=false
+  app.household.set_speed(1)
+  app.household.tick((TRAVEL_MINUTES-travelled)/LifeSim.GAME_MINUTES_PER_SECOND)
+  app.household.set_speed(0)
+  for index:int in range(app.household.members.size()):app.household.members[index].sim.autonomy=automatic[index]
+  trip["travel_sim"]=TRAVEL_MINUTES
  app.household.journeys.clear() # Old-house floor positions cannot enter the new lot.
  app.current_venue=destination
  var layout:Array=app.home_layout if destination=="home" else app.venue_layouts.get(destination,LifeNeighborhood.layout(destination))

@@ -25,6 +25,8 @@ const SIZE_SCALES: Dictionary = {
 	"small": 1.0,
 	"medium": 1.45,
 	"large": 2.0,
+	"single": 0.62,
+	"double": 1.0,
 }
 
 const SIZES: Array[String] = ["small", "medium", "large"]
@@ -87,8 +89,15 @@ static func has_variants(data: Dictionary) -> bool:
 ## The model path for one style. An empty or unknown style falls back to the
 ## unsuffixed file, so a save written before a style existed still loads.
 static func model_path(kind: String, style: String) -> String:
+	var data: Dictionary = LifeCatalog.ITEMS.get(kind, {}) if LifeCatalog.ITEMS.has(kind) else {}
+	var base: String = str(data.get("model", kind))
 	var suffix: String = "_" + style if not style.is_empty() and style != BASE_STYLE else ""
-	return "res://assets/models/%s%s.glb" % [kind, suffix]
+	var styled: String = "res://assets/models/%s%s.glb" % [base, suffix]
+	# A style that has no mesh of its own still places: the family's model is
+	# the silhouette, and the style is the choice the record keeps.
+	if suffix.is_empty() or ResourceLoader.exists(styled):
+		return styled
+	return "res://assets/models/%s.glb" % base
 
 
 ## Every model file this entry can build from, so a validator or a test can

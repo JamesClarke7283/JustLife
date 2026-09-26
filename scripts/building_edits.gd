@@ -6,13 +6,25 @@ const Building=preload("res://scripts/building_state.gd")
 
 static func _error(message:String)->Dictionary:return {"ok":false,"error":message}
 
+## Home wall paint the player picks in Build: three coats, ten schemes, room only.
+const HOME_PAINT_STYLES: Array[String] = ["solid", "two_tone", "patterned"]
+const HOME_PAINT_RATE: float = 4.0
+## A second colour for two-tone and patterned coats. Solid uses the wall colour alone.
+const HOME_PAINT_ACCENT: Dictionary = {
+	"eae7d7": "8faf9f", "8faf9f": "eae7d7", "e6d8c5": "7d8a99", "c8d7e0": "6aa6e0",
+	"d9b7a3": "896953", "7d8a99": "eae7d7", "efd9a0": "c97c66", "a3ad7a": "4a6b5c",
+	"f4b6c8": "6aa6e0", "6aa6e0": "f4b6c8",
+}
+const CARPET_STYLES: Array[String] = ["plain", "geometric", "loop", "striped", "vintage"]
+const CARPET_RATE: float = 2.0
+
 static func propose(current:Dictionary,operation:Variant,funds:Variant)->Dictionary:
 	var error:String=Building.validate(current)
 	if not error.is_empty():return _error(error)
 	if not operation is Dictionary or operation.get("op")!="structure" or not Building.number(funds,0,1e9,true):return _error("Invalid structure edit.")
 	if int(current.revision)>=1000000000:return _error("Building revision limit reached.")
 	var tool:Variant=operation.get("tool");var level:Variant=operation.get("level")
-	if not tool is String or tool not in ["wall","room","door","erase","finish","paint","room_pack","grab"] or not Building.number(level,0,1,true):return _error("Invalid structure tool or level.")
+	if not tool is String or tool not in ["wall","room","door","erase","finish","paint","carpet","room_pack","grab"] or not Building.number(level,0,1,true):return _error("Invalid structure tool or level.")
 	var after:Dictionary=current.duplicate(true);var cost:int=0
 	if tool=="room_pack":
 		var built:Dictionary=_room_pack(after,operation,int(level))
@@ -82,6 +94,7 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 		for wall:Dictionary in walls:
 			wall.merge({"id":Building._new_id(after,"walls"),"level":int(level),"height":2.6,"cut":true,"material":"eae7d7"});after.walls.append(wall)
 		_close_run_gaps(after,int(level))
+		_close_corner_gaps(after,int(level))
 		if tool=="room":
 			var room_area:=Rect2(Vector2(minf(a.x,b.x),minf(a.y,b.y)),(b-a).abs())
 			_ensure_room_opening(after,room_area,int(level))
@@ -99,12 +112,19 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 		var pattern:String=str(operation.get("pattern",""))
 		var rate:float=6.0
 		var per_area:bool=false
+		var home_style:bool=palette=="home" and HOME_PAINT_STYLES.has(pattern)
 		if palette=="nursery":
 			var nursery:Dictionary=LifeCatalog.get_item("nursery_paint")
 			if not LifeCatalogVariants.color_offered(str(operation.material),nursery):return _error("Choose a valid nursery colour.")
 			if not LifeCatalogVariants.styles(nursery).has(pattern):return _error("Choose a nursery pattern.")
 			rate=float(nursery.get("rate_per_square_metre",5))
 			per_area=true
+		elif home_style:
+			# The three home coats are sold by the square metre and only cover
+			# the enclosed room on the side that was clicked.
+			rate=HOME_PAINT_RATE
+			per_area=true
+			scope="room"
 		elif not pattern.is_empty():return _error("Home wall paint does not use a pattern.")
 		var wall:Dictionary=Building.find(after,str(operation.id))
 		if wall.is_empty() or Building._group_of(after,str(operation.id))!="walls" or int(wall.level)!=int(level):return _error("The selected wall has changed.")
@@ -119,11 +139,18 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 			target.material=str(operation.material)
 			if pattern.is_empty():target.erase("pattern")
 			else:target["pattern"]=pattern
+			if home_style and pattern!="solid":
+				target["accent"]=str(HOME_PAINT_ACCENT.get(str(operation.material),"eae7d7"))
+			else:target.erase("accent")
 			var span:float=maxf(float(target.w),float(target.d))
 			var height:float=float(target.get("height",2.6))
 			cost+=int(span*height*rate) if per_area else int(span*rate)
 			changed+=1
 		if changed==0:return _error("That wall already has this colour." if scope=="wall" else "Those walls already have this colour.")
+	elif tool=="carpet":
+		var laid:Dictionary=_lay_carpet(after,operation,int(level))
+		if laid.has("error"):return _error(str(laid.error))
+		cost=int(laid.cost)
 	else:
 		if not Building.identifier(operation.get("id")):return _error("Choose an existing wall on this level.")
 		var wall:Dictionary=Building.find(after,str(operation.id))
@@ -216,6 +243,7 @@ static func _grab_wall(after:Dictionary,wall:Dictionary,line:float,level:int) ->
 	var roof_error:String=_grab_sync_roofs(after,level)
 	if not roof_error.is_empty():return roof_error
 	_close_run_gaps(after,level)
+	_close_corner_gaps(after,level)
 	return ""
 
 ## Resize every roof on this storey so its support footprint matches the
@@ -462,6 +490,45 @@ static func _close_run_gaps(after:Dictionary,level:int) -> void:
 				break
 			if joined:break
 		if not joined:return
+
+## Pull perpendicular walls across each other's thickness when their ends
+## already meet. A room drawn on centre lines otherwise leaves an open notch
+## at every outside corner, and the room is not a closed boundary.
+static func _close_corner_gaps(after:Dictionary,level:int) -> void:
+	for first:Dictionary in after.walls:
+		if int(first.level)!=level:continue
+		var first_h:bool=float(first.w)>=float(first.d)
+		for second:Dictionary in after.walls:
+			if str(second.id)==str(first.id) or int(second.level)!=level:continue
+			var second_h:bool=float(second.w)>=float(second.d)
+			if second_h==first_h:continue
+			_extend_into_corner(first,second)
+
+static func _extend_into_corner(wall:Dictionary,other:Dictionary) -> void:
+	var horizontal:bool=float(wall.w)>=float(wall.d)
+	var center:float=float(wall.x) if horizontal else float(wall.z)
+	var half:float=maxf(float(wall.w),float(wall.d))*.5
+	var line:float=float(wall.z) if horizontal else float(wall.x)
+	var other_center:float=float(other.x) if horizontal else float(other.z)
+	var other_line:float=float(other.z) if horizontal else float(other.x)
+	var other_half:float=maxf(float(other.w),float(other.d))*.5
+	var other_thick:float=minf(float(other.w),float(other.d))*.5
+	var toward:float=signf(other_center-center)
+	if toward==0.0:return
+	var end:float=center+toward*half
+	if absf(end-other_center)>.35:return
+	if absf(line-other_line)>other_half+.35:return
+	var outer:float=other_center+toward*other_thick
+	if absf(outer-center)<=half+.001:return
+	var far:float=center-toward*half
+	var low:float=minf(far,outer)
+	var high:float=maxf(far,outer)
+	if horizontal:
+		wall.x=(low+high)*.5
+		wall.w=high-low
+	else:
+		wall.z=(low+high)*.5
+		wall.d=high-low
 
 ## A closed room gets a real doorway. An open gap in the run is not the way
 ## through, and a solid loop with no opening would seal whoever is inside.
@@ -742,6 +809,189 @@ static func _wall_ends(wall:Dictionary) -> Array:
 	var half:float=maxf(float(wall.w),float(wall.d))*.5
 	if horizontal:return [Vector2(float(wall.x)-half,float(wall.z)),Vector2(float(wall.x)+half,float(wall.z))]
 	return [Vector2(float(wall.x),float(wall.z)-half),Vector2(float(wall.x),float(wall.z)+half)]
+
+## Lay one carpet inside the enclosed room under the click. A room that leaks
+## outdoors is refused. Ground slabs are split so the rest of the storey keeps
+## its old finish. An upper slab is recoloured only when it already sits inside
+## the room, because splitting it would drop the two walls that hold it up.
+static func _lay_carpet(state:Dictionary,operation:Dictionary,level:int) -> Dictionary:
+	if not Building._material(operation.get("material")):return {"error":"Choose a valid carpet colour."}
+	var style:String=str(operation.get("style","plain"))
+	if not CARPET_STYLES.has(style):return {"error":"Choose a carpet style."}
+	if not Building.number(operation.get("px"),-Building.Land.MAX_SPAN,Building.Land.MAX_SPAN) or not Building.number(operation.get("pz"),-Building.Land.MAX_SPAN,Building.Land.MAX_SPAN):
+		return {"error":"Point inside the room you want to carpet."}
+	var found:Dictionary=_enclosed_cells(state,level,Vector2(float(operation.px),float(operation.pz)))
+	if bool(found.get("escaped",true)) or (found.get("cells") as Dictionary).is_empty():
+		return {"error":"Carpet stays inside a closed room. Draw walls around this space first."}
+	var cells:Dictionary=found.cells
+	var pieces:Array=_merge_cell_rects(cells)
+	var changed:int=0
+	var next:Array=[]
+	for floor:Dictionary in state.floors:
+		if int(floor.level)!=level:
+			next.append(floor)
+			continue
+		var outer:Rect2=Building.rect(floor)
+		var hits:Array=[]
+		for piece:Rect2 in pieces:
+			var clip:Rect2=outer.intersection(piece)
+			if clip.size.x>.02 and clip.size.y>.02:hits.append(clip)
+		if hits.is_empty():
+			next.append(floor)
+			continue
+		if level>0:
+			var covered:bool=false
+			for piece:Rect2 in pieces:
+				if piece.encloses(outer):covered=true
+			if not covered:
+				return {"error":"An upper carpet covers a whole slab that already sits inside the room."}
+			if str(floor.material)==str(operation.material) and str(floor.get("carpet",""))==style:
+				next.append(floor)
+				continue
+			floor.material=str(operation.material)
+			floor["carpet"]=style
+			next.append(floor)
+			changed+=1
+			continue
+		var same:bool=str(floor.material)==str(operation.material) and str(floor.get("carpet",""))==style
+		var remain:Array=[outer]
+		for hit:Rect2 in hits:
+			var sliced:Array=[]
+			for part:Rect2 in remain:sliced.append_array(_subtract_rect(part,hit))
+			remain=sliced
+		if same and remain.is_empty():
+			next.append(floor)
+			continue
+		for part:Rect2 in remain:
+			var kept:Dictionary=floor.duplicate(true)
+			kept.erase("id")
+			_write_rect(kept,part)
+			kept["id"]=Building._new_id(state,"floors")
+			next.append(kept)
+		for hit:Rect2 in hits:
+			var laid:Dictionary={"level":level,"material":str(operation.material),"carpet":style}
+			_write_rect(laid,hit)
+			laid["id"]=Building._new_id(state,"floors")
+			next.append(laid)
+			if not same:changed+=1
+	if changed==0:return {"error":"This room already has that carpet."}
+	state.floors=next
+	var area:float=float(cells.size())*Building.CELL*Building.CELL
+	return {"cost":maxi(1,int(round(area*CARPET_RATE)))}
+
+
+static func _write_rect(record:Dictionary,area:Rect2) -> void:
+	record.x=area.get_center().x
+	record.z=area.get_center().y
+	record.w=area.size.x
+	record.d=area.size.y
+
+
+static func _subtract_rect(outer:Rect2,hole:Rect2) -> Array:
+	var clip:Rect2=outer.intersection(hole)
+	if clip.size.x<=.02 or clip.size.y<=.02:return [outer]
+	if clip.encloses(outer) or (is_equal_approx(clip.position.x,outer.position.x) and is_equal_approx(clip.position.y,outer.position.y) and is_equal_approx(clip.size.x,outer.size.x) and is_equal_approx(clip.size.y,outer.size.y)):
+		return []
+	var parts:Array=[]
+	if clip.position.y>outer.position.y+.001:
+		parts.append(Rect2(outer.position.x,outer.position.y,outer.size.x,clip.position.y-outer.position.y))
+	if clip.end.y<outer.end.y-.001:
+		parts.append(Rect2(outer.position.x,clip.end.y,outer.size.x,outer.end.y-clip.end.y))
+	if clip.position.x>outer.position.x+.001:
+		parts.append(Rect2(outer.position.x,clip.position.y,clip.position.x-outer.position.x,clip.size.y))
+	if clip.end.x<outer.end.x-.001:
+		parts.append(Rect2(clip.end.x,clip.position.y,outer.end.x-clip.end.x,clip.size.y))
+	return parts
+
+
+static func _merge_cell_rects(cells:Dictionary) -> Array:
+	var pending:Dictionary=cells.duplicate()
+	var rects:Array=[]
+	while not pending.is_empty():
+		var start:Vector2i=pending.keys()[0]
+		for key:Vector2i in pending:
+			if key.x<start.x or (key.x==start.x and key.y<start.y):start=key
+		var x1:int=start.x
+		while pending.has(Vector2i(x1+1,start.y)):x1+=1
+		var y1:int=start.y
+		var row_ok:bool=true
+		while row_ok:
+			for x:int in range(start.x,x1+1):
+				if not pending.has(Vector2i(x,y1+1)):row_ok=false
+			if row_ok:y1+=1
+		for y:int in range(start.y,y1+1):
+			for x:int in range(start.x,x1+1):pending.erase(Vector2i(x,y))
+		rects.append(Rect2(float(start.x)*Building.CELL,float(start.y)*Building.CELL,float(x1-start.x+1)*Building.CELL,float(y1-start.y+1)*Building.CELL))
+	return rects
+
+
+## Interior cells of the closed room that contains `point`. `escaped` is true
+## when the flood reaches the padded edge, which means the space is not a room.
+static func _enclosed_cells(state:Dictionary,level:int,point:Vector2) -> Dictionary:
+	var cell:float=Building.CELL
+	var pad:float=.08
+	var segments:Array=[]
+	var lo:=Vector2(1e9,1e9);var hi:=Vector2(-1e9,-1e9)
+	for wall:Dictionary in state.walls:
+		if int(wall.level)!=level:continue
+		var ends:Array=_wall_ends(wall)
+		segments.append({"a":ends[0],"b":ends[1]})
+		lo=Vector2(minf(lo.x,minf(ends[0].x,ends[1].x)),minf(lo.y,minf(ends[0].y,ends[1].y)))
+		hi=Vector2(maxf(hi.x,maxf(ends[0].x,ends[1].x)),maxf(hi.y,maxf(ends[0].y,ends[1].y)))
+	if segments.is_empty():return {"cells":{},"escaped":true}
+	lo-=Vector2(2.5,2.5);hi+=Vector2(2.5,2.5)
+	var solid:Dictionary={}
+	for segment:Dictionary in segments:
+		var a2:=Vector2(minf(segment.a.x,segment.b.x),minf(segment.a.y,segment.b.y))-Vector2(pad,pad)
+		var b2:=Vector2(maxf(segment.a.x,segment.b.x),maxf(segment.a.y,segment.b.y))+Vector2(pad,pad)
+		var c0:=Vector2i(int(floor(a2.x/cell)),int(floor(a2.y/cell)))
+		var c1:=Vector2i(int(floor(b2.x/cell)),int(floor(b2.y/cell)))
+		for cx:int in range(c0.x,c1.x+1):
+			for cz:int in range(c0.y,c1.y+1):solid[Vector2i(cx,cz)]=true
+	var horizontal:Array=[];var vertical:Array=[]
+	for segment:Dictionary in segments:
+		if absf(segment.a.y-segment.b.y)<.01:horizontal.append(segment)
+		elif absf(segment.a.x-segment.b.x)<.01:vertical.append(segment)
+	for group:Array in [horizontal,vertical]:
+		for i:int in range(group.size()):
+			for j:int in range(i+1,group.size()):
+				var a:Dictionary=group[i];var b:Dictionary=group[j]
+				var line_y:bool=absf(a.a.y-b.a.y)<.01 and absf(a.a.x-a.b.x)>.01
+				if not line_y and not (absf(a.a.x-b.a.x)<.01 and absf(a.a.y-a.b.y)>.01):continue
+				var low:float;var high:float;var line:float
+				if line_y:
+					if absf(a.a.y-b.a.y)>.01:continue
+					low=minf(minf(a.a.x,a.b.x),minf(b.a.x,b.b.x));high=maxf(maxf(a.a.x,a.b.x),maxf(b.a.x,b.b.x));line=a.a.y
+				else:
+					if absf(a.a.x-b.a.x)>.01:continue
+					low=minf(minf(a.a.y,a.b.y),minf(b.a.y,b.b.y));high=maxf(maxf(a.a.y,a.b.y),maxf(b.a.y,b.b.y));line=a.a.x
+				var gap:float=(high-low)-absf(a.a.x-a.b.x)-absf(a.a.y-a.b.y)-absf(b.a.x-b.b.x)-absf(b.a.y-b.b.y)
+				if gap>1.4 or gap<=.05:continue
+				var steps:int=int((high-low)/cell)*2+2
+				for s:int in range(steps+1):
+					var t:float=low+(high-low)*float(s)/float(maxi(steps,1))
+					var p:=Vector2(t,line) if line_y else Vector2(line,t)
+					solid[Vector2i(int(floor(p.x/cell)),int(floor(p.y/cell)))]=true
+	var begin:=Vector2i(int(floor(point.x/cell)),int(floor(point.y/cell)))
+	if solid.has(begin):return {"cells":{},"escaped":true}
+	var region:Dictionary={begin:true}
+	var frontier:Array=[begin]
+	var escaped:bool=false
+	var limit_lo:=Vector2i(int(floor(lo.x/cell)),int(floor(lo.y/cell)))
+	var limit_hi:=Vector2i(int(floor(hi.x/cell)),int(floor(hi.y/cell)))
+	while not frontier.is_empty() and not escaped:
+		var cur:Vector2i=frontier.pop_back()
+		for dir:Vector2i in [Vector2i(1,0),Vector2i(-1,0),Vector2i(0,1),Vector2i(0,-1)]:
+			var nxt:Vector2i=cur+dir
+			if nxt.x<limit_lo.x or nxt.y<limit_lo.y or nxt.x>limit_hi.x or nxt.y>limit_hi.y:
+				escaped=true
+				continue
+			if region.has(nxt) or solid.has(nxt):continue
+			region[nxt]=true
+			frontier.append(nxt)
+			if region.size()>4000:escaped=true
+	return {"cells":{} if escaped else region,"escaped":escaped}
+
 
 static func _room_walls(state:Dictionary,start:Dictionary,level:int,side:Variant) -> Array:
 	# Walls of the enclosed floor region on one side of the clicked wall. The

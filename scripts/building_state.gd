@@ -205,7 +205,7 @@ static func surface_tiles(state:Dictionary,level:int) -> Array:
 			var owner:Dictionary={"id":"wall_bearing","material":"cfa97e"}
 			for floor:Dictionary in state.floors:
 				if int(floor.level)==level and rect(floor).has_point(tile.get_center()):owner=floor
-			result.append({"rect":tile,"level":level,"source_id":str(owner.id),"material":str(owner.material)})
+			result.append({"rect":tile,"level":level,"source_id":str(owner.id),"material":str(owner.material),"carpet":str(owner.get("carpet",""))})
 	return result
 
 static func blocked_rect(state:Dictionary,level:int,bounds:Rect2,include_stairs:bool=true) -> bool:

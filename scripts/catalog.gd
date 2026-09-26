@@ -12,7 +12,9 @@ const ITEMS = {
 	# so `seat_count` states how many people each one really holds and
 	# `seat_offsets` are those cushions' own local centres.
 	"sofa": {"label":"Sunday sofa", "category":"Comfort", "price":620, "size":Vector2(2.6,1.0), "height":1.1, "color":"78a599", "seat_count":3, "seat_offsets":[-.70,0.0,.70]},
-	"bed": {"label":"Slow morning bed", "category":"Comfort", "price":840, "size":Vector2(1.95,2.3), "height":1.4, "color":"c58a73"},
+	"bed": {"label":"Double bed", "category":"Bedroom", "price":840, "size":Vector2(1.95,2.3), "height":1.4, "color":"c58a73",
+		"sizes":["double","single"], "size_prices":{"double":840,"single":520}, "seats":{"double":2,"single":1},
+		"size_labels":{"double":"Double","single":"Single"}},
 	"fridge": {"label":"Fresh start fridge", "category":"Kitchen", "price":520, "size":Vector2(.9,.85), "height":1.9, "color":"86ada0"},
 	"stove": {"label":"Home chef range", "category":"Kitchen", "price":480, "size":Vector2(1.05,.85), "height":1.2, "color":"e6dec9"},
 	"counter": {"label":"Sage cabinet", "category":"Kitchen", "price":150, "size":Vector2(1.05,.8), "height":1.0, "color":"417a71"},
@@ -22,19 +24,32 @@ const ITEMS = {
 	"toilet": {"label":"Porcelain toilet", "category":"Bathroom", "price":240, "size":Vector2(.7,.9), "height":1.1, "color":"eee8d9"},
 	"shower": {"label":"Rainfall shower", "category":"Bathroom", "price":410, "size":Vector2(1.3,1.25), "height":2.3, "color":"8aada3"},
 	"desk": {"label":"A little ambition", "category":"Activities", "price":540, "size":Vector2(1.65,.8), "height":1.3, "color":"ab7951"},
-	"bookshelf": {"label":"Stories bookcase", "category":"Activities", "price":220, "size":Vector2(1.4,.5), "height":1.9, "color":"ab7951"},
+	"bookshelf": {"label":"Bookcase", "category":"Bedroom", "price":220, "size":Vector2(1.4,.5), "height":1.9, "color":"ab7951"},
 	"easel": {"label":"Daydream easel", "category":"Activities", "price":180, "size":Vector2(.95,.85), "height":1.85, "color":"c97c66"},
 	"tv": {"label":"Evening television", "category":"Activities", "price":650, "size":Vector2(2,.6), "height":1.5, "color":"406c72"},
 	"table": {"label":"Chapter coffee table", "category":"Decor", "price":160, "size":Vector2(1.85,.9), "height":.8, "color":"d7ae7e"},
 	"lamp": {"label":"Warm glow floor lamp", "category":"Decor", "price":95, "size":Vector2(.75,.75), "height":1.8, "color":"c8a562"},
-	"nightstand": {"label":"Bedside companion", "category":"Decor", "price":130, "size":Vector2(.6,.55), "height":1, "color":"d7ae7e"},
+	"nightstand": {"label":"Bedside table", "category":"Bedroom", "price":130, "size":Vector2(.6,.55), "height":1, "color":"d7ae7e"},
+	"bedside_lamp": {"label":"Bedside lamp", "category":"Bedroom", "price":45, "size":Vector2(.28,.28), "height":.48, "color":"c8a562", "model":"lamp", "model_scale":0.32},
+	"study_desk": {"label":"Study desk with laptop", "category":"Bedroom", "price":480, "size":Vector2(1.2,.7), "height":.78, "color":"ab7951", "model":"desk", "model_scale":0.82},
+	"office_desk": {"label":"Home office desk", "category":"Bedroom", "price":900, "size":Vector2(1.45,.75), "height":1.4, "color":"ab7951", "model":"computer"},
+	"desk_chair": {"label":"Desk chair", "category":"Bedroom", "price":85, "size":Vector2(.6,.6), "height":1.0, "color":"d7ae7e", "model":"chair"},
+	"bath_mat": {"label":"Bath mat", "category":"Bathroom", "price":15, "size":Vector2(.7,1.15), "height":.04, "color":"f4f1ea",
+		"styles":["plush","oval","grid"],
+		"style_labels":{"plush":"Plush rectangular","oval":"Oval woven","grid":"Memory foam grid"},
+		"colors":["f7f4ee","3a3d42","e6d8c5","1f3b6b","f4b6c8","8faf9f","c8d7e0","e0b15a","e07a5f","2a9d8f"]},
+	"framed_picture": {"label":"Framed picture", "category":"Decor", "price":35, "size":Vector2(.72,.08), "height":.62, "color":"5c3a24",
+		"wall_mounted":true, "hang":1.5,
+		"styles":["animals","scenic","people"],
+		"style_labels":{"animals":"Animals","scenic":"Scenic","people":"People"},
+		"colors":["5c3a24","d7ae7e","f4f1ea","1d2124"]},
 	"plant": {"label":"A breath of green", "category":"Decor", "price":45, "size":Vector2(.8,.8), "height":1.5, "color":"749752"},
 	"rug": {"label":"Sunwoven rug", "category":"Decor", "price":110, "size":Vector2(3.4,2.2), "height":.04, "color":"decfaf"},
-	"painting": {"label":"Hills at dusk", "category":"Decor", "price":75, "size":Vector2(1.2,.1), "height":1.5, "color":"c97c66"},
+	"painting": {"label":"Hills at dusk", "category":"Decor", "price":75, "size":Vector2(1.2,.1), "height":1.5, "color":"c97c66", "hang":1.45},
 	"armchair": {"label":"Reading nook armchair", "category":"Comfort", "price":260, "size":Vector2(1.0,.92), "height":1.0, "color":"d2a24b"},
 	"loveseat": {"label":"Two-together loveseat", "category":"Comfort", "price":440, "size":Vector2(1.9,1.0), "height":1.1, "color":"6e5470", "seat_count":2, "seat_offsets":[-.37,.37]},
 	"stool": {"label":"Kitchen stool", "category":"Comfort", "price":60, "size":Vector2(.5,.5), "height":.78, "color":"417a71"},
-	"wardrobe": {"label":"Everyday wardrobe", "category":"Comfort", "price":380, "size":Vector2(1.25,.62), "height":2.05, "color":"ab7951"},
+	"wardrobe": {"label":"Wardrobe", "category":"Bedroom", "price":380, "size":Vector2(1.25,.62), "height":2.05, "color":"ab7951"},
 	"bathtub": {"label":"Long soak bathtub", "category":"Bathroom", "price":560, "size":Vector2(1.75,.9), "height":.62, "color":"faf6ea"},
 	# ---------------------------------------------------------------- Baby & Kids
 	# The nursery and a child's own room. A cot is where a baby sleeps, a child
@@ -56,7 +71,7 @@ const ITEMS = {
 	"rocking_chair": {"label":"Nursery rocking chair", "category":"Baby & Kids", "price":80, "size":Vector2(.78,.90), "height":1.05, "color":"ab7951"},
 	"baby_mat": {"label":"Baby play mat", "category":"Baby & Kids", "price":20, "size":Vector2(1.20,1.20), "height":.06, "color":"d2a24b"},
 	"children_picture": {"label":"Children's picture", "category":"Baby & Kids", "price":15, "size":Vector2(.72,.08), "height":.72, "color":"c97c66",
-		"styles":["01","02","03","04","05"], "wall_mounted":true},
+		"styles":["01","02","03","04","05"], "wall_mounted":true, "hang":1.35},
 	"dollhouse": {"label":"Dollhouse", "category":"Baby & Kids", "price":60, "size":Vector2(.95,.55), "height":1.05, "color":"d7ae7e",
 		"styles":["classic","cottage"]},
 	"train_set": {"label":"Wooden train set", "category":"Baby & Kids", "price":40, "size":Vector2(1.10,.70), "height":.18, "color":"ab7951",
@@ -88,12 +103,12 @@ const ITEMS = {
 	"stereo": {"label":"Record night stereo", "category":"Activities", "price":300, "size":Vector2(.95,.45), "height":1.0, "color":"624435"},
 	"toybox": {"label":"Toy chest of wonders", "category":"Activities", "price":90, "size":Vector2(.85,.55), "height":.65, "color":"9ec1cf"},
 	"mirror": {"label":"Full-length mirror", "category":"Decor", "price":120, "size":Vector2(.75,.45), "height":1.75, "color":"c8a562"},
-	"dressing_table": {"label":"Dressing table", "category":"Decor", "price":320, "size":Vector2(1.10,.72), "height":1.50, "color":"d7ae7e"},
+	"dressing_table": {"label":"Dressing table", "category":"Bedroom", "price":320, "size":Vector2(1.10,.72), "height":1.50, "color":"d7ae7e"},
 	"garden_bed": {"label":"Kitchen garden bed", "category":"Decor", "price":140, "size":Vector2(1.65,.9), "height":.7, "color":"42352d"},
 	"fireplace": {"label":"Hearth & home fireplace", "category":"Decor", "price":620, "size":Vector2(1.5,.55), "height":1.6, "color":"8c5a4a"},
 	"side_table": {"label":"Corner side table", "category":"Decor", "price":70, "size":Vector2(.55,.55), "height":.95, "color":"d7ae7e"},
-	"shelf": {"label":"Little things shelf", "category":"Decor", "price":85, "size":Vector2(.92,.26), "height":1.7, "color":"ab7951"},
-	"wall_clock": {"label":"Steady hours wall clock", "category":"Decor", "price":40, "size":Vector2(.45,.1), "height":1.9, "color":"624435"},
+	"shelf": {"label":"Little things shelf", "category":"Decor", "price":85, "size":Vector2(.92,.26), "height":1.7, "color":"ab7951", "hang":1.55},
+	"wall_clock": {"label":"Steady hours wall clock", "category":"Decor", "price":40, "size":Vector2(.45,.1), "height":1.9, "color":"624435", "hang":1.7},
 	"book_nook": {"label":"Storybook reading nook", "category":"Activities", "price":240, "size":Vector2(1.5,.75), "height":1.7, "color":"8c5a4a"},
 	"coffee_table": {"label":"Teatime coffee table", "category":"Decor", "price":150, "size":Vector2(1.15,.62), "height":.5, "color":"d7ae7e"},
 	"floor_lamp": {"label":"Reading arc floor lamp", "category":"Decor", "price":110, "size":Vector2(.55,.55), "height":1.85, "color":"c8a562"},
@@ -132,10 +147,12 @@ const ITEMS = {
 	"fence": {"label":"Garden fence", "category":"Garden", "rate_per_square_metre":10, "size":Vector2(2.0,.12), "height":1.2, "color":"c9c3a8", "tint":true,
 		"styles":["01","02","03","04","05","06","07","08","09","10"],
 		"sizes":["small","medium","large"]},
+	"garden_gate": {"label":"Garden gate", "category":"Garden", "price":40, "size":Vector2(1.0,.12), "height":1.2, "color":"c9c3a8"},
+	"garden_gate_double": {"label":"Wide double gate", "category":"Garden", "price":70, "size":Vector2(2.0,.12), "height":1.2, "color":"c9c3a8"},
 	"garden_light": {"label":"Garden path light", "category":"Garden", "price":35, "size":Vector2(.22,.22), "height":.9, "color":"4a4f55", "tint":true,
 		"styles":["01","02","03","04","05","06","07","08","09","10"]},
 	"garden_light_wall": {"label":"Garden wall light", "category":"Garden", "price":30, "size":Vector2(.22,.30), "height":.42, "color":"4a4f55", "tint":true,
-		"styles":["01","02","03","04","05","06","07","08","09","10"], "wall_mounted":true},
+		"styles":["01","02","03","04","05","06","07","08","09","10"], "wall_mounted":true, "hang":1.6},
 	"garden_table": {"label":"Garden table & chairs", "category":"Garden", "price":50, "size":Vector2(2.0,2.0), "height":2.3, "color":"d7ae7e", "tint":true,
 		"sizes":["small","medium","large"], "size_prices":{"small":50,"medium":70,"large":90}, "seats":{"small":4,"medium":8,"large":10}},
 	"bbq": {"label":"Barbecue", "category":"Garden", "price":100, "size":Vector2(.9,.7), "height":1.05, "color":"52555a", "tint":true,
@@ -323,7 +340,20 @@ const CATEGORIES: Array[String] = ["All", "Comfort", "Bedroom", "Baby & Kids", "
 const INSTRUMENTS: Array[String] = ["guitar", "violin"]
 
 # Floor coverings and wall decor: they never block routes, walls or other furnishings.
-const PASSABLE: Array[String] = ["rug", "child_rug", "painting", "wall_clock", "shelf", "yoga_mat", "room_light", "memorial", "curtains", "house_door", "house_window", "pet_toy_cat", "pet_toy_dog"]
+const PASSABLE: Array[String] = ["rug", "child_rug", "bath_mat", "painting", "framed_picture", "wall_clock", "shelf", "yoga_mat", "room_light", "memorial", "curtains", "house_door", "house_window", "pet_toy_cat", "pet_toy_dog", "garden_gate", "garden_gate_double"]
+
+## Fence runs and gates share one edge. Their footprints may touch; a gap is
+## only the overlap of the panels themselves.
+const FLUSH: Array[String] = ["fence", "garden_gate", "garden_gate_double"]
+
+static func runs_flush(kind: String) -> bool:
+	return kind in FLUSH
+
+## True when the incoming footprint may not stand next to one that is already there.
+static func blocks_neighbor(incoming: Rect2, existing: Rect2, incoming_kind: String, existing_kind: String) -> bool:
+	if runs_flush(incoming_kind) and runs_flush(existing_kind):
+		return incoming.grow(-0.01).intersects(existing.grow(-0.01))
+	return incoming.grow(0.05).intersects(existing)
 ## Decor that hangs flat against a wall, kept as a list for the pieces that have
 ## always been authored that way. A catalogue entry may also declare
 ## `"wall_mounted": true` for itself, and `wall_mounted(kind)` is the one

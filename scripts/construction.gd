@@ -28,10 +28,13 @@ var roof_material:String="57736a"
 var roof_style:String="gabled"
 var paint_material:String="8faf9f"
 var paint_scope:String="wall"  # "wall" repaints one segment; "room" repaints every wall joined to it corner to corner
-## "home" is the eight house colours at ℒ6/m; "nursery" is the five patterns and
-## ten nursery colours at ℒ5/m² from the Baby & Kids paint set.
+## "home" is the house colours. A home coat of solid, two_tone or patterned is
+## ℒ4/m² and stays inside the closed room. "nursery" is ℒ5/m² with five patterns.
 var paint_palette:String="home"
-var paint_pattern:String="stars"
+var paint_pattern:String="solid"
+var carpet_style:String="plain"
+var carpet_color:String="decfaf"
+var _carpet_materials:Dictionary={}
 var roof_edit_id:String=""
 var grab_id:String=""
 var roof_edge:Dictionary={}
@@ -92,7 +95,8 @@ func _rebuild_wall(e:Dictionary, supports:Dictionary)->void:
 		var size:Vector3=Vector3(piece.size.x,piece.size.y,float(e.d)) if horizontal else Vector3(float(e.w),piece.size.y,piece.size.x)
 		world.box(node,pos,size,str(e.color))
 	var pattern:String=str(e.get("pattern",""))
-	if not pattern.is_empty():_dress_nursery_pattern(node,e,horizontal,length,h,pattern)
+	if pattern in ["two_tone","patterned"]:_dress_home_coat(node,e,horizontal,length,h,pattern)
+	elif not pattern.is_empty():_dress_nursery_pattern(node,e,horizontal,length,h,pattern)
 	world.box(node,Vector3(0,h+.025,0),Vector3(float(e.w)+.025,.05,float(e.d)+.025),"f5efdf")
 	world.box(node,Vector3(0,.055,0),Vector3(float(e.w)+.015,.11,float(e.d)+.015),"f5efdf")
 	if not building_state.is_empty() and not (bool(e.cut) and cutaway):
@@ -177,7 +181,7 @@ func _render_building() -> void:
 			# Keep the authored ground boards/tiles when migrating the starter.
 			if level==0 and not legacy_floor.is_empty() and Building.rect(legacy_floor).encloses(area):continue
 			var node:MeshInstance3D=world.box(self,Vector3(area.get_center().x,Building.level_y(level)-.08,area.get_center().y),Vector3(area.size.x,.16,area.size.y),str(tile.material))
-			node.material_override=_floor_material(str(tile.material))
+			node.material_override=_floor_material(str(tile.material),str(tile.get("carpet","")))
 			node.set_meta("building_level",level);node.set_meta("floor_surface",true);node.set_meta("source_floor",str(tile.source_id))
 			world.assign_structure_layer(node,level);floor_nodes.append(node)
 	for stair:Dictionary in building_state.stairs:
@@ -192,7 +196,9 @@ func _render_building() -> void:
 		var node:Node3D=Roof.create(record);add_child(node);roof_nodes[str(record.id)]=node
 		world.assign_structure_layer(node,int(record.level));node.visible=roofs_visible and int(record.level)<=world.view_level
 
-func _floor_material(finish:String)->Material:
+func _floor_material(finish:String,carpet:String="")->Material:
+	# A room carpet keeps its own weave. Bare wood is unchanged.
+	if not carpet.is_empty() and carpet!="plain":return _carpet_material(finish,carpet)
 	# Only the two existing wood choices use boards. Stone, custom finishes and
 	# the separately authored starter timber retain their original materials.
 	var key:String=finish.to_lower().trim_prefix("#")
@@ -204,6 +210,42 @@ func _floor_material(finish:String)->Material:
 		surface.set_shader_parameter("wood_color",Color(key))
 		_wood_floor_materials[key]=surface
 	return _wood_floor_materials[key]
+
+func _carpet_material(finish:String,style:String)->Material:
+	var key:String=finish.to_lower().trim_prefix("#")+"|"+style
+	if _carpet_materials.has(key):return _carpet_materials[key]
+	var image:=Image.create(16,16,false,Image.FORMAT_RGBA8)
+	var base:=Color(finish)
+	var accent:=base.darkened(.28)
+	for y:int in 16:
+		for x:int in 16:
+			var pixel:=base
+			if style=="striped" and y%4<2:pixel=accent
+			elif style=="geometric" and ((x/4)+(y/4))%2==0:pixel=accent
+			elif style=="loop" and (x%5==0 or y%5==0):pixel=accent
+			elif style=="vintage" and (x+y)%7<2:pixel=accent
+			image.set_pixel(x,y,pixel)
+	var surface:=StandardMaterial3D.new()
+	surface.albedo_texture=ImageTexture.create_from_image(image)
+	surface.texture_filter=BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	surface.uv1_scale=Vector3(3,3,1)
+	_carpet_materials[key]=surface
+	return surface
+
+func _dress_home_coat(node:Node3D,entry:Dictionary,horizontal:bool,length:float,height:float,pattern:String)->void:
+	var accent:String=str(entry.get("accent","eae7d7"))
+	if pattern=="two_tone":
+		var band:float=height*.46
+		var pos:=Vector3(0,band*.5,.02) if horizontal else Vector3(.02,band*.5,0)
+		var size:=Vector3(length,band,.04) if horizontal else Vector3(.04,band,length)
+		world.box(node,pos,size,accent)
+		return
+	for band:int in 4:
+		var y:float=.35+float(band)*.45
+		if y>height-.2:break
+		var pos:=Vector3(0,y,.02) if horizontal else Vector3(.02,y,0)
+		var size:=Vector3(length,.08,.03) if horizontal else Vector3(.03,.08,length)
+		world.box(node,pos,size,accent)
 
 func set_roof_visibility(value:bool)->void:
 	roofs_visible=value
@@ -311,10 +353,10 @@ func point_blocked(p: Vector2,level:int=0) -> bool:
 		if wall_rect(e).grow(.15).has_point(p):return true
 	return false
 
-func rect_blocked(r: Rect2,level:int=0) -> bool:
+func rect_blocked(r: Rect2,level:int=0,slack:float=.03) -> bool:
 	for e in records:
 		if int(e.get("level",0))!=level:continue
-		if wall_rect(e).grow(.03).intersects(r):return true
+		if wall_rect(e).grow(slack).intersects(r):return true
 	return false
 
 func wall_rect(e: Dictionary) -> Rect2:
@@ -433,7 +475,15 @@ func click(p: Vector3) -> Dictionary:
 	if tool=="grab" and bool(data.get("valid",false)):grab_id="";anchored=false
 	return data
 
+func _make_carpet_proposal(p: Vector3) -> Dictionary:
+	if not quote_provider.is_valid():return {"valid":false,"error":"Carpet needs a build quote."}
+	var operation:Dictionary={"op":"structure","tool":"carpet","level":build_level,"px":p.x,"pz":p.z,"material":carpet_color,"style":carpet_style}
+	var quote:Dictionary=quote_provider.call(operation)
+	if not bool(quote.ok):return {"valid":false,"error":str(quote.error)}
+	return {"valid":true,"build_quote":quote,"cost":int(quote.cost),"op":"carpet"}
+
 func make_proposal(p: Vector3) -> Dictionary:
+	if tool=="carpet":return _make_carpet_proposal(p)
 	if tool in ["roof","roof_edit","roof_remove"]:return _make_roof_proposal(p)
 	if tool in ["floor","stairs","remove_structure"]:return _make_level_proposal(p)
 	var data:Dictionary=_make_legacy_proposal(p)
@@ -454,10 +504,17 @@ func make_proposal(p: Vector3) -> Dictionary:
 			if not data.has("remove_id"):return {"valid":false,"error":"Point at a wall on this level."}
 			operation["id"]=str(data.remove_id)
 			if tool=="paint":
-				operation["material"]=paint_material;operation["scope"]=paint_scope;operation["px"]=p.x;operation["pz"]=p.z
+				operation["material"]=paint_material;operation["px"]=p.x;operation["pz"]=p.z
 				operation["palette"]=paint_palette
-				if paint_palette=="nursery":operation["pattern"]=paint_pattern
-				else:operation["pattern"]=""
+				if paint_palette=="nursery":
+					operation["pattern"]=paint_pattern
+					operation["scope"]=paint_scope
+				elif paint_pattern in ["solid","two_tone","patterned"]:
+					operation["pattern"]=paint_pattern
+					operation["scope"]="room"
+				else:
+					operation["pattern"]=""
+					operation["scope"]=paint_scope
 			if tool=="door":
 				var wall:Dictionary={}
 				for record:Dictionary in records:

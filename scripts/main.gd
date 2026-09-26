@@ -98,6 +98,11 @@ var last_queue: String = ""
 var notice_label: Label
 var notice_card: Panel
 var notice_time: float = 0
+var notice_text: String = ""
+## Money notices stay on screen for their whole time. Later chatter waits, and
+## a second money notice waits behind the one the player is reading.
+var notice_queue: PackedStringArray = PackedStringArray()
+var notice_aside: String = ""
 var hud_refresh: float = 0
 var elapsed: float = 0
 var creator_spin: float = -.16
@@ -1866,7 +1871,48 @@ func _tick_curb_life(delta:float) -> void:
 	school_bus.tick(game_minutes)
 	street_life.tick(game_minutes)
 	_sync_bus_body()
-	_sync_street_bodies()
+	_sync_street_bodies(delta)
+
+
+func _make_school_bus() -> Node3D:
+	var bus:=Node3D.new()
+	bus.name="SchoolBus"
+	bus.set_meta("livery",true)
+	# White body, long along the lane. The cab is the -X end, which is the
+	# morning heading (east to west).
+	world.box(bus,Vector3(0,1.25,0),Vector3(6.2,2.15,2.15),"f4f7f2")
+	world.box(bus,Vector3(0,1.15,1.09),Vector3(5.6,.28,.04),"2f7d32")
+	world.box(bus,Vector3(0,1.15,-1.09),Vector3(5.6,.28,.04),"2f7d32")
+	world.box(bus,Vector3(-2.55,1.35,0),Vector3(.35,1.5,2.05),"d5dde0")
+	for side:float in [-1.0,1.0]:
+		var label:=Label3D.new()
+		label.text="SCHOOL BUS"
+		label.font_size=48
+		label.pixel_size=0.004
+		label.modulate=Color("1a3d1c")
+		label.position=Vector3(0.2,1.55,side*1.12)
+		label.rotation.y=0.0 if side>0.0 else PI
+		bus.add_child(label)
+		for leaf:int in 5:
+			var angle:float=deg_to_rad(-50.0+float(leaf)*25.0)
+			var stem:=Vector3(-1.55+cos(angle)*.22,1.72+sin(angle)*.16,side*1.12)
+			var blade:=world.box(bus,stem,Vector3(.16,.07,.02),"3f9d45")
+			blade.rotation.z=angle
+	for axle:float in [-1.7,1.7]:
+		for side:float in [-1.0,1.0]:
+			var wheel:=MeshInstance3D.new()
+			var tyre:=CylinderMesh.new()
+			tyre.top_radius=.38
+			tyre.bottom_radius=.38
+			tyre.height=.22
+			wheel.mesh=tyre
+			wheel.position=Vector3(axle,.38,side*1.05)
+			wheel.rotation_degrees=Vector3(0,0,90)
+			var rubber:=StandardMaterial3D.new()
+			rubber.albedo_color=Color("1c1c1c")
+			wheel.material_override=rubber
+			bus.add_child(wheel)
+	return bus
 
 
 func _sync_bus_body() -> void:
@@ -1874,21 +1920,20 @@ func _sync_bus_body() -> void:
 	if school_bus.phase=="gone":
 		if is_instance_valid(_bus_body):_bus_body.visible=false
 		return
+	if is_instance_valid(_bus_body) and not _bus_body.has_meta("livery"):
+		_bus_body.queue_free()
+		_bus_body=null
 	if not is_instance_valid(_bus_body):
-		_bus_body=Node3D.new();_bus_body.name="SchoolBus"
+		_bus_body=_make_school_bus()
 		world.house.add_child(_bus_body)
-		var shell:=MeshInstance3D.new()
-		var box_mesh:=BoxMesh.new();box_mesh.size=Vector3(6.2,2.4,2.2)
-		shell.mesh=box_mesh
-		var paint:=StandardMaterial3D.new();paint.albedo_color=Color("e6d36a")
-		shell.material_override=paint
-		shell.position.y=1.2
-		_bus_body.add_child(shell)
 	_bus_body.visible=true
 	_bus_body.position=school_bus.position
+	# Length stays along the lane. The nose points the way the bus is driving.
+	var nose:float=1.0 if school_bus.phase in ["returning","leaving"] else -1.0
+	_bus_body.rotation.y=0.0 if nose<0.0 else PI
 
 
-func _sync_street_bodies() -> void:
+func _sync_street_bodies(delta:float) -> void:
 	if not is_instance_valid(world) or not is_instance_valid(world.house):return
 	for passer:Dictionary in street_life.passers:
 		var id:String=str(passer.id)
@@ -1910,7 +1955,15 @@ func _sync_street_bodies() -> void:
 			_street_bodies[id]=body
 		body.visible=true
 		body.position=street_life.position_of(passer)
-		body.rotation.y=0.0 if int(passer.dir)>0 else PI
+		# The lane runs east–west. Facing 0 looks across the street, so a walker
+		# whose heading is not their velocity slides sideways. +X is dir 1.
+		var heading:float=atan2(float(passer.dir),0.0)
+		body.rotation.y=lerp_angle(body.rotation.y,heading,minf(delta*8.0,1.0))
+		var walking:bool=household.speed>0
+		if body is LifeActor:
+			(body as LifeActor).animate(delta,float(household.speed),walking,"")
+		elif body is LifePetActor:
+			(body as LifePetActor).animate(delta,walking,float(household.speed) if walking else 0.0)
 
 
 ## Open the weekly food truck's shop. A click on the van arrives here, so there
@@ -3088,9 +3141,12 @@ func refresh_hud() -> void:
 	for value in speed_buttons:speed_buttons[value].set_pressed_no_signal(int(value)==sim.speed)
 	_refresh_progress_labels()
 	if funds_label:
-		funds_label.text="ℒ %s" % commas(sim.funds)
+		funds_label.text="ℒ %s" % commas(household.funds if household else sim.funds)
 		var keeps:PackedStringArray=household.keepsake_lines() if household else PackedStringArray()
+		var purse_note:String=str(household.last_purse_note) if household else ""
 		funds_label.tooltip_text="Household purse, in %s." % P.CURRENCY_NAME if keeps.is_empty() else "Purse plus family keepsakes:\n• "+ "\n• ".join(keeps)
+		if not purse_note.is_empty():
+			funds_label.tooltip_text+="\n"+purse_note
 	if time_label:time_label.text=sim.get_clock_text()+ ("  ·  Paused" if sim.speed==0 else "")
 	if mood_label:
 		var mood=sim.get_mood()
@@ -3449,15 +3505,19 @@ func draw_build_catalog() -> void:
 		button("Floor",at.call(Vector2(773,725)),Vector2(146,46),func():begin_construction("floor"),false,tools)
 		button("Stairs",at.call(Vector2(929,725)),Vector2(146,46),func():begin_construction("stairs"),false,tools)
 		button("Remove floor / stairs",at.call(Vector2(1085,725)),Vector2(294,46),func():begin_construction("remove_structure"),false,tools)
-		if world.construction.tool=="paint":
-			# While the paint tool is active the wall swatches take this row and
-			# the floor finishes drop one row down, so both stay reachable.
+		# The action row sits at y=784. Paint swatches used to share that band
+		# and drew on top of Grab wall and Paint wall. They now start below it,
+		# and the roof row drops by the same amount so the two do not meet.
+		var paint_open:bool=world.construction.tool=="paint"
+		var carpet_open:bool=world.construction.tool=="carpet"
+		var paint_drop:float=96.0 if paint_open or carpet_open else 0.0
+		if paint_open:
 			var nursery_set:Dictionary=LifeCatalog.get_item("nursery_paint")
 			var using_nursery:bool=world.construction.paint_palette=="nursery"
 			button("Home",at.call(Vector2(305,756)),Vector2(88,28),func():
 				world.construction.paint_palette="home"
 				world.construction.paint_pattern=""
-				if not ["eae7d7","8faf9f","e6d8c5","c8d7e0","d9b7a3","7d8a99","efd9a0","a3ad7a"].has(world.construction.paint_material):
+				if not ["eae7d7","8faf9f","e6d8c5","c8d7e0","d9b7a3","7d8a99","efd9a0","a3ad7a","f4b6c8","6aa6e0"].has(world.construction.paint_material):
 					world.construction.paint_material="8faf9f"
 				draw_live(),not using_nursery,tools)
 			button("Nursery",at.call(Vector2(401,756)),Vector2(110,28),func():
@@ -3479,22 +3539,33 @@ func draw_build_catalog() -> void:
 				for i in range(colours.size()):
 					var colour:String=str(colours[i])
 					var col:int=i%10
-					var swatch=button("",at.call(Vector2(305+col*58,791)),Vector2(50,32),func():world.construction.paint_material=colour;draw_live(),false,tools)
+					var swatch=button("",at.call(Vector2(305+col*58,848)),Vector2(50,32),func():world.construction.paint_material=colour;draw_live(),false,tools)
 					swatch.tooltip_text="Nursery wall paint · ℒ5/m²"
 					swatch.add_theme_stylebox_override("normal",P.panel(Color(colour),16,P.TEAL if world.construction.paint_material==colour else Color("ffffff"),3))
 					swatch.add_theme_stylebox_override("hover",P.panel(Color(colour).lightened(.1),16,P.TEAL,3))
 					if world.construction.paint_material==colour:swatch.text="•";swatch.add_theme_color_override("font_color",Color.WHITE)
 			else:
-				for i in range(8):
-					var colour:String=["eae7d7","8faf9f","e6d8c5","c8d7e0","d9b7a3","7d8a99","efd9a0","a3ad7a"][i]
-					var swatch=button("",at.call(Vector2(305+i*58,791)),Vector2(50,32),func():world.construction.paint_material=colour;draw_live(),false,tools)
-					swatch.tooltip_text=["Cream","Sage","Blush","Sky","Clay","Dusk","Butter","Moss"][i]+" wall paint"
+				if world.construction.paint_pattern not in ["solid","two_tone","patterned"]:world.construction.paint_pattern="solid"
+				var coat_labels:Dictionary={"solid":"Solid","two_tone":"Two-tone","patterned":"Patterned"}
+				var coat_index:int=0
+				for coat:String in ["solid","two_tone","patterned"]:
+					var coat_id:String=coat
+					var coat_btn=button(str(coat_labels[coat]),at.call(Vector2(525+coat_index*118,756)),Vector2(110,28),func():
+						world.construction.paint_pattern=coat_id;draw_live(),world.construction.paint_pattern==coat_id,tools)
+					coat_btn.tooltip_text="Room paint · ℒ4/m² · inner walls only"
+					coat_index+=1
+				var home_paints:Array[String]=["eae7d7","8faf9f","e6d8c5","c8d7e0","d9b7a3","7d8a99","efd9a0","a3ad7a","f4b6c8","6aa6e0"]
+				var home_names:Array[String]=["Cream","Sage","Blush","Sky","Clay","Dusk","Butter","Moss","Pink","Blue"]
+				for i in range(home_paints.size()):
+					var colour:String=home_paints[i]
+					var swatch=button("",at.call(Vector2(305+i*58,848)),Vector2(50,32),func():world.construction.paint_material=colour;draw_live(),false,tools)
+					swatch.tooltip_text=home_names[i]+" wall paint · ℒ4/m² · this room only"
 					swatch.add_theme_stylebox_override("normal",P.panel(Color(colour),16,P.TEAL if world.construction.paint_material==colour else Color("ffffff"),3))
 					swatch.add_theme_stylebox_override("hover",P.panel(Color(colour).lightened(.1),16,P.TEAL,3))
 					if world.construction.paint_material==colour:swatch.text="•";swatch.add_theme_color_override("font_color",Color.WHITE)
-			button("Warm oak",at.call(Vector2(305,836)),Vector2(146,31),func():change_floor("cfa97e"),false,tools)
-			button("Pale stone",at.call(Vector2(461,836)),Vector2(146,31),func():change_floor("dcd6c6"),false,tools)
-			button("Walnut",at.call(Vector2(617,836)),Vector2(146,31),func():change_floor("896953"),false,tools)
+			button("Warm oak",at.call(Vector2(305,888)),Vector2(146,31),func():change_floor("cfa97e"),false,tools)
+			button("Pale stone",at.call(Vector2(461,888)),Vector2(146,31),func():change_floor("dcd6c6"),false,tools)
+			button("Walnut",at.call(Vector2(617,888)),Vector2(146,31),func():change_floor("896953"),false,tools)
 		else:
 			button("Warm oak",at.call(Vector2(305,784)),Vector2(150,47),func():change_floor("cfa97e"),false,tools)
 			button("Pale stone",at.call(Vector2(465,784)),Vector2(150,47),func():change_floor("dcd6c6"),false,tools)
@@ -3505,26 +3576,46 @@ func draw_build_catalog() -> void:
 		var grab=button("Grab wall",at.call(Vector2(1075,784)),Vector2(140,47),func():begin_construction("grab"),world.construction.tool=="grab",tools)
 		grab.tooltip_text="Select a wall, then click where to push or pull it. Connected walls stretch to keep the room closed."
 		var paint=button("Paint wall",at.call(Vector2(1225,784)),Vector2(150,47),func():begin_construction("paint"),world.construction.tool=="paint",tools)
-		paint.tooltip_text="Pick the tool, choose a home or nursery finish, then click a wall to repaint that segment."
+		paint.tooltip_text="Paints the inner walls of the closed room you click. Solid, two-tone and patterned coats are ℒ4/m²."
+		var carpet_btn=button("Carpet",at.call(Vector2(1075,831)),Vector2(150,31),func():begin_construction("carpet"),world.construction.tool=="carpet",tools)
+		carpet_btn.tooltip_text="Lays a carpet inside the closed room you click. ℒ2/m². Five weaves, ten colours."
+		if carpet_open:
+			var weaves:Array[String]=["plain","geometric","loop","striped","vintage"]
+			var weave_labels:Array[String]=["Plain","Geometric","Loop","Striped","Vintage"]
+			for i in range(weaves.size()):
+				var weave:String=weaves[i]
+				var weave_btn=button(weave_labels[i],at.call(Vector2(305+i*118,756)),Vector2(110,28),func():
+					world.construction.carpet_style=weave;draw_live(),world.construction.carpet_style==weave,tools)
+				weave_btn.tooltip_text=weave_labels[i]+" carpet · ℒ2/m² · this room only"
+			var carpet_colours:Array[String]=["decfaf","8faf9f","e6d8c5","c8d7e0","d9b7a3","7d8a99","efd9a0","a3ad7a","f4b6c8","6aa6e0"]
+			var carpet_names:Array[String]=["Cream","Sage","Blush","Sky","Clay","Dusk","Butter","Moss","Pink","Blue"]
+			for i in range(carpet_colours.size()):
+				var colour:String=carpet_colours[i]
+				var chip=button("",at.call(Vector2(305+i*58,848)),Vector2(50,32),func():
+					world.construction.carpet_color=colour;draw_live(),false,tools)
+				chip.tooltip_text=carpet_names[i]+" carpet · ℒ2/m²"
+				chip.add_theme_stylebox_override("normal",P.panel(Color(colour),16,P.TEAL if world.construction.carpet_color==colour else Color("ffffff"),3))
+				chip.add_theme_stylebox_override("hover",P.panel(Color(colour).lightened(.1),16,P.TEAL,3))
+				if world.construction.carpet_color==colour:chip.text="•";chip.add_theme_color_override("font_color",Color.WHITE)
 		var whole=button("Whole room",at.call(Vector2(1235,831)),Vector2(144,31),func():
 			world.construction.paint_scope="wall" if world.construction.paint_scope=="room" else "room"
 			draw_live(),world.construction.paint_scope=="room",tools)
 		whole.tooltip_text="Paints the enclosed room on the side you click; a wall shared with the next room changes for both rooms."
-		button("New roof",at.call(Vector2(305,841)),Vector2(110,31),func():begin_construction("roof"),false,tools)
-		button("Edit roof",at.call(Vector2(425,841)),Vector2(110,31),func():begin_construction("roof_edit"),false,tools)
-		button("Remove roof",at.call(Vector2(545,841)),Vector2(120,31),func():begin_construction("roof_remove"),false,tools)
+		button("New roof",at.call(Vector2(305,841+paint_drop)),Vector2(110,31),func():begin_construction("roof"),false,tools)
+		button("Edit roof",at.call(Vector2(425,841+paint_drop)),Vector2(110,31),func():begin_construction("roof_edit"),false,tools)
+		button("Remove roof",at.call(Vector2(545,841+paint_drop)),Vector2(120,31),func():begin_construction("roof_remove"),false,tools)
 		# Roof panel: five architecture styles plus a colour tint on the tiles.
 		var style_labels:Dictionary={"gabled":"Gable","hipped":"Hip","flat":"Flat","mansard":"Mansard","a_frame":"A-frame"}
 		var style_order:Array[String]=["gabled","hipped","flat","mansard","a_frame"]
 		for i in range(style_order.size()):
 			var style:String=style_order[i]
-			var style_btn:Button=button(str(style_labels[style]),at.call(Vector2(305+i*108,876)),Vector2(100,28),func():set_roof_style(style),world.construction.roof_style==style,tools)
+			var style_btn:Button=button(str(style_labels[style]),at.call(Vector2(305+i*108,876+paint_drop)),Vector2(100,28),func():set_roof_style(style),world.construction.roof_style==style,tools)
 			style_btn.name="RoofStyle_"+style
 			style_btn.tooltip_text="Roof style: %s" % str(style_labels[style])
-		button("Low",at.call(Vector2(675,841)),Vector2(70,31),func():set_roof_pitch(.25),is_equal_approx(world.construction.roof_pitch,.25),tools)
-		button("Med",at.call(Vector2(755,841)),Vector2(70,31),func():set_roof_pitch(.5),is_equal_approx(world.construction.roof_pitch,.5),tools)
-		button("Steep",at.call(Vector2(835,841)),Vector2(70,31),func():set_roof_pitch(.75),is_equal_approx(world.construction.roof_pitch,.75),tools)
-		roof_visibility_button=button("Hide roofs" if world.construction.roofs_visible else "Show roofs",at.call(Vector2(915,841)),Vector2(130,31),func():
+		button("Low",at.call(Vector2(675,841+paint_drop)),Vector2(70,31),func():set_roof_pitch(.25),is_equal_approx(world.construction.roof_pitch,.25),tools)
+		button("Med",at.call(Vector2(755,841+paint_drop)),Vector2(70,31),func():set_roof_pitch(.5),is_equal_approx(world.construction.roof_pitch,.5),tools)
+		button("Steep",at.call(Vector2(835,841+paint_drop)),Vector2(70,31),func():set_roof_pitch(.75),is_equal_approx(world.construction.roof_pitch,.75),tools)
+		roof_visibility_button=button("Hide roofs" if world.construction.roofs_visible else "Show roofs",at.call(Vector2(915,841+paint_drop)),Vector2(130,31),func():
 			world.construction.set_roof_visibility(not world.construction.roofs_visible)
 			if world.construction.roofs_visible:world.set_cutaway(false)
 			draw_live(),false,tools)
@@ -3532,11 +3623,12 @@ func draw_build_catalog() -> void:
 		var tint_names:Array[String]=["Sage","Slate","Terracotta","Lead","Straw","Wine","Pine","Copper"]
 		for i in range(tints.size()):
 			var tint:String=tints[i]
-			var swatch:Button=button("",at.call(Vector2(1055+i*40,841)),Vector2(34,31),func():set_roof_finish(tint),world.construction.roof_material==tint,tools)
+			var swatch:Button=button("",at.call(Vector2(1055+i*40,841+paint_drop)),Vector2(34,31),func():set_roof_finish(tint),world.construction.roof_material==tint,tools)
 			swatch.name="RoofTint_"+tint
 			swatch.tooltip_text=tint_names[i]+" roof tint"
 			swatch.add_theme_stylebox_override("normal",P.panel(Color(tint),10,P.TEAL if world.construction.roof_material==tint else Color("ffffff"),2))
 			swatch.add_theme_stylebox_override("hover",P.panel(Color(tint).lightened(.1),10,P.TEAL,2))
+		tools.custom_minimum_size=Vector2(1088,196.0+paint_drop)
 		return
 	if LifeCatalog.paints(world.placement_kind):
 		# A paintable furnishing is being placed, so the swatch row replaces the
@@ -3794,6 +3886,8 @@ func begin_construction(tool:String) -> void:
 	elif tool=="stairs":world.placement_angle=0;show_notice("Point near the upper slab's free edge. R rotates; the stair snaps to the nearest clear spot with its opening and guard included.")
 	elif tool=="remove_structure":show_notice("Point at a floor or staircase to review its removal. Esc cancels.")
 	elif tool=="grab":show_notice("Select a wall, then click where to push or pull it. Connected walls stretch so the room stays closed. Esc cancels.")
+	elif tool=="paint":show_notice("Click a wall. The closed room on that side is painted, at ℒ4 per square metre.")
+	elif tool=="carpet":show_notice("Click inside a closed room. The carpet stays in that room, at ℒ2 per square metre.")
 	else:show_notice("Click two corners to create a %s. Esc cancels." % tool if tool in ["wall","room","floor"] else "Click a wall to %s. Esc cancels." % ("add a doorway" if tool=="door" else "remove it"))
 
 func on_construction(data:Dictionary) -> void:
@@ -3824,7 +3918,7 @@ func on_placement(kind:String,p:Vector3,angle:float,style:String="",size:String=
 		_place_room_pack(kind, p, angle)
 		return
 	var data:Dictionary=LifeCatalog.get_item(kind)
-	var variant:Dictionary=Variants.resolve(data,{"style":style,"size":size})
+	var variant:Dictionary=Variants.resolve(data,{"style":style,"size":size,"color":world.placement_color})
 	if not world.can_place(kind,p,angle,variant.style,variant.size):
 		show_notice("Hang this against a wall." if LifeCatalog.wall_mounted(kind) and not world.wall_behind(kind,p,angle,variant.size) else "That space needs a little more room.");return
 	var moving:bool=not pending_move.is_empty() and str(pending_move.entry.kind)==kind
@@ -3843,6 +3937,7 @@ func on_placement(kind:String,p:Vector3,angle:float,style:String="",size:String=
 	var entry:Dictionary={"id":str(pending_move.entry.id) if moving else "placed_%d" % Time.get_ticks_usec(),"kind":kind,"x":p.x,"z":p.z,"rotation":angle}
 	if world.view_level==1:entry["level"]=1
 	entry.merge(Variants.record(data,variant.style,variant.color,variant.size),true)
+	if data.has("hang"):entry["hang"]=world.placement_hang
 	if moving and pending_move.entry.has("lit"):entry["lit"]=pending_move.entry["lit"] # A moved lamp keeps its switch state.
 	if LifeCatalog.paints(kind):
 		# A car keeps the finish it was bought or moved with: the row's choice
@@ -5203,7 +5298,7 @@ func pick_furnishing(kind:String,working:Dictionary={}) -> void:
 ## Begin placing the exact object the picker described.
 func begin_purchase_variant(kind:String,working:Dictionary) -> void:
 	cancel_placement()
-	world.begin_placement(kind,str(working.get("style","")),str(working.get("size","")))
+	world.begin_placement(kind,str(working.get("style","")),str(working.get("size","")),str(working.get("color","")))
 
 func cancel_placement() -> void:
 	if not is_instance_valid(world):return
@@ -5872,13 +5967,26 @@ func _lifelet_play_with_pet_toy(toy_id:String) -> void:
 		return
 	show_notice("No matching pet is home to play with.")
 
+func _money_notice(message:String) -> bool:
+	return message.contains("ℒ") or message.contains("burglar") or message.contains("Bills paid") or message.contains("insurance")
+
 func show_notice(message:String) -> void:
-	if not is_instance_valid(ui):return
+	if message.is_empty() or not is_instance_valid(ui):return
+	# A break-in or a bill has to stay readable. The same morning also posts
+	# hunger, boredom and missed shifts, and those used to replace the money
+	# line before anyone could see it.
+	if is_instance_valid(notice_card) and notice_time>0.5 and _money_notice(notice_text):
+		if _money_notice(message):
+			if not notice_queue.has(message):notice_queue.append(message)
+		else:
+			notice_aside=message
+		return
 	if is_instance_valid(notice_card):notice_card.queue_free()
 	var position:Vector2=Vector2(1038,98) if mode in ["live","build"] else Vector2(460,98)
 	var dimensions:Vector2=Vector2(374,94) if mode in ["live","build"] else Vector2(560,66)
 	notice_card=card(position,dimensions,P.INK,13)
 	notice_card.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	notice_text=message
 	notice_label=paragraph(message,Vector2(16,13),dimensions-Vector2(32,22),13 if mode in ["live","build"] else 14,P.WHITE,notice_card)
 	notice_time=5.5
 
@@ -7025,7 +7133,18 @@ func _process(delta:float) -> void:
 	if is_instance_valid(notice_card):
 		notice_time-=delta
 		if notice_time<.5:notice_card.modulate.a=clampf(notice_time*2,0,1)
-		if notice_time<=0:notice_card.queue_free()
+		if notice_time<=0:
+			notice_card.queue_free()
+			notice_card=null
+			notice_text=""
+			if notice_queue.size()>0:
+				var next:String=notice_queue[0]
+				notice_queue.remove_at(0)
+				show_notice(next)
+			elif not notice_aside.is_empty():
+				var aside:String=notice_aside
+				notice_aside=""
+				show_notice(aside)
 	if mode=="creator":
 		if is_instance_valid(preview):preview.animate(delta,1,false,"")
 		return
@@ -7412,7 +7531,13 @@ func _clear_pointer_drags() -> void:
 
 func _notification(what:int) -> void:
 	if what==NOTIFICATION_WM_WINDOW_FOCUS_OUT:_clear_pointer_drags()
-	elif what==NOTIFICATION_WM_CLOSE_REQUEST:quit_game()
+	elif what==NOTIFICATION_WM_CLOSE_REQUEST:
+		# A rendered playthrough runs for hours in its own window. Closing that
+		# window by accident used to throw away the day with no save to resume
+		# from, so the isolated runner can ask the window to stay up.
+		if OS.get_environment("JUSTLIFE_KEEP_OPEN") == "1":
+			return
+		quit_game()
 
 func _camera_input_allowed() -> bool:
 	var focus=get_viewport().gui_get_focus_owner()
@@ -7492,6 +7617,11 @@ func _unhandled_input(event:InputEvent) -> void:
 		if mode=="creator" and event.button_index==MOUSE_BUTTON_LEFT:
 			creator_drag=event.pressed;last_mouse=event.position
 		if mode in ["live","build"]:
+			if mode=="build" and event.pressed and LifeCatalog.wall_mounted(world.placement_kind) and world.placement_hang>0.0:
+				if event.button_index==MOUSE_BUTTON_WHEEL_UP:world.placement_hang=clampf(world.placement_hang+.08,.4,2.2)
+				if event.button_index==MOUSE_BUTTON_WHEEL_DOWN:world.placement_hang=clampf(world.placement_hang-.08,.4,2.2)
+				get_viewport().set_input_as_handled()
+				return
 			if event.button_index==MOUSE_BUTTON_WHEEL_UP:world.camera.size=maxf(world.camera.size-LifeWorld.CAMERA_WHEEL_STEP,LifeWorld.CAMERA_MIN_ZOOM)
 			if event.button_index==MOUSE_BUTTON_WHEEL_DOWN:world.camera.size=minf(world.camera.size+LifeWorld.CAMERA_WHEEL_STEP,LifeWorld.CAMERA_MAX_ZOOM)
 			if event.button_index==MOUSE_BUTTON_LEFT and event.pressed:world.pick(event.position)

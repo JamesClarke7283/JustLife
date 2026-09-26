@@ -73,6 +73,10 @@ var placement_kind: String = ""
 var placement_style: String = ""
 var placement_size: String = ""
 var placement_angle: float = 0.0
+## How high a wall piece hangs, in metres above the storey floor. The wheel
+## moves it while the ghost is up. Floor furnishings leave this at 0.
+var placement_hang: float = 0.0
+var placement_color: String = ""
 var ghost: Node3D
 var ghost_valid: bool = false
 var placement_reach_check: Callable  # set by the app: (kind, position, angle) -> bool, the same doorway rule a click applies
@@ -212,6 +216,60 @@ func ensure_memorial(member_id: String) -> bool:
 		return false
 	add_item({"id":"memorial_%s" % member_id,"kind":"memorial","x":offset.x,"z":offset.z,"rotation":0.0,"for":member_id})
 	return true
+
+func _build_garden_gate(parent: Node3D, wide: bool) -> void:
+	var span: float = 2.0 if wide else 1.0
+	var post := "6b5344"
+	var leaf := "c9c3a8"
+	box(parent, Vector3(-span * .5, .6, 0), Vector3(.08, 1.2, .08), post)
+	box(parent, Vector3(span * .5, .6, 0), Vector3(.08, 1.2, .08), post)
+	if wide:
+		box(parent, Vector3(-span * .25, .58, 0), Vector3(span * .5 - .06, 1.05, .04), leaf)
+		box(parent, Vector3(span * .25, .58, 0), Vector3(span * .5 - .06, 1.05, .04), leaf)
+		box(parent, Vector3(0, .7, .03), Vector3(.04, .16, .04), post)
+	else:
+		box(parent, Vector3(0, .58, 0), Vector3(span - .1, 1.05, .04), leaf)
+		box(parent, Vector3(span * .28, .62, .03), Vector3(.04, .08, .04), "c8a562")
+
+
+func _build_bath_mat(parent: Node3D, variant: Dictionary) -> void:
+	var colour: String = str(variant.get("color", "f4f1ea"))
+	var style: String = str(variant.get("style", "plush"))
+	if style == "oval":
+		var disc := MeshInstance3D.new()
+		var mesh := CylinderMesh.new()
+		mesh.top_radius = 0.28
+		mesh.bottom_radius = 0.34
+		mesh.height = 0.035
+		disc.mesh = mesh
+		disc.material_override = material(colour)
+		disc.position = Vector3(0, 0.02, 0)
+		parent.add_child(disc)
+		return
+	if style == "grid":
+		for x: int in range(-1, 2):
+			for z: int in range(-1, 2):
+				box(parent, Vector3(float(x) * 0.18, 0.02, float(z) * 0.28), Vector3(0.14, 0.03, 0.22), colour)
+		return
+	box(parent, Vector3(0, 0.025, 0), Vector3(0.62, 0.045, 1.05), colour)
+
+
+func _build_framed_picture(parent: Node3D, variant: Dictionary) -> void:
+	var frame: String = str(variant.get("color", "5c3a24"))
+	var theme: String = str(variant.get("style", "scenic"))
+	var inner: String = {"animals": "c97c66", "scenic": "7eb6a2", "people": "d7ae7e"}.get(theme, "7eb6a2")
+	box(parent, Vector3(0, 0.0, 0), Vector3(0.70, 0.52, 0.04), frame)
+	box(parent, Vector3(0, 0.0, 0.02), Vector3(0.54, 0.36, 0.02), inner)
+	if theme == "animals":
+		box(parent, Vector3(-0.08, -0.04, 0.035), Vector3(0.10, 0.08, 0.01), "3a3d42")
+		box(parent, Vector3(0.10, -0.02, 0.035), Vector3(0.12, 0.10, 0.01), "e6d8c5")
+	elif theme == "people":
+		box(parent, Vector3(0, 0.06, 0.035), Vector3(0.12, 0.12, 0.01), "e6c2a0")
+		box(parent, Vector3(0, -0.08, 0.035), Vector3(0.18, 0.14, 0.01), "1f3b6b")
+	else:
+		box(parent, Vector3(0, 0.08, 0.035), Vector3(0.40, 0.10, 0.01), "c8d7e0")
+		box(parent, Vector3(0, -0.06, 0.035), Vector3(0.46, 0.12, 0.01), "4a6b5c")
+
 
 func _build_memorial(parent: Node3D) -> void:
 	# Original garden stone: a low tablet and a small offering dish. Built here
@@ -786,7 +844,7 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	var variant:Dictionary=Variants.resolve(data,entry)
 	var path:String=Variants.model_path(kind,str(variant.style))
 	var has_model:bool=ResourceLoader.exists(path)
-	if not has_model and kind!="memorial":return
+	if not has_model and kind not in ["memorial","bath_mat","framed_picture","garden_gate","garden_gate_double"]:return
 	var node=Node3D.new()
 	node.name=str(entry.get("id","item_%d" % Time.get_ticks_usec()))
 	furniture.add_child(node)
@@ -799,8 +857,18 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 		var scale:float=Variants.size_scale(str(variant.size))
 		if not is_equal_approx(scale,1.0):model.scale=Vector3.ONE*scale
 	else:
-		_build_memorial(node)
-	node.position=Vector3(float(entry.get("x",0)),Building.level_y(level),float(entry.get("z",0)))
+		if kind=="bath_mat":_build_bath_mat(node,variant)
+		elif kind=="framed_picture":_build_framed_picture(node,variant)
+		elif kind=="garden_gate" or kind=="garden_gate_double":_build_garden_gate(node,kind=="garden_gate_double")
+		else:_build_memorial(node)
+	if is_instance_valid(model):
+		var fitted:float=float(data.get("model_scale",1.0))
+		if not is_equal_approx(fitted,1.0):model.scale*=fitted
+	if kind=="study_desk":
+		box(node,Vector3(0,.72,-.05),Vector3(.34,.02,.24),"2c3338")
+		box(node,Vector3(0,.84,-.16),Vector3(.32,.18,.02),"1d2124")
+	var lift:float=float(entry.get("hang",0.0))
+	node.position=Vector3(float(entry.get("x",0)),Building.level_y(level)+lift,float(entry.get("z",0)))
 	node.rotation_degrees.y=float(entry.get("rotation",0))
 	# Cars bought or placed near a garage snap into the next free bay so a
 	# four-car garage fills predictably instead of stacking on the driveway.
@@ -1313,13 +1381,16 @@ func set_build(enabled:bool) -> void:
 	if grid:grid.visible=enabled
 	if not enabled:clear_placement()
 
-func begin_placement(kind:String,style:String="",size:String="") -> void:
+func begin_placement(kind:String,style:String="",size:String="",color:String="") -> void:
 	if construction:construction.cancel()
 	clear_placement()
 	placement_kind=kind
 	placement_style=style
 	placement_size=size
+	placement_color=color
 	placement_angle=0
+	var bought:Dictionary=LifeCatalog.get_item(kind)
+	placement_hang=float(bought.get("hang",0.0)) if bought.has("hang") else 0.0
 	if bool(LifeCatalog.get_item(kind).get("room_pack",false)):
 		# A room pack is a room, not a model: the ghost is its floor and wall
 		# outline, previewed where the room will actually be built.
@@ -1335,6 +1406,14 @@ func begin_placement(kind:String,style:String="",size:String="") -> void:
 	if not ResourceLoader.exists(path):
 		for candidate:String in Variants.model_paths(kind,LifeCatalog.get_item(kind)):
 			if ResourceLoader.exists(candidate):path=candidate;break
+	if not ResourceLoader.exists(path) and kind in ["bath_mat","framed_picture","garden_gate","garden_gate_double"]:
+		ghost=Node3D.new()
+		add_child(ghost)
+		var preview:Dictionary=Variants.resolve(LifeCatalog.get_item(kind),{"style":style,"size":size,"color":color})
+		if kind=="bath_mat":_build_bath_mat(ghost,preview)
+		elif kind=="framed_picture":_build_framed_picture(ghost,preview)
+		else:_build_garden_gate(ghost,kind=="garden_gate_double")
+		return
 	if not ResourceLoader.exists(path):
 		clear_placement()
 		return
@@ -1425,17 +1504,29 @@ func can_place(kind:String,p:Vector3,angle:float,style:String="",size_choice:Str
 	for corner in [rect.position,rect.end,Vector2(rect.position.x,rect.end.y),Vector2(rect.end.x,rect.position.y)]:
 		if not grounds(corner,level):return false
 	if LifeCatalog.wall_mounted(kind) and not wall_behind(kind,p,angle,variant.size):return false
-	if LifeCatalog.passable(kind):return true
-	# Interior walls and doorways stay usable.
-	if construction.rect_blocked(rect,level):return false
+	if LifeCatalog.passable(kind):
+		# A rug can lie anywhere. A fence or gate may touch the next panel and
+		# the face of a wall, and is refused only when the panels themselves overlap.
+		if LifeCatalog.runs_flush(kind):
+			if not construction.building_state.is_empty() and construction.rect_blocked(rect,level,-.01):return false
+			for item in items:
+				if item_level(item)!=level or not LifeCatalog.runs_flush(str(item.kind)):continue
+				for panel:Rect2 in item_panels(item):
+					if LifeCatalog.blocks_neighbor(rect,panel,kind,str(item.kind)):return false
+		return true
+	# Interior walls and doorways stay usable. A fence or gate may touch a wall;
+	# other furnishings keep the small margin that stops them sinking into it.
+	var wall_slack:float=-.01 if LifeCatalog.runs_flush(kind) else .03
+	if construction.rect_blocked(rect,level,wall_slack):return false
 	for item in items:
 		if item_level(item)!=level:continue
-		if item.kind in ["meal","plate","puddle"] or bool(item.get("derived",false)) or LifeCatalog.passable(str(item.kind)):continue
+		if item.kind in ["meal","plate","puddle"] or bool(item.get("derived",false)):continue
+		if LifeCatalog.passable(str(item.kind)) and not LifeCatalog.runs_flush(str(item.kind)):continue
 		# A candidate stands free when it misses every solid band of what is
 		# already there, so a car fits in the garage's hollow interior even
 		# though the building's own declared outline covers that floor.
 		for panel:Rect2 in item_panels(item):
-			if rect.grow(.05).intersects(panel):return false
+			if LifeCatalog.blocks_neighbor(rect,panel,kind,str(item.kind)):return false
 	# The app's own reach rule (set by `main.gd`) refuses a spot that would seal a
 	# doorway or cut off a furnishing the household still needs to walk to. The
 	# ghost preview and the click both apply it, so this preview must too: without
@@ -1677,10 +1768,14 @@ func _process(delta:float) -> void:
 			return
 		if LifeCatalog.wall_mounted(placement_kind):
 			# Wall decor slides along the nearest wall and faces into the room.
+			# Pieces that declare a hang height sit up on the wall, and the
+			# wheel can still move that height while the ghost is showing.
 			var snap:Dictionary=wall_snap(placement_kind,p,1.0,placement_size)
 			if not snap.is_empty():
 				p=window_snap(placement_kind,snap.position,float(snap.angle))
 				placement_angle=float(snap.angle)
+				if placement_hang>0.0:
+					p.y=Building.level_y(view_level)+placement_hang
 		ghost.position=p
 		ghost.rotation_degrees.y=placement_angle
 		ghost_position=p
