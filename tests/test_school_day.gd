@@ -74,6 +74,7 @@ func run() -> void:
 	_recovery_and_bell_regressions()
 	_early_return_is_a_player_choice()
 	_empty_away_queue_can_come_home()
+	_school_lunch_prevents_starvation()
 	_corrupt_saves()
 	check(observer_count > 40 and observer_errors.is_empty(),"Every observed school callback exposes a complete loadable state: "+str(observer_errors))
 	for sim: LifeSim in owned:sim.free()
@@ -264,6 +265,18 @@ func _empty_away_queue_can_come_home() -> void:
 		"An away Lifelet whose action queue is already empty can still come home.")
 	check(sim.complete_away_return() and not sim.is_away(),
 		"Coming home with no queued action ends the trip instead of crashing.")
+
+
+func _school_lunch_prevents_starvation() -> void:
+	var sim: LifeSim = setup("child", 500.0)
+	sim.queue_action("school_day", "lot_exit")
+	sim.get_current_action().target_position = Vector3(-1.6, .16, 8.5)
+	sim.begin_current_action()
+	sim.needs.hunger = 0.0
+	sim.starvation_minutes = 120.0
+	advance(sim, 200.0)
+	check(sim.is_away() and sim.needs.hunger >= 40.0 and sim.starvation_minutes == 0.0,
+		"A school day includes a meal, so an empty stomach does not keep the starvation clock running.")
 
 
 func _corrupt_saves() -> void:

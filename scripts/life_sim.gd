@@ -851,8 +851,19 @@ func _begin_school_departure(action: Dictionary) -> void:
 	_emit_notice("%s has left for school and will be home after 15:00." % str(character.name))
 
 
+func _away_meal() -> void:
+	# School and a work shift include a meal. Hunger decay across those hours
+	# otherwise leaves a pupil or worker on empty, and three hours of that is fatal.
+	if not is_away() or str(away_state.get("activity", "")) not in ["school", "career"]:
+		return
+	if float(needs.hunger) < 40.0:
+		needs.hunger = 40.0
+	starvation_minutes = 0.0
+
+
 func _tick_away(_game_minutes: float) -> void:
 	if not is_away() or str(away_state.phase) != "away": return
+	_away_meal()
 	if str(away_state.activity)=="career":
 		_tick_career_away()
 		return
@@ -5147,6 +5158,9 @@ func _begin_career_departure(action:Dictionary) -> void:
 	_emit_notice("%s has left for %s and will be home after 17:00."%[str(character.name),LifeCareers.workplace(str(career.get("track","")))])
 
 func _tick_career_away() -> void:
+	if action_queue.is_empty():
+		request_return_home()
+		return
 	if day!=int(away_state.departure_day) or str(character.life_stage)!="adult":request_return_home();return
 	var action:Dictionary=action_queue[0]
 	var elapsed:float=clampf(minutes-float(away_state.departure_minutes),0.0,float(action.duration))
