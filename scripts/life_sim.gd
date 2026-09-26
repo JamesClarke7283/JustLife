@@ -852,8 +852,10 @@ func _begin_school_departure(action: Dictionary) -> void:
 
 
 func _away_meal() -> void:
-	# School and a work shift include a meal. Hunger decay across those hours
-	# otherwise leaves a pupil or worker on empty, and three hours of that is fatal.
+	# School and a work shift include a meal, and so does the walk home. Hunger
+	# decay across those hours otherwise leaves a pupil or worker on empty, and
+	# three hours of that is fatal. The return itself can sit at the curb while
+	# the garden is crowded, so the meal lasts until they are actually home.
 	if not is_away() or str(away_state.get("activity", "")) not in ["school", "career"]:
 		return
 	if float(needs.hunger) < 40.0:
@@ -862,8 +864,9 @@ func _away_meal() -> void:
 
 
 func _tick_away(_game_minutes: float) -> void:
-	if not is_away() or str(away_state.phase) != "away": return
+	if not is_away(): return
 	_away_meal()
+	if str(away_state.phase) != "away": return
 	if str(away_state.activity)=="career":
 		_tick_career_away()
 		return
@@ -3400,9 +3403,51 @@ func _autonomy_eating_owned_portion(action: Dictionary) -> bool:
 	var plate: Dictionary=meal_service.food().portion(str(action.get("meal_plate","")))
 	return not plate.is_empty() and str(plate.owner)==meal_service.member_id(self) and float(plate.progress)>=0.0 and float(plate.progress)<1.0 and _autonomy_now()<float(plate.expires)
 
+func _meal_restores_hunger(action: Dictionary) -> bool:
+	var id: String = str(action.get("id", ""))
+	if id in ["snack", "cook", "eat_meal", "order_groceries"]:
+		return true
+	return float(action.get("changes", {}).get("hunger", 0.0)) > 0.0
+
+
+## An empty stomach already has the fatal clock running. Ordinary urgent needs
+## still leave a player's queue alone. Half an hour at empty is enough to yield
+## the front plan to a real meal; the interrupted plan waits behind it.
+func _yield_empty_stomach() -> bool:
+	if starvation_minutes < 30.0 or action_queue.is_empty():
+		return false
+	var current: Dictionary = action_queue[0]
+	if _meal_restores_hunger(current) or current.has("cooperation_id"):
+		return false
+	if str(current.get("phase", "")) not in ["queued", "approach", "active"]:
+		return false
+	var recovery: Dictionary = _autonomy_need_choice("hunger")
+	if recovery.is_empty() or str(recovery.get("id", "")) == str(current.get("id", "")):
+		return false
+	var held: Array = []
+	for action: Dictionary in action_queue:
+		var copy: Dictionary = action.duplicate(true)
+		copy.phase = "queued"
+		held.append(copy)
+	if is_instance_valid(meal_service):
+		for action: Dictionary in action_queue:
+			meal_service.canceled(self, action)
+	action_queue.clear()
+	if not queue_action(str(recovery.id), str(recovery.get("target_id", "")), recovery.get("position", Vector3.ZERO)):
+		for copy: Dictionary in held:
+			action_queue.append(copy)
+		_start_front()
+		return false
+	action_queue[0]["autonomous"] = true
+	for copy: Dictionary in held:
+		action_queue.append(copy)
+	return true
+
+
 func _reconsider_active_autonomy() -> void:
 	if is_away(): return
 	if not autonomy or action_queue.is_empty():return
+	if _yield_empty_stomach(): return
 	var current:Dictionary=action_queue[0]
 	if not bool(current.get("autonomous",false)) or current.has("cooperation_id") or str(current.phase) not in ["active","approach"]:return
 	# Queued player instructions retain their exact order and content.

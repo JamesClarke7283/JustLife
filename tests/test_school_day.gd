@@ -75,6 +75,8 @@ func run() -> void:
 	_early_return_is_a_player_choice()
 	_empty_away_queue_can_come_home()
 	_school_lunch_prevents_starvation()
+	_return_home_still_includes_a_meal()
+	_empty_stomach_yields_a_player_plan()
 	_corrupt_saves()
 	check(observer_count > 40 and observer_errors.is_empty(),"Every observed school callback exposes a complete loadable state: "+str(observer_errors))
 	for sim: LifeSim in owned:sim.free()
@@ -277,6 +279,49 @@ func _school_lunch_prevents_starvation() -> void:
 	advance(sim, 200.0)
 	check(sim.is_away() and sim.needs.hunger >= 40.0 and sim.starvation_minutes == 0.0,
 		"A school day includes a meal, so an empty stomach does not keep the starvation clock running.")
+
+
+func _return_home_still_includes_a_meal() -> void:
+	for activity: String in ["school", "career"]:
+		var stage: String = "child" if activity == "school" else "adult"
+		var sim: LifeSim = setup(stage, 900.0)
+		sim.away_state = {"version":1,"activity":activity,"phase":"returning","departure_day":sim.day,
+			"departure_minutes":480.0,"return_day":sim.day,"return_minutes":900.0,
+			"exit_id":"lot_exit","exit_position":Vector3.ZERO,"age_stage":stage,"completed":true,"ended_at":0.0}
+		sim.needs.hunger = 0.0
+		sim.starvation_minutes = 150.0
+		advance(sim, 20.0)
+		check(sim.is_away() and str(sim.away_state.phase) == "returning" and sim.needs.hunger >= 40.0 and sim.starvation_minutes == 0.0,
+			"The walk home from %s still includes a meal, so the starvation clock does not run at the curb." % activity)
+
+
+func _empty_stomach_yields_a_player_plan() -> void:
+	var sim: LifeSim = setup("adult", 600.0)
+	sim.autonomy = true
+	sim.funds = 200
+	sim.wants.clear()
+	sim.needs.hunger = 0.0
+	sim.starvation_minutes = 30.0
+	check(sim.queue_action("read", "shelf"), "A player can be reading while an empty stomach's clock is already running.")
+	sim.begin_current_action()
+	var kept: bool = sim._yield_empty_stomach()
+	var front: String = str(sim.get_current_action().get("id", ""))
+	var still_reading: bool = false
+	for action: Dictionary in sim.action_queue:
+		if str(action.get("id", "")) == "read":
+			still_reading = true
+	check(kept and front in ["snack", "cook", "eat_meal"] and still_reading,
+		"Half an hour at an empty stomach yields the reading to a meal and keeps the reading queued.")
+	var ordinary: LifeSim = setup("adult", 600.0)
+	ordinary.autonomy = true
+	ordinary.funds = 200
+	ordinary.needs.hunger = 1.0
+	ordinary.starvation_minutes = 0.0
+	ordinary.queue_action("read", "shelf")
+	ordinary.begin_current_action()
+	var before: Array = ordinary.action_queue.duplicate(true)
+	ordinary._reconsider_active_autonomy()
+	check(ordinary.action_queue == before, "Hunger that has not yet emptied the stomach still leaves a player's queue alone.")
 
 
 func _corrupt_saves() -> void:
