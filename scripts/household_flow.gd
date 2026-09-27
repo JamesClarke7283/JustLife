@@ -41,6 +41,8 @@ const MAX_STORAGE: int = 30
 var app: Node
 var books: Array = []                       # [{"id":"book_1","skill":"cooking","shelf":"item_6"}]
 var fill: Dictionary = {}                   # bin item id -> whole units of rubbish
+var safety_data: Dictionary = {}
+var safety_restored: bool = false
 var storage: Array = []                     # [{"id":"placed_1","kind":"bed","x":..,"z":..,"rotation":..,"level":..}]
 var serial: int = 0
 var _full_notice_day: int = -1
@@ -70,7 +72,7 @@ func helmet_ids() -> Array[String]:
 # ---------------------------------------------------------------- persistence
 
 func get_state() -> Dictionary:
-	return {"version":1, "serial":serial, "books":books.duplicate(true), "fill":fill.duplicate(true), "storage":storage.duplicate(true), "truck":_truck_state()}
+	return {"version":1, "serial":serial, "books":books.duplicate(true), "fill":fill.duplicate(true), "storage":storage.duplicate(true), "truck":_truck_state(), "safety":app.safety.snapshot() if is_instance_valid(app.safety) else safety_data.duplicate(true)}
 
 
 ## The weekly food truck's own small record rides here rather than in a system
@@ -84,12 +86,15 @@ func _truck_state() -> Dictionary:
 
 
 func restore(data: Variant) -> void:
+	safety_data={}
+	safety_restored=true
 	books = []
 	fill = {}
 	storage = []
 	serial = 0
 	if not data is Dictionary:
 		return
+	if data.get("safety") is Dictionary:safety_data=data.safety.duplicate(true)
 	serial = int(data.get("serial", 0))
 	var raw_fill: Variant = data.get("fill", {})
 	if raw_fill is Dictionary:
@@ -114,6 +119,8 @@ static func validate(data: Variant, layout: Array, day: int = 0) -> String:
 		return ""
 	if not data is Dictionary:
 		return "The saved household extras are invalid."
+	var safety_error:String=LifeSafety.validate(data.get("safety"))
+	if not safety_error.is_empty():return safety_error
 	if not LifeBuildingState.number(data.get("serial", 0), 0, 1000000000, true):
 		return "The saved household extras have an invalid counter."
 	var kinds: Dictionary = {}

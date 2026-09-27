@@ -1,6 +1,7 @@
 extends SceneTree
 ## A household that is only living — nobody shopping, nobody ordering — keeps
-## its purse except for the scheduled break-in. A bill is not taken by the clock.
+## its purse until physical theft or an explicit payment. The midnight crime
+## roll and an issued bill cannot silently take money.
 
 var checks: int = 0
 var failures: int = 0
@@ -31,19 +32,14 @@ func run() -> void:
 		member.sim.autonomy = false
 		member.sim.wants.clear()
 	var start: int = home.funds
-	var robberies: int = 0
-	var last: int = start
-	for step: int in 14 * 24:
-		home.tick(60.0 / LifeSim.GAME_MINUTES_PER_SECOND)
-		if home.funds != last:
-			var drop: int = last - home.funds
-			check(drop == LifeSim.ROBBERY_LOSS and home.day % LifeSim.ROBBERY_PERIOD_DAYS == 0,
-				"Purse moved only for a scheduled break-in (day %d, %d -> %d)." % [home.day, last, home.funds])
-			check(home.last_purse_note.contains("burglar"), "The purse says a burglar took the money.")
-			robberies += 1
-			last = home.funds
-	check(not home.bill().is_empty(), "The weekly bill is still waiting for the player.")
-	check(home.funds == start - robberies * LifeSim.ROBBERY_LOSS, "Nothing but break-ins left the purse (ℒ%d, %d nights)." % [home.funds, robberies])
-	check(robberies == 5, "Fourteen days include the break-in nights only, not a drain every morning.")
+	var nights:Array=[]
+	home.burglary_due.connect(func(day:int):nights.append(day))
+	for step:int in 14*24:
+		home.tick(60.0/LifeSim.GAME_MINUTES_PER_SECOND)
+		check(home.funds==start,"Clock-only living preserves purse at day %d hour %d."%[home.day,int(home.minutes/60.0)])
+	check(not home.bill().is_empty(),"The weekly bill is still waiting for the player.")
+	check(home.funds==start,"Neither bills nor a burglary roll silently drain the purse.")
+	check(nights.size()==14,"Fourteen midnights request fourteen household burglary rolls.")
+	for index:int in nights.size():check(int(nights[index])==index+2,"Nightly roll dates are consecutive and never duplicated.")
 	print("PURSE_LEAK ", checks, " assertions; ", failures, " failures")
 	quit(1 if failures else 0)

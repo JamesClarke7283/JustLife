@@ -107,8 +107,8 @@ const MOVING_FEE: int = 1200
 ## Every policy a house may carry. It mirrors `LifeSim.INSURANCE_POLICIES` in
 ## spirit but is keyed per property, so two houses can be covered differently.
 const POLICIES: Dictionary = {
-	"home": {"label": "Home insurance", "premium": 600},
-	"premium": {"label": "Premium home insurance", "premium": 900, "payout_multiple": 1.5},
+	"home": {"label": "Home insurance", "premium": 200},
+	"premium": {"label": "Premium home insurance", "premium": 200, "payout_multiple": 1.5},
 	"baby": {"label": "Baby & Child Insurance", "premium": 500},
 }
 
@@ -339,7 +339,7 @@ static func policy(state: Dictionary, house_id: String) -> Dictionary:
 ## Buy the named policy on one house. Each house carries its own cover, so a
 ## second home is insured separately from the first. Baby & Child cover is an
 ## add-on kept on `baby_policy` so it can sit beside burglar cover.
-static func buy_policy(state: Dictionary, house_id: String, policy_id: String, funds: int) -> Dictionary:
+static func buy_policy(state: Dictionary, house_id: String, policy_id: String, funds: int, day: int = 1) -> Dictionary:
 	if not owns(state, house_id):
 		return {"ok": false, "error": "This household does not own that house."}
 	if not POLICIES.has(policy_id):
@@ -357,6 +357,8 @@ static func buy_policy(state: Dictionary, house_id: String, policy_id: String, f
 	if not existing.is_empty():
 		return {"ok": false, "error": "%s is already insured for ℒ%d a term. Cancel it first to change cover." % [str(house(state, house_id).get("name", "This house")), int(existing.premium)]}
 	after["houses"][house_id]["policy"] = policy_id
+	after["houses"][house_id]["next_insurance_day"] = day + 7
+	after["houses"][house_id]["last_insurance_day"] = day
 	return {"ok": true, "state": after, "cost": premium, "funds": funds - premium}
 
 
@@ -367,6 +369,7 @@ static func cancel_policy(state: Dictionary, house_id: String) -> Dictionary:
 		return {"ok": false, "error": "This house is not insured."}
 	var after: Dictionary = state.duplicate(true)
 	after["houses"][house_id]["policy"] = ""
+	after["houses"][house_id].erase("next_insurance_day")
 	return {"ok": true, "state": after}
 
 
@@ -431,6 +434,12 @@ static func validate(value: Variant) -> String:
 		var held: String = str(record.get("policy", ""))
 		if not held.is_empty() and not POLICIES.has(held):
 			return "Save contains an unknown policy on a house."
+		for stamp:String in ["next_insurance_day","last_insurance_day"]:
+			if record.has(stamp) and not LifeBuildingState.number(record[stamp],1,1000007,true):
+				return "Save contains an invalid insurance payment date."
+		if record.has("next_insurance_day") and record.has("last_insurance_day"):
+			var payment_gap:int=int(record.next_insurance_day)-int(record.last_insurance_day)
+			if payment_gap<=0 or payment_gap%7!=0:return "Save contains contradictory insurance payment dates."
 		if not record.get("land", {}) is Dictionary:
 			return "Save contains invalid land on a house."
 		if not record.get("layout", []) is Array:
@@ -463,3 +472,26 @@ static func describe(state: Dictionary) -> String:
 	if owned == 1:
 		return "Living in %s." % lived
 	return "Living in %s, with %d other %s owned." % [lived, owned - 1, "house" if owned - 1 == 1 else "houses"]
+
+
+## Collect once on an explicit weekly policy date. Migrated policies start a
+## fresh term; loading and repeated ticks cannot charge the same date twice.
+static func collect_premiums(state:Dictionary, day:int, funds:int) -> Dictionary:
+	var after:Dictionary=state.duplicate(true)
+	var charged:int=0
+	var unpaid:Array[String]=[]
+	for id:String in after.get("houses",{}):
+		var home:Dictionary=after.houses[id]
+		if str(home.get("policy","")) not in ["home","premium"]:continue
+		if not home.has("next_insurance_day"):
+			home["next_insurance_day"]=day+7
+			continue
+		var due:int=int(home.next_insurance_day)
+		if day<due:continue
+		# A skipped date from an imported save advances without catch-up debits.
+		if day==due:
+			if funds>=200:
+				funds-=200;charged+=200;home["last_insurance_day"]=day
+			else:unpaid.append(str(home.get("name",id)))
+		while int(home.next_insurance_day)<=day:home.next_insurance_day=int(home.next_insurance_day)+7
+	return {"state":after,"funds":funds,"charged":charged,"unpaid":unpaid}

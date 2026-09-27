@@ -6,6 +6,8 @@ class_name LifeCatalog
 const GAMES_SIZES: Array[String] = ["small", "medium", "large"]
 
 const ITEMS = {
+	"home_phone": {"label":"Home telephone", "category":"Activities", "price":60, "size":Vector2(.24,.09), "height":.38, "color":"e9eee8", "wall_mounted":true, "hang":1.25, "description":"A wall telephone for household services and emergency police calls. Children and older Lifelets can use it."},
+	"burglar_alarm": {"label":"Burglar prevention keypad", "category":"Activities", "price":300, "size":Vector2(.30,.08), "height":.42, "color":"e9eee8", "wall_mounted":true, "hang":1.45, "description":"A wall keypad with an audible security siren. Detects a break-in and calls the police automatically. Included with home insurance."},
 	"bench": {"label":"Garden conversation bench", "category":"Comfort", "price":140, "size":Vector2(2,.72), "height":1.05, "color":"bb946c"},
 	# A couch's places are its authored cushions: the sofa carries three seat
 	# cushions at x = -0.70, 0 and 0.70 and the loveseat two at -0.37 and 0.37,

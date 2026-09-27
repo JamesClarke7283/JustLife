@@ -25,6 +25,8 @@ var pet_id: String = ""
 var display_name: String = ""
 var species: String = "cat"
 var sex: String = "female"
+var floor_level: int = 0
+var traversing_stairs: bool = false
 var coat: Dictionary = {}
 var selected: bool = false:
 	set(value):
@@ -35,6 +37,7 @@ var speed: float = 1.0
 var _model: Node3D
 var _head: Node3D
 var _tail: Node3D
+var _tail_rest_basis: Basis = Basis.IDENTITY
 var _legs: Array[Node3D] = []
 var _ring: MeshInstance3D
 var _speech: Label3D
@@ -52,6 +55,12 @@ var _collar: Node3D
 var interaction: String = ""
 var interaction_time: float = 0.0
 var _partner: Vector3 = Vector3.ZERO
+## Furniture poses are separate from Lifelet care so the two controllers never
+## overwrite one another. They share the same authored joints.
+var behavior: String = ""
+var behavior_time: float = 0.0
+var squeak_count: int = 0
+var _squeak_player: AudioStreamPlayer3D
 
 ## How far forward of the neck joint each species' mouth sits.
 const MOUTH_REACH: Dictionary = {"cat": .14, "dog": .22}
@@ -132,6 +141,7 @@ func configure(id: String, new_species: String, appearance: Dictionary, name: St
 	add_child(_model)
 	_head = _model.find_child("Head", true, false) as Node3D
 	_tail = _model.find_child("Tail", true, false) as Node3D
+	if is_instance_valid(_tail): _tail_rest_basis = _tail.basis
 	_collar = _model.find_child("Collar", true, false) as Node3D
 	for leg_name: String in LEG_NAMES:
 		var leg := _model.find_child(leg_name, true, false) as Node3D
@@ -215,8 +225,14 @@ func _notification(what: int) -> void:
 ## walking pet instead takes a four-beat gait whose stride follows its length.
 ## Both go through the same joint setters, so there is no second system.
 func animate(delta: float, moving: bool, speed_factor: float = 1.0) -> void:
+	if speed_factor <= 0.0:
+		stop_squeak()
+		return
 	_time += delta * clampf(speed_factor, 0.0, 3.0) * 0.9
 	var caring: bool = not interaction.is_empty() and not moving
+	if not caring and not moving and not behavior.is_empty():
+		_behavior_pose(delta)
+		return
 	_settle_body(delta, caring)
 	if caring:
 		_care_pose(delta)
@@ -235,7 +251,7 @@ func animate(delta: float, moving: bool, speed_factor: float = 1.0) -> void:
 		var lift: float = -0.22 + sin(_time * 1.1 + _phase) * 0.08
 		if moving:
 			lift = -0.10 + sin(_time * 3.2 + _phase) * 0.12
-		_tail.rotation = Vector3(lift, sway, 0.0)
+		_tail.basis = Basis.from_euler(Vector3(lift, sway, 0.0)) * _tail_rest_basis
 	for index: int in range(_legs.size()):
 		var leg: Node3D = _legs[index]
 		if not is_instance_valid(leg):
@@ -261,6 +277,94 @@ func set_interaction(id: String, time: float, partner: Vector3) -> void:
 
 func clear_interaction() -> void:
 	interaction = ""
+
+
+func set_behavior(id: String, elapsed: float) -> void:
+	behavior = id
+	behavior_time = elapsed
+
+
+func clear_behavior() -> void:
+	behavior = ""
+
+
+func _behavior_pose(delta: float) -> void:
+	if not is_instance_valid(_model): return
+	var blend: float = 1.0 - exp(-delta * 8.0)
+	var h: float = float(SPECIES_HEIGHT.get(species, .30))
+	var body_rotation := Vector3.ZERO
+	var body_position := Vector3.ZERO
+	var head := Vector3.ZERO
+	var legs: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, Vector3.ZERO]
+	var t: float = behavior_time
+	match behavior:
+		"rest":
+			body_position.y = -h * .30 + sin(t * .7) * .003
+			legs = [Vector3(-1.25, 0, .1), Vector3(-1.25, 0, -.1), Vector3(1.2, 0, .1), Vector3(1.2, 0, -.1)]
+			head = Vector3(.32, .08, 0)
+		"scratch":
+			body_rotation.x = -.8
+			body_position.y = h * .13
+			legs[0] = Vector3(-1.15 + sin(t * 10.0) * .40, 0, 0)
+			legs[1] = Vector3(-1.15 - sin(t * 10.0) * .40, 0, 0)
+			head.x = .35
+		"climb":
+			body_rotation.x = -.5
+			for i: int in range(4): legs[i].x = sin(t * 10.0 + float(i) * PI) * .8
+		"tree_play", "toy_play":
+			body_rotation.x = .14
+			body_position.y = sin(t * 4.0) * .012
+			legs[0].x = maxf(0.0, sin(t * 5.0)) * -1.0
+			legs[1].x = maxf(0.0, sin(t * 5.0 + PI)) * -1.0
+			head = Vector3(.45, sin(t * 4.0) * .25, 0)
+		"eat", "retrieve", "sniff":
+			head = Vector3(.60 + sin(t * 7.0) * .08, sin(t * 2.0) * .08, 0)
+	_model.rotation = _model.rotation.lerp(body_rotation, blend)
+	_model.position = _model.position.lerp(body_position, blend)
+	for i: int in range(_legs.size()):
+		if is_instance_valid(_legs[i]): _legs[i].rotation = _legs[i].rotation.lerp(legs[i], blend)
+	if is_instance_valid(_head): _head.rotation = _head.rotation.lerp(head, blend)
+	if is_instance_valid(_tail): _tail.basis = Basis.from_euler(Vector3(-.65 if behavior == "rest" else -.05, sin(t * 3.0) * (.04 if behavior == "rest" else .25), 0)) * _tail_rest_basis
+
+
+## A short rubber-toy chirp, synthesised as PCM to keep the asset portable.
+## A distinct pitch sweep separates it from speech, UI clicks and alarms.
+static func squeak_stream() -> AudioStreamWAV:
+	var stream := AudioStreamWAV.new()
+	stream.mix_rate = 22050
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	var duration: float = .19
+	var count: int = int(duration * stream.mix_rate)
+	var samples := PackedByteArray()
+	samples.resize(count * 2)
+	var phase: float = 0.0
+	for i: int in range(count):
+		var t: float = float(i) / float(stream.mix_rate)
+		var unit: float = t / duration
+		phase += TAU * (950.0 + sin(unit * PI) * 1050.0) / float(stream.mix_rate)
+		var envelope: float = sin(unit * PI) * minf(1.0, t * 100.0)
+		var value: int = int((sin(phase) + .25 * sin(phase * 2.0)) * envelope * 10000.0)
+		samples.encode_s16(i * 2, value)
+	stream.data = samples
+	return stream
+
+
+func squeak() -> void:
+	if not is_instance_valid(_squeak_player):
+		_squeak_player = AudioStreamPlayer3D.new()
+		_squeak_player.name = "SqueakyToyAudio"
+		_squeak_player.stream = squeak_stream()
+		_squeak_player.volume_db = -9.0
+		_squeak_player.unit_size = 10.0
+		_squeak_player.max_distance = 35.0
+		add_child(_squeak_player)
+	_squeak_player.pitch_scale = 1.13 if species == "cat" else .93
+	_squeak_player.play()
+	squeak_count += 1
+
+
+func stop_squeak() -> void:
+	if is_instance_valid(_squeak_player): _squeak_player.stop()
 
 
 ## The whole body leans, sits, bows or rolls from the model root; with no care
@@ -325,7 +429,7 @@ func _care_pose(delta: float) -> void:
 	for index: int in range(_legs.size()):
 		if is_instance_valid(_legs[index]): _legs[index].rotation = _legs[index].rotation.lerp(legs[index], blend)
 	if is_instance_valid(_head): _head.rotation = _head.rotation.lerp(head, blend)
-	if is_instance_valid(_tail): _tail.rotation = Vector3(-.05, wag, 0)
+	if is_instance_valid(_tail): _tail.basis = Basis.from_euler(Vector3(-.05, wag, 0)) * _tail_rest_basis
 
 
 ## Where a stroking hand runs along the coat.

@@ -56,12 +56,11 @@ func show_calendar() -> void:
 	for entry:Dictionary in events:
 		if int(entry.day)!=selected_day or not bool(categories[entry.kind]):continue
 		shown+=1
-		var row:=Control.new();row.name="CalendarEntry_"+str(entry.kind)+"_"+str(entry.member_id);row.custom_minimum_size=Vector2(989,98);column.add_child(row)
+		var row:=Control.new();row.name="CalendarEntry_"+str(entry.kind)+"_"+str(entry.member_id)+("_return" if bool(entry.get("continuation",false)) else "");row.custom_minimum_size=Vector2(989,98);column.add_child(row)
 		app.card(Vector2.ZERO,Vector2(989,98),P.PALE,12,row)
-		var time:String=LifeCalendar.clock_text(float(entry.minutes))
-		if entry.kind!="birthday":time+="–"+LifeCalendar.clock_text(float(entry.end))
-		app.text_label(time,Vector2(15,13),Vector2(142,27),16,P.TEAL,false,row)
-		app.text_label(str(entry.status),Vector2(15,48),Vector2(158,41),13,P.MUTED,false,row)
+		var time:String=LifeCalendar.entry_clock_text(entry)
+		app.text_label(time,Vector2(15,8),Vector2(158,44),16,P.TEAL,false,row)
+		app.text_label(str(entry.status),Vector2(15,56),Vector2(158,32),13,P.MUTED,false,row)
 		var title:Label=app.text_label(str(entry.name)+" · "+str(entry.title),Vector2(185,10),Vector2(782,30),20,P.INK,true,row)
 		title.name="AgendaTitle"
 		title.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;title.size.x=782

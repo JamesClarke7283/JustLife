@@ -28,6 +28,9 @@ signal age_changed(previous: String, current: String)
 signal away_changed(state: Dictionary)
 signal life_changed(status: String)
 signal passing_due(cause: String)
+signal robbery_requested()
+signal insurance_alarm_requested()
+signal career_shift_changed(state: Dictionary)
 
 const SAVE_PATH: String = "user://justlife_save.json"
 const SAVE_VERSION: int = 1
@@ -77,19 +80,16 @@ const SKILL_NAMES: Array[String] = ["cooking", "creativity", "charisma", "logic"
 ## What a home insurance policy is. The catalogue lives here so a save and the
 ## phone price the same product; the household owns the purchased record.
 const INSURANCE_POLICIES: Dictionary = {
-	# Burglar cover priced at the same ℒ600 a break-in can take, so the phone
-	# charge and the loss the policy answers are one figure the player recognises.
-	"home":{"label":"Home insurance","premium":600,"payout_multiple":1.0},
-	# Higher cover on a bigger house: a larger premium, and a break-in is paid
-	# back with interest rather than merely made even.
-	"premium":{"label":"Premium home insurance","premium":900,"payout_multiple":1.5},
+	# Home policies include a wall alarm; scheduled renewals are household-owned.
+	"home":{"label":"Home insurance","premium":200,"payout_multiple":1.0},
+	"premium":{"label":"Premium home insurance","premium":200,"payout_multiple":1.0},
 	# Recurring base cover for a household with children. Bought beside home
 	# insurance; the house record keeps it on its own key so both can be in force.
 	"baby":{"label":"Baby & Child Insurance","premium":500,"payout_multiple":1.0},
 }
-## The nightly break-in that makes a policy worth buying: a real loss, capped at
-## what the purse actually holds so funds can never go negative.
-const ROBBERY_PERIOD_DAYS: int = 3
+## The physical crime controller performs one nightly roll for the household.
+## Legacy callers can also request an incident without changing the purse.
+const ROBBERY_CHANCE: float = 0.01
 const ROBBERY_LOSS: int = 600
 
 var needs: Dictionary = {}
@@ -310,7 +310,7 @@ func new_household(profile: Dictionary) -> void:
 	criminal_record = {}
 	career = {"schedule":LifeCareerSchedule.fresh(1),"track":LifeCareers.DEFAULT_JOB,
 		"title":LifeCareers.title_at(LifeCareers.DEFAULT_JOB,1),"level":1,"performance":0.0,
-		"salary":LifeCareers.base_pay(LifeCareers.DEFAULT_JOB,1),"worked_day":0}
+		"salary":LifeCareers.base_pay(LifeCareers.DEFAULT_JOB,1),"worked_day":0,"shift":"day"}
 	moodlets.clear();memories.clear()
 	aspiration_stage = 1
 	aspiration_next_day = 0
@@ -629,6 +629,9 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		var availability: Dictionary = get_action_availability(id, target_id)
 		data["available"] = availability.available
 		data["unavailable_reason"] = availability.reason
+		if id=="career_day" and LifeCareers.is_police(str(career.get("track",""))):
+			data["label"]="Go to the police station"
+			data["description"]="%s. Earn ℒ%d for the full shift; late arrival reduces pay. Meals and bathroom breaks are included."%[str(_career_pattern().label),career_pay()]
 		if kind == "child_bed":
 			if str(data.id) == "sleep": data["label"] = "Go to Bed"
 			elif str(data.id) == "nap": data["label"] = "Take a Nap"
@@ -948,7 +951,7 @@ func request_return_home() -> bool:
 		action.progress = elapsed/float(action.duration)
 		_apply_continuous_effects(action,gained/float(action.duration))
 	var returning_from_work:bool=str(away_state.activity)=="career"
-	defer_autonomous_responsibility("career_day" if returning_from_work else "school_day",maxf(1.0,721.0-minutes))
+	defer_autonomous_responsibility("career_day" if returning_from_work else "school_day",maxf(1.0,float(int(away_state.departure_day)-day)*1440.0+float(_career_pattern().close)+1.0-minutes) if returning_from_work else maxf(1.0,721.0-minutes))
 	away_state.phase = "returning"
 	away_state.ended_at = _autonomy_now()
 	away_state.completed = false
@@ -1357,7 +1360,12 @@ func tick(delta: float) -> void:
 	# Minute-sized steps make effects and midnight processing stable at every speed.
 	while remaining > 0.00001:
 		var step: float = minf(remaining, 1.0)
+		# Overnight careers must commit both the midnight calendar and work
+		# progress before a daily notice can trigger a save.
+		var working_away:bool=is_away() and str(away_state.get("activity",""))=="career"
+		if working_away:begin_notifications()
 		_step(step)
+		if working_away:dispatch_notifications(release_notifications())
 		remaining -= step
 	_change_accumulator += delta
 	if _change_accumulator >= 0.2:
@@ -2023,6 +2031,8 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 		reason = "Potty practice starts once a baby is a toddler."
 	elif funds < int(_actions[id].cost) and not (is_instance_valid(grocery_service) and id in ["cook", "snack"]):
 		reason = "Requires ℒ%d." % int(_actions[id].cost)
+	elif id == "job" and LifeCareers.is_police(str(career.get("track",""))):
+		reason="Police shifts are served at the station. Choose Go to work at the neighborhood exit."
 	elif id == "job" and int(career.worked_day) == day:
 		reason = "Today's shift is already complete."
 	elif id=="job" and day<int(career.get("schedule",LifeCareerSchedule.fresh(day)).first_day):
@@ -2474,7 +2484,7 @@ func _degree() -> String:
 ## worth to this job. The single place a salary is worked out, so the ladder, the
 ## notice and the save never disagree.
 func career_pay() -> int:
-	return LifeCareers.pay(str(career.get("track", LifeCareers.DEFAULT_JOB)), int(career.get("level", 1)), _degree())
+	return LifeCareers.pay(str(career.get("track", LifeCareers.DEFAULT_JOB)), int(career.get("level", 1)), _degree(), str(career.get("shift", "day")))
 
 
 ## The rung above this Lifelet, and what reaching it takes. A job's ladder runs
@@ -2508,7 +2518,7 @@ func _check_promotion() -> void:
 	career["level"] = int(career["level"]) + 1
 	var job_id: String = str(career["track"])
 	career["title"] = LifeCareers.title_at(job_id, int(career["level"]))
-	career["salary"] = LifeCareers.pay(job_id, int(career["level"]), _degree())
+	career["salary"] = LifeCareers.pay(job_id, int(career["level"]), _degree(), str(career.get("shift", "day")))
 	funds += 200
 	_emit_notice("Promotion! You are now a %s. ℒ200 bonus and ℒ%d a shift." % [str(career["title"]).to_lower(), int(career["salary"])])
 	add_moodlet("A step forward","Confident","Your hard work is paying off.",360,4)
@@ -2530,13 +2540,45 @@ func choose_career(track_id:String) -> bool:
 	var entry_fee:int=int(entry.get("cost",0))
 	if entry_fee>0:funds-=entry_fee
 	career={"schedule":LifeCareerSchedule.fresh(day,day+1 if minutes>LifeCareerSchedule.CLOSE else day),
-		"track":track_id,"title":LifeCareers.title_at(track_id,1),"level":1,"performance":0.0,
+		"track":track_id,"shift":"day","title":LifeCareers.title_at(track_id,1),"level":1,"performance":0.0,
 		"salary":LifeCareers.pay(track_id,1,_degree()),"worked_day":int(career.worked_day)}
 	remember("A new direction","Joined "+str(job.label))
 	add_moodlet("New possibilities","Inspired","A new career is a chance to grow.",240,2)
 	_emit_notice("Your new job: %s. ℒ%d per shift.%s" % [career.title,career.salary," ℒ%d course fee paid." % entry_fee if entry_fee>0 else ""])
 	_emit_changed()
 	return true
+
+
+func police_shift_options() -> Array:
+	if not LifeCareers.is_police(str(career.get("track", ""))): return []
+	var result:Array=[]
+	for shift:String in ["day", "night"]:
+		var candidate:Dictionary=career.duplicate(true)
+		candidate.shift=shift
+		result.append({"id":shift,"label":str(LifeCareerSchedule.pattern(candidate).label),"pay":LifeCareers.pay(str(career.track),int(career.level),_degree(),shift),"current":str(career.get("shift","day"))==shift})
+	return result
+
+func choose_police_shift(shift:String) -> Dictionary:
+	if not LifeCareers.is_police(str(career.get("track",""))):return {"ok":false,"error":"Shift selection is available to police staff."}
+	if shift not in ["day","night"]:return {"ok":false,"error":"Choose the day or night shift."}
+	if is_away() or action_queue.any(func(action:Dictionary)->bool:return str(action.id) in ["job","career_day"]):return {"ok":false,"error":"Finish or cancel the current shift before changing shifts."}
+	if str(career.get("shift","day"))==shift:return {"ok":true,"shift":shift}
+	career.shift=shift
+	career.salary=career_pay()
+	# Choosing a pattern before its departure window can start today, including
+	# a newly hired night worker after the ordinary day-shift window has closed.
+	if int(career.schedule.first_day)>day and minutes<=float(_career_pattern().close):career.schedule.first_day=day
+	_publish("career_shift_changed",[{"event":"selected","shift":shift,"day":day,"track":str(career.track)}])
+	_emit_notice("%s: %s, ℒ%d per shift."%[str(career.title),str(_career_pattern().label),int(career.salary)])
+	_emit_changed()
+	return {"ok":true,"shift":shift,"salary":int(career.salary)}
+
+func _career_pattern() -> Dictionary:
+	return LifeCareerSchedule.pattern(career)
+
+func _career_end_minute() -> float:
+	var pattern:Dictionary=_career_pattern()
+	return float(pattern.end)+1440.0*int(pattern.return_offset)
 
 
 ## Whether this Lifelet may take up a job, as the player-readable reason they may
@@ -2772,11 +2814,11 @@ func _ease_mourning(amount: float) -> void:
 
 
 func _new_day() -> void:
-	var work_calendar:Dictionary=LifeCareerSchedule.advance(career.get("schedule",LifeCareerSchedule.fresh(day-1)),day,int(career.worked_day),str(character.life_stage)=="adult")
+	var work_calendar:Dictionary=LifeCareerSchedule.advance(career.get("schedule",LifeCareerSchedule.fresh(day-1)),day,int(career.worked_day),str(character.life_stage)=="adult",career)
 	career.schedule=work_calendar.state
 	if int(work_calendar.missed)>0:
 		career.performance=maxf(0.0,float(career.performance)-8.0*int(work_calendar.missed))
-		_emit_notice("Missed a weekday shift. Career performance fell; the next workday is a fresh chance.")
+		_emit_notice("Missed a scheduled shift. Career performance fell; the next workday is a fresh chance.")
 	_advance_education()
 	_cancel_school_actions("A new school day has begun. Choose a fresh class or assignment.")
 	_warned_needs.clear()
@@ -2847,9 +2889,10 @@ func buy_insurance(policy_id:String="home") -> Dictionary:
 		return {"ok":false,"error":"The household needs ℒ%d for this policy and has ℒ%d." % [premium,funds]}
 	funds-=premium
 	insurance_policy_id=policy_id
-	_emit_notice("Home insurance bought for ℒ%d. A break-in will be paid back in full." % premium)
+	if policy_id in ["home","premium"]:_publish("insurance_alarm_requested")
+	_emit_notice("Home insurance bought for ℒ%d, including a burglar alarm. Recovery returns stolen cash plus ℒ200." % premium)
 	_emit_changed()
-	return {"ok":true,"premium":premium,"label":str(INSURANCE_POLICIES[policy_id].label)}
+	return {"ok":true,"premium":premium,"label":str(INSURANCE_POLICIES[policy_id].label),"alarm_included":policy_id in ["home","premium"]}
 
 
 ## Give up the policy. Nothing is refunded: cover is a running cost, not a
@@ -2863,36 +2906,21 @@ func cancel_insurance() -> Dictionary:
 	return {"ok":true}
 
 
-## A break-in takes a real sum and says so. An insured home is reimbursed the
-## full loss in the same breath, so the notice still reports both halves; an
-## uninsured home simply loses the money. The loss is capped at the purse so
-## funds can never go negative.
+## Request a physical incident. The scene's crime controller owns theft and
+## restitution so an alarm/arrest cannot duplicate a silent cash transaction.
 func robbery() -> Dictionary:
-	var loss:int=mini(ROBBERY_LOSS,funds)
-	if loss<=0:
-		return {"ok":false,"reason":"Nothing was taken. The house was empty."}
-	funds-=loss
-	if insurance_policy_id.is_empty():
-		_emit_notice("A burglar broke in and took ℒ%d. Home insurance from the phone would have covered it." % loss)
-		_emit_changed()
-		return {"ok":true,"stolen":loss,"reimbursed":0,"insured":false}
-	_emit_notice("A burglar broke in and took ℒ%d. Home insurance paid it all back." % loss)
-	funds+=loss
-	var multiple:float=float(INSURANCE_POLICIES[insurance_policy_id].get("payout_multiple",1.0))
-	if multiple>1.0:
-		var extra:int=roundi(float(loss)*(multiple-1.0))
-		funds+=extra
-		_emit_notice("Premium cover paid a further ℒ%d on top." % extra)
-	_emit_changed()
-	return {"ok":true,"stolen":loss,"reimbursed":loss,"insured":true}
+	_publish("robbery_requested")
+	return {"ok":true,"requested":true,"stolen":0,"reimbursed":0,"insured":not insurance_policy_id.is_empty()}
 
-
-## The nightly crime check. Only the bill owner rolls, so one household hears one
-## break-in; the household drives this, exactly like the bill cycle.
-func robbery_check() -> Dictionary:
-	if day%ROBBERY_PERIOD_DAYS!=0:
+func robbery_check(roll:float=-1.0) -> Dictionary:
+	var chance:float=randf() if roll<0.0 else roll
+	if not is_finite(chance) or chance<0.0 or chance>=ROBBERY_CHANCE:
 		return {"ok":false,"reason":"No break-in tonight."}
 	return robbery()
+
+func mark_robbery_shaken() -> void:
+	add_moodlet("Upset / Shaken","Tense","A break-in at home takes time to recover from.",2880.0,3)
+	_emit_changed()
 
 
 ## The full amount owed right now, including any late fee. Every member carries
@@ -2973,7 +3001,7 @@ func _autonomy_school_household() -> bool:
 
 func _autonomy_duty_id() -> String:
 	if is_away(): return ""
-	if not LifeEducation.weekday(day):return ""
+	if not LifeCareerSchedule.workday(day,career):return ""
 	var id:String=""
 	if str(character.age_stage) in LifeEducation.SCHOOL_STAGES:
 		if int(education.last_attendance_day)!=day and day>=int(education.first_class_day) and minutes>=480.0 and minutes<=720.0:
@@ -2981,20 +3009,20 @@ func _autonomy_duty_id() -> String:
 		elif int(education.last_homework_day)!=day and (int(education.last_attendance_day)==day or minutes>=900.0) and minutes>=600.0 and minutes<=1320.0:
 			id="homework"
 	elif str(character.life_stage)=="adult" and LifeCareers.has(str(career.get("track",""))) and int(career.worked_day)!=day:
-		if day>=int(career.get("schedule",LifeCareerSchedule.fresh(day)).first_day) and minutes>=LifeCareerSchedule.OPEN and minutes<=LifeCareerSchedule.CLOSE:id="career_day"
+		if day>=int(career.get("schedule",LifeCareerSchedule.fresh(day)).first_day) and minutes>=float(_career_pattern().open) and minutes<=float(_career_pattern().close):id="career_day"
 	if not id.is_empty() and float(autonomy_state.deferred.get(id,-1.0))>_autonomy_now():return ""
 	return id
 
 func _autonomy_preparation_duty_id() -> String:
 	var due:String=_autonomy_duty_id()
 	if not due.is_empty():return due
-	if not LifeEducation.weekday(day):return ""
+	if not LifeCareerSchedule.workday(day,career):return ""
 	var id:String=""
 	var start:float=0.0
 	if str(character.age_stage) in LifeEducation.SCHOOL_STAGES and int(education.last_attendance_day)!=day and day>=int(education.first_class_day):
 		id="school_day";start=480.0
 	elif str(character.life_stage)=="adult" and not is_imprisoned() and LifeCareers.has(str(career.get("track",""))) and int(career.worked_day)!=day:
-		id="career_day";start=LifeCareerSchedule.OPEN
+		id="career_day";start=float(_career_pattern().open)
 		if day<int(career.get("schedule",LifeCareerSchedule.fresh(day)).first_day):return ""
 	if id.is_empty() or minutes<start-180.0 or minutes>=start:return ""
 	if float(autonomy_state.deferred.get(id,-1.0))>_autonomy_now():return ""
@@ -3030,8 +3058,8 @@ func _autonomy_projection_need(id:String,travel_minutes:float=60.0,include_fun:b
 		for need:String in changes:changes[need]=float(changes[need])*lesson_minutes/420.0
 		for need:String in {"energy":-10.0,"hunger":-8.0,"fun":-6.0,"social":16.0}:changes[need]=float(changes.get(need,0.0))+float({"energy":-10.0,"hunger":-8.0,"fun":-6.0,"social":16.0}[need])
 	if id=="career_day":
-		duration=LifeCareerSchedule.END-minutes
-		var work_minutes:float=maxf(0.0,LifeCareerSchedule.END-maxf(LifeCareerSchedule.OPEN,minutes)-travel_minutes)
+		duration=_career_end_minute()-minutes
+		var work_minutes:float=maxf(0.0,_career_end_minute()-maxf(float(_career_pattern().open),minutes)-travel_minutes)
 		for need:String in changes:changes[need]=float(changes[need])*work_minutes/LifeCareerSchedule.LENGTH
 	if id=="school":changes={"energy":-10.0,"hunger":-8.0,"fun":-6.0,"social":16.0}
 	elif id=="homework":changes={"energy":-3.0,"fun":-5.0}
@@ -3078,7 +3106,7 @@ func _autonomy_target_for(id:String,excluded_target_ids:Array=[]) -> Dictionary:
 		for definition:Dictionary in get_actions_for(str(target.kind),str(target.id)):
 			if str(definition.id)!=id:continue
 			available=bool(definition.available)
-			if id=="career_day" and str(target.kind)=="lot_exit" and minutes>=LifeCareerSchedule.OPEN-180.0 and minutes<LifeCareerSchedule.OPEN and LifeEducation.weekday(day) and str(character.life_stage)=="adult" and int(career.worked_day)!=day and day>=int(career.get("schedule",LifeCareerSchedule.fresh(day)).first_day) and not is_away():available=true
+			if id=="career_day" and str(target.kind)=="lot_exit" and minutes>=float(_career_pattern().open)-180.0 and minutes<float(_career_pattern().open) and LifeCareerSchedule.workday(day,career) and str(character.life_stage)=="adult" and int(career.worked_day)!=day and day>=int(career.get("schedule",LifeCareerSchedule.fresh(day)).first_day) and not is_away():available=true
 			if id == "school_day" and str(target.kind) == "lot_exit" and minutes >= 300.0 and minutes < 480.0 and LifeEducation.weekday(day) and str(character.age_stage) in LifeEducation.SCHOOL_STAGES and int(education.last_attendance_day) != day and day >= int(education.first_class_day) and not is_away():
 				# Preparation can locate tomorrow's route before departure opens.
 				# The chooser separately requires a due duty before queueing it.
@@ -3172,7 +3200,7 @@ func reconsider_waiting_autonomy(blocked_target_ids: Array, waited_game_minutes:
 
 func _duty_deadline(id:String) -> float:
 	# The latest minute a Lifelet can reach the lot exit and still arrive on time.
-	if id=="career_day":return LifeCareerSchedule.ON_TIME
+	if id=="career_day":return float(_career_pattern().on_time)
 	if id=="school_day":return 540.0
 	return INF
 
@@ -3985,6 +4013,7 @@ func day_kind_label() -> String:
 	if str(character.get("life_stage","adult"))=="minor":
 		return "School day" if LifeEducation.weekday(day) else "Your day off"
 	# Adults are due at work on the weekdays their own career schedule names.
+	if LifeCareers.is_police(str(career.get("track",""))):return str(_career_pattern().label)
 	if LifeEducation.weekday(day) and not str(career.get("track","")).is_empty():
 		return "Your workday"
 	return "Your day off"
@@ -4069,6 +4098,14 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 	for action: Variant in state.get("action_queue",[]):
 		if action is Dictionary and (action.has("cooperation_id") or str(action.get("id","")) == "help_homework") and not allow_cooperation:
 			return {"ok":false,"error":"Cooperative homework must be restored with its complete household."}
+	# Pre-shift police saves used the old rank pay table. Migrate the active
+	# work snapshot with the career so it remains loadable after this restart.
+	if state.get("career") is Dictionary and str(state.career.get("track",""))=="police" and not state.career.has("shift"):
+		state.career.shift="day"
+		state.career.salary=LifeCareers.pay("police",int(state.career.get("level",1)))
+		if state.get("away_state") is Dictionary and str(state.away_state.get("activity",""))=="career":
+			state.away_state.shift="day"
+			state.away_state.salary=state.career.salary
 	# Validate everything before touching the live household.
 	var error: String = _validate_state(state)
 	if not error.is_empty():
@@ -4115,7 +4152,8 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 	career["track"] = saved_track
 	career["level"] = saved_level
 	career["title"] = LifeCareers.title_at(saved_track, saved_level)
-	career["salary"] = LifeCareers.pay(saved_track, saved_level, degree)
+	career["shift"] = str(career.get("shift", "day"))
+	career["salary"] = LifeCareers.pay(saved_track, saved_level, degree, str(career.shift))
 	career["schedule"]=career.get("schedule",LifeCareerSchedule.fresh(int(state.day)))
 	wants = state["wants"].duplicate(true)
 	moodlets=state.get("moodlets",[]).duplicate(true)
@@ -4454,12 +4492,13 @@ func _validate_state(state: Dictionary) -> String:
 		return "Save contains an invalid career."
 	if not LifeCareers.has(str(job.get("track", ""))):
 		return "Save contains an unknown career track."
+	if str(job.get("shift","day")) not in ["day","night"] or (str(job.get("shift","day"))=="night" and not LifeCareers.is_police(str(job.get("track","")))):return "Save contains an invalid police shift."
 	var degree_error: String = _validate_degree(state)
 	if not degree_error.is_empty(): return degree_error
 	var criminal_error: String = LifeCareers.criminal_error(state.get("criminal_record"))
 	if not criminal_error.is_empty(): return criminal_error
 	if job.has("schedule"):
-		var schedule_error:String=LifeCareerSchedule.validate(job.schedule,int(state.day),int(job.get("worked_day",0)))
+		var schedule_error:String=LifeCareerSchedule.validate(job.schedule,int(state.day),int(job.get("worked_day",0)),job)
 		if not schedule_error.is_empty():return schedule_error
 	if not _number_in_range(state.get("funds"), 0.0, 1000000000.0) or not _number_in_range(state.get("day"), 1.0, 1000000.0) or not _number_in_range(state.get("minutes"), 0.0, 1439.99999):
 		return "Save contains an invalid clock or funds."
@@ -5165,6 +5204,9 @@ func _publish(event: String, args: Array = []) -> void:
 		"away_changed": away_changed.emit(args[0])
 		"life_changed": life_changed.emit(str(args[0]))
 		"passing_due": passing_due.emit(str(args[0]))
+		"robbery_requested": robbery_requested.emit()
+		"insurance_alarm_requested": insurance_alarm_requested.emit()
+		"career_shift_changed": career_shift_changed.emit(args[0])
 
 func _emit_changed() -> void: _publish("changed")
 func _emit_notice(message: String) -> void: _publish("notice",[message])
@@ -5175,10 +5217,11 @@ func _emit_age_changed(previous: String, current: String) -> void: _publish("age
 func _career_departure_error(target_id:String,ignore_queue:bool=false) -> String:
 	if str(character.life_stage)!="adult":return "Full-time careers become available in young adulthood."
 	if is_away():return "This Lifelet is already away from home."
-	if not LifeEducation.weekday(day):return "Ordinary work runs Monday through Friday."
+	if not LifeCareerSchedule.workday(day,career):return "Ordinary work runs Monday through Friday."
 	if day<int(career.get("schedule",LifeCareerSchedule.fresh(day)).first_day):return "Your first shift begins on the next workday."
 	if int(career.worked_day)==day:return "Today's paid shift is already complete."
-	if minutes<LifeCareerSchedule.OPEN or minutes>LifeCareerSchedule.CLOSE:return "Leave for work between 09:00 and 12:00. Arrivals after 10:00 affect pay and performance."
+	var pattern:Dictionary=_career_pattern()
+	if minutes<float(pattern.open) or minutes>float(pattern.close):return "Night staff leave between 17:00 and 20:00 and return at 09:00." if int(pattern.return_offset)>0 else "Leave for work between 09:00 and 12:00. Arrivals after 10:00 affect pay and performance."
 	if not target_id.is_empty() and _education_target_kind(target_id)!="lot_exit":return "Choose the neighborhood exit to leave for work."
 	if not ignore_queue:
 		for action:Dictionary in action_queue:
@@ -5196,32 +5239,39 @@ func _begin_career_departure(action:Dictionary) -> void:
 			if not bool(later.get("autonomous",false)):problem="Following your plans before leaving for work."
 	if not problem.is_empty():cancel_action();_emit_notice(problem);return
 	_wear_for_activity("career_day")
-	action.merge({"phase":"active","paid":true,"started_day":day,"started_minutes":minutes,"elapsed":0.0,"progress":0.0,"duration":LifeCareerSchedule.END-minutes},true)
+	action.merge({"phase":"active","paid":true,"started_day":day,"started_minutes":minutes,"elapsed":0.0,"progress":0.0,"duration":_career_end_minute()-minutes},true)
 	for need:String in action.changes:action.changes[need]=float(action.changes[need])*float(action.duration)/LifeCareerSchedule.LENGTH
-	away_state={"version":1,"activity":"career","phase":"away","departure_day":day,"departure_minutes":minutes,"return_day":day,"return_minutes":LifeCareerSchedule.END,"exit_id":str(action.target_id),"exit_position":action.target_position,"age_stage":str(character.age_stage),"career_track":str(career.get("track","studio")),"salary":int(career.salary),"completed":false,"ended_at":0.0}
+	away_state={"version":1,"activity":"career","phase":"away","departure_day":day,"departure_minutes":minutes,"return_day":day+int(_career_pattern().return_offset),"return_minutes":float(_career_pattern().end),"shift":str(career.get("shift","day")),"exit_id":str(action.target_id),"exit_position":action.target_position,"age_stage":str(character.age_stage),"career_track":str(career.get("track","studio")),"salary":int(career.salary),"completed":false,"ended_at":0.0}
 	_publish("away_changed",[get_away_state()]);_emit_changed()
-	_emit_notice("%s has left for %s and will be home after 17:00."%[str(character.name),LifeCareers.workplace(str(career.get("track","")))])
+	if LifeCareers.is_police(str(career.get("track",""))):_publish("career_shift_changed",[{"event":"started","shift":str(career.get("shift","day")),"day":day,"track":str(career.track)}])
+	if LifeCareers.is_police(str(career.get("track",""))):
+		_emit_notice("Police shift change · %s starts the %s shift at the station. Return after %s; ℒ%d for the full shift."%[str(character.name),str(career.get("shift","day")),"09:00 tomorrow" if int(_career_pattern().return_offset)>0 else "17:00",career_pay()])
+	else:
+		_emit_notice("%s has left for %s and will be home after 17:00."%[str(character.name),LifeCareers.workplace(str(career.get("track","")))])
 
 func _tick_career_away() -> void:
 	if action_queue.is_empty():
 		request_return_home()
 		return
-	if day!=int(away_state.departure_day) or str(character.life_stage)!="adult":request_return_home();return
+	if day>int(away_state.return_day) or str(character.life_stage)!="adult":request_return_home();return
 	var action:Dictionary=action_queue[0]
-	var elapsed:float=clampf(minutes-float(away_state.departure_minutes),0.0,float(action.duration))
+	var departed:float=float(int(away_state.departure_day)-1)*1440.0+float(away_state.departure_minutes)
+	var due:float=float(int(away_state.return_day)-1)*1440.0+float(away_state.return_minutes)
+	var elapsed:float=clampf(_autonomy_now()-departed,0.0,float(action.duration))
 	var gained:float=maxf(0.0,elapsed-float(action.elapsed))
 	action.elapsed=elapsed;action.progress=elapsed/float(action.duration)
 	_apply_continuous_effects(action,gained/float(action.duration))
-	if minutes<LifeCareerSchedule.END:return
+	if _autonomy_now()<due:return
 	begin_notifications()
-	away_state.phase="returning";away_state.ended_at=float(day-1)*1440.0+LifeCareerSchedule.END
-	away_state.completed=int(career.worked_day)!=day
+	var worked_date:int=int(away_state.departure_day)
+	away_state.phase="returning";away_state.ended_at=due
+	away_state.completed=int(career.worked_day)!=worked_date
 	if bool(away_state.completed):
-		var proportion:float=float(action.duration)/LifeCareerSchedule.LENGTH
-		var late:float=maxf(0.0,float(away_state.departure_minutes)-LifeCareerSchedule.ON_TIME)
+		var proportion:float=float(action.duration)/float(_career_pattern().length)
+		var late:float=maxf(0.0,float(away_state.departure_minutes)-float(_career_pattern().on_time))
 		var income:int=roundi(float(away_state.salary)*proportion)
-		funds+=income;career.worked_day=day
-		career.schedule=LifeCareerSchedule.attend(career.get("schedule",LifeCareerSchedule.fresh(day)),day,late)
+		funds+=income;career.worked_day=worked_date
+		career.schedule=LifeCareerSchedule.attend(career.get("schedule",LifeCareerSchedule.fresh(day)),worked_date,late)
 		var career_skill:String=str(LifeCareers.job(str(away_state.career_track)).get("skill",""))
 		# A service job trains no trade of its own, so a shift there still counts
 		# as a real day's work for performance but grows no skill.
@@ -5243,26 +5293,31 @@ func _tick_career_away() -> void:
 		_update_wants()
 	_publish("away_changed",[get_away_state()]);_emit_changed()
 	_wear_home_clothes()
-	_emit_notice("%s is returning from work."%str(character.name))
+	if LifeCareers.is_police(str(career.get("track",""))):_publish("career_shift_changed",[{"event":"finished","shift":str(career.get("shift","day")),"day":day,"track":str(career.track)}])
+	if LifeCareers.is_police(str(career.get("track",""))):
+		_emit_notice("Police shift change · %s has handed over to the %s team and is returning home."%[str(character.name),"day" if str(career.get("shift","day"))=="night" else "night"])
+	else:_emit_notice("%s is returning from work."%str(character.name))
 	dispatch_notifications(release_notifications())
 
 func _validate_career_away_state(state:Dictionary) -> String:
 	var eligibility:String=LifeLifecycle.eligibility(LifeLifecycle.stage_for(state.character))
 	var value:Dictionary=state.get("away_state",{})
+	var pattern:Dictionary=LifeCareerSchedule.pattern(state.career)
 	var pending:Array=state.action_queue.filter(func(action:Dictionary)->bool:return str(action.id)=="career_day")
 	if pending.size()!=1 or state.action_queue.any(func(action:Dictionary)->bool:return str(action.id)=="school_day"):return "Save contains duplicate or conflicting departures."
 	var action:Dictionary=pending[0]
 	if value.is_empty():
-		if eligibility!="adult" or int(state.day)<int(state.career.get("schedule",LifeCareerSchedule.fresh(int(state.day))).first_day) or not LifeEducation.weekday(int(state.day)) or float(state.minutes)<LifeCareerSchedule.OPEN or float(state.minutes)>LifeCareerSchedule.CLOSE or int(state.career.worked_day)==int(state.day):return "Save schedules an unavailable work departure."
+		if eligibility!="adult" or int(state.day)<int(state.career.get("schedule",LifeCareerSchedule.fresh(int(state.day))).first_day) or not LifeCareerSchedule.workday(int(state.day),state.career) or float(state.minutes)<float(pattern.open) or float(state.minutes)>float(pattern.close) or int(state.career.worked_day)==int(state.day):return "Save schedules an unavailable work departure."
 		if action.get("paid")!=false or not action.get("paid") is bool or not _number_in_range(action.get("elapsed"),0.0,0.0) or not _number_in_range(action.get("duration"),LifeCareerSchedule.LENGTH,LifeCareerSchedule.LENGTH):return "Save contains a departed worker without away state."
 		if str(action.get("target_kind",""))!="lot_exit" or str(action.get("target_id",""))!="lot_exit":return "Save contains work without a neighborhood exit."
 		return ""
 	if not _autonomy_integer(value.get("version"),1,1) or value.get("activity")!="career" or str(value.get("phase","")) not in ["away","returning"]:return "Save contains an unsupported work absence."
 	if state.action_queue.is_empty() or str(state.action_queue[0].id)!="career_day":return "Save has an away worker without its active departure."
-	if not _autonomy_integer(value.get("departure_day"),1,int(state.day)) or not _autonomy_integer(value.get("return_day"),int(value.departure_day),int(value.departure_day)) or not LifeEducation.weekday(int(value.departure_day)):return "Save contains an invalid work calendar."
+	if not _autonomy_integer(value.get("departure_day"),1,int(state.day)) or not _autonomy_integer(value.get("return_day"),int(value.departure_day)+int(pattern.return_offset),int(value.departure_day)+int(pattern.return_offset)) or not LifeCareerSchedule.workday(int(value.departure_day),state.career):return "Save contains an invalid work calendar."
 	if not state.career.has("schedule") or int(value.get("departure_day",0))<int(state.career.schedule.first_day):return "Save starts work before employment begins."
-	if not _number_in_range(value.get("departure_minutes"),LifeCareerSchedule.OPEN,LifeCareerSchedule.CLOSE) or not _number_in_range(value.get("return_minutes"),LifeCareerSchedule.END,LifeCareerSchedule.END) or not value.get("completed") is bool:return "Save contains invalid work departure or return times."
+	if not _number_in_range(value.get("departure_minutes"),float(pattern.open),float(pattern.close)) or not _number_in_range(value.get("return_minutes"),float(pattern.end),float(pattern.end)) or not value.get("completed") is bool:return "Save contains invalid work departure or return times."
 	if LifeLifecycle.eligibility(str(value.get("age_stage","")))!="adult" or str(value.get("exit_id",""))!="lot_exit" or not LifeCareers.has(str(value.get("career_track",""))) or str(value.career_track)!=str(state.career.get("track","")) or not _autonomy_integer(value.get("salary"),0,1000000):return "Save contains an invalid worker, salary or career."
+	if str(value.get("shift","day"))!=str(state.career.get("shift","day")):return "Save changes police shift during work."
 	if str(value.phase)=="away" and int(value.salary)!=int(state.career.salary):return "Save contains a changed salary during work."
 	var position:Variant=value.get("exit_position")
 	if position is Vector3:
@@ -5272,7 +5327,7 @@ func _validate_career_away_state(state:Dictionary) -> String:
 			if not _number_in_range(component,-100000.0,100000.0):return "Save contains an invalid work return position."
 	else:return "Save contains an invalid work return position."
 	var departed:float=float(value.departure_day-1)*1440.0+float(value.departure_minutes)
-	var due:float=float(value.return_day-1)*1440.0+LifeCareerSchedule.END
+	var due:float=float(value.return_day-1)*1440.0+float(pattern.end)
 	var now:float=float(state.day-1)*1440.0+float(state.minutes)
 	if now<departed or not _number_in_range(value.get("ended_at"),0.0,now):return "Save contains future work progress."
 	if action.get("paid")!=true or not action.get("paid") is bool or str(action.get("target_id",""))!="lot_exit" or str(action.get("target_kind",""))!="lot_exit" or not _as_vector3(action.target_position).is_equal_approx(_as_vector3(position)):return "Save contains a mismatched work action or exit."
@@ -5286,7 +5341,7 @@ func _validate_career_away_state(state:Dictionary) -> String:
 		if bool(value.completed):
 			if float(value.ended_at)!=due or now<due or int(state.career.worked_day)!=int(value.departure_day):return "Save rewards an unfinished workday."
 			var schedule:Dictionary=state.career.get("schedule",{})
-			if int(schedule.get("last_attendance_day",0))!=int(value.departure_day) or float(schedule.get("late_minutes",0.0))+.00000001<maxf(0.0,float(value.departure_minutes)-LifeCareerSchedule.ON_TIME):return "Save has a work return without earned attendance and lateness."
+			if int(schedule.get("last_attendance_day",0))!=int(value.departure_day) or float(schedule.get("late_minutes",0.0))+.00000001<maxf(0.0,float(value.departure_minutes)-float(pattern.on_time)):return "Save has a work return without earned attendance and lateness."
 		elif float(value.ended_at)>=due:return "Save marks a completed workday as an early return."
 	return ""
 

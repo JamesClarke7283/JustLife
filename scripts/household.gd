@@ -20,6 +20,7 @@ const MAX_MEMBERS = 8
 ## Raised when the household's home cover changes, so the app can keep the
 ## property record in step with the sims and the two can never disagree.
 signal insurance_changed(policy_id: String)
+signal burglary_due(day: int)
 var members: Array = []
 var selected_index: int = 0
 var funds: int = 2500
@@ -293,20 +294,7 @@ func tick(delta: float) -> void:
 	minutes=members[0].sim.minutes
 	if day!=start_day:
 		_sync_bill_mirror()
-		# A break-in is the household's own event, rolled once by the money owner
-		# on the shared clock. It fires on the night it is due while the player
-		# simply plays, rather than waiting to be asked for.
-		var robber:LifeSim=bill_owner()
-		if robber!=null:
-			var purse_before:int=funds
-			robber.funds=funds
-			var rolled:Dictionary=robber.robbery_check()
-			funds=robber.funds
-			_sync_wallet()
-			if funds<purse_before:
-				last_purse_note="A burglar took ℒ%d on day %d. Home insurance from the phone pays a break-in back." % [purse_before-funds, day]
-			elif int(rolled.get("reimbursed",0))>0:
-				last_purse_note="A burglar broke in on day %d. Insurance paid it back." % day
+		burglary_due.emit(day)
 		# Every Lifelet on the criminal line of work takes their own chance of
 		# being caught once a day, on the shared clock, so a practised thief's
 		# lower risk is something the player sees rather than reads about.
@@ -2519,13 +2507,14 @@ func pet_actions(pet_id: String, member_id: String) -> Array:
 	var species: String = str(pet.get("species", "dog"))
 	var out: Array = []
 	for interaction: Dictionary in LifePetCare.INTERACTIONS:
+		if bool(interaction.get("dog_only",false)) and species!="dog":continue
 		var reason: String = LifePetCare.interaction_error(str(interaction.id), str(sim.character.age_stage), away, species)
 		var label: String = str(interaction.label)
 		# Cat labels drop the dog wording so a click on either species still reads true.
 		if species == "cat":
 			label = str({
-				"pet_feed": "Feed Cat",
-				"pet_play": "Play with Cat",
+				"pet_feed": "Feed the Cat",
+				"pet_play": "Play with the Cat",
 				"pet_teach_trick": "Play Tricks",
 				"pet_walk": "Take for a Walk",
 				"pet_pet": "Pet",
@@ -2541,6 +2530,7 @@ func pet_actions(pet_id: String, member_id: String) -> Array:
 		})
 	# A dirty dog needs a person to wash it; the simulation's own gate says
 	# why a cat or an already-clean coat is refused.
+	if species!="dog":return out
 	var bath: Dictionary = sim.get_action_availability("bathe_pet", pet_id)
 	out.append({
 		"id": "bathe_pet",

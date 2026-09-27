@@ -20,6 +20,7 @@ const CREATOR_FACE_LABELS: Dictionary = {
 	"eye_spacing":"Eye spacing", "brow_arch":"Brow arch", "nose_wide":"Nose width", "nose_length":"Nose length",
 	"nose_bridge":"Nose bridge", "lip_fullness":"Lip fullness", "mouth_width":"Mouth width",
 }
+var safety: LifeSafety
 var household: LifeHousehold
 var household_profiles: Array = []
 var creator_index: int = 0
@@ -148,6 +149,10 @@ var pet_arrivals: Dictionary = {}
 ## The pet the camera and HUD are following, or "" while a Lifelet is. A pet is
 ## not controllable in the way a person is, so this only changes what is watched.
 var selected_pet_id: String = ""
+var _pet_behavior: RefCounted
+var pet_panel_bars: Dictionary = {}
+var pet_panel_values: Dictionary = {}
+var pending_pet_care: Dictionary = {}
 
 var pet_errands: Dictionary = {}
 ## The point at which a pet stops what it is doing and sees to itself. Below a
@@ -370,6 +375,7 @@ func interface_local_x(canvas_x: float) -> float:
 	return (canvas_x - ui.position.x) / maxf(ui.scale.x, 0.0001)
 
 func _connect_live_nodes() -> void:
+	if not household.insurance_changed.is_connected(_on_insurance_changed):household.insurance_changed.connect(_on_insurance_changed)
 	household.physical_snapshot_provider=_physical_snapshot_context
 	for member:Dictionary in household.members:
 		member.sim.autonomy_activity_available=_activity_available_for_member.bind(str(member.id))
@@ -1494,11 +1500,11 @@ func show_property_panel() -> void:
 		insured=not held.is_empty()
 		text_label("Insurance on this home: %s" % (str(held.label) if insured else "none"),
 			Vector2(432,770),Vector2(300,26),14,P.INK if insured else P.MUTED,false,overlay)
-		button("Cancel insurance" if insured else "Insure this home · ℒ600",
+		button("Cancel insurance" if insured else "Insure this home · ℒ200",
 			Vector2(740,766),Vector2(270,34),func():_toggle_property_insurance(insured),false,overlay)
 	# A second policy product, so a bigger house can be covered more heavily.
 	if not insured:
-		button("Premium cover · ℒ900",Vector2(430,812),Vector2(280,34),func():_buy_property_policy("premium"),false,overlay)
+		button("Home cover + alarm · ℒ200",Vector2(430,812),Vector2(280,34),func():_buy_property_policy("premium"),false,overlay)
 	# Baby & Child cover sits under home insurance: a separate ℒ500 product that
 	# can be bought alongside burglar cover once the household has children.
 	var baby_held:bool=not str(Properties.house(properties,current_id).get("baby_policy","")).is_empty() if not current_id.is_empty() else false
@@ -1510,12 +1516,13 @@ func show_property_panel() -> void:
 ## Buy the named policy on the house the household lives in.
 func _buy_property_policy(policy_id:String) -> void:
 	var house_id:String=Properties.active(properties)
-	var result:Dictionary=Properties.buy_policy(properties,house_id,policy_id,household.funds)
+	var result:Dictionary=Properties.buy_policy(properties,house_id,policy_id,household.funds,household.day)
 	if not bool(result.ok):
 		show_notice(str(result.error));show_property_panel();return
 	properties=result.state
 	household.set_funds(int(result.funds))
 	_apply_property_insurance()
+	if is_instance_valid(safety):safety.policy_bought(policy_id)
 	show_notice("Cover taken out on this home for ℒ%s." % commas(int(result.cost)))
 	show_property_panel()
 
@@ -1546,6 +1553,7 @@ func _set_house_exterior(house_id:String, style:String, wall:String, trim:String
 
 
 func _move_house(house_id:String) -> void:
+	if is_instance_valid(safety) and safety.unresolved():show_notice("Resolve the burglary report with the police before moving house.");return
 	var house:Dictionary=Properties.houses(properties).get(house_id,{})
 	var type_id:String=str(house.get("type",house_id))
 	# The home being left is saved with its land *before* the move is quoted, so
@@ -1666,6 +1674,9 @@ func remove_creator_member() -> void:
 	select_creator_member(mini(creator_index,household_profiles.size()-1))
 
 func start_household() -> void:
+	if is_instance_valid(safety):safety.free()
+	safety=null
+	household_flow.safety_data={}
 	residents.reset()
 	load_epoch+=1
 	has_active_game=true
@@ -1780,6 +1791,7 @@ func setup_live(layout:Array) -> void:
 	sync_pets()
 	_place_missing_memorials()
 	_sync_food_truck()
+	_sync_safety()
 	draw_live()
 	for member:Dictionary in household.members:
 		var current:Dictionary=member.sim.get_current_action()
@@ -1822,7 +1834,7 @@ func _sync_food_truck() -> void:
 	var parked:bool=food_truck.present()
 	if parked==_truck_parked:return
 	_truck_parked=parked
-	world.extra_obstacles=_truck_obstacles()
+	world.extra_obstacles=world.extra_obstacles.filter(func(entry:Dictionary)->bool:return str(entry.get("id",""))!="food_truck")+_truck_obstacles()
 	world.rebuild_navigation()
 
 
@@ -1977,6 +1989,9 @@ func show_food_truck() -> void:
 ## Rebuild every live pet from the household's saved record. Called after the
 ## world is created, so a load always resumes the same animals in their places.
 func sync_pets() -> void:
+	_clear_pet_selection()
+	_pet_behavior=null
+	pending_pet_care.clear()
 	for id:String in pet_actors.keys():
 		var stale:LifePetActor=pet_actors[id]
 		if is_instance_valid(stale):stale.queue_free()
@@ -1994,6 +2009,7 @@ func sync_pets() -> void:
 		taken.append(at)
 		spawn_pet(str(pet.id),pet,at,at)
 	_sync_pet_sound()
+	refresh_pet_layers()
 	_refresh_pet_targets()
 
 ## Create one pet body. A pet bought here walks in from the street; a pet that
@@ -2006,6 +2022,7 @@ func spawn_pet(id:String,pet:Dictionary,spawn:Vector3,destination:Vector3) -> Li
 	actor.configure(id,str(pet.get("species","cat")),LifePets.appearance(pet),str(pet.get("name","")),str(pet.get("sex","female")))
 	world.house.add_child(actor)
 	actor.position=spawn
+	actor.floor_level=maxi(0,world.point_level(spawn))
 	actor.set_meta("display_name",str(pet.get("name","")))
 	pet_actors[id]=actor
 	_pet_pick_body(actor,id)
@@ -2142,7 +2159,7 @@ func _pet_step_blocked(actor:LifePetActor,next:Vector3) -> bool:
 	# step that comes closer than it already is. A whole-segment bounding box
 	# would fatten a diagonal step into a wall and wedge the animal forever.
 	var from:Vector3=actor.position
-	if world.point_level(next)<0 or not world.lot_navigation.point_clear(0,next):return true
+	if world.point_level(next)<0 or not world.lot_navigation.point_clear(world.point_level(next),next):return true
 	return not _pet_path_clear(actor,from,next)
 
 ## Whether a pet may sweep from one point to another without closing on a person
@@ -2178,7 +2195,9 @@ func _sync_pet_sound() -> void:
 	var running:bool=mode=="live" and is_instance_valid(sim) and sim.speed>0
 	for id:String in pet_actors:
 		var actor:LifePetActor=pet_actors[id]
-		if is_instance_valid(actor):actor.speed=1.0 if running else 0.0
+		if is_instance_valid(actor):
+			actor.speed=1.0 if running else 0.0
+			if not running or not sound_enabled:actor.stop_squeak()
 
 func _refresh_pet_targets() -> void:
 	if not is_instance_valid(world):return
@@ -2203,6 +2222,7 @@ func _tick_pets(delta:float) -> void:
 	# runs on, and it walks to the bowl or to its own bed when one runs low.
 	if running:
 		moving=_tick_pet_autonomy(delta,float(sim.speed)) or moving
+	if running:_finish_pending_pet_care()
 	# A pet being fed, stroked, walked or played with stays with that Lifelet.
 	var walked:Dictionary=care_motion().present_pets(delta if running else 0.0)
 	for id:String in pet_actors.keys():
@@ -2212,6 +2232,7 @@ func _tick_pets(delta:float) -> void:
 			continue
 		var busy:bool=moving and (pet_arrivals.has(id) or _pet_errand(id).get("walking",false))
 		actor.animate(delta,busy or walked.has(id),float(sim.speed) if running else 0.0)
+	refresh_pet_layers()
 	_refresh_pet_targets()
 
 var _care_motion:CareMotion
@@ -2231,42 +2252,12 @@ func _pet_errand(id:String) -> Dictionary:
 ## otherwise it settles at its own spot. Hunger and thirst share the bowl, a nap
 ## uses the pet's own bed, and a dog's dirty coat is washed by a person rather
 ## than by the animal, so only the household can mend that one.
+func pet_behavior() -> RefCounted:
+	if _pet_behavior==null:_pet_behavior=load("res://scripts/pet_behavior.gd").new(self)
+	return _pet_behavior
+
 func _tick_pet_autonomy(delta:float,speed:float) -> bool:
-	var hours:float=delta*speed/60.0
-	if hours<=0.0:return false
-	var moved:bool=false
-	for id:String in pet_actors.keys():
-		var actor:LifePetActor=pet_actors.get(id)
-		if not is_instance_valid(actor):continue
-		if care_motion().holds(id):continue
-		var record:Dictionary=_pet_record(id)
-		if record.is_empty():continue
-		# The household's own clock already drains a pet's condition through
-		# `LifePetCare.tick`, so this only reads it. A cat keeps itself clean the
-		# way a cat does, which `LifePetCare` models as its own grooming term, so
-		# its coat stays up without the household's help.
-		var care:Dictionary=record.get("care",{})
-		if not care is Dictionary:
-			care=LifePetCare.fresh()
-			record["care"]=care
-		var needs:Dictionary=care.get("needs",{})
-		if not needs is Dictionary or needs.is_empty():continue
-		# The needs an animal acts on are `LifePetCare`'s own names, which map onto
-		# the errands below: hunger and thirst to the bowl, energy to its bed,
-		# bladder and fun to the garden.
-		# An animal still walking in has not settled yet, so it acts only once it
-		# has arrived: two walkers on one body would drag it off its own route.
-		if pet_arrivals.has(id):continue
-		if _pet_errand(id).is_empty() and _pet_needs_errand(record,needs):
-			if _start_pet_errand(id,actor,record,needs):moved=true
-		# With its indoor needs comfortable, a pet takes itself outside: a tree
-		# for a wee, or the garden for a wander and a play.
-		if _pet_errand(id).is_empty():
-			if _start_pet_outdoor_errand(id,actor,record,needs):moved=true
-		var errand:Dictionary=_pet_errand(id)
-		if errand.is_empty():continue
-		if _advance_pet_errand(id,actor,record,needs,hours,delta,speed):moved=true
-	return moved
+	return pet_behavior().tick(delta,speed)
 
 ## Whether this pet wants to go and do something about a need. Returned as the
 ## need's own name so the errand knows what it is for.
@@ -2543,9 +2534,14 @@ func refresh_pet_layers() -> void:
 	for id:String in pet_actors:
 		var actor:LifePetActor=pet_actors[id]
 		if not is_instance_valid(actor):continue
+		var floor:int=actor.floor_level
+		var layer_key:int=2 if actor.traversing_stairs else floor
+		if int(actor.get_meta("pet_layer",-99))==layer_key:continue
+		actor.set_meta("pet_layer",layer_key)
+		var mask:int=(LifeWorld.VIEW_ACTOR_GROUND|LifeWorld.VIEW_ACTOR_UPPER) if actor.traversing_stairs else (LifeWorld.VIEW_ACTOR_GROUND if floor==0 else LifeWorld.VIEW_ACTOR_UPPER)
+		world._assign_layers(actor,mask)
 		for child:Node in actor.get_children():
-			if child is CollisionObject3D:
-				child.collision_layer=LifeWorld.PICK_UPPER if world.point_level(actor.position)==1 else LifeWorld.PICK_GROUND
+			if child is CollisionObject3D:child.collision_layer=(LifeWorld.PICK_GROUND|LifeWorld.PICK_UPPER) if actor.traversing_stairs else (LifeWorld.PICK_UPPER if floor==1 else LifeWorld.PICK_GROUND)
 
 ## A pet card: what it is, what it is wearing, how it is doing, and everything
 ## this Lifelet can do with it. The actions come from the household's own policy,
@@ -2554,60 +2550,84 @@ func refresh_pet_layers() -> void:
 func show_pet_card(id:String) -> void:
 	var record:Dictionary=_pet_record(id)
 	if record.is_empty():return
+	selected_pet_id=id
+	for pet_id:String in pet_actors:
+		var body:LifePetActor=pet_actors[pet_id]
+		if is_instance_valid(body):body.set_selected(pet_id==id)
+	if is_instance_valid(player):player.set_selected(false)
 	close_overlay();overlay_open=true;dismiss_layer()
-	var offered:Array=sim.get_actions_for("pet",id) if is_instance_valid(sim) else []
-	var care:Dictionary=record.get("care", LifePetCare.fresh()) if record.get("care") is Dictionary else LifePetCare.fresh()
-	var needs:Dictionary=care.get("needs", LifePetCare.FRESH_NEEDS) as Dictionary
-	var rows:int=maxi(offered.size(),1)
-	var height:float=520.0+float(rows)*38.0+56.0
-	var p:=Vector2(clampf(get_viewport().get_visible_rect().size.x*.5-220,280,1000),clampf((900.0-height)*.5,40,160))
-	card(p,Vector2(440,height),P.WHITE,17,overlay)
-	text_label(str(record.name),p+Vector2(19,14),Vector2(400,37),24,P.INK,true,overlay)
-	text_label("%s · %s" % [LifePets.species_label(str(record.species)),str(LifePets.SEX_LABELS[record.sex])],p+Vector2(20,52),Vector2(400,26),16,P.TEAL,false,overlay)
-	var actor:LifePetActor=pet_actors.get(id)
-	if is_instance_valid(actor):pet_thumbnail(p+Vector2(19,88),Vector2(402,170),record,overlay)
-	# Pet HUD: Hunger, Affection (bond), Energy, Bladder, and Tricks as Logic.
-	small_caps("Needs",p+Vector2(20,268),Vector2(200,18),overlay)
-	var affection:float=LifePetCare.bond(care,bound_member_id)
-	var hud_rows:Array=[["Hunger",float(needs.get("hunger",50.0))],["Affection",affection],["Energy",float(needs.get("energy",50.0))],["Bladder",float(needs.get("bladder",50.0))]]
-	for i in range(hud_rows.size()):
-		var row_y:float=290.0+float(i)*22.0
-		text_label(str(hud_rows[i][0]),p+Vector2(20,row_y),Vector2(90,20),12,P.INK,false,overlay)
-		var bar:=ProgressBar.new();bar.show_percentage=false;bar.value=float(hud_rows[i][1])
-		rect(bar,p+Vector2(112,row_y+6),Vector2(160,8),overlay)
-		bar.add_theme_stylebox_override("fill",P.panel(P.TEAL if str(hud_rows[i][0])!="Affection" else Color("d98cb0"),4))
-		bar.add_theme_stylebox_override("background",P.panel(Color("e6dcd4"),4))
-		text_label("%d" % int(float(hud_rows[i][1])),p+Vector2(280,row_y),Vector2(40,20),12,P.MUTED,false,overlay)
-	var trick_level:int=LifePetCare.level(care,"tricks")
-	var trick_xp:float=LifePetCare.xp(care,"tricks")
-	var trick_need:float=LifePetCare.xp_required(trick_level)
-	var trick_frac:float=0.0 if trick_need<=0.0 else clampf(trick_xp/trick_need,0.0,1.0)
-	small_caps("Logic · Tricks",p+Vector2(20,386),Vector2(200,18),overlay)
-	text_label("Level %d" % trick_level,p+Vector2(20,404),Vector2(90,20),12,P.TEAL,false,overlay)
-	var logic_bar:=ProgressBar.new();logic_bar.show_percentage=false;logic_bar.value=trick_frac*100.0
-	rect(logic_bar,p+Vector2(112,410),Vector2(200,8),overlay)
-	logic_bar.add_theme_stylebox_override("fill",P.panel(Color("7195b3"),4))
-	logic_bar.add_theme_stylebox_override("background",P.panel(Color("e6dcd4"),4))
-	var next:Dictionary=LifePetCare.next_trick(care)
-	var next_text:String=str(next.get("label","All tricks known")) if not next.is_empty() else "All tricks known"
-	# The named tricks this animal has really learned, as well as its Logic level.
-	var learned:Array=record.get("tricks",[]) if record.get("tricks") is Array else []
-	var known_text:String="Knows: %s" % ", ".join(PackedStringArray(learned.map(func(t:Variant)->String:return str(t)))) if not learned.is_empty() else "Knows no tricks yet"
-	paragraph("Next: %s · %s" % [next_text,known_text],p+Vector2(20,426),Vector2(400,22),12,P.MUTED,overlay)
-	var row:float=0.0
-	var actions_top:float=456.0
-	for action:Dictionary in offered:
-		var b:=button(str(action.label),p+Vector2(19,actions_top+row*38),Vector2(402,34),_queue_pet_action.bind(id,str(action.id)),false,overlay)
-		b.disabled=not bool(action.get("available",false))
-		b.tooltip_text=str(action.get("unavailable_reason","")) if not bool(action.get("available",false)) else str(action.description)
-		row+=1.0
-	button("Back to life",p+Vector2(19,height-48),Vector2(190,38),close_overlay,false,overlay)
-	button("Main menu",p+Vector2(231,height-48),Vector2(190,38),show_main_menu,false,overlay)
+	var care:Dictionary=household.pet_care(id)
+	var needs:Dictionary=care.get("needs",LifePetCare.FRESH_NEEDS)
+	var species:String=LifePets.species_label(str(record.species))
+	var p:=Vector2(430,90)
+	card(p,Vector2(650,706),P.WHITE,20,overlay).name="PetNeedsPanel"
+	text_label(str(record.name)+" · "+species,p+Vector2(22,16),Vector2(606,38),28,P.INK,true,overlay).name="SelectedPetName"
+	paragraph("Selected · Click the floor to move %s. Choose a Lifelet portrait to return to their control." % str(record.name),p+Vector2(24,58),Vector2(600,44),15,P.MUTED,overlay)
+	pet_thumbnail(p+Vector2(20,108),Vector2(248,170),record,overlay)
+	small_caps("Personal needs",p+Vector2(24,290),Vector2(230,22),overlay)
+	pet_panel_bars.clear();pet_panel_values.clear()
+	var rows:Array=[["hunger","Hunger"],["energy","Energy"],["fun","Play"],["social","Affection"],["bladder","Bladder"],["hygiene","Cleanliness"]]
+	for i:int in rows.size():
+		var key:String=str(rows[i][0])
+		text_label(str(rows[i][1]),p+Vector2(24,322+i*36),Vector2(95,24),14,P.INK,false,overlay)
+		var bar:=ProgressBar.new();bar.show_percentage=false
+		bar.value=float(needs.get(key,LifePetCare.bond(care,bound_member_id) if key=="social" else 80.0))
+		rect(bar,p+Vector2(124,332+i*36),Vector2(102,8),overlay)
+		bar.name="PetNeed_"+key;bar.add_theme_stylebox_override("fill",P.panel(P.TEAL,5))
+		bar.add_theme_stylebox_override("background",P.panel(P.PALE,5));pet_panel_bars[key]=bar
+		pet_panel_values[key]=text_label(str(int(bar.value)),p+Vector2(232,322+i*36),Vector2(36,24),13,P.MUTED,false,overlay)
+	var stats:String="Logic / Tricks  %d\nObedience  %d · Agility  %d" % [LifePetCare.level(care,"tricks"),LifePetCare.level(care,"obedience"),LifePetCare.level(care,"agility")]
+	paragraph(stats,p+Vector2(24,550),Vector2(238,64),15,P.TEAL,overlay)
+	var behavior:Dictionary=pet_behavior().state(id)
+	paragraph(" · ".join(PackedStringArray(behavior.get("traits",[]))),p+Vector2(24,611),Vector2(238,35),12,P.MUTED,overlay)
+	small_caps("Quick commands",p+Vector2(286,110),Vector2(340,22),overlay)
+	var scroll:=ScrollContainer.new();rect(scroll,p+Vector2(280,144),Vector2(346,490),overlay)
+	scroll.name="PetCommands";scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
+	var list:=VBoxContainer.new();list.size_flags_horizontal=Control.SIZE_EXPAND_FILL;list.add_theme_constant_override("separation",7);scroll.add_child(list)
+	for action:Dictionary in pet_behavior().commands(id):
+		var action_id:String=str(action.id)
+		var command:=button(str(action.label),Vector2.ZERO,Vector2(328,35),_direct_pet_command.bind(id,action_id),false,list)
+		command.name=action_id;command.custom_minimum_size=Vector2(320,35);command.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		command.disabled=bool(action.get("disabled",false));command.tooltip_text=str(action.get("unavailable_reason",action.get("reason","")))
+	var subtitle:=Label.new();subtitle.text="With "+str(sim.character.name);list.add_child(subtitle)
+	for action:Dictionary in household.pet_actions(id,bound_member_id):
+		var action_id:String=str(action.id)
+		var label:String=str(action.label)
+		if action_id=="pet_feed":label="Feed the "+species
+		elif action_id=="pet_play":label="Play with the "+species
+		var command:=button(label,Vector2.ZERO,Vector2(328,35),_queue_pet_action.bind(id,action_id),false,list)
+		command.custom_minimum_size=Vector2(320,35);command.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		command.disabled=not bool(action.get("available",false));command.tooltip_text=str(action.get("reason",action.get("unavailable_reason","")))
+	button("Move on the floor",p+Vector2(22,651),Vector2(293,36),func():close_overlay();show_notice("Click the floor to move "+str(record.name)+"."),true,overlay).name="PetMoveOnFloor"
+	button("Close",p+Vector2(330,651),Vector2(296,36),close_overlay,false,overlay)
+	refresh_hud()
+
+func _direct_pet_command(id:String,action:String) -> void:
+	var result:Dictionary=pet_behavior().command(id,action)
+	if bool(result.get("ok",false)):close_overlay()
+	show_notice(str(result.get("message",result.get("error",""))))
+
+func _refresh_pet_panel() -> void:
+	if selected_pet_id.is_empty() or not overlay_open:return
+	var care:Dictionary=household.pet_care(selected_pet_id)
+	var needs:Dictionary=care.get("needs",{})
+	for key:String in pet_panel_bars:
+		var bar:ProgressBar=pet_panel_bars[key]
+		if is_instance_valid(bar):
+			bar.value=float(needs.get(key,LifePetCare.bond(care,bound_member_id) if key=="social" else 80.0))
+			var value:Label=pet_panel_values.get(key)
+			if is_instance_valid(value):value.text=str(int(bar.value))
 
 ## Queue one of the pet card's own actions, exactly as the interaction menu does
 ## for a furnishing: the walk, the beat and its completion all run the ordinary
 ## activity pipeline, so a taught trick and a tummy rub are real activities.
 func _queue_pet_action(pet_id:String,action_id:String) -> void:
+	if not _pet_errand(pet_id).is_empty():
+		pet_behavior().command(pet_id,"pet_stop_playing")
+		if not _pet_errand(pet_id).is_empty():
+			pending_pet_care[pet_id]={"action":action_id,"member":bound_member_id}
+			close_overlay()
+			return
 	var record:Dictionary=_pet_record(pet_id)
 	var item:Dictionary={"id":pet_id,"kind":"pet","label":str(record.get("name","Your pet"))}
 	close_overlay()
@@ -2823,7 +2843,7 @@ func _refresh_progress_labels() -> void:
 		else:
 			career_labels.title.text=sim.career.title
 			var requirement:Dictionary=sim.promotion_requirement()
-			career_labels.details.text="Weekdays 09–17 · ℒ%d full day" % sim.career.salary+("" if requirement.is_empty() or bool(requirement.met) else "  ·  Next: %s %d" % [str(requirement.skill).capitalize(),int(requirement.level)])
+			career_labels.details.text=(str(LifeCareerSchedule.pattern(sim.career).label) if LifeCareers.is_police(str(sim.career.track)) else "Weekdays 09–17")+" · ℒ%d full shift" % sim.career_pay()+("" if requirement.is_empty() or bool(requirement.met) else "  ·  Next: %s %d" % [str(requirement.skill).capitalize(),int(requirement.level)])
 			career_labels.work.disabled=not sim.get_action_availability("career_day").available
 			career_labels.work.tooltip_text=str(sim.get_action_availability("career_day").reason)
 	if not goal_labels.is_empty():
@@ -2852,7 +2872,7 @@ func draw_household_bar() -> void:
 			var member:Dictionary=household.members[i]
 			# Portrait chips match the pet row: the baby's face (and every other
 			# Lifelet) is visible in the life box, not only as initials.
-			var chip=button("",Vector2(28+i*35,chip_top),Vector2(31,44),func():select_household_member(i),i==household.selected_index)
+			var chip=button("",Vector2(28+i*35,chip_top),Vector2(31,44),func():select_household_member(i),i==household.selected_index and selected_pet_id.is_empty())
 			chip.name="HouseholdChip_"+str(member.id)
 			model_thumbnail("character",Vector2(29+i*35,chip_top+1),Vector2(29,42),true,ui,member.sim.character)
 			compact_button(chip)
@@ -3068,8 +3088,8 @@ func _update_selection_marker(delta: float) -> void:
 		selection_marker.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		world.add_child(selection_marker)
 	marker_time+=delta
-	var actor:Node3D=world.actors.get(household.selected_id())
-	var show:bool=mode in ["live","build"] and is_instance_valid(actor) and actor.is_visible_in_tree() and not sim.is_away()
+	var actor:Node3D=pet_actors.get(selected_pet_id) if not selected_pet_id.is_empty() else world.actors.get(household.selected_id())
+	var show:bool=mode in ["live","build"] and is_instance_valid(actor) and actor.is_visible_in_tree() and (not selected_pet_id.is_empty() or not sim.is_away())
 	selection_marker.visible=show
 	if not show:return
 	var height:float=float(actor.call("get_display_height")) if actor.has_method("get_display_height") else 1.76
@@ -3130,6 +3150,7 @@ func _update_queue_collapse() -> void:
 		queue_toggle.tooltip_text="Collapse action queue"
 
 func refresh_hud() -> void:
+	_refresh_pet_panel()
 	if portrait_stale and mode=="live" and not overlay_open:
 		# A changed top deserves a fresh portrait; redraw once, outside modal panels.
 		portrait_stale=false
@@ -3214,6 +3235,11 @@ func refresh_hud() -> void:
 		var member_away:Dictionary=member.get_away_state()
 		chip.modulate=P.WHITE if member_away.is_empty() else Color("9aafa9")
 		chip.tooltip_text=str(member.character.name)+" · "+(_away_status(member_away) if not member_away.is_empty() else "At home · Click to control")
+	for id:String in pet_chips:
+		var chip:Button=pet_chips[id]
+		if is_instance_valid(chip):
+			chip.add_theme_stylebox_override("normal",P.panel(P.TEAL if id==selected_pet_id else P.WHITE,10))
+			chip.tooltip_text=str(_pet_record(id).get("name",id))+ (" · Selected · Click the floor to move" if id==selected_pet_id else " · Click to control")
 	if is_instance_valid(cancel_action_button):
 		cancel_action_button.text="Come home early" if str(away.get("phase",""))=="away" else "Cancel action"
 		cancel_action_button.disabled=str(away.get("phase",""))=="returning"
@@ -3382,6 +3408,12 @@ func model_thumbnail(kind:String,p:Vector2,s:Vector2,portrait:bool=false,parent:
 ## disk. One place decides that, so every caller of a model — the thumbnail, the
 ## ghost and the placed body — agrees about what exists.
 func _variant_model(kind:String,style:String,data:Dictionary) -> Resource:
+	if kind in ["burglar_alarm","home_phone"]:
+		var root:=Node3D.new()
+		if kind=="burglar_alarm":world._build_burglar_alarm(root)
+		else:world._build_home_phone(root)
+		for child:Node in root.find_children("*","",true,false):child.owner=root
+		var generated:=PackedScene.new();generated.pack(root);root.free();return generated
 	var model_path:String=Variants.model_path(kind,Variants.style_or_default(style,data))
 	if not ResourceLoader.exists(model_path):return null
 	var packed:Resource=load(model_path)
@@ -3407,6 +3439,7 @@ func freeze_viewport(viewport_id:int) -> void:
 	if is_instance_valid(viewport):viewport.render_target_update_mode=SubViewport.UPDATE_ONCE
 
 func set_build_mode(value:bool) -> void:
+	if value and is_instance_valid(safety) and is_instance_valid(safety.crime) and safety.unresolved():show_notice("Resolve the burglary report with the police before changing the home.");return
 	if value and residents.home_visit.active():show_notice("Say goodbye and wait for your guest to leave before building.");return
 	if value and current_venue!="home":show_notice("Travel home to change your own house.");return
 	if mode not in ["live","build"] or value==(mode=="build"):return
@@ -4267,6 +4300,9 @@ func on_object_clicked(item:Dictionary,screen:Vector2) -> void:
 			# A click on the animal opens its needs card (Hunger, Affection,
 			# Energy, Bladder, Logic), not only the care-action list.
 			show_pet_card(str(item.id))
+		elif str(item.get("kind",""))=="police_station":show_venue_services("police_station")
+		elif str(item.get("kind",""))=="home_phone":adoption_flow.show_phone()
+		elif str(item.get("kind",""))=="burglar_alarm":show_notice("Security alarm armed. It will sound and automatically call the police during a break-in.")
 		elif str(item.get("kind",""))=="food_truck":show_food_truck()
 		else:show_interactions(item,screen)
 
@@ -5792,6 +5828,11 @@ func show_housemate_interactions(item:Dictionary,screen:Vector2) -> void:
 
 func on_ground_clicked(p:Vector3) -> void:
 	if mode!="live":return
+	if not selected_pet_id.is_empty():
+		close_overlay()
+		var commanded:Dictionary=pet_behavior().command(selected_pet_id,"pet_move",p)
+		if not bool(commanded.get("ok",false)):show_notice(str(commanded.get("message",commanded.get("error","That spot is out of reach."))))
+		return
 	if sim.is_away():show_notice("This Lifelet will be available after coming home.");return
 	close_overlay()
 	if not sim.action_queue.is_empty():
@@ -6183,7 +6224,7 @@ func show_venue_services(place: String) -> void:
 	background.color=Color(.08,.17,.15,.28)
 	rect(background,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
 	var rows:float=float(offers.size())
-	var height:float=190.0+rows*96.0
+	var height:float=240.0+rows*96.0
 	var top:float=maxf(90.0,(900.0-height)*.5)
 	card(Vector2(452,top),Vector2(536,height),P.WHITE,24,overlay)
 	var info:Dictionary=LifeNeighborhood.info(place)
@@ -6205,6 +6246,11 @@ func show_venue_services(place: String) -> void:
 ## the system that owns them; the rest are a pleasant way to spend the time and
 ## say so honestly rather than pretending to change something.
 func _use_venue_service(place: String, service_id: String) -> void:
+	if place=="police_station":
+		if service_id=="police_careers":show_careers()
+		elif service_id=="police_shift":show_career_record()
+		else:show_notice("Custody record: "+(str(safety.crime.phase).replace("_"," ") if is_instance_valid(safety) else "No open case"))
+		return
 	match service_id:
 		"haircut", "colour_and_restyle", "wash_and_style":
 			# A salon visit really changes the look: the hair style is drawn from
@@ -6592,13 +6638,14 @@ func buy_home_insurance(policy_id: String = "home") -> Dictionary:
 	var house_id: String = Properties.active(properties)
 	if house_id.is_empty() or not Properties.owns(properties, house_id):
 		return household.buy_insurance(policy_id)
-	var bought: Dictionary = Properties.buy_policy(properties, house_id, policy_id, household.funds)
+	var bought: Dictionary = Properties.buy_policy(properties, house_id, policy_id, household.funds, household.day)
 	if not bool(bought.ok):
 		return {"ok": false, "error": str(bought.error)}
 	properties = bought.state
 	household.set_funds(int(bought.funds))
 	_apply_property_insurance()
-	return {"ok": true, "premium": int(bought.cost), "label": str(LifeSim.INSURANCE_POLICIES.get(policy_id, {}).get("label", "Home insurance"))}
+	if is_instance_valid(safety):safety.policy_bought(policy_id)
+	return {"ok": true, "alarm_included":policy_id in ["home","premium"], "premium": int(bought.cost), "label": str(LifeSim.INSURANCE_POLICIES.get(policy_id, {}).get("label", "Home insurance"))}
 
 
 ## Give up the cover on the house the household lives in.
@@ -6617,12 +6664,13 @@ func cancel_home_insurance() -> Dictionary:
 ## Keep the property record in step with cover bought through the phone, so the
 ## two never disagree about what the house carries.
 func _on_insurance_changed(policy_id: String) -> void:
-	var house_id: String = Properties.active(properties)
-	if house_id.is_empty() or not Properties.owns(properties, house_id):
-		return
-	if properties.houses[house_id].get("policy", "") == policy_id:
-		return
-	properties.houses[house_id]["policy"] = policy_id
+	var house_id:String=Properties.active(properties)
+	if house_id.is_empty() or not Properties.owns(properties,house_id):return
+	properties.houses[house_id]["policy"]=policy_id
+	if policy_id in ["home","premium"]:
+		properties.houses[house_id]["next_insurance_day"]=household.day+7
+		properties.houses[house_id]["last_insurance_day"]=household.day
+	else:properties.houses[house_id].erase("next_insurance_day")
 
 
 ## Apply the live home's own policy to the household's sims. A house carries its
@@ -6901,7 +6949,7 @@ func _adopt_loaded_world(prepared:Dictionary,slot_id:String,title:String="") -> 
 	prepared.viewport.free();candidate.free()
 	stage=null;preview=null
 	old_world.visible=false;old_world.queue_free();old_household.queue_free();old_meal_flow.queue_free();old_sanitation_flow.queue_free();old_household_flow.queue_free()
-	loading_game=false;_sync_actor_sound();sync_pets();sync_post();draw_live()
+	loading_game=false;_sync_actor_sound();sync_pets();sync_post();_sync_safety();draw_live()
 	show_notice("Welcome back, %s." % sim.character.name)
 
 func _restore_journeys() -> Dictionary:
@@ -7075,6 +7123,7 @@ func _save_audio_preferences() -> void:
 	file.close()
 
 func set_sound(enabled:bool) -> void:
+	if is_instance_valid(safety) and is_instance_valid(safety.crime):safety.crime.set_sound(enabled)
 	sound_enabled=enabled
 	_save_audio_preferences()
 	if is_instance_valid(ambience_player):ambience_player.stream_paused=not enabled
@@ -7101,6 +7150,7 @@ func set_music(enabled:bool) -> void:
 		if music_player.playing:music_player.stop()
 
 func _sync_actor_sound() -> void:
+	if is_instance_valid(safety) and is_instance_valid(safety.crime):safety.crime.set_sound(sound_enabled and mode=="live" and is_instance_valid(sim) and sim.speed>0)
 	if not is_instance_valid(world):return
 	var enabled:bool=sound_enabled and mode=="live" and is_instance_valid(sim) and sim.speed>0
 	_sync_pet_sound()
@@ -7206,6 +7256,7 @@ func _process(delta:float) -> void:
 		residents.tick(delta)
 		_tick_resident_contacts()
 		traversal.courtesy.consider(traversal)
+		if is_instance_valid(safety):safety.tick(delta)
 		_tick_pets(delta)
 		_tick_food_truck()
 		tick_autosave(delta)
@@ -8220,6 +8271,7 @@ func _travel_caption(destination:String) -> String:
 	return "A shared car takes the household across town in 15 minutes; use **Choose who goes** to take only some of them. Drag the map to look around; the wheel zooms."
 
 func travel_to(destination:String) -> void:
+	if is_instance_valid(safety) and is_instance_valid(safety.crime) and safety.unresolved() and destination!="home":show_notice("Resolve the burglary report with the police before leaving.");return
 	if mode not in ["live","build"] or not LifeNeighborhood.has(destination) or destination==current_venue:return
 	var resident:String=str(LifeNeighborhood.info(destination).get("resident",""))
 	if not resident.is_empty() and not residents.can_visit(resident):show_notice("Get to know this neighbor first. Visits open at 20 friendship.");return
@@ -8370,6 +8422,7 @@ func _toggle_party_member(member_id:String) -> void:
 ## Leave with the chosen party.
 
 func _start_trip(destination:String) -> void:
+	if is_instance_valid(safety) and safety.unresolved() and destination!="home":show_notice("Resolve the burglary report with the police before leaving.");return
 	_pending_trip_destination=destination
 	if residents.begin_trip(destination,party_selection):
 		party_selection.clear()
@@ -9010,18 +9063,33 @@ func _morning_run() -> void:
 
 func show_career_record() -> void:
 	_begin_pause_overlay()
-	card(Vector2(430,178),Vector2(580,553),P.WHITE,24,overlay)
+	card(Vector2(430,178),Vector2(580,600),P.WHITE,24,overlay)
 	small_caps("Your working life",Vector2(467,209),Vector2(502,24),overlay)
 	text_label(str(sim.career.title),Vector2(465,254),Vector2(510,46),27,P.TEAL,true,overlay)
-	paragraph("Work runs weekdays, 09:00–17:00. Arrive by 10:00; late arrivals until noon reduce performance. Pay reflects actual time at work. Missing a weekday lowers performance.",Vector2(466,319),Vector2(505,114),17,P.MUTED,overlay)
+	var police:bool=LifeCareers.is_police(str(sim.career.track))
+	var detail:String="Work runs weekdays, 09:00–17:00. Arrive by 10:00; late arrivals until noon reduce performance. Pay reflects actual time at work."
+	if police:
+		detail="Juniper Bay Police Station · %s · ℒ%d per completed shift. The night team hands over at 09:00; the day team at 17:00." % [str(LifeCareerSchedule.pattern(sim.career).label),sim.career_pay()]
+		if str(sim.career.track)=="sergeant":detail+=" As department head, you oversee the station and its officers."
+	paragraph(detail,Vector2(466,315),Vector2(505,100),17,P.MUTED,overlay)
 	var record:Dictionary=sim.career.get("schedule",LifeCareerSchedule.fresh(sim.day))
-	text_label("%d shifts completed · %d missed · %d min late"%[record.attended,record.missed,int(record.late_minutes)],Vector2(466,449),Vector2(505,35),16,P.INK,false,overlay)
-	paragraph("A home shift is an optional six-hour alternative. It shares today's paid attendance with going to work.",Vector2(466,498),Vector2(505,56),14,P.MUTED,overlay)
-	var remote:Button=button("Work from home",Vector2(465,580),Vector2(243,43),func():close_overlay();queue_nearest("desk","job"),false,overlay)
-	remote.disabled=sim.is_away() or not sim.get_action_availability("job").available
-	var change:Button=button("Find a job",Vector2(720,580),Vector2(251,43),show_careers,false,overlay)
-	change.disabled=sim.is_away()
-	button("Back to life",Vector2(465,653),Vector2(506,43),close_overlay,true,overlay)
+	text_label("%d shifts completed · %d missed · %d min late"%[record.attended,record.missed,int(record.late_minutes)],Vector2(466,422),Vector2(505,35),16,P.INK,false,overlay)
+	if police:
+		var index:int=0
+		for option:Dictionary in sim.police_shift_options():
+			var shift:String=str(option.id)
+			var pick:Button=button("%s · ℒ%d" % [str(option.label),int(option.pay)],Vector2(465,475+index*43),Vector2(506,38),func():_choose_police_shift(shift),bool(option.current),overlay)
+			pick.name="PoliceShift_"+shift;pick.disabled=sim.is_away();index+=1
+	else:paragraph("A home shift is an optional six-hour alternative. It shares today's paid attendance with going to work.",Vector2(466,485),Vector2(505,60),14,P.MUTED,overlay)
+	var work:Button=button("Go to the station" if police else "Work from home",Vector2(465,590),Vector2(243,43),func():close_overlay();_go_to_work() if police else queue_nearest("desk","job"),false,overlay)
+	work.disabled=not sim.get_action_availability("career_day" if police else "job").available
+	var change:Button=button("Find a job",Vector2(720,590),Vector2(251,43),show_careers,false,overlay);change.disabled=sim.is_away()
+	button("Back to life",Vector2(465,704),Vector2(506,43),close_overlay,true,overlay)
+
+func _choose_police_shift(shift:String) -> void:
+	var result:Dictionary=sim.choose_police_shift(shift)
+	if not bool(result.ok):show_notice(str(result.error))
+	show_career_record()
 
 
 func _family_parent_routes(links:Array,positions:Dictionary) -> Array:
@@ -9141,3 +9209,26 @@ func _cancel_guest_conversations(guest:String,retained:Dictionary) -> void:
 			if str(action.get("target_id",""))!=guest or str(action.get("id","")) not in LifeSim.SOCIAL_ACTIONS or is_same(action,retained):continue
 			_bind_member(str(member.id));cancel_current_action(index);_store_motion()
 	_bind_member(previous)
+
+
+func _sync_safety() -> void:
+	if household_flow.safety_restored and is_instance_valid(safety):safety.free();safety=null
+	household_flow.safety_restored=false
+	if not is_instance_valid(safety):
+		safety=LifeSafety.new(self);add_child(safety)
+	safety.enter_world(household_flow.safety_data)
+	household_flow.safety_data={}
+
+func call_police() -> void:
+	if is_instance_valid(safety):safety.call_police()
+
+
+func _finish_pending_pet_care() -> void:
+	for id:String in pending_pet_care.keys():
+		if not _pet_errand(id).is_empty():continue
+		var request:Dictionary=pending_pet_care[id];pending_pet_care.erase(id)
+		if household.member_sim(str(request.member))==null:continue
+		var previous:String=bound_member_id
+		_store_motion();_bind_member(str(request.member))
+		_queue_pet_action(id,str(request.action))
+		_store_motion();_bind_member(previous)

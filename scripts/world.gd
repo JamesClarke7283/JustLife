@@ -844,7 +844,7 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	var variant:Dictionary=Variants.resolve(data,entry)
 	var path:String=Variants.model_path(kind,str(variant.style))
 	var has_model:bool=ResourceLoader.exists(path)
-	if not has_model and kind not in ["memorial","bath_mat","framed_picture","garden_gate","garden_gate_double"]:return
+	if not has_model and kind not in ["memorial","bath_mat","framed_picture","garden_gate","garden_gate_double","burglar_alarm","home_phone"]:return
 	var node=Node3D.new()
 	node.name=str(entry.get("id","item_%d" % Time.get_ticks_usec()))
 	furniture.add_child(node)
@@ -857,7 +857,9 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 		var scale:float=Variants.size_scale(str(variant.size))
 		if not is_equal_approx(scale,1.0):model.scale=Vector3.ONE*scale
 	else:
-		if kind=="bath_mat":_build_bath_mat(node,variant)
+		if kind=="home_phone":_build_home_phone(node)
+		elif kind=="burglar_alarm":_build_burglar_alarm(node)
+		elif kind=="bath_mat":_build_bath_mat(node,variant)
 		elif kind=="framed_picture":_build_framed_picture(node,variant)
 		elif kind=="garden_gate" or kind=="garden_gate_double":_build_garden_gate(node,kind=="garden_gate_double")
 		else:_build_memorial(node)
@@ -1086,6 +1088,10 @@ func serialize_items() -> Array:
 		if bool(item.get("transient_food",false)) or bool(item.get("transient_puddle",false)) or bool(item.get("derived",false)):continue
 		var entry:Dictionary={"id":item.id,"kind":item.kind,"x":item.node.position.x,"z":item.node.position.z,"rotation":item.node.rotation_degrees.y}
 		if item_level(item)!=0:entry["level"]=item_level(item)
+		# Preserve custom wall placement through ordinary saves and recovered
+		# burglary layouts, as add_item reconstructs y from the floor and hang.
+		var lift:float=item.node.position.y-Building.level_y(item_level(item))
+		if not is_zero_approx(lift):entry["hang"]=lift
 		# The chosen style, colour and size ride the layout record, so a save
 		# resumes the same object rather than the family's first choice. Only the
 		# axes the entry offers are written, so an unsized furnishing stores no
@@ -1406,11 +1412,13 @@ func begin_placement(kind:String,style:String="",size:String="",color:String="")
 	if not ResourceLoader.exists(path):
 		for candidate:String in Variants.model_paths(kind,LifeCatalog.get_item(kind)):
 			if ResourceLoader.exists(candidate):path=candidate;break
-	if not ResourceLoader.exists(path) and kind in ["bath_mat","framed_picture","garden_gate","garden_gate_double"]:
+	if not ResourceLoader.exists(path) and kind in ["bath_mat","framed_picture","garden_gate","garden_gate_double","burglar_alarm","home_phone"]:
 		ghost=Node3D.new()
 		add_child(ghost)
 		var preview:Dictionary=Variants.resolve(LifeCatalog.get_item(kind),{"style":style,"size":size,"color":color})
-		if kind=="bath_mat":_build_bath_mat(ghost,preview)
+		if kind=="home_phone":_build_home_phone(ghost)
+		elif kind=="burglar_alarm":_build_burglar_alarm(ghost)
+		elif kind=="bath_mat":_build_bath_mat(ghost,preview)
 		elif kind=="framed_picture":_build_framed_picture(ghost,preview)
 		else:_build_garden_gate(ghost,kind=="garden_gate_double")
 		return
@@ -2287,3 +2295,24 @@ func create_resident_home(place:String,layout:Array) -> void:
 	for entry:Dictionary in layout:
 		if str(entry.get("kind",""))!="__construction":add_item(entry,false)
 	construction.refresh_decorations();rebuild_navigation();set_view_level(0);update_camera()
+
+
+func _build_burglar_alarm(parent:Node3D) -> void:
+	box(parent,Vector3(0,.21,0),Vector3(.30,.42,.075),"e9eee8")
+	box(parent,Vector3(0,.34,.045),Vector3(.22,.085,.018),"163d35")
+	var display:=Label3D.new();display.text="ARMED";display.font_size=30;display.pixel_size=.0012
+	display.position=Vector3(0,.34,.058);parent.add_child(display)
+	for row:int in 4:
+		for col:int in 3:
+			var point:=Vector3((col-1)*.072,.25-row*.055,.048)
+			box(parent,point,Vector3(.056,.041,.016),"4b5658")
+			var key:=Label3D.new();key.text=str(row*3+col+1) if row<3 else ["*","0","#"][col]
+			key.font_size=24;key.pixel_size=.0013;key.position=point+Vector3(0,0,.012);parent.add_child(key)
+
+
+func _build_home_phone(parent:Node3D) -> void:
+	box(parent,Vector3(0,.19,0),Vector3(.24,.38,.08),"e9eee8")
+	box(parent,Vector3(-.073,.19,.06),Vector3(.055,.29,.05),"384b51")
+	for y:float in [.075,.30]:box(parent,Vector3(-.073,y,.078),Vector3(.08,.07,.055),"384b51")
+	for row:int in 4:
+		for col:int in 3:box(parent,Vector3(.015+col*.025,.26-row*.048,.048),Vector3(.018,.027,.025),"536665")

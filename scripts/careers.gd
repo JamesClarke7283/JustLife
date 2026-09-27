@@ -162,10 +162,19 @@ const JOBS: Dictionary = {
 			"Assistant chief officer", "Chief fire officer"],
 	},
 	"police": {
-		"label": "Police service", "workplace": "Juniper Bay police station", "skill": "logic", "base": 240, "step": 52, "entry": {"skill": "logic", "level": 4, "cost": 0},
-		"titles": ["Police cadet", "Constable", "Constable (response)", "Sergeant",
-			"Inspector", "Chief inspector", "Superintendent", "Chief superintendent",
-			"Assistant chief constable", "Chief constable"],
+		"label": "Police Officer", "workplace": "Juniper Bay police station", "skill": "logic", "base": 100, "step": 0, "police": true,
+		"entry": {"skill": "logic", "level": 1, "cost": 0},
+		"titles": ["Police Officer", "Police Officer", "Police Officer", "Police Officer", "Police Officer", "Police Officer", "Police Officer", "Police Officer", "Police Officer", "Police Officer"],
+	},
+	"investigator": {
+		"label": "Investigator", "workplace": "Juniper Bay police station", "skill": "logic", "base": 200, "step": 0, "police": true,
+		"entry": {"skill": "logic", "level": 4, "cost": 0},
+		"titles": ["Investigator", "Investigator", "Investigator", "Investigator", "Investigator", "Investigator", "Investigator", "Investigator", "Investigator", "Investigator"],
+	},
+	"sergeant": {
+		"label": "Sergeant · Head of department", "workplace": "Juniper Bay police station", "skill": "logic", "base": 300, "step": 0, "police": true,
+		"entry": {"skill": "logic", "level": 6, "cost": 0},
+		"titles": ["Sergeant", "Sergeant", "Sergeant", "Sergeant", "Sergeant", "Sergeant", "Sergeant", "Sergeant", "Sergeant", "Sergeant"],
 	},
 	"accountant": {
 		"label": "Accountancy", "workplace": "Rowan Close offices", "skill": "logic", "base": 280, "step": 80, "entry": {"skill": "logic", "level": 5, "cost": 0, "degree": "bachelors"},
@@ -245,6 +254,10 @@ static func job(job_id: String) -> Dictionary:
 	return JOBS.get(job_id, {})
 
 
+static func is_police(job_id: String) -> bool:
+	return bool(job(job_id).get("police", false))
+
+
 static func label(job_id: String) -> String:
 	return str(job(job_id).get("label", job_id.capitalize()))
 
@@ -285,7 +298,8 @@ static func base_pay(job_id: String, level: int) -> int:
 ## pay in the game, and a PHD must not push past it. The premium is therefore
 ## earned on the way up and tapers off as a Lifelet reaches the rung where the
 ## trade's own rate has caught up with what the qualification is worth.
-static func pay(job_id: String, level: int, degree: String = "none") -> int:
+static func pay(job_id: String, level: int, degree: String = "none", shift: String = "day") -> int:
+	if job_id == "police": return 150 if shift == "night" else 100
 	var amount: int = base_pay(job_id, level)
 	if not needs_degree(job_id): return amount
 	var multiplier: float = float(DEGREE_MULTIPLIER.get(normalise_degree(degree), 1.0))
@@ -453,7 +467,8 @@ static func career_error(value: Variant) -> String:
 	if str(career.get("title", "")) != title_at(track, level):
 		return "Save contains a career title that does not match its level."
 	if not integer(career.get("salary", 0), 0, 1000000): return "Save contains an invalid salary."
-	if int(career.salary) != base_pay(track, level): return "Save contains a salary that does not match its level."
+	if str(career.get("shift", "day")) not in ["day", "night"]: return "Save contains an unknown police shift."
+	if int(career.salary) != pay(track, level, "none", str(career.get("shift", "day"))): return "Save contains a salary that does not match its level."
 	var performance: Variant = career.get("performance", -1.0)
 	if not (performance is float or performance is int) or not is_finite(float(performance)) or float(performance) < 0.0 or float(performance) > 1000000.0:
 		return "Save contains invalid career performance."

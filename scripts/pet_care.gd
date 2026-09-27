@@ -22,7 +22,8 @@ const NEED_NAMES: Array[String] = ["hunger", "energy", "hygiene", "bladder", "fu
 ## a Lifelet's, so a pet left alone through a working day is hungry by evening
 ## rather than starving at noon.
 const NEED_DECAY: Dictionary = {
-	"hunger": 2.6, "energy": 2.2, "hygiene": 1.5, "bladder": 2.4, "fun": 2.2, "social": 1.8,
+	"hunger": 4.0 / 60.0, "energy": 3.0 / 60.0, "hygiene": 2.2 / 60.0,
+	"bladder": 5.0 / 60.0, "fun": 3.4 / 60.0, "social": 1.8 / 60.0,
 }
 
 ## What a pet can learn. Tricks are the skill a child or teen can teach; agility

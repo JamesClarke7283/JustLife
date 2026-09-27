@@ -280,49 +280,43 @@ func _insurance_and_robbery() -> void:
 	check(not bool(repeat.ok) and not str(repeat.get("error", "")).is_empty(), "A second policy is refused with a reason.")
 	check(home.funds == funds_before, "A refused repeat purchase takes no money.")
 
-	# A robbery takes a real sum; insured, the same loss is paid straight back.
-	var insured_before: int = home.funds
-	var insured_robbery: Dictionary = home.robbery()
-	check(int(insured_robbery.get("stolen", 0)) == LifeSim.ROBBERY_LOSS, "A robbery takes the advertised ℒ%d." % LifeSim.ROBBERY_LOSS)
-	check(int(insured_robbery.get("reimbursed", 0)) == LifeSim.ROBBERY_LOSS, "Insurance reimburses the whole loss.")
-	check(home.funds == insured_before, "An insured break-in leaves the purse exactly as it was.")
+	# A request starts the visible incident; cash is taken only when the
+	# physical burglar reaches property, and returned only by the arrest flow.
+	var requests:Array=[]
+	sim.robbery_requested.connect(func():requests.append(true))
+	var insured_before:int=home.funds
+	var insured_robbery:Dictionary=home.robbery()
+	check(bool(insured_robbery.get("requested",false)) and requests.size()==1,"A robbery dispatches the physical burglary request.")
+	check(home.funds==insured_before and int(insured_robbery.get("stolen",0))==0,"Requesting a break-in cannot silently deduct money.")
+	check(app.safety.crime.phase=="sneaking","The controller begins a burglar physically sneaking toward the home.")
+	check(bool(home.cancel_insurance().ok) and home.insurance().is_empty(),"The policy can be cancelled.")
+	var exposed_before:int=home.funds
+	var bare_robbery:Dictionary=home.robbery()
+	check(bool(bare_robbery.get("requested",false)) and requests.size()==2,"Uninsured burglary uses the same physical handoff.")
+	check(home.funds==exposed_before,"Removing insurance cannot turn a request into instant cash theft.")
 
-	# Uninsured, the loss is real.
-	check(bool(home.cancel_insurance().ok) and home.insurance().is_empty(), "The policy can be cancelled.")
-	var exposed_before: int = home.funds
-	var bare_robbery: Dictionary = home.robbery()
-	check(int(bare_robbery.get("reimbursed", 0)) == 0, "Without cover nothing is paid back.")
-	check(home.funds == exposed_before - LifeSim.ROBBERY_LOSS,
-		"An uninsured break-in really takes ℒ%d (ℒ%d -> ℒ%d)." % [LifeSim.ROBBERY_LOSS, exposed_before, home.funds])
-
-	# The nightly event fires on its own period from the household's clock, so a
-	# player who never calls robbery() is still robbed. Day 3 is a robbery night.
-	# The owner (the bill ledger's owner) is the one member who rolls it.
-	home.set_funds(4000)
-	var owner: LifeSim = home.bill_owner()
-	check(owner != null and owner.household_bills_enabled, "The household's first member owns the nightly roll.")
-	owner.insurance_policy_id = ""
-	owner.autonomy = false
-	owner.wants.clear()
-	for member: Dictionary in home.members:
-		member.sim.insurance_policy_id = ""
-		member.sim.autonomy = false
+	# The shared midnight clock asks for one low-chance incident roll per date.
+	# Neither a third day nor any other date can debit money from the clock.
+	var nights:Array=[]
+	home.burglary_due.connect(func(date:int):nights.append(date))
+	var owner:LifeSim=home.bill_owner()
+	check(owner!=null and owner.household_bills_enabled,"The household keeps one authoritative bill owner.")
+	for member:Dictionary in home.members:
+		member.sim.insurance_policy_id=""
+		member.sim.autonomy=false
 		member.sim.wants.clear()
-		for need: String in LifeSim.NEED_NAMES:
-			member.sim.needs[need] = 100.0
-	home.day = 2
-	home.minutes = 1439.0
-	var night_before: int = home.funds
-	home.tick(3.0 / LifeSim.GAME_MINUTES_PER_SECOND)
-	check(home.day == LifeSim.ROBBERY_PERIOD_DAYS, "The household's own clock reached the robbery night (day %d)." % home.day)
-	check(home.funds == night_before - LifeSim.ROBBERY_LOSS,
-		"A scheduled night really robs the household without anyone asking (ℒ%d -> ℒ%d)." % [night_before, home.funds])
-	# A non-scheduled night leaves the purse alone.
-	home.day = LifeSim.ROBBERY_PERIOD_DAYS + 1
-	home.minutes = 1439.0
-	var quiet_before: int = home.funds
-	home.tick(3.0 / LifeSim.GAME_MINUTES_PER_SECOND)
-	check(home.funds == quiet_before, "A night off the robbery schedule takes nothing.")
+		for need:String in LifeSim.NEED_NAMES:member.sim.needs[need]=100.0
+	for date:int in [2,3]:
+		home.day=date;home.minutes=1439.0
+		# Keep the shared clock aligned before its next normal simulation step.
+		for member:Dictionary in home.members:
+			member.sim.day=date;member.sim.minutes=1439.0
+		var night_before:int=home.funds
+		home.tick(3.0/LifeSim.GAME_MINUTES_PER_SECOND)
+		check(home.day==date+1 and int(nights.back())==date+1,"Midnight requests its actual new date once.")
+		check(home.funds==night_before,"A nightly incident roll does not itself take household funds.")
+	check(nights.size()==2,"Each elapsed midnight requests one household roll.")
+	check(not owner.robbery_check(.01).ok and owner.robbery_check(.0099).ok,"Burglary base chance is exactly one percent.")
 
 	# The policy survives a real save and a fresh household restore.
 	home.set_funds(4000)
@@ -345,13 +339,13 @@ func _insurance_and_robbery() -> void:
 	check(not bool(receiver.restore_state(state).ok), "An unknown saved policy is refused.")
 	receiver.free()
 
-	# A capped loss can never push the purse negative.
+	# A request cannot debit a poor household before physical theft occurs.
 	var poor: LifeSim = LifeSim.new()
 	root.add_child(poor)
 	poor.new_household({"name": "Pauper", "age_stage": "young_adult", "traits": []})
 	poor.funds = 100
 	var capped: Dictionary = poor.robbery()
-	check(int(capped.get("stolen", 0)) == 100 and poor.funds == 0, "A robbery cannot take more than the purse holds.")
+	check(bool(capped.get("requested",false)) and poor.funds==100,"A poor household also awaits physical theft before its purse changes.")
 	poor.free()
 
 	# The phone offers the purchase on its own row and opens the cover panel.

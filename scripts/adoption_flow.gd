@@ -59,8 +59,8 @@ func show_phone() -> void:
 	var home_policy:Dictionary=LifeSim.INSURANCE_POLICIES.home
 	var coverage:Button=app.button(("Home insurance · insured" if insured else "Buy home insurance · ℒ%d" % int(home_policy.premium)),Vector2(302,584),Vector2(820,36),show_insurance,false,app.overlay)
 	coverage.name="PhoneInsurance"
-	coverage.tooltip_text=("Cover is in force: a break-in is paid back in full." if insured else "Pay ℒ%d now and any break-in is reimbursed in full from the phone. Buy it before the burglar comes." % int(home_policy.premium))
-	app.paragraph("A burglar can take up to ℒ%d in one night. Cover pays it all back." % LifeSim.ROBBERY_LOSS,Vector2(307,622),Vector2(806,22),14,P.INK,app.overlay)
+	coverage.tooltip_text=("Cover is in force, with a security alarm and weekly scheduled payments." if insured else "Pay ℒ%d now; the included alarm calls police automatically. Weekly payments follow the policy schedule." % int(home_policy.premium))
+	app.paragraph("A burglar can take up to ℒ%d in one night. An arrest returns stolen cash plus ℒ200." % LifeSim.ROBBERY_LOSS,Vector2(307,622),Vector2(806,22),14,P.INK,app.overlay)
 	var bill:Dictionary=sim_bill()
 	var bill_label:String="Household bills"
 	if bill.is_empty():
@@ -75,7 +75,10 @@ func show_phone() -> void:
 		bills.tooltip_text="The utilities are cut until this bill is paid."
 	else:
 		bills.tooltip_text="Due by day %d." % int(bill.due_day)
-	var back:Button=app.button("Back to life",Vector2(302,710),Vector2(820,38),app.close_overlay,false,app.overlay)
+	var emergency:Button=app.button("Call the police",Vector2(302,710),Vector2(398,38),app.call_police,true,app.overlay)
+	emergency.name="PhoneCallPolice"
+	emergency.disabled=not app.sim.character.age_stage in ["child","teen","young_adult","adult","elder"] or app.sim.is_away()
+	var back:Button=app.button("Back to life",Vector2(724,710),Vector2(398,38),app.close_overlay,false,app.overlay)
 	back.name="PhoneBack"
 
 ## The weekly food truck, offered from the phone as well as by clicking the van.
@@ -96,16 +99,16 @@ func sim_bill() -> Dictionary:
 ## refused with the reason while cover is already in force or the purse is short,
 ## and the panel re-reads the household after either decision.
 func show_insurance() -> void:
-	_panel("Cover for what is yours.","A burglar breaks in every few nights and carries off the household's cash. Insurance costs a premium once and pays the loss straight back.")
+	_panel("Cover for what is yours.","Protect your home with a wall alarm. Cover costs ℒ200 at purchase and ℒ200 on the scheduled weekly payment day.")
 	var policy:Dictionary=app.household.insurance()
 	var house_id:String=Properties.active(app.properties)
 	var baby_held:bool=not house_id.is_empty() and not str(Properties.house(app.properties,house_id).get("baby_policy","")).is_empty()
 	if not policy.is_empty():
 		app.text_label("Insured · "+str(policy.label),Vector2(302,354),Vector2(820,50),34,P.INK,true,app.overlay)
-		app.paragraph("The household paid ℒ%d for this cover. A break-in is reimbursed in full while it is in force; nothing is refunded if you cancel." % int(policy.premium),Vector2(307,420),Vector2(806,72),18,P.MUTED,app.overlay)
+		app.paragraph("Cover costs ℒ%d per scheduled week and includes a wall alarm. When the burglar is caught, stolen items and cash return, plus ℒ200." % int(policy.premium),Vector2(307,420),Vector2(806,72),18,P.MUTED,app.overlay)
 		app.card(Vector2(302,500),Vector2(820,110),P.PALE,15,app.overlay)
 		app.text_label("A burglar takes up to ℒ%d" % LifeSim.ROBBERY_LOSS,Vector2(326,516),Vector2(780,34),22,P.INK,true,app.overlay)
-		app.paragraph("With this policy the same loss is paid back the moment it happens, so the household ends the night exactly as it started.",Vector2(328,552),Vector2(768,52),16,P.MUTED,app.overlay)
+		app.paragraph("Next scheduled payment: day %d. No payment is taken between scheduled dates." % app.safety.next_payment_day() + "",Vector2(328,552),Vector2(768,52),16,P.MUTED,app.overlay)
 		if baby_held:
 			app.paragraph("Baby & Child Insurance is also in force on this home.",Vector2(307,620),Vector2(806,24),14,P.TEAL,app.overlay)
 		elif not house_id.is_empty():
@@ -117,11 +120,11 @@ func show_insurance() -> void:
 		app.button("Back to phone",Vector2(302,710),Vector2(820,40),show_phone,false,app.overlay)
 		return
 	var home_policy:Dictionary=LifeSim.INSURANCE_POLICIES.home
-	app.text_label("ℒ%d · one premium" % int(home_policy.premium),Vector2(302,354),Vector2(820,50),34,P.INK,true,app.overlay)
-	app.paragraph("Pay once and the home is insured: any break-in during cover is paid back in full from the household purse.",Vector2(307,420),Vector2(806,72),18,P.MUTED,app.overlay)
+	app.text_label("ℒ%d · each scheduled week" % int(home_policy.premium),Vector2(302,354),Vector2(820,50),34,P.INK,true,app.overlay)
+	app.paragraph("Includes the burglar prevention keypad (normally ℒ300). It sounds a siren and calls the police when a burglar attempts entry.",Vector2(307,420),Vector2(806,72),18,P.MUTED,app.overlay)
 	app.card(Vector2(302,500),Vector2(820,110),P.PALE,15,app.overlay)
 	app.text_label("A burglar takes up to ℒ%d" % LifeSim.ROBBERY_LOSS,Vector2(326,516),Vector2(780,34),22,P.INK,true,app.overlay)
-	app.paragraph("Break-ins happen every few nights. The household has ℒ%s in the purse right now." % app.commas(app.household.funds),Vector2(328,552),Vector2(768,52),16,P.MUTED,app.overlay)
+	app.paragraph("Base break-in chance: 1%% per night. The household has ℒ%s in the purse right now." % app.commas(app.household.funds),Vector2(328,552),Vector2(768,52),16,P.MUTED,app.overlay)
 	var buy:Button=app.button("Buy insurance · ℒ%d" % int(home_policy.premium),Vector2(302,646),Vector2(820,47),buy_insurance,true,app.overlay)
 	buy.name="PhoneBuyInsurance"
 	var shortfall:int=int(home_policy.premium)-app.household.funds

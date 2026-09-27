@@ -19,6 +19,7 @@ class_name LifeVenues
 ## Pure static policy — no Nodes, no clock, no wallet.
 
 const PLACES: Dictionary = {
+	"police_station":{"name":"Juniper Bay Police Station","tag":"Protecting the neighbourhood","description":"The department reception, duty office and a small holding jail. Police officers, investigators and the sergeant hand over at 09:00 and 17:00.","color":"526984"},
 	"cafe":{"name":"Bay Window Café","tag":"A table by the window","description":"A corner café with a long counter, an early cake stand and a reading nook by the shelves. Good for a quiet hour, a light lunch, or meeting somebody you have been meaning to see.","color":"b08055"},
 	"hairdresser":{"name":"The Cutting Room","tag":"A fresh look for the week ahead","description":"A small salon with two styling chairs, a backwash basin and mirrors along the wall. Book a cut or a colour and leave with something you did not have before.","color":"c08ea0"},
 	"shopping_centre":{"name":"Harbourgate Shopping Centre","tag":"One trip, one list","description":"A covered arcade of shops under one roof, with a food court in the middle and trolleys by the door. Most of the household's weekly shop is done here in a single outing.","color":"c2a06a"},
@@ -40,6 +41,7 @@ const PLACES: Dictionary = {
 ## table, a fill of petrol to the household purse), so no second copy of a price
 ## can drift away from the one that charges it.
 const _SERVICES: Dictionary = {
+	"police_station":[["police_careers","Join the department","Police Officer, Investigator and Sergeant careers."],["police_shift","My shift","Choose the day or night police shift."],["custody_record","Custody record","Check the arrest and recovery status."]],
 	"cafe":[
 		["coffee_and_cake","Coffee and cake","A flat white and something from the counter, taken at a table by the window. Lifts a low mood for the rest of the afternoon."],
 		["light_lunch","A light lunch","Soup, a sandwich or a salad between errands. A proper sit-down meal rather than something eaten standing up."],
@@ -124,6 +126,7 @@ static func info(place: String) -> Dictionary:
 static func layout(place: String) -> Array:
 	var entries: Array = []
 	match place:
+		"police_station": entries = [["desk",-3.5,-2.5,0],["computer",-4.6,-4.1,0],["chair",-3.5,-1.5,180],["bench",-3.0,2.5,0],["wall_clock",0,-4.9,0]]
 		# Kiosk along the back wall, the car pulled up in front of it facing the
 		# shop, and a bench where somebody waits for the tank to fill.
 		"petrol_station": entries = [
