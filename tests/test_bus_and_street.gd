@@ -37,8 +37,8 @@ func _initialize() -> void:
 	check(str(ride.get("id")) == "board_school_bus" and str(ride.get("target_id")) == "school_bus_stop",
 		"Boarding does not need a bus already placed on the lot (%s)." % str(ride.get("target_id")))
 	check(child.queue_action("board_school_bus", "school_bus_stop", ride.position), "The child queues the walk out to the bus.")
-	check(str(child.get_current_action().phase) == "approach" and Vector3(child.get_current_action().target_position).distance_to(LifeSchoolBus.CURB) < 0.2,
-		"The child walks out to the curb where the bus is waiting.")
+	check(str(child.get_current_action().phase) == "approach" and Vector3(child.get_current_action().target_position).distance_to(bus.door_position()) < 0.2,
+		"The child walks to the curb-side bus door, clear of the vehicle body.")
 	child.begin_current_action()
 	child.tick((float(child.get_current_action().duration) + 0.5) / LifeSim.GAME_MINUTES_PER_SECOND)
 	check(bus.phase == "departing" and bus.boarded == 1, "Boarding sends the bus on its way.")

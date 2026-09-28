@@ -23,6 +23,7 @@ const BOARD_BEATS: Array = [["approach", .7], ["open", .8], ["in", 1.1], ["close
 const TIMEOUT: float = 45.0
 
 var car: Node3D
+var cabin_scale: float = 1.0
 var doors: Dictionary = {}
 var steps: Array = []
 var index: int = 0
@@ -35,8 +36,9 @@ var boarded: Array[String] = []
 var _from: Dictionary = {}
 
 
-func _init(owner_car: Node3D = null, party: Array = []) -> void:
+func _init(owner_car: Node3D = null, party: Array = [], size_scale: float = 1.0) -> void:
 	car = owner_car
+	cabin_scale = size_scale
 	steps = plan(party)
 	if is_instance_valid(car): _build_doors()
 
@@ -64,8 +66,8 @@ func _build_doors() -> void:
 		var rig: Node3D = load(DOOR_MODEL).instantiate()
 		rig.name = "CarDoor_" + door_name
 		car.add_child(rig)
-		rig.position = spec.hinge
-		rig.scale = Vector3(1, 1, float(spec.length) / AUTHORED_LENGTH)
+		rig.position = Vector3(spec.hinge) * cabin_scale
+		rig.scale = Vector3(1, 1, float(spec.length) / AUTHORED_LENGTH) * cabin_scale
 		var hinge: Node3D = rig.find_child("Hinge", true, false)
 		var opening: Node3D = rig.find_child("Opening", true, false)
 		for mesh: MeshInstance3D in rig.find_children("*", "MeshInstance3D", true, false):
@@ -104,17 +106,17 @@ func handle_point(door_name: String) -> Vector3:
 	if not door.is_empty() and is_instance_valid(door.hinge):
 		return (door.hinge as Node3D).to_global(Vector3(.04, .93, -AUTHORED_LENGTH + .17))
 	var spec: Dictionary = DOORS[door_name]
-	return car.to_global(Vector3(spec.hinge) + Vector3(.04, .93, -float(spec.length) + .17))
+	return car.to_global((Vector3(spec.hinge) + Vector3(.04, .93, -float(spec.length) + .17)) * cabin_scale)
 
 
 ## Where a Lifelet stands to use a door: beside the car, behind the swung leaf.
 func stand_point(door_name: String) -> Vector3:
 	var spec: Dictionary = DOORS[door_name]
-	return car.to_global(Vector3(1.42, 0, float(spec.hinge.z) - float(spec.length) * .72))
+	return car.to_global(Vector3(1.42, 0, float(spec.hinge.z) - float(spec.length) * .72) * cabin_scale)
 
 
 func seat_point(door_name: String) -> Vector3:
-	return car.to_global(Vector3(DOORS[door_name].seat))
+	return car.to_global(Vector3(DOORS[door_name].seat) * cabin_scale)
 
 
 func facing_car() -> float:
@@ -268,3 +270,28 @@ func _finish(actors: Dictionary) -> bool:
 			body.visible = false
 	finished = true
 	return true
+
+
+## A parked driver opens the door, steps fully outside, and closes it before
+## ordinary navigation may take over. Time is explicit so a save can resume.
+func tick_exit(elapsed: float, body: LifeActor, delta: float) -> bool:
+	var stand: Vector3 = stand_point("front")
+	stand.y = .16
+	var seat: Vector3 = seat_point("front")
+	body.visible = true
+	if elapsed < .8:
+		set_door("front", elapsed / .8)
+		_pose(body, seat, facing_forward(), "car_seated", {}, delta)
+	elif elapsed < 1.9:
+		set_door("front", 1.0)
+		var p: float = smoothstep(0.0, 1.0, (elapsed - .8) / 1.1)
+		_pose(body, seat.lerp(stand, p), lerp_angle(facing_forward(), facing_car(), p), "car_get_in", {"care_progress": 1.0 - p}, delta)
+	elif elapsed < 2.6:
+		set_door("front", 1.0 - (elapsed - 1.9) / .7)
+		_pose(body, stand, facing_car(), "car_close_door", {"care_target": handle_point("front")}, delta)
+	else:
+		set_door("front", 0.0)
+		body.global_position = stand
+		body.clear_activity_anchor()
+		return true
+	return false

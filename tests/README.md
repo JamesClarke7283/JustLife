@@ -2,8 +2,16 @@
 
 Run commands from the project root with Godot available on `PATH`. Use an existing local `TMPDIR` when temporary storage is limited; `dist/test-work` is ignored build storage. The maintained runners create isolated project copies and private save/user-data folders. Read each runner's options before using a fixture directly.
 
+Before running direct Godot fixtures, point `JUSTLIFE_DATA_DIR` and `XDG_DATA_HOME` at separate private temporary directories to keep test saves and settings apart from your game.
+
 | Area | Runner | Scope |
 | --- | --- | --- |
+| Assigned double-bed sides | `godot --headless --path . --script res://tests/test_bed_assignments.gd` | Menu assignments, reversed arrival order, two actual mattress poses, blocked approaches, reservations and JSON persistence. Omit `--headless` and append `-- --render` for screenshots. |
+| Dog commands and training | `godot --path . --script res://tests/test_dog_commands_training.gd -- --render` | Real floor and HUD clicks, interruption of eating, both Lifelet commands, three training tracks, toy retrieval, visible agility weaving and obstacle recovery. Requires a display. |
+| White and green school bus | `godot --headless --path . --script res://tests/test_school_bus_visual.gd` | Named components, tinted windows, shamrocks, brake emission and curb-side boarding/drop-off sockets. Omit `--headless` and append `-- --render` for rendered captures. |
+| Work commute and saved journeys | `godot --headless --path . --script res://tests/test_work_commute.gd -- --versioned` | Walking, door choreography, driving, work, return through the rear entrance, and saved physical reconstruction in every phase. Omit `--headless` and use `-- --visual` for screenshots. |
+| Work and school energy | `godot --headless --path . --script res://tests/test_day_energy_reserve.gd` | Energy stays at least 80 through the work/school day and return; ordinary home needs still decay. |
+| Commute car reservations | `godot --headless --path . --script res://tests/test_commute_build_protection.gd` | Moving, storing or selling an active driver's car or occupied garage is refused while unrelated furnishing edits remain available. |
 | Construction, stairs and household ownership | `python tests/run_regressions.py --group architecture --group build --group protection` | Controlled state, routing and transaction checks; [groups and fresh-process cases](REGRESSIONS.md). |
 | Short leisure before school/work | `python3 tests/run_prework_recovery.py` | Fifty-eight focused preference, urgency, Bookworm, availability, paid-recovery and departure-deadline checks (a 09:05 late riser relaxes and still arrives on time; a history-laden 08:40 break picks the mat over a canvas); the departure-deadline exception stands: a critically bored Lifelet (Fun under 12) takes the shortest pastime and accepts a few late minutes (probe precedent: 15-minute late arrival accepted at Fun 8); [scope and actual-day tradeoffs](../docs/REVIEWS/iteration_51_brief_leisure.md). |
 | Household step-aside movement | `python tests/run_courtesy.py` | Genuine crowded-meal continuation, fresh restart, ownership and exclusion controls; [contract](COURTESY.md). |

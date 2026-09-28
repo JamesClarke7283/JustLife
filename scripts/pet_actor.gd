@@ -40,6 +40,8 @@ var _tail: Node3D
 var _tail_rest_basis: Basis = Basis.IDENTITY
 var _legs: Array[Node3D] = []
 var _ring: MeshInstance3D
+var _bark_player: AudioStreamPlayer3D
+var bark_count: int = 0
 var _speech: Label3D
 ## The actor's own surface materials, cached so a redraw can drop them. Both the
 ## coat shader and the collar/leash tints are kept, so the array is typed to their
@@ -298,6 +300,25 @@ func _behavior_pose(delta: float) -> void:
 	var legs: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, Vector3.ZERO]
 	var t: float = behavior_time
 	match behavior:
+		"trick_sit", "trick_paw", "trick_high_five", "trick_speak":
+			body_rotation.x = -.38; body_position.y = h * .08
+			legs[2].x = -1.1; legs[3].x = -1.1
+			if behavior in ["trick_paw", "trick_high_five"]: legs[1].x = -1.25 if behavior == "trick_high_five" else -.65
+			head.x = -.25 + (.2 * sin(t * 8.0) if behavior == "trick_speak" else 0.0)
+		"trick_lie", "trick_play_dead":
+			body_position.y = -h * .28
+			for leg: int in range(4): legs[leg].x = -1.2 if leg < 2 else 1.2
+			if behavior == "trick_play_dead": body_rotation.z = PI * .5; body_position.y = h * .12
+		"trick_roll":
+			body_rotation.z = TAU * clampf(t / 3.0, 0.0, 1.0); body_position.y = h * .4 * sin(clampf(t / 3.0, 0.0, 1.0) * PI)
+		"trick_backflip":
+			var part: float = clampf(t / 2.0, 0.0, 1.0)
+			body_rotation.x = -TAU * part; body_position.y = sin(part * PI) * .8
+		"trick_dance":
+			body_rotation = Vector3(-1.0, sin(t * 2.0) * .5, sin(t * 5.0) * .12)
+			body_position.y = h * .35
+			legs[0].x = -.9; legs[1].x = -.9
+			legs[2].x = sin(t * 6.0) * .3; legs[3].x = -legs[2].x
 		"rest":
 			body_position.y = -h * .30 + sin(t * .7) * .003
 			legs = [Vector3(-1.25, 0, .1), Vector3(-1.25, 0, -.1), Vector3(1.2, 0, .1), Vector3(1.2, 0, -.1)]
@@ -324,7 +345,7 @@ func _behavior_pose(delta: float) -> void:
 	for i: int in range(_legs.size()):
 		if is_instance_valid(_legs[i]): _legs[i].rotation = _legs[i].rotation.lerp(legs[i], blend)
 	if is_instance_valid(_head): _head.rotation = _head.rotation.lerp(head, blend)
-	if is_instance_valid(_tail): _tail.basis = Basis.from_euler(Vector3(-.65 if behavior == "rest" else -.05, sin(t * 3.0) * (.04 if behavior == "rest" else .25), 0)) * _tail_rest_basis
+	if is_instance_valid(_tail): _tail.basis = Basis.from_euler(Vector3(-.65 if behavior == "rest" else -.05, sin(t * 3.0) * (.04 if behavior == "rest" else (0.0 if behavior == "trick_play_dead" else .25)), 0)) * _tail_rest_basis
 
 
 ## A short rubber-toy chirp, synthesised as PCM to keep the asset portable.
@@ -363,8 +384,25 @@ func squeak() -> void:
 	squeak_count += 1
 
 
+## Two short low-frequency bursts make Speak an audible command.
+func bark() -> void:
+	if not is_instance_valid(_bark_player):
+		_bark_player = AudioStreamPlayer3D.new();_bark_player.name = "DogBarkAudio"
+		var stream := AudioStreamWAV.new();stream.format = AudioStreamWAV.FORMAT_16_BITS;stream.mix_rate = 22050
+		var samples := PackedByteArray();samples.resize(8820 * 2)
+		for n: int in 8820:
+			var t: float = float(n) / 22050.0
+			var beat: float = fmod(t, .2)
+			var envelope: float = sin(PI * minf(beat / .12, 1.0)) * exp(-beat * 15.0) if beat < .12 else 0.0
+			var wave: float = sin(t * TAU * 180.0) + .45 * sin(t * TAU * 370.0) + .2 * sin(t * TAU * 913.0)
+			samples.encode_s16(n * 2, int(wave * envelope * 11000.0))
+		stream.data = samples;_bark_player.stream = stream;_bark_player.volume_db = -10.0;_bark_player.max_distance = 30.0
+		add_child(_bark_player)
+	_bark_player.play();bark_count += 1
+
 func stop_squeak() -> void:
 	if is_instance_valid(_squeak_player): _squeak_player.stop()
+	if is_instance_valid(_bark_player): _bark_player.stop()
 
 
 ## The whole body leans, sits, bows or rolls from the model root; with no care
@@ -374,7 +412,7 @@ func _body_goal(caring: bool) -> Array:
 	var scale: float = h / 0.52
 	if not caring: return [Vector3.ZERO, Vector3.ZERO]
 	match interaction:
-		"pet_pet", "pet_teach_trick":
+		"pet_pet", "pet_teach_trick", "pet_train_social", "pet_train_logic":
 			return [Vector3(-.38, 0, 0), Vector3(0, .05 * scale, 0)]
 		"pet_tummy_rub":
 			var roll: float = smoothstep(0.0, .9, interaction_time)
@@ -405,7 +443,7 @@ func _care_pose(delta: float) -> void:
 	var head := Vector3(-.1, 0, 0)
 	var wag: float = sin(_time * 14.0) * .5
 	match interaction:
-		"pet_pet", "pet_teach_trick":
+		"pet_pet", "pet_teach_trick", "pet_train_social", "pet_train_logic":
 			legs = [Vector3(.38, 0, 0), Vector3(.38, 0, 0), Vector3(-1.1, 0, .08), Vector3(-1.1, 0, -.08)]
 			head = Vector3(-.30, 0, .10 * sin(ct * 1.3))
 			if interaction == "pet_teach_trick":

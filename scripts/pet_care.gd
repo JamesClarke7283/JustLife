@@ -28,24 +28,29 @@ const NEED_DECAY: Dictionary = {
 
 ## What a pet can learn. Tricks are the skill a child or teen can teach; agility
 ## grows from play; obedience grows from being fed and petted by name.
-const SKILL_NAMES: Array[String] = ["tricks", "agility", "obedience"]
-const SKILL_LABELS: Dictionary = {"tricks": "Tricks", "agility": "Agility", "obedience": "Obedience"}
+const SKILL_NAMES: Array[String] = ["tricks", "social", "logic", "agility", "obedience"]
+const TRAINING_SKILLS: Array[String] = ["tricks", "social", "logic"]
+const SKILL_LABELS: Dictionary = {"tricks": "Clever Tricks", "social": "Social Skills", "logic": "Logic Skills", "agility": "Agility", "obedience": "Obedience"}
 
 ## The tricks a pet learns in order, each needing the level on its left. Naming
 ## them gives the teaching interaction something concrete to show progress
 ## against, rather than an anonymous bar.
 const TRICKS: Array[Dictionary] = [
 	{"id": "sit", "label": "Sit", "level": 1},
-	{"id": "paw", "label": "Shake a paw", "level": 2},
-	{"id": "come", "label": "Come when called", "level": 3},
+	{"id": "lie", "label": "Lie down", "level": 2},
+	{"id": "paw", "label": "Shake hands", "level": 3},
 	{"id": "roll", "label": "Roll over", "level": 4},
-	{"id": "fetch", "label": "Fetch", "level": 5},
-	{"id": "speak", "label": "Speak", "level": 6},
-	{"id": "spin", "label": "Spin around", "level": 7},
-	{"id": "bow", "label": "Take a bow", "level": 8},
-	{"id": "jump", "label": "Jump through a hoop", "level": 9},
-	{"id": "tidy", "label": "Fetch the lead", "level": 10},
+	{"id": "fetch", "label": "Fetch a toy", "level": 5},
+	{"id": "speak", "label": "Speak on command", "level": 6},
+	{"id": "high_five", "label": "High-five", "level": 6},
+	{"id": "backflip", "label": "Backflip", "level": 7},
+	{"id": "dance", "label": "Dance on hind legs", "level": 8},
+	{"id": "weave", "label": "Weave through obstacles", "level": 9},
+	{"id": "play_dead", "label": "Play dead", "level": 9},
+	{"id": "routine", "label": "Complete trick routine", "level": 10},
 ]
+# Retain old saved trick IDs even when the curriculum gains new lessons.
+const LEGACY_TRICKS: Array[String] = ["come", "spin", "bow", "jump", "tidy"]
 
 ## A skill's xp cost rises with its level, exactly as a Lifelet's does, so a pet
 ## and a person level at a comparable pace.
@@ -64,6 +69,8 @@ const INTERACTIONS: Array[Dictionary] = [
 	{"id": "pet_teach_trick", "label": "Play Tricks", "needs": {"fun": 20.0, "energy": -4.0, "social": 18.0}, "pet_skill": "tricks", "pet_xp": 30.0, "duration": 35.0, "min_age": "child", "teaches": "logic", "teach_xp": 26.0},
 	{"id": "pet_walk", "label": "Take for a Walk", "needs": {"fun": 28.0, "energy": -8.0, "social": 20.0}, "pet_skill": "agility", "pet_xp": 18.0, "duration": 40.0, "min_age": "child", "teaches": "fitness", "teach_xp": 22.0},
 	{"id": "pet_train", "label": "Train obedience", "needs": {"fun": 12.0, "social": 14.0}, "pet_skill": "obedience", "pet_xp": 26.0, "duration": 25.0, "min_age": "adult", "teaches": "parenting", "teach_xp": 18.0},
+	{"id": "pet_train_social", "label": "Train Social Skills", "needs": {"fun": 20.0, "social": 26.0}, "pet_skill": "social", "pet_xp": 35.0, "duration": 25.0, "min_age": "child", "teaches": "charisma", "teach_xp": 18.0, "dog_only": true},
+	{"id": "pet_train_logic", "label": "Train Logic Skills", "needs": {"fun": 20.0, "social": 14.0}, "pet_skill": "logic", "pet_xp": 35.0, "duration": 30.0, "min_age": "child", "teaches": "logic", "teach_xp": 22.0, "dog_only": true},
 ]
 
 ## The youngest life stage that may handle a pet at all. A baby may watch one but
@@ -241,7 +248,7 @@ static func apply_interaction(care: Dictionary, id: String, actor_id: String) ->
 		"skill": skill,
 		"level": after,
 		"levelled": after > before,
-		"learned": _trick_learned_at(after) if after > before else "",
+		"learned": _trick_learned_at(after) if skill == "tricks" and after > before else "",
 		"bond": add_bond(care, actor_id, BOND_PER_INTERACTION),
 		"teaches": str(entry.get("teaches", "")),
 		"teach_xp": float(entry.get("teach_xp", 0.0)),
@@ -290,6 +297,7 @@ static func tick(care: Dictionary, minutes: float) -> void:
 	var needs: Dictionary = care.get("needs", {})
 	for key: String in NEED_NAMES:
 		var decay: float = float(NEED_DECAY.get(key, 0.0)) * minutes
+		if key in ["social", "fun"]: decay *= 1.0 - float(level(care, "social") - 1) * .05
 		needs[key] = clampf(float(needs.get(key, 0.0)) - decay, 0.0, 100.0)
 	care["needs"] = needs
 
@@ -338,6 +346,8 @@ static func validate(value: Variant, member_ids: Array) -> String:
 	if not skills is Dictionary: return "Save contains invalid pet skills."
 	for name: String in SKILL_NAMES:
 		var record: Variant = (skills as Dictionary).get(name, null)
+		# New tracks are optional in saves written before dog training.
+		if record == null and name in ["social", "logic"]: continue
 		if not record is Dictionary: return "Save is missing a pet skill."
 		if not integer((record as Dictionary).get("level", 0), 1, MAX_LEVEL):
 			return "Save contains an impossible pet skill level."
@@ -355,10 +365,14 @@ static func validate(value: Variant, member_ids: Array) -> String:
 	var tricks: Variant = care.get("tricks", null)
 	if not tricks is Array: return "Save contains an invalid pet trick list."
 	for id: Variant in tricks:
-		var known: bool = false
+		var known: bool = str(id) in LEGACY_TRICKS
 		for entry: Dictionary in TRICKS:
 			if str(entry.id) == str(id): known = true
 		if not known: return "Save contains an unknown pet trick."
+	var familiar: Variant = care.get("familiar_items", [])
+	if not familiar is Array or familiar.size() > 128: return "Save contains invalid learned pet locations."
+	for item: Variant in familiar:
+		if not item is String or str(item).length() > 128: return "Save contains an invalid learned pet location."
 	return ""
 
 

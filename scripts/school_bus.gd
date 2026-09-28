@@ -23,6 +23,7 @@ var position: Vector3 = START
 var expected: int = 0
 var boarded: int = 0
 var dwell: float = 0.0
+var visual: Node3D
 
 static func clear_active() -> void:
 	active = null
@@ -91,3 +92,21 @@ func note_boarded() -> void:
 	boarded += 1
 	if phase == "waiting" and boarded >= maxi(1, expected):
 		phase = "departing"
+
+
+## The live model owns the actual boarding and drop-off sockets. The fallback
+## keeps non-rendered simulations and loading deterministic.
+func door_position() -> Vector3:
+	return _socket_position("DoorSocket", LifeSchoolBusVisual.DOOR_LOCAL)
+
+
+func exit_position() -> Vector3:
+	return _socket_position("ExitSpawnPoint", LifeSchoolBusVisual.EXIT_LOCAL)
+
+
+func _socket_position(socket: String, local: Vector3) -> Vector3:
+	if is_instance_valid(visual) and visual.is_inside_tree():
+		return visual.get_node(socket).global_position
+	var returning: bool = phase in ["returning", "dropping", "leaving"]
+	local.z = absf(local.z) if returning else -absf(local.z)
+	return position+local.rotated(Vector3.UP, PI if returning else 0.0)

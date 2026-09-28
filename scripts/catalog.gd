@@ -245,7 +245,7 @@ const ITEMS = {
 		"styles":["a","b","c"]},
 
 	# -------------------------------------------------------------- vehicles
-	"car": {"label":"Car", "category":"Vehicles", "price":200, "size":Vector2(4.2,1.8), "height":1.5, "color":"4a6b5c", "tint":true,
+	"car": {"label":"Car", "category":"Vehicles", "price":200, "size":Vector2(1.8,4.2), "height":1.5, "color":"4a6b5c", "tint":true,
 		"styles":["saloon_a","saloon_b","hatchback","estate","coupe","van","minibus","suv","offroader","pickup"],
 		"sizes":["small","medium","large"], "size_prices":{"small":200,"medium":400,"large":1500},
 		"seats":{"small":5,"medium":8,"large":5}},
@@ -256,7 +256,7 @@ const ITEMS = {
 	# An electric car is charged rather than filled, and the charger is what
 	# makes it usable: it is bought for the wall of a garage or a driveway and
 	# the car plugs into it at home.
-	"car_electric": {"label":"Electric car", "category":"Vehicles", "price":900, "size":Vector2(4.2,1.8), "height":1.5, "color":"6f8fa8", "tint":true,
+	"car_electric": {"label":"Electric car", "category":"Vehicles", "price":900, "size":Vector2(1.8,4.2), "height":1.5, "color":"6f8fa8", "tint":true,
 		"styles":[""],
 		"sizes":["small","medium","large"], "size_prices":{"small":900,"medium":1800,"large":4200},
 		"seats":{"small":5,"medium":5,"large":5}},

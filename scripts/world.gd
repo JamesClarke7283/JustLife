@@ -359,7 +359,13 @@ func create_home(layout: Array = []) -> void:
 		var node:Node3D=house.get_child(index)
 		node.set_meta("starter_surface",true);starter_floor_nodes.append(node);assign_structure_layer(node,0)
 	# Back wall, with inset windows on the kitchen and bath.
-	wall(Vector3(0,1.4,-5.04),Vector3(12.2,2.6,.16),"eae7d7",false)
+	# The rear entrance has a clear aisle between the bathroom fixtures.
+	wall(Vector3(-1.575,1.4,-5.04),Vector3(9.05,2.6,.16),"eae7d7",false)
+	wall(Vector3(5.125,1.4,-5.04),Vector3(1.95,2.6,.16),"eae7d7",false)
+	box(house,Vector3(3.55,2.5,-5.04),Vector3(1.2,.4,.16),"eae7d7")
+	box(house,Vector3(2.95,1.2,-5.04),Vector3(.08,2.4,.22),"b49167")
+	box(house,Vector3(4.15,1.2,-5.04),Vector3(.08,2.4,.22),"b49167")
+	box(house,Vector3(3.55,.05,-5.55),Vector3(1.3,.16,1.15),"c7bea9")
 	wall(Vector3(-6.04,1.4,0),Vector3(.16,2.6,10.1),"8faf9f",false)
 	wall(Vector3(6.04,.4,0),Vector3(.16,.6,10.1),"e6d8c5",true)
 	wall(Vector3(-3.55,.4,5.04),Vector3(5.1,.6,.16),"e6d8c5",true)
@@ -368,7 +374,7 @@ func create_home(layout: Array = []) -> void:
 	wall(Vector3(1,.47,2.7),Vector3(.13,.72,4.6),"e4dfce",true)
 	wall(Vector3(1.9,.47,-1.15),Vector3(1.8,.72,.13),"e4dfce",true)
 	wall(Vector3(5.0,.47,-1.15),Vector3(2.1,.72,.13),"e4dfce",true)
-	for x in [-4.25,-1.25,3.3]: window_panel(Vector3(x,1.78,-4.945),false)
+	for x in [-4.25,-1.25]: window_panel(Vector3(x,1.78,-4.945),false)
 	for z in [-2.3,2.2]: window_panel(Vector3(-5.945,1.75,z),true)
 	# One warm ceiling light per room. The kitchen, lounge, bedroom and bathroom
 	# can each be switched from their own light, and Build carries the state.
@@ -379,7 +385,7 @@ func create_home(layout: Array = []) -> void:
 	ceiling_light(house,Vector3(-4.6,2.52,5.0),"hall")
 	set_indoor_lights(true)
 	# Wall accents, skirting, door thresholds and entry.
-	var back_skirting:MeshInstance3D=box(house,Vector3(0,.24,-4.94),Vector3(12,.18,.04),"fcf5e6")
+	var back_skirting:MeshInstance3D=box(house,Vector3(-1.575,.24,-4.94),Vector3(9.05,.18,.04),"fcf5e6")
 	back_skirting.set_meta("wall_decoration",true);back_skirting.set_meta("wall_support_normal",Vector3.FORWARD)
 	var side_skirting:MeshInstance3D=box(house,Vector3(-5.94,.24,0),Vector3(.04,.18,10),"fcf5e6")
 	side_skirting.set_meta("wall_decoration",true);side_skirting.set_meta("wall_support_normal",Vector3.LEFT)
@@ -1883,6 +1889,17 @@ func seat_slot_offset(item:Dictionary,slot:String) -> Vector3:
 	var span:float=maxf(.1,float(item.get("size",Vector2(.6,.6)).x)*.8)
 	var step:float=span/float(maxi(1,count-1)) if count>1 else 0.0
 	return Vector3(-span*.5+step*float(index),0,0)
+
+## Reach the actual bedside, keeping the chosen half on its own side of the
+## mattress. A blocked side never snaps through a wall to some other room.
+func bed_side_approach(item:Dictionary,slot:String) -> Vector3:
+	var n:Node3D=item.node
+	var side:float=-1.0 if slot=="left" else 1.0
+	for along:float in [.3,.65,-.1]:
+		var wanted:Vector3=n.to_global(Vector3(side*(float(item.size.x)*.5+.4),0,along))
+		var at:Vector3=nearest_clear_point(wanted,item_level(item),1) if not construction.building_state.is_empty() else Vector3(nearest_free(wanted).x*.25,.16,nearest_free(wanted).y*.25)
+		if at.is_finite() and Vector2(at.x-wanted.x,at.z-wanted.z).length()<.3:return at
+	return Vector3.INF
 
 func slot_approach(item:Dictionary,slot:String) -> Vector3:
 	var n:Node3D=item.node

@@ -446,6 +446,8 @@ func snapshot()->Dictionary:
 			if not action.is_empty():
 				intent.kind="action"
 				for key:String in ["id","target_id","meal_source","meal_stage","meal_plate"]:intent[key]=str(action.get(key,""))
+				if action.has("commute"):
+					intent.kind="commute";intent["destination"]=LifeJourneyState.packed(route.destination)
 			elif bool(state.walk):intent={"kind":"walk","destination":LifeJourneyState.packed(state.destination)}
 			var phase:String=str(route.phase)
 			if phase=="waiting" and int(route.ticket)==0:phase="to_wait"

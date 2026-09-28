@@ -398,7 +398,9 @@ func _recovery_and_bell_regressions() -> void:
 	check(commute._autonomy_projection_need("school_day")=="hunger","Departure preparation budgets the actual commute instead of assuming school meals begin at home.")
 	var rest:LifeSim=setup("child",540.0)
 	rest.needs.energy=50.0
-	rest.queue_action("nap","bed");rest.get_current_action().autonomous=true;rest.begin_current_action()
+	rest.register_targets(targets()+[{"id":"child_bed","kind":"child_bed","position":Vector3(4,.16,2)}])
+	check(rest.queue_action("nap","child_bed"),"A child preparation nap queues at a child bed.")
+	rest.get_current_action().autonomous=true;rest.begin_current_action()
 	advance(rest,30.0)
 	check(rest.get_current_action().id=="nap" and rest.get_current_action().elapsed==30.0,"A short preparation nap finishes useful recovery instead of being abandoned as soon as the optimistic departure threshold is crossed.")
 	var malformed:Dictionary=snapshot(late);malformed.education.late_minutes=-1.0

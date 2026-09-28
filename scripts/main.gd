@@ -79,6 +79,7 @@ var household_chips: Dictionary = {}
 ## place the way a person's chip is.
 var pet_chips: Dictionary = {}
 var away_phases: Dictionary = {}
+var work_commute: RefCounted = preload("res://scripts/work_commute.gd").new(self)
 var need_bars: Dictionary = {}
 var need_fills: Dictionary = {}
 var need_values: Dictionary = {}
@@ -146,9 +147,11 @@ var pet_actors: Dictionary = {}
 var pet_arrivals: Dictionary = {}
 ## Each pet's own errand: which need sent it, where it is going and how far it
 ## has got. The controller owns this, like the household's own routes.
-## The pet the camera and HUD are following, or "" while a Lifelet is. A pet is
-## not controllable in the way a person is, so this only changes what is watched.
+## The pet the camera and HUD follow and direct floor clicks control, or ""
+## while the selected Lifelet receives those floor clicks.
 var selected_pet_id: String = ""
+var pet_lifelet_tool_active: bool = false
+var pet_move_director: String = ""
 var _pet_behavior: RefCounted
 var pet_panel_bars: Dictionary = {}
 var pet_panel_values: Dictionary = {}
@@ -1554,6 +1557,7 @@ func _set_house_exterior(house_id:String, style:String, wall:String, trim:String
 
 func _move_house(house_id:String) -> void:
 	if is_instance_valid(safety) and safety.unresolved():show_notice("Resolve the burglary report with the police before moving house.");return
+	if not build_transactions.commute_vehicles().is_empty():show_notice("Wait for every driver to return home before moving house.");return
 	var house:Dictionary=Properties.houses(properties).get(house_id,{})
 	var type_id:String=str(house.get("type",house_id))
 	# The home being left is saved with its land *before* the move is quoted, so
@@ -1887,45 +1891,7 @@ func _tick_curb_life(delta:float) -> void:
 
 
 func _make_school_bus() -> Node3D:
-	var bus:=Node3D.new()
-	bus.name="SchoolBus"
-	bus.set_meta("livery",true)
-	# White body, long along the lane. The cab is the -X end, which is the
-	# morning heading (east to west).
-	world.box(bus,Vector3(0,1.25,0),Vector3(6.2,2.15,2.15),"f4f7f2")
-	world.box(bus,Vector3(0,1.15,1.09),Vector3(5.6,.28,.04),"2f7d32")
-	world.box(bus,Vector3(0,1.15,-1.09),Vector3(5.6,.28,.04),"2f7d32")
-	world.box(bus,Vector3(-2.55,1.35,0),Vector3(.35,1.5,2.05),"d5dde0")
-	for side:float in [-1.0,1.0]:
-		var label:=Label3D.new()
-		label.text="SCHOOL BUS"
-		label.font_size=48
-		label.pixel_size=0.004
-		label.modulate=Color("1a3d1c")
-		label.position=Vector3(0.2,1.55,side*1.12)
-		label.rotation.y=0.0 if side>0.0 else PI
-		bus.add_child(label)
-		for leaf:int in 5:
-			var angle:float=deg_to_rad(-50.0+float(leaf)*25.0)
-			var stem:=Vector3(-1.55+cos(angle)*.22,1.72+sin(angle)*.16,side*1.12)
-			var blade:=world.box(bus,stem,Vector3(.16,.07,.02),"3f9d45")
-			blade.rotation.z=angle
-	for axle:float in [-1.7,1.7]:
-		for side:float in [-1.0,1.0]:
-			var wheel:=MeshInstance3D.new()
-			var tyre:=CylinderMesh.new()
-			tyre.top_radius=.38
-			tyre.bottom_radius=.38
-			tyre.height=.22
-			wheel.mesh=tyre
-			wheel.position=Vector3(axle,.38,side*1.05)
-			wheel.rotation_degrees=Vector3(0,0,90)
-			var rubber:=StandardMaterial3D.new()
-			rubber.albedo_color=Color("1c1c1c")
-			wheel.material_override=rubber
-			bus.add_child(wheel)
-	return bus
-
+	return LifeSchoolBusVisual.build()
 
 func _sync_bus_body() -> void:
 	if not is_instance_valid(world) or not is_instance_valid(world.house):return
@@ -1941,8 +1907,10 @@ func _sync_bus_body() -> void:
 	_bus_body.visible=true
 	_bus_body.position=school_bus.position
 	# Length stays along the lane. The nose points the way the bus is driving.
-	var nose:float=1.0 if school_bus.phase in ["returning","leaving"] else -1.0
+	var nose:float=1.0 if school_bus.phase in ["returning","dropping","leaving"] else -1.0
 	_bus_body.rotation.y=0.0 if nose<0.0 else PI
+	LifeSchoolBusVisual.sync(_bus_body,school_bus.phase)
+	school_bus.visual=_bus_body
 
 
 func _sync_street_bodies(delta:float) -> void:
@@ -2547,15 +2515,36 @@ func refresh_pet_layers() -> void:
 ## this Lifelet can do with it. The actions come from the household's own policy,
 ## so a baby is offered nothing, a child is offered the trick it can teach, and an
 ## unavailable option states its reason rather than disappearing silently.
-func show_pet_card(id:String) -> void:
+func show_pet_card(id:String,with_lifelet:bool=false) -> void:
 	var record:Dictionary=_pet_record(id)
 	if record.is_empty():return
 	selected_pet_id=id
+	pet_move_director=""
 	for pet_id:String in pet_actors:
 		var body:LifePetActor=pet_actors[pet_id]
 		if is_instance_valid(body):body.set_selected(pet_id==id)
 	if is_instance_valid(player):player.set_selected(false)
-	close_overlay();overlay_open=true;dismiss_layer()
+	close_overlay();overlay_open=true
+	# Clicking outside this card selects the world on that same press. A modal
+	# dismiss-only layer made selecting the dog require a third floor click.
+	var backdrop:=Control.new();rect(backdrop,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
+	backdrop.name="PetCardWorldInput"
+	backdrop.gui_input.connect(func(event:InputEvent):
+		if event is InputEventMouseButton and event.pressed and event.button_index==MOUSE_BUTTON_LEFT:
+			var screen:Vector2=backdrop.get_global_transform_with_canvas()*event.position
+			var hud_button:Button=null
+			var over_hud:bool=false
+			var controls:Array[Node]=ui.find_children("*","Control",true,false);controls.reverse()
+			for node:Node in controls:
+				var control:Control=node as Control
+				if not control.is_visible_in_tree() or control.mouse_filter==Control.MOUSE_FILTER_IGNORE:continue
+				if not Rect2(Vector2.ZERO,control.size).has_point(control.get_global_transform_with_canvas().affine_inverse()*screen):continue
+				over_hud=true
+				if control is Button and not control.disabled:hud_button=control;break
+			close_overlay()
+			if is_instance_valid(hud_button):hud_button.pressed.emit()
+			elif not over_hud:world.pick(screen)
+			get_viewport().set_input_as_handled())
 	var care:Dictionary=household.pet_care(id)
 	var needs:Dictionary=care.get("needs",LifePetCare.FRESH_NEEDS)
 	var species:String=LifePets.species_label(str(record.species))
@@ -2576,14 +2565,27 @@ func show_pet_card(id:String) -> void:
 		bar.name="PetNeed_"+key;bar.add_theme_stylebox_override("fill",P.panel(P.TEAL,5))
 		bar.add_theme_stylebox_override("background",P.panel(P.PALE,5));pet_panel_bars[key]=bar
 		pet_panel_values[key]=text_label(str(int(bar.value)),p+Vector2(232,322+i*36),Vector2(36,24),13,P.MUTED,false,overlay)
-	var stats:String="Logic / Tricks  %d\nObedience  %d · Agility  %d" % [LifePetCare.level(care,"tricks"),LifePetCare.level(care,"obedience"),LifePetCare.level(care,"agility")]
+	var stats:String="Clever Tricks  %d / 10\nSocial Skills  %d / 10\nLogic Skills  %d / 10" % [LifePetCare.level(care,"tricks"),LifePetCare.level(care,"social"),LifePetCare.level(care,"logic")]
 	paragraph(stats,p+Vector2(24,550),Vector2(238,64),15,P.TEAL,overlay)
 	var behavior:Dictionary=pet_behavior().state(id)
 	paragraph(" · ".join(PackedStringArray(behavior.get("traits",[]))),p+Vector2(24,611),Vector2(238,35),12,P.MUTED,overlay)
-	small_caps("Quick commands",p+Vector2(286,110),Vector2(340,22),overlay)
+	small_caps("Training & commands" if with_lifelet else "Quick commands",p+Vector2(286,110),Vector2(340,22),overlay)
 	var scroll:=ScrollContainer.new();rect(scroll,p+Vector2(280,144),Vector2(346,490),overlay)
 	scroll.name="PetCommands";scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
 	var list:=VBoxContainer.new();list.size_flags_horizontal=Control.SIZE_EXPAND_FILL;list.add_theme_constant_override("separation",7);scroll.add_child(list)
+	if with_lifelet:
+		for command_id:String in ["point", "clear"]:
+			var move:=button("Point & Move" if command_id=="point" else "Move Out of the Way",Vector2.ZERO,Vector2(328,35),_lifelet_pet_command.bind(id,command_id),true,list)
+			move.name="PetPointAndMove" if command_id=="point" else "PetMoveOutOfWay"
+			move.custom_minimum_size=Vector2(320,35)
+			move.disabled=not _pet_director_available(bound_member_id)
+		var training_title:=Label.new();training_title.text="Training · levels 1–10";list.add_child(training_title)
+		for lesson:Dictionary in household.pet_actions(id,bound_member_id):
+			if str(lesson.id) not in ["pet_teach_trick","pet_train_social","pet_train_logic"]:continue
+			var lesson_label:String="Train Clever Tricks" if str(lesson.id)=="pet_teach_trick" else str(lesson.label)
+			var train:=button(lesson_label,Vector2.ZERO,Vector2(328,35),_queue_pet_action.bind(id,str(lesson.id)),false,list)
+			train.custom_minimum_size=Vector2(320,35);train.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+			train.disabled=not bool(lesson.get("available",false));train.tooltip_text=str(lesson.get("description","")) if not train.disabled else str(lesson.get("unavailable_reason",""))
 	for action:Dictionary in pet_behavior().commands(id):
 		var action_id:String=str(action.id)
 		var command:=button(str(action.label),Vector2.ZERO,Vector2(328,35),_direct_pet_command.bind(id,action_id),false,list)
@@ -2592,12 +2594,26 @@ func show_pet_card(id:String) -> void:
 	var subtitle:=Label.new();subtitle.text="With "+str(sim.character.name);list.add_child(subtitle)
 	for action:Dictionary in household.pet_actions(id,bound_member_id):
 		var action_id:String=str(action.id)
+		if with_lifelet and action_id in ["pet_teach_trick","pet_train_social","pet_train_logic"]:continue
 		var label:String=str(action.label)
+		if with_lifelet and action_id=="pet_teach_trick":label="Train Clever Tricks"
 		if action_id=="pet_feed":label="Feed the "+species
 		elif action_id=="pet_play":label="Play with the "+species
 		var command:=button(label,Vector2.ZERO,Vector2(328,35),_queue_pet_action.bind(id,action_id),false,list)
 		command.custom_minimum_size=Vector2(320,35);command.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		command.disabled=not bool(action.get("available",false));command.tooltip_text=str(action.get("reason",action.get("unavailable_reason","")))
+	var tricks:=Label.new();tricks.text="Knows: "+", ".join(LifePetCare.known_tricks(care).map(func(key:String):return LifePetCare.trick_label(key)));tricks.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;list.add_child(tricks)
+	for trick:String in LifePetCare.known_tricks(care):
+		if trick=="fetch":
+			var toy_number:int=0
+			for toy:Dictionary in world.items:
+				if str(toy.kind)!="pet_toy_"+str(record.species) or bool(toy.get("held",false)):continue
+				toy_number+=1
+				var fetch:=button("Fetch "+str(LifePets.ACCESSORY_LABELS.get(str(toy.kind),"toy"))+" "+str(toy_number),Vector2.ZERO,Vector2(328,35),_direct_pet_command.bind(id,"pet_trick:fetch@"+str(toy.id)),false,list)
+				fetch.custom_minimum_size=Vector2(320,35)
+		else:
+			var perform:=button("Perform: "+LifePetCare.trick_label(trick),Vector2.ZERO,Vector2(328,35),_direct_pet_command.bind(id,"pet_trick:"+trick),false,list)
+			perform.custom_minimum_size=Vector2(320,35)
 	button("Move on the floor",p+Vector2(22,651),Vector2(293,36),func():close_overlay();show_notice("Click the floor to move "+str(record.name)+"."),true,overlay).name="PetMoveOnFloor"
 	button("Close",p+Vector2(330,651),Vector2(296,36),close_overlay,false,overlay)
 	refresh_hud()
@@ -2606,6 +2622,37 @@ func _direct_pet_command(id:String,action:String) -> void:
 	var result:Dictionary=pet_behavior().command(id,action)
 	if bool(result.get("ok",false)):close_overlay()
 	show_notice(str(result.get("message",result.get("error",""))))
+
+func activate_lifelet_pet_tool() -> void:
+	_clear_pet_selection()
+	pet_lifelet_tool_active=true
+	close_overlay()
+	show_notice("Lifelet tool active: click your dog for commands and training.")
+
+func _pet_director_available(id:String) -> bool:
+	var member:LifeSim=household.member_sim(id)
+	return member!=null and not member.is_away() and LifePetCare.stage_handles(str(member.character.age_stage))
+
+func _lifelet_pet_command(id:String,command_id:String) -> void:
+	if not _pet_director_available(bound_member_id):show_notice("Choose a Lifelet who is old enough and at home.");return
+	pet_move_director=bound_member_id
+	if command_id=="point":
+		close_overlay();show_notice("Point & Move: click a clear spot on the floor.")
+	else:
+		var result:Dictionary=pet_behavior().command(id,"pet_move_out")
+		if bool(result.get("ok",false)):
+			_pet_director_speak("Move out of the way, "+str(_pet_record(id).name)+".")
+			close_overlay()
+		show_notice(str(result.get("message",result.get("error",""))))
+		pet_move_director=""
+
+func _pet_director_speak(words:String) -> void:
+	var body:LifeActor=world.actors.get(pet_move_director)
+	var dog:LifePetActor=pet_actors.get(selected_pet_id)
+	if is_instance_valid(body) and is_instance_valid(dog):
+		var toward:Vector3=dog.position-body.position
+		if toward.length()>.01:body.rotation.y=atan2(toward.x,toward.z)
+		body.speech(words)
 
 func _refresh_pet_panel() -> void:
 	if selected_pet_id.is_empty() or not overlay_open:return
@@ -2750,6 +2797,8 @@ func draw_live() -> void:
 	button("Build & buy",Vector2(638,27),Vector2(150,39),func():set_build_mode(true),mode=="build")
 	button("My Lifelet",Vector2(796,27),Vector2(130,39),show_person)
 	button("Phone",Vector2(952,27),Vector2(153,43),adoption_flow.show_phone).name="HouseholdPhone"
+	if mode=="live" and current_venue=="home":
+		button("Lifelet · Pet commands",Vector2(1158,329),Vector2(247,38),activate_lifelet_pet_tool,pet_lifelet_tool_active).name="LifeletPetTool"
 	if LifeBirthHomecoming.can_welcome(household.birth_homecoming):
 		var welcome:Button=button("Welcome Baby Home",Vector2(952,78),Vector2(260,36),welcome_baby_home,true)
 		welcome.name="WelcomeBabyHome"
@@ -3291,6 +3340,8 @@ func refresh_hud() -> void:
 			action_context.text=str(sim.career.title).to_upper() if str(away.activity)=="career" else str(LifeEducation.summary(sim.education).school).to_upper()
 			action_context.tooltip_text="Weekdays · 09:00–17:00" if str(away.activity)=="career" else "Weekdays · 08:00–15:00"
 		if action_label:action_label.text=_away_status(away);action_label.tooltip_text=action_label.text
+	if action_label and work_commute.owns(action) and not work_commute.caption(action).is_empty():
+		action_label.text=work_commute.caption(action);action_label.tooltip_text=action_label.text
 	if action_bar:action_bar.value=0 if action.is_empty() else float(action.progress)*100
 	if queue_box:
 		var key:String=bound_member_id+str(away.get("phase",""))+str(sim.action_queue.map(func(a:Dictionary):return a.id+":"+str(a.phase)+":"+str(a.get("cooperation_id",""))))
@@ -3324,7 +3375,7 @@ func refresh_hud() -> void:
 				if not returning:text_label("×",Vector2(130,5),Vector2(16,31),16,P.MUTED,false,b)
 				b.tooltip_text=queue_title+(" · With "+str(partner.character.name) if shared and partner else "")+(" · Click to cancel for both Lifelets" if shared else " · Click to cancel this activity")
 				if chip_dance:b.tooltip_text=queue_title+" · Canceling one dancer leaves the others dancing"
-				if returning:b.tooltip_text="Coming home · Available after reaching the front garden"
+				if returning:b.tooltip_text="Coming home · Available after entering through the back door" if a.has("commute") else "Coming home · Available after reaching the front garden"
 				b.pressed.connect(func():cancel_current_action(i))
 		if is_instance_valid(queue_caption):
 			queue_caption.text="Next up" if sim.action_queue.size()>1 else "Queue"
@@ -4161,11 +4212,16 @@ func undo_build() -> void:
 	build_undo.pop_back()
 	_cancel_all_cooperative_actions()
 	world.clear_placement()
-	for item in world.items:item.node.queue_free()
-	world.items.clear()
+	var commuting:Array[String]=build_transactions.commute_vehicles()
+	var retained:Array=[]
+	for item:Dictionary in world.items:
+		if str(item.id) in commuting:retained.append(item)
+		else:item.node.queue_free()
+	world.items.assign(retained)
 	# A furnishing undo restores only furnishings. The identical live structure
 	# retains its current revision and authenticated architectural history.
-	for entry:Dictionary in furnishing_layout:world.add_item(entry,false)
+	for entry:Dictionary in furnishing_layout:
+		if str(entry.get("id","")) not in commuting:world.add_item(entry,false)
 	world.construction.refresh_decorations()
 	world.rebuild_navigation()
 	build_transactions.furnishing_rebuilt(protection)
@@ -4299,7 +4355,7 @@ func on_object_clicked(item:Dictionary,screen:Vector2) -> void:
 		elif str(item.get("kind",""))=="pet":
 			# A click on the animal opens its needs card (Hunger, Affection,
 			# Energy, Bladder, Logic), not only the care-action list.
-			show_pet_card(str(item.id))
+			show_pet_card(str(item.id),pet_lifelet_tool_active)
 		elif str(item.get("kind",""))=="police_station":show_venue_services("police_station")
 		elif str(item.get("kind",""))=="home_phone":adoption_flow.show_phone()
 		elif str(item.get("kind",""))=="burglar_alarm":show_notice("Security alarm armed. It will sound and automatically call the police during a break-in.")
@@ -4368,6 +4424,10 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 	# older tummy-rub-only list, so a click on a dog opens the same interaction
 	# panel every other object uses.
 	var actions:Array=household.pet_actions(str(item.id),bound_member_id) if str(item.kind)=="pet" else sim.get_actions_for(str(item.kind),str(item.id))
+	if str(item.kind)=="bed" and current_venue=="home":
+		for action:Dictionary in actions:
+			if str(action.id)=="sleep":action.label="Go to Bed"
+		actions.append({"id":"assign_bed_sides","label":"Assign bed sides…","cost":0,"duration":0,"available":true,"description":"Choose an adult for the left and right sides. Keep access clear beside both sides of the bed."})
 	if str(item.kind)=="meal":actions.append({"id":"call_to_meal","label":"Call everyone to eat","cost":0,"duration":0,"available":true,"description":"Invite available hungry household members and your welcomed guest. Busy Lifelets keep their plans."})
 	# A served dish or a plated serving can be offered to somebody by name, so the
 	# household can ask who actually wants food instead of only calling everyone.
@@ -4442,6 +4502,7 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 		b.pressed.connect(func():
 			play_click()
 			if str(a.id)=="cook":meal_flow.show_recipes(str(item.id))
+			elif str(a.id)=="assign_bed_sides":show_bed_assignments(str(item.id))
 			elif str(a.id)=="choose_leftovers":meal_flow.show_leftovers(str(item.id))
 			elif str(a.id)=="switch_light":switch_lamp(item);close_overlay()
 			elif str(a.id)=="call_to_meal":
@@ -4479,6 +4540,47 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 			else:queue_interaction(item,a.id);close_overlay())
 		column.add_child(b)
 	if actions.is_empty():paragraph("A little detail that makes this place home.",pos+Vector2(18,80),Vector2(304,55),13,P.MUTED,overlay)
+
+func show_bed_assignments(bed_id:String) -> void:
+	close_overlay();overlay_open=true;dismiss_layer()
+	card(Vector2(358,140),Vector2(724,574),P.WHITE,24,overlay)
+	text_label("Assign double-bed sides",Vector2(389,164),Vector2(660,46),30,P.INK,true,overlay)
+	paragraph("Choose a different adult for each side. Then select each Lifelet and choose Go to Bed. Leave both bedside paths clear.",Vector2(392,221),Vector2(651,67),16,P.MUTED,overlay)
+	var scroll:=ScrollContainer.new();scroll.name="BedAssignments"
+	rect(scroll,Vector2(388,310),Vector2(660,300),overlay)
+	var column:=VBoxContainer.new();column.add_theme_constant_override("separation",10);scroll.add_child(column)
+	for member:Dictionary in household.members:
+		if str(member.sim.character.life_stage)!="adult" or member.sim.is_spirit():continue
+		var id:String=str(member.id)
+		var side:String=household.assigned_bed_side(id,bed_id)
+		var row:=Control.new();row.custom_minimum_size=Vector2(638,77);column.add_child(row)
+		text_label(str(member.sim.character.name),Vector2(4,1),Vector2(630,26),17,P.INK,true,row)
+		for slot:String in ["left","right"]:
+			var choose:Button=button(("✓ " if side==slot else "")+"Assign "+slot.capitalize()+" Side",Vector2(4 if slot=="left" else 233,34),Vector2(219,36),_assign_bed_side.bind(id,bed_id,slot),side==slot,row)
+			choose.name="AssignBed_"+id+"_"+slot
+		if not side.is_empty():
+			button("Clear",Vector2(463,34),Vector2(150,36),func():
+				if _bed_has_actions(bed_id):show_notice("Finish or cancel activities at this bed before changing sides.");return
+				household.bed_assignments.erase(id);show_bed_assignments(bed_id),false,row)
+	button("Back to life",Vector2(791,643),Vector2(250,42),close_overlay,true,overlay)
+
+func _bed_has_actions(bed_id:String) -> bool:
+	for member:Dictionary in household.members:
+		for action:Dictionary in member.sim.action_queue:
+			if str(action.get("target_id",""))==bed_id:return true
+	return false
+
+func _assign_bed_side(member_id:String,bed_id:String,slot:String) -> void:
+	var item:Dictionary=_find_item(bed_id)
+	var body:LifeActor=world.actors.get(member_id)
+	if item.is_empty() or not is_instance_valid(body):return
+	var at:Vector3=world.bed_side_approach(item,slot)
+	if not at.is_finite() or world.path_to(body.position,at).is_empty():
+		show_notice("The "+slot+" side is blocked. Leave a clear path beside this double bed.");return
+	var result:Dictionary=household.assign_bed_side(member_id,bed_id,slot)
+	if not bool(result.ok):show_notice(str(result.error));return
+	show_bed_assignments(bed_id)
+	show_notice(str(household.member_sim(member_id).character.name)+" is assigned the "+slot+" side.")
 
 func show_homework_helpers(item:Dictionary) -> void:
 	_begin_pause_overlay()
@@ -5149,6 +5251,9 @@ func store_item(item:Dictionary) -> void:
 	var existing:Dictionary=_find_item(str(item.get("id","")))
 	if existing.is_empty() or bool(existing.get("transient_food",false)) or not LifeCatalog.ITEMS.has(str(existing.get("kind",""))):return
 	cancel_placement()
+	var proposed:Array=world.serialize_items().filter(func(record:Dictionary)->bool:return str(record.get("id",""))!=str(existing.id))
+	var problem:String=build_transactions.furnishing_error(proposed)
+	if not problem.is_empty():show_notice(problem);return
 	var entry:Dictionary={"id":str(existing.id),"kind":str(existing.kind),"x":existing.node.position.x,"z":existing.node.position.z,"rotation":existing.node.rotation_degrees.y,"level":world.item_level(existing)}
 	if _find_item(str(existing.id)).has("lit"):entry["lit"]=bool(existing.get("lit",true))
 	if LifeCatalog.paints(str(existing.kind)):entry["paint"]=LifeCatalog.paint_of(existing)
@@ -5546,6 +5651,12 @@ func queue_interaction(item:Dictionary,id:String) -> void:
 			if not bowl.is_empty():beside=world.approach(bowl)
 		_queue_pet_beat(id,str(item.id),beside,str(item.get("label","your pet")))
 		return
+	if str(item.kind)=="bed" and current_venue=="home" and id in ["sleep","nap","relax"]:
+		var side:String=household.assigned_bed_side(bound_member_id,str(item.id))
+		if not side.is_empty():
+			var bedside:Vector3=world.bed_side_approach(item,side)
+			if not bedside.is_finite() or world.path_to(player.position,bedside).is_empty():
+				show_notice("Your assigned "+side+" bedside is blocked. Clear that side before going to bed.");return
 	var destination:Vector3=world.approach(item)
 	if item.kind=="neighbor":destination=item.node.position+Vector3(0,0,.8)
 	sim.queue_action(id,item.id,destination)
@@ -5624,6 +5735,8 @@ func _bind_member(id:String) -> void:
 ## The household's own selection also ends the pet follow, so the camera and the
 ## life box never disagree about who is being watched.
 func _clear_pet_selection() -> void:
+	pet_lifelet_tool_active=false
+	pet_move_director=""
 	if selected_pet_id.is_empty():return
 	selected_pet_id=""
 	for id:String in pet_actors:
@@ -5830,7 +5943,11 @@ func on_ground_clicked(p:Vector3) -> void:
 	if mode!="live":return
 	if not selected_pet_id.is_empty():
 		close_overlay()
+		if not pet_move_director.is_empty() and not _pet_director_available(pet_move_director):
+			pet_move_director="";show_notice("Choose a Lifelet who is at home to give that command.");return
 		var commanded:Dictionary=pet_behavior().command(selected_pet_id,"pet_move",p)
+		if bool(commanded.get("ok",false)) and not pet_move_director.is_empty():_pet_director_speak("Over there, "+str(_pet_record(selected_pet_id).name)+".")
+		pet_move_director=""
 		if not bool(commanded.get("ok",false)):show_notice(str(commanded.get("message",commanded.get("error","That spot is out of reach."))))
 		return
 	if sim.is_away():show_notice("This Lifelet will be available after coming home.");return
@@ -5846,8 +5963,10 @@ func on_ground_clicked(p:Vector3) -> void:
 
 func on_action_started(action:Dictionary) -> void:
 	if loading_game or reconciling_targets or not is_instance_valid(player) or sim.is_away():return
+	if not work_commute.owns(action) and work_commute.views.has(bound_member_id):work_commute._release(bound_member_id)
 	if traversal.busy(bound_member_id):
 		traversal.cancel(bound_member_id);pending_action=action;return
+	if work_commute.owns(action):work_commute.prepare(action);return
 	if str(action.id)=="arrive_home":adoption_flow.start_arrival(action);return
 	var social_admitted:bool=traversal.active(bound_member_id) or not path.is_empty() or str(action.phase)=="active"
 	var arrived_waiter:bool=traversal.active(bound_member_id) and str(traversal.routes[bound_member_id].phase)=="waiting" and is_same(action,pending_action)
@@ -6984,7 +7103,7 @@ func _restore_journeys() -> Dictionary:
 		if str(current.get("phase","")) in ["approach","active"] and str(current.get("id","")) in ["plant_wee","mop_puddle"]:
 			var target_error:String=sanitation_flow.restore_action_error(id,current)
 			if not target_error.is_empty():return {"ok":false,"error":"The saved sanitation activity cannot resume: "+target_error}
-		if not current.is_empty() and str(current.phase)=="approach" and not traversal.active(id) and not motion.waiting and not member.sim.is_away():
+		if not current.is_empty() and str(current.phase)=="approach" and not work_commute.owns(current) and not traversal.active(id) and not motion.waiting and not member.sim.is_away():
 			var built:Dictionary=traversal.request(id,current.target_position)
 			if not bool(built.ok):return built
 			motion.path=built.points;motion.index=0;motion.traversal=traversal.routes[id]
@@ -7201,6 +7320,7 @@ func _process(delta:float) -> void:
 	if mode=="travel":residents.tick_trip(delta);return
 	if mode not in ["live","build"]:return
 	if mode=="live":
+		work_commute.cleanup()
 		_update_cover_beat(delta)
 		_tick_birth_arrival(delta)
 		residents.publish_targets()
@@ -7227,6 +7347,11 @@ func _process(delta:float) -> void:
 		var away_targets_changed:bool=false
 		for member:Dictionary in household.members:
 			_bind_member(member.id)
+			if work_commute.owns(sim.get_current_action()) and not traversal.safety(bound_member_id):
+				var was_unavailable:bool=bool(player.get_meta("away",false))
+				work_commute.tick(delta)
+				away_targets_changed=was_unavailable!=bool(player.get_meta("away",false)) or away_targets_changed
+				_store_motion(); continue
 			away_targets_changed=_sync_away_presence() or away_targets_changed
 			var moving:bool=_advance_away_movement(delta) if sim.is_away() else _advance_movement(delta)
 			var action:Dictionary=sim.get_current_action()
@@ -7909,8 +8034,18 @@ func _resolve_activity_target(action:Dictionary,keep_committed_endpoint:bool=fal
 ## being seated on a half.
 func _assign_seat_slot(action:Dictionary,item:Dictionary) -> void:
 	var shared_bed:bool=str(item.kind) in world.SHARED_BEDS
+	var assigned:String=household.assigned_bed_side(bound_member_id,str(item.id)) if shared_bed and current_venue=="home" else ""
+	if not assigned.is_empty():
+		action["seat_slot"]=assigned
+		var bedside:Vector3=world.bed_side_approach(item,assigned)
+		action.target_position=bedside if bedside.is_finite() else item.node.to_global(Vector3((-1.0 if assigned=="left" else 1.0)*(float(item.size.x)*.5+.4),0,.3))
+		return
 	var slots:Array[String]=world.seat_slots(item)
 	var taken:Array=[]
+	if shared_bed and current_venue=="home":
+		for owner:String in household.bed_assignments:
+			var reserved:String=household.assigned_bed_side(owner,str(item.id))
+			if owner!=bound_member_id and not reserved.is_empty():taken.append(reserved)
 	var partner_in_bed:bool=false
 	for member:Dictionary in household.members:
 		if member.id==bound_member_id:continue
@@ -7948,6 +8083,16 @@ func _activity_available(action:Dictionary) -> bool:
 
 func _activity_available_for_member(action:Dictionary,member_id:String) -> bool:
 	if action.is_empty():return false
+	var requested_bed:String=str(action.get("target_id",""))
+	var reserved_sides:Array[String]=[]
+	for owner:String in household.bed_assignments if current_venue=="home" and str(_find_item(requested_bed).get("kind",""))=="bed" else {}:
+		var side:String=household.assigned_bed_side(owner,requested_bed)
+		if owner==member_id or side.is_empty():continue
+		reserved_sides.append(side)
+		if side==str(action.get("seat_slot","")):return false
+	# Autonomy checks candidates before they have a mattress half. Both halves
+	# reserved for others means this bed is unavailable even while it is empty.
+	if reserved_sides.size()>=2:return false
 	if not residents.home_visit.welcome_start_allowed(action):return false
 	if str(action.get("id","")) in LifeSim.SOCIAL_ACTIONS and LifeResidents.PEOPLE.has(str(action.get("target_id",""))):
 		if not residents.present(str(action.target_id)) or not residents.home_visit.social_allowed(str(action.target_id),action):return false
@@ -7995,6 +8140,9 @@ func _partner_shares_bed(action:Dictionary,member_id:String,holder_id:String,oth
 	if item.is_empty() or str(item.kind) not in world.SHARED_BEDS:return false
 	if str(other.get("target_id",""))!=str(item.id):return false
 	if resource_id!=str(item.id):return false
+	var own_side:String=household.assigned_bed_side(member_id,str(item.id))
+	var other_side:String=household.assigned_bed_side(holder_id,str(item.id))
+	if current_venue=="home" and not own_side.is_empty() and not other_side.is_empty() and own_side!=other_side:return true
 	var mine:LifeSim=household.member_sim(member_id)
 	if mine==null or str(mine.romantic_partner).is_empty():return false
 	return str(mine.romantic_partner)==holder_id
@@ -8991,7 +9139,8 @@ func _sync_away_presence() -> bool:
 		if phase=="returning":
 			# Re-enter the rendered lot only at its sidewalk. Saved return walks
 			# retain their actual position; saved away members reappear at exit.
-			if previous=="away" or not player.visible:player.position=_saved_vector(state.get("exit_position"),world.lot_exit_position(_member_index(bound_member_id)))
+			if previous=="away" or not player.visible:
+				player.position=school_bus.exit_position() if str(state.get("activity", "")) == "school" and school_bus.phase == "dropping" else _saved_vector(state.get("exit_position"),world.lot_exit_position(_member_index(bound_member_id)))
 			var destination:Vector3=_return_destination(_member_index(bound_member_id))
 			if destination.is_finite():
 				_set_route(destination)
@@ -9056,6 +9205,10 @@ func _go_to_school() -> void:
 	if sim.queue_action("school_day","lot_exit",world.lot_exit_position(_member_index(bound_member_id))):refresh_hud()
 
 func _go_to_work() -> void:
+	var ride: Dictionary = sim._commute_choice("career_day", [])
+	if str(ride.get("id", "")) == "drive_to_work":
+		if sim.queue_action("drive_to_work", str(ride.target_id), ride.position):refresh_hud()
+		return
 	if sim.queue_action("career_day","lot_exit",world.lot_exit_position(_member_index(bound_member_id))):refresh_hud()
 
 func _morning_run() -> void:

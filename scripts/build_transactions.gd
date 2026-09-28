@@ -100,6 +100,8 @@ func _layout_obstacles(layout:Array)->Array:
 	return obstacles
 
 func furnishing_error(layout:Array)->String:
+	var commute_error:String=commute_layout_error(layout)
+	if not commute_error.is_empty():return commute_error
 	var state:Dictionary=current()
 	if not bool(state.ok):return str(state.error)
 	var by_id:Dictionary={}
@@ -127,6 +129,47 @@ func furnishing_error(layout:Array)->String:
 	var candidate:String=_layout_candidate_error(state.state,state.state,layout)
 	if not candidate.is_empty():return candidate
 	return _reach_error(state.state,layout)
+
+## The saved commute is anchored to this parked car until its driver is home.
+func commute_vehicles()->Array[String]:
+	var vehicles:Array[String]=[]
+	if not is_instance_valid(app):return vehicles
+	var household:Variant=app.get("household")
+	if not is_instance_valid(household):return vehicles
+	for member:Dictionary in household.members:
+		var action:Dictionary=member.sim.get_current_action()
+		var vehicle:String=str(action.get("commute",{}).get("vehicle",""))
+		if vehicle.is_empty() and str(action.get("id",""))=="drive_to_work":vehicle=str(action.get("target_id",""))
+		if not vehicle.is_empty() and vehicle not in vehicles:vehicles.append(vehicle)
+	return vehicles
+
+func commute_layout_error(layout:Array)->String:
+	var vehicles:Array[String]=commute_vehicles()
+	if vehicles.is_empty():return ""
+	var proposed:Dictionary={}
+	for entry:Dictionary in layout:proposed[str(entry.get("id",""))]=entry
+	var original:Array=app.world.serialize_items()
+	for entry:Dictionary in original:
+		if str(entry.get("id","")) not in vehicles:continue
+		if not _same_parked_furnishing(entry,proposed.get(str(entry.id),{})):
+			return "Wait for the driver to return home before moving, storing or selling their car."
+		var at:=Vector3(float(entry.x),0,float(entry.z))
+		for garage:Dictionary in original:
+			if str(garage.get("kind",""))!="car_garage":continue
+			var origin:=Vector3(float(garage.x),0,float(garage.z))
+			var basis:=Basis(Vector3.UP,deg_to_rad(float(garage.get("rotation",0))))
+			for local:Vector3 in LifeCatalog.vehicle_snap_locals("car_garage"):
+				if at.distance_to(origin+basis*local)>=1.2:continue
+				if not _same_parked_furnishing(garage,proposed.get(str(garage.id),{})):
+					return "Wait for the driver to return home before moving, storing or selling their garage."
+	return ""
+
+func _same_parked_furnishing(before:Dictionary,after:Dictionary)->bool:
+	if after.is_empty():return false
+	for key:String in ["kind","x","z","rotation","level","size"]:
+		var fallback:Variant="" if key in ["kind","size"] else 0
+		if before.get(key,fallback)!=after.get(key,fallback):return false
+	return true
 
 var _reach_cache:Dictionary={}   # layout signature -> reach error, so a hovering ghost asks once per spot
 var _live_reach:Dictionary={}    # the live graph's flood fill and standing spots for the current navigation generation
@@ -253,7 +296,9 @@ func _candidate_error(before:Dictionary,after:Dictionary)->String:
 	return _layout_candidate_error(before,after,_layout(after))
 
 func _layout_candidate_error(before:Dictionary,after:Dictionary,layout:Array)->String:
-	var error:String=app.world.validate_home_layout(layout)
+	var error:String=commute_layout_error(layout)
+	if not error.is_empty():return error
+	error=app.world.validate_home_layout(layout)
 	if not error.is_empty():return error
 	var changed_stairs:Array=[]
 	for stair:Dictionary in before.stairs:

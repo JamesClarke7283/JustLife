@@ -97,14 +97,17 @@ static func _floor_route(nav:LifeLotNavigation,from:Vector3,to:Vector3)->bool:
 	return result.segments.all(func(segment:Dictionary)->bool:return str(segment.kind)=="floor")
 
 static func _intent_error(intent:Variant,member:Dictionary,safety:bool)->String:
-	if not intent is Dictionary or intent.get("kind") not in ["idle","walk","action"]:return "Invalid saved movement intent."
+	if not intent is Dictionary or intent.get("kind") not in ["idle","walk","action","commute"]:return "Invalid saved movement intent."
 	var queue:Array=member.state.action_queue
-	if intent.kind=="action":
+	if intent.kind in ["action", "commute"]:
 		if queue.is_empty():return "A saved action journey has no current action."
 		var action:Dictionary=queue[0]
 		for key:String in ["id","target_id","meal_source","meal_stage","meal_plate"]:
 			if not intent.get(key,"") is String or str(intent.get(key,""))!=str(action.get(key,"")):return "A saved journey does not match the current action."
-		if str(action.get("phase",""))!="approach":return "An active action cannot also be traveling to its target."
+		if intent.kind == "commute":
+			var commute: Dictionary = action.get("commute", {})
+			if str(commute.get("phase", "")) not in ["walk", "back"] or not vector_valid(commute.get("destination")) or not vector_valid(intent.get("destination")) or vector(commute.destination).distance_to(vector(intent.destination)) > .00001: return "The saved commute walk disagrees with its destination."
+		elif str(action.get("phase",""))!="approach":return "An active action cannot also be traveling to its target."
 	elif not queue.is_empty():return "An idle or walking journey conflicts with its action queue."
 	elif intent.kind=="idle" and not safety:return "Only a safe-exit journey can continue without an instruction."
 	if intent.kind=="walk" and not vector_valid(intent.get("destination")):return "Invalid saved walking destination."
@@ -157,7 +160,11 @@ static func validate(data:Variant,household:Dictionary)->Dictionary:
 		var old:Variant=people[id].state.character.get("world_state",{})
 		if not old is Dictionary or not vector_valid(old.get("player")) or vector(old.player).distance_to(at)>.00001 or not number(old.get("player_rotation"),-1000,1000) or absf(float(old.player_rotation)-float(record.yaw))>.00001:return {"ok":false,"error":"Saved actor and journey locations disagree."}
 		if motion.is_empty():
-			if not nav.point_clear(level(at),at):return {"ok":false,"error":"A stationary Lifelet is outside supported clear floor."}
+			if not nav.point_clear(level(at),at):
+				var queue: Array = people[id].state.action_queue
+				var action: Dictionary = queue[0] if not queue.is_empty() else {}
+				var vehicle: Dictionary = checked.items.get(str(action.get("commute", {}).get("vehicle", "")), {})
+				if not preload("res://scripts/work_commute.gd").cabin_position_matches(action, at, vehicle): return {"ok":false,"error":"A stationary Lifelet is outside supported clear floor."}
 			continue
 		if motion.get("phase") not in PHASES or not number(motion.get("identity"),1,float(data.next_identity)-1,true) or identities.has(motion.identity) or not number(motion.get("ticket"),0,float(data.next_ticket)-1,true) or not motion.get("safety") is bool or not motion.get("custody") is String:return {"ok":false,"error":"Invalid saved journey identity or phase."}
 		identities[motion.identity]=id
@@ -165,7 +172,7 @@ static func validate(data:Variant,household:Dictionary)->Dictionary:
 		if not nav.point_clear(level(vector(motion.destination)),vector(motion.destination)):return {"ok":false,"error":"A saved route destination has no clear supported floor."}
 		var intent_error:String=_intent_error(motion.get("intent"),people[id],bool(motion.safety))
 		if not intent_error.is_empty():return {"ok":false,"error":intent_error}
-		if not bool(motion.safety) and str(motion.intent.kind)=="walk" and vector(motion.intent.destination).distance_to(vector(motion.destination))>.00001:return {"ok":false,"error":"The saved walking intent disagrees with its route destination."}
+		if not bool(motion.safety) and str(motion.intent.kind) in ["walk", "commute"] and vector(motion.intent.destination).distance_to(vector(motion.destination))>.00001:return {"ok":false,"error":"The saved walking intent disagrees with its route destination."}
 		if bool(motion.safety) and motion.phase not in OWNED:return {"ok":false,"error":"Safe-exit movement has no owned staircase."}
 		if int(motion.ticket)>0:
 			if tickets.has(motion.ticket):return {"ok":false,"error":"Two Lifelets share an arrival ticket."}

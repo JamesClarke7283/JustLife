@@ -59,7 +59,9 @@ A pet's collar and leash are its own, chosen in the picker beside the coat and k
 
 Each pet gets a `LifePetActor` body in the world: its authored model, its mixed coat, and a small idle where the head turns, the tail sways and the legs stay planted, becoming a diagonal-pair trot while it walks in from the street. A paused household freezes its pets too.
 
-A pet also lives in the life box: the household switcher shows a chip per pet, wearing the animal itself, and clicking one opens its card. **Control this pet** makes that body the one the camera and HUD follow — a pet is not a Lifelet and keeps no action queue, so every interaction still runs through the selected Lifelet.
+A pet also lives in the life box: the household switcher shows a chip per pet. Click the dog or its portrait, then click a clear floor spot to move it. The first floor click outside the open card sends the command immediately, interrupting eating or a Lifelet care session. Furniture and stairs still use collision-safe routes.
+
+For Lifelet-directed commands, click **Lifelet · Pet commands**, then the dog. **Point & Move** waits for a floor point; **Move Out of the Way** chooses reachable space farther from the nearest furnishing or bowl. A Lifelet must be at home and old enough to handle the dog. Selecting another Lifelet ends pet control.
 
 The body is presentation. The household owns the saved record, its condition, the fee and the arrival policy, so a save always resumes the same animals in the same places — on load, `main.sync_pets()` rebuilds every body from `household.pets`.
 
@@ -68,8 +70,10 @@ The body is presentation. The household owns the saved record, its condition, th
 A pet is not a Lifelet and does not share its simulation, but it still has needs the household can watch. `scripts/pet_care.gd` (`LifePetCare`) owns them as pure static policy:
 
 * **Needs** — the same six keys a Lifelet's own panel draws (hunger, energy, hygiene, bladder, fun, social), so one set of rows renders either. They fall on the household's own clock, so a paused household freezes them with its Lifelets.
-* **Skills** — **Tricks**, **Agility** and **Obedience**, each levelling at the same experience cost a Lifelet's skill does.
-* **Tricks** — ten, learned in order as the Tricks skill climbs: sit, shake a paw, come when called, roll over, fetch, speak, spin around, take a bow, jump through a hoop, fetch the lead.
+* **Training skills** — **Clever Tricks**, **Social Skills** and **Logic Skills**, each progressing from level 1 to 10 through timed Lifelet lessons. Existing Agility and Obedience progress is retained.
+* **Clever Tricks** — sit (1), lie down (2), shake hands (3), roll over (4), fetch a specific toy (5), speak and high-five (6), backflip (7), dance on hind legs (8), weave through obstacles and play dead (9), and a complete routine (10). Learned tricks have performance commands: fetch carries the chosen toy back; weaving follows a visible five-pole slalom with alternating safe waypoints and cleans up temporary poles when completed or interrupted; the other tricks animate the dog's body.
+* **Social Skills** — higher levels reduce Fun and Social decay, make nearby pets and guests lift these needs, shorten the autonomous hesitation around unfamiliar objects and company, and increase walking response speed. Explicit player commands remain immediate at every level.
+* **Logic Skills** — higher levels replan sooner when a route is blocked and find another reachable approach when one side of a furnishing is occupied. From level 5, target selection checks reachability and prefers remembered furnishing locations. Walls and closed enclosures remain physical barriers.
 * **Bonds** — the friendship a pet has with each person it lives with, from *Wary* through *Friendly* to *Inseparable*. This is what a pet's own relationships are.
 
 ## What you can do with a pet
@@ -83,8 +87,10 @@ Click a pet for its card: its needs, its skills, the trick it is working towards
 | Play together | Fun, Social | Agility | Fitness |
 | Teach a trick | Fun, Social | Tricks | **Logic** |
 | Train obedience | Fun, Social | Obedience | Parenting |
+| Train Social Skills | Fun, Social | Social Skills | Charisma |
+| Train Logic Skills | Fun, Social | Logic Skills | Logic |
 
-**A child can teach a trick, and the child grows too.** That is the whole point of the logic level in this system: teaching a pet a trick is a real lesson for the teacher, so a child who works with the family dog builds their own Logic while the dog learns. A baby may not handle a pet at all — the options are withheld with a reason rather than silently refused — and training obedience is offered from adult upward.
+**A child can teach a trick, and the child grows too.** Teaching a pet a trick also gives the teacher Logic experience. This is separate from the dog’s own Logic Skills, which improve navigation and item memory. A baby may not handle a pet at all — the options are withheld with a reason rather than silently refused — and training obedience is offered from adult upward.
 
 The gate reads the lifecycle's own stage order (`LifeLifecycle.STAGES`), so a stage added there cannot silently lock a whole age out of the garden.
 
@@ -110,6 +116,8 @@ Pets ride the household save as an optional `pets` record beside `adoptions` and
 ]}
 ```
 
+Care records save the new Social and Logic skill levels and XP, plus a bounded `familiar_items` list of furnishing identities. These additions are optional when loading older saves; missing skills start at level 1, and former trick IDs remain valid.
+
 A pet carries **fifteen** fields: its identity and appearance, and its own `care` record. An absent record means a household that owns no pets, so older saves load unchanged; a pet saved before pets had needs (fourteen fields) also loads, gaining a fresh condition rather than being refused. `LifePets.validate` rejects a damaged record — a duplicate identity, an out-of-order serial, an unknown species, sex, coat length or marking, an impossible gradient, an impossible need or bond, an unknown trick, or a price that does not match the shop — rather than silently dropping it.
 
 ## Files
@@ -133,3 +141,5 @@ Both animals expose the same named parts — `Body`, `Head`, `Tail`, `Ear_L`, `E
 The dog kennel belongs outdoors. The navigable lot is **36×21 m** (was 24×18, and 18×16 before that), and its size is owned by a single constant — `LifeRoofRules.LOT`, which `LifeBuildingState.LOT` aliases — so building validation, floor support, the navigation graph, the camera pan bound and the roof-eave rule all agree on how far the ground reaches. The lot is *derived*, not saved with a household, so both current saves and future ones grow the garden the next time their world is built.
 
 Level-0 placement stands on the lot itself rather than requiring a built floor slab, so a kennel, a garden bed or a toy box can be placed in the garden outside the house; an upper furnishing still needs real slab beneath it. A roof out in the garden is bounded by the same constant, so enlarging the garden did not leave the roof rule refusing a legal garden roof.
+
+`tests/test_dog_commands_training.gd` covers actual floor input through the pet card, interruption of bowl eating and Lifelet feeding, both Lifelet commands, training effects and level caps, furniture navigation, specific toy retrieval, high-level trick poses, slalom cleanup, legacy saves, and a household save round trip.

@@ -131,7 +131,9 @@ func _run()->void:
 	var room_paint:Dictionary=tx.prepare({"op":"structure","tool":"paint","level":0,"id":str(room_wall.get("id","")),"material":room_colour,"scope":"room"})
 	var room_paint_purchase:Dictionary=tx.commit(room_paint)
 	var painted_count:int=app.world.construction.building_state.walls.filter(func(wall:Dictionary)->bool:return str(wall.material)==room_colour).size()
-	check(bool(room_paint_purchase.ok) and int(room_paint.get("cost",0))==40 and painted_count==5,"Whole-room paint covers the doorway's two stubs and the other three walls, ℒ%d for %d panels." % [int(room_paint.get("cost",0)),painted_count])
+	# Corner closure adds wall thickness: three 2.14 m panels and two 0.54 m
+	# doorway stubs. At ℒ6/m, truncating each panel gives 3×12 + 2×3 = ℒ42.
+	check(bool(room_paint_purchase.ok) and int(room_paint.get("cost",0))==42 and painted_count==5,"Whole-room paint covers the doorway's two stubs and the other three walls, ℒ%d for %d panels." % [int(room_paint.get("cost",0)),painted_count])
 	check(str(app.world.construction.building_state.walls[0].material)==wall_before,"Whole-room paint leaves walls outside that room alone.")
 	check(not bool(tx.prepare({"op":"structure","tool":"paint","level":0,"id":str(room_wall.get("id","")),"material":room_colour,"scope":"room"}).ok),"Repainting a room in its current colour is refused.")
 	check(not bool(tx.prepare({"op":"structure","tool":"paint","level":0,"id":str(room_wall.get("id","")),"material":"8faf9f","scope":"house"}).ok),"An unknown paint scope is refused.")

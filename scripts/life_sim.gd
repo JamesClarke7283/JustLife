@@ -20,6 +20,7 @@ var autonomy_activity_available: Callable
 ## simulation without a world leaves it invalid and keeps the old everyone-nearby
 ## policy.
 var social_witness: Callable
+const DAY_ENERGY_MINIMUM: float = 80.0
 const BLADDER_DESPERATE: float = 12.0
 const BLADDER_GRACE_MINUTES: float = 10.0
 var bladder_grace: float = 0.0
@@ -347,8 +348,8 @@ func new_household(profile: Dictionary) -> void:
 
 func _build_actions() -> void:
 	_define("arrive_home","Arriving home",1.0,{},0,"",0.0,"Walk into your new home. Canceling the walk keeps this Lifelet in the family.")
-	_define("career_day", "Go to work", LifeCareerSchedule.LENGTH, {"hunger":30.0,"bladder":52.0,"hygiene":26.0,"social":24.0,"energy":-12.0,"fun":12.0}, 0, "", 0.0, "Weekday work, 09:00–17:00. Arrive by 10:00; late arrivals until noon reduce pay and performance. Lunch, bathroom and washroom breaks are included.")
-	_define("school_day", "Go to school", 420.0, {"hunger":22.0,"bladder":46.0,"hygiene":18.0,"social":35.0,"energy":-7.0,"fun":10.0}, 0, "", 0.0, "Leave for school on weekdays from 08:00. Arrive by 09:00 to be on time; late arrival is possible until 12:00. Return at 15:00. Lunch, bathroom and washroom breaks are part of the school day.")
+	_define("career_day", "Go to work", LifeCareerSchedule.LENGTH, {"hunger":30.0,"bladder":52.0,"hygiene":26.0,"social":24.0,"energy":-12.0,"fun":12.0}, 0, "", 0.0, "Weekday work, 09:00–17:00. Arrive by 10:00; late arrivals until noon reduce pay and performance. Lunch, bathroom and rest breaks keep at least 80% energy for the evening.")
+	_define("school_day", "Go to school", 420.0, {"hunger":22.0,"bladder":46.0,"hygiene":18.0,"social":35.0,"energy":-7.0,"fun":10.0}, 0, "", 0.0, "Leave for school on weekdays from 08:00. Arrive by 09:00 to be on time; late arrival is possible until 12:00. Return at 15:00. Lunch, bathroom and rest breaks keep at least 80% energy for after school.")
 	_define("visit", "A trip across town", TRIP_MINUTES, {}, 0, "", 0.0, "Travel to a place in Juniper Bay on your own while the household stays home. The shared car takes fifteen minutes each way.")
 	_define("help_homework", "Help with homework", 45.0, {}, 0, "", 0.0, "Support a child or teen through one assignment and build Parenting skill.")
 	_define("school", "Attend online classes", 180.0, {}, 0, "", 0.0, "Weekday lessons at your desk, 08:00–14:00. Prepared homework improves learning and grades.")
@@ -486,6 +487,8 @@ func _build_actions() -> void:
 	_define("pet_walk", "Take for a Walk", 40.0, {"fun": 16.0, "social": 14.0, "energy": -8.0}, 0, "fitness", 22.0, "Clip on a leash and walk the neighbourhood. You can stop and chat with neighbours.")
 	_define("pet_pet", "Pet", 12.0, {"fun": 10.0, "social": 12.0}, 0, "parenting", 6.0, "Stroke the coat. Warm affection for you both.")
 	_define("pet_train", "Train obedience", 25.0, {"fun": 8.0, "social": 10.0}, 0, "parenting", 18.0, "Patient repetition. Builds Obedience and your own Parenting.")
+	_define("pet_train_social", "Train Social Skills", 25.0, {"fun": 12.0, "social": 18.0}, 0, "charisma", 18.0, "Practise calm greetings with your dog. Builds Social Skills.")
+	_define("pet_train_logic", "Train Logic Skills", 30.0, {"fun": 16.0, "social": 10.0}, 0, "logic", 22.0, "Practise finding familiar objects and routes. Builds Logic Skills.")
 	_define("drive_car", "Drive…", 0.0, {}, 0, "", 0.0, "Open the door, get in, and pick a destination on the town map. With a baby or child, buckle them into a car seat first.")
 	_define("drive_to_work", "Drive to work", 25.0, {"energy": -6.0}, 0, "", 0.0, "Walk out to the car and drive it to work.")
 	_define("board_school_bus", "Board the school bus", 20.0, {"fun": 8.0, "social": 6.0}, 0, "", 0.0, "The school bus has pulled up. Walk out and board it.")
@@ -580,7 +583,7 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"fireplace": ids = ["warm_up"]
 		"urn", "tombstone", "memorial": ids = ["remember_life", "mourn", "leave_flowers", "remember_passed"]
 		"neighbor", "maya", "leo", "priya", "tom": ids = SOCIAL_ACTIONS
-		"pet": ids = ["pet_feed", "pet_pet", "pet_tummy_rub", "pet_play", "pet_tug", "pet_teach_trick", "pet_walk", "pet_train", "bathe_pet"]
+		"pet": ids = ["pet_feed", "pet_pet", "pet_tummy_rub", "pet_play", "pet_tug", "pet_teach_trick", "pet_walk", "pet_train", "pet_train_social", "pet_train_logic", "bathe_pet"]
 		"cat_toy_box", "dog_toy_box": ids = ["take_pet_toy"]
 		"pet_toy_cat", "pet_toy_dog": ids = ["put_pet_toy", "play_with_pet_toy"]
 		# Baby care. The changing table is where a nappy is changed, the toys are
@@ -631,7 +634,7 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		data["unavailable_reason"] = availability.reason
 		if id=="career_day" and LifeCareers.is_police(str(career.get("track",""))):
 			data["label"]="Go to the police station"
-			data["description"]="%s. Earn ℒ%d for the full shift; late arrival reduces pay. Meals and bathroom breaks are included."%[str(_career_pattern().label),career_pay()]
+			data["description"]="%s. Earn ℒ%d for the full shift; late arrival reduces pay. Meals and rest breaks keep at least 80% energy for home."%[str(_career_pattern().label),career_pay()]
 		if kind == "child_bed":
 			if str(data.id) == "sleep": data["label"] = "Go to Bed"
 			elif str(data.id) == "nap": data["label"] = "Take a Nap"
@@ -864,6 +867,8 @@ func _away_meal() -> void:
 	if float(needs.hunger) < 40.0:
 		needs.hunger = 40.0
 	starvation_minutes = 0.0
+	# Daytime rest breaks protect evening energy, including the physical return.
+	needs.energy = maxf(float(needs.energy), DAY_ENERGY_MINIMUM)
 
 
 func _tick_away(_game_minutes: float) -> void:
@@ -908,6 +913,7 @@ func _tick_away(_game_minutes: float) -> void:
 		result.state["late_minutes"]=float(result.state.get("late_minutes",0.0))+late
 		for skill:String in result.effects.get("skill_xp",{}):result.effects.skill_xp[skill]*=float(action.duration)/420.0
 		_apply_education_result(result)
+		needs.energy = maxf(float(needs.energy), DAY_ENERGY_MINIMUM)
 		if late>0:
 			_emit_notice("Arrived %d minutes late. School performance reflects the missed lessons." % int(late))
 		add_moodlet("School day complete","Focused","Lessons are finished. Time to head home.",120,2)
@@ -1065,6 +1071,9 @@ func complete_away_return() -> bool:
 
 
 func queue_action(id: String, target_id: String = "", target_position: Vector3 = Vector3.ZERO, recipe: String = "garden_skillet") -> bool:
+	if id == "drive_to_work":
+		var reason: String = str(get_action_availability(id, target_id).reason)
+		if not reason.is_empty(): _emit_notice(reason); return false
 	if id=="arrive_home":return false # Only the validated household transaction creates arrival.
 	if id=="career_day":
 		var problem:String=_career_departure_error(target_id)
@@ -1201,7 +1210,7 @@ func begin_current_action() -> void:
 	if action_queue.is_empty() or str(action_queue[0]["phase"]) != "approach":
 		return
 	var action: Dictionary = action_queue[0]
-	if str(action.id)=="arrive_home":return # Physical arrival is confirmed by the controller.
+	if str(action.id) in ["arrive_home", "drive_to_work"]:return # Physical arrival is confirmed by the controller.
 	if str(action.id)=="career_day":
 		_begin_career_departure(action)
 		return
@@ -1507,6 +1516,8 @@ func _apply_continuous_effects(action: Dictionary, fraction: float) -> void:
 		if need_name == "social" and _has_trait("Outgoing") and amount > 0.0:
 			amount *= 1.2
 		needs[need_name] = clampf(float(needs[need_name]) + amount, 0.0, 100.0)
+	if str(action.id) in ["career_day", "school_day", "job"]:
+		needs.energy = maxf(float(needs.energy), DAY_ENERGY_MINIMUM)
 	if str(action["id"]) == "shower" and _has_trait("Neat"):
 		needs["fun"] = minf(100.0, float(needs["fun"]) + 15.0 * fraction)
 	var skill_name: String = str(action["skill"])
@@ -1743,7 +1754,7 @@ func _finish_front() -> void:
 			_emit_notice(str(placed.get("error","The shop could not be ordered just now.")))
 	elif id == "watch_together":
 		pass
-	elif id in ["pet_feed", "pet_play", "pet_teach_trick", "pet_walk", "pet_pet", "pet_train", "pet_tug", "pet_tummy_rub"]:
+	elif id in LifePetCare.interaction_ids():
 		if is_instance_valid(cooperation_owner) and cooperation_owner.has_method("do_pet_interaction"):
 			var cared:Dictionary=cooperation_owner.do_pet_interaction(str(action.get("target_id","")),_social_member_id,id)
 			if bool(cared.get("ok",false)):
@@ -1924,6 +1935,10 @@ func _social_target(target_id: String) -> String:
 
 func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 	var reason: String = ""
+	if id == "drive_to_work":
+		reason = _career_departure_error("lot_exit")
+		if reason.is_empty() and _target_kind_of(target_id) not in ["car", "car_electric", "electric_car"]: reason = "Choose a household car to drive to work."
+		return {"available": reason.is_empty(), "reason": reason}
 	if id in ["plant_wee","mop_puddle"]:
 		reason=_sanitation_reason(id,target_id)
 		if not reason.is_empty():return {"available":false,"reason":reason}
@@ -2037,7 +2052,7 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 		reason = "Today's shift is already complete."
 	elif id=="job" and day<int(career.get("schedule",LifeCareerSchedule.fresh(day)).first_day):
 		reason="Your first shift begins on the next workday."
-	elif id in ["teach_pet_trick","pet_tummy_rub","bathe_pet","pet_feed","pet_play","pet_teach_trick","pet_walk","pet_pet","pet_train","pet_tug"]:
+	elif id in ["teach_pet_trick","pet_tummy_rub","bathe_pet","pet_feed","pet_play","pet_teach_trick","pet_walk","pet_pet","pet_train","pet_tug","pet_train_social","pet_train_logic"]:
 		reason=_pet_action_error(id,target_id)
 	elif id in SOCIAL_ACTIONS:
 		var target: String = _social_target(target_id)
@@ -3416,10 +3431,10 @@ func _commute_choice(duty: String, excluded_target_ids: Array) -> Dictionary:
 		if bus != null and bus.phase == "approaching":
 			return {"wait_for_bus": true}
 		if bus != null and bus.waiting():
-			return {"id": "board_school_bus", "target_id": "school_bus_stop", "position": LifeSchoolBus.CURB, "load": 0.0}
+			return {"id": "board_school_bus", "target_id": "school_bus_stop", "position": bus.door_position(), "load": 0.0}
 		if _target_kind_present("school_bus"):
 			return _autonomy_target_for("board_school_bus", excluded_target_ids)
-	if duty == "career_day" and str(character.life_stage) == "adult" and _target_kind_present("car"):
+	if duty == "career_day" and str(character.life_stage) == "adult" and (_target_kind_present("car") or _target_kind_present("car_electric") or _target_kind_present("electric_car")):
 		return _autonomy_target_for("drive_to_work", excluded_target_ids)
 	return {}
 
@@ -3502,7 +3517,7 @@ func _reconsider_active_autonomy() -> void:
 			var recovery:Dictionary=_autonomy_need_choice(need)
 			if not recovery.is_empty() and (str(recovery.id)!=str(current.id) or str(recovery.target_id)!=str(current.target_id)):danger=true
 	var duty:String=_autonomy_duty_id()
-	var optional:bool=str(current.id) not in ["school","school_day","career_day","homework","job"]
+	var optional:bool=str(current.id) not in ["school","school_day","career_day","homework","job","drive_to_work","board_school_bus"]
 	var duty_ready:bool=optional and not duty.is_empty() and _autonomy_projection_need(duty).is_empty() and not _autonomy_target_for(duty).is_empty()
 	# A pastime that still ends in time for an on-time arrival is not cut short by the open duty.
 	if duty_ready and duty in ["school_day","career_day"] and str(current.id) in LEISURE_ACTIONS and minutes+float(current.duration)-float(current.elapsed)+DEPARTURE_WALK<=_duty_deadline(duty):duty_ready=false
@@ -4246,6 +4261,7 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 		if stored.has("target_kind"): action["target_kind"] = str(stored.target_kind)
 		for key: String in ["cooperation_id","cooperation_role","meal_source","meal_stage","meal_plate","meal_seat","seat_slot"]:
 			if stored.has(key): action[key] = str(stored[key])
+		if stored.has("commute"): action["commute"] = stored.commute.duplicate(true)
 		if stored.has("swim_lane"): action["swim_lane"] = int(stored.swim_lane)
 		if stored.has("cooperation_primary"): action["cooperation_primary"] = bool(stored.cooperation_primary)
 		if stored.has("partner_id"): action["partner_id"] = str(stored.partner_id)
@@ -4622,7 +4638,10 @@ func _validate_state(state: Dictionary) -> String:
 			var book_skill:String=str(action.get("book_skill",""))
 			if action_id!="study_book" or str(_actions[action_id].skill)!=book_skill or not LifeHouseholdFlow.BOOK_SKILLS.has(book_skill) or int(state.skills.get(book_skill,{"level":1}).level)>=LifeHouseholdFlow.BOOK_MAX_LEVEL:
 				return "Save contains a skill book session for an unknown or finished subject."
-		if action_id in ["job","career_day","work"] and str(profile.get("life_stage","adult")) != "adult": return "Save contains adult work queued for a non-adult Lifelet."
+		if action.has("commute"):
+			var commute_error: String = preload("res://scripts/work_commute.gd").save_error(action.commute, action, state.get("away_state", {}))
+			if not commute_error.is_empty() or action_id not in ["drive_to_work", "career_day"]: return "Save contains invalid work commute progress."
+		if action_id in ["job","career_day","work","drive_to_work"] and str(profile.get("life_stage","adult")) != "adult": return "Save contains adult work queued for a non-adult Lifelet."
 		if action_id == "cook":
 			var recipe:Variant=action.get("recipe","garden_skillet")
 			if not recipe is String or not LifeMeals.RECIPES.has(recipe):return "Save contains an invalid cooking recipe."
@@ -4930,9 +4949,9 @@ func _prune_school_actions() -> void:
 	var messages: Array[String] = []
 	for index: int in range(action_queue.size()-1,-1,-1):
 		var action: Dictionary = action_queue[index]
-		if str(action.id) in ["school_day","career_day"]:
+		if str(action.id) in ["school_day","career_day","drive_to_work"]:
 			if is_away(): continue
-			var departure_error: String = _career_departure_error(str(action.target_id),true) if str(action.id)=="career_day" else _school_departure_error(str(action.target_id),true)
+			var departure_error: String = _career_departure_error("lot_exit" if str(action.id) == "drive_to_work" else str(action.target_id),true) if str(action.id) in ["career_day", "drive_to_work"] else _school_departure_error(str(action.target_id),true)
 			if departure_error.is_empty(): continue
 			front_removed = front_removed or index == 0
 			action_queue.remove_at(index)
@@ -5225,7 +5244,7 @@ func _career_departure_error(target_id:String,ignore_queue:bool=false) -> String
 	if not target_id.is_empty() and _education_target_kind(target_id)!="lot_exit":return "Choose the neighborhood exit to leave for work."
 	if not ignore_queue:
 		for action:Dictionary in action_queue:
-			if str(action.id) in ["job","career_day"]:return "Work is already in this Lifelet's plans."
+			if str(action.id) in ["job","career_day","drive_to_work"]:return "Work is already in this Lifelet's plans."
 	return ""
 
 func _begin_career_departure(action:Dictionary) -> void:

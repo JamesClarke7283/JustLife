@@ -5,9 +5,9 @@ extends RefCounted
 ## pair walks on the lead. The household still owns what the care achieves;
 ## this owns only what it looks like, on one clock both bodies share.
 
-const CARE_ACTIONS: Array[String] = ["pet_pet", "pet_tummy_rub", "pet_tug", "pet_feed", "pet_walk", "pet_teach_trick"]
+const CARE_ACTIONS: Array[String] = ["pet_pet", "pet_tummy_rub", "pet_tug", "pet_feed", "pet_walk", "pet_teach_trick", "pet_train_social", "pet_train_logic"]
 ## How far in front of the Lifelet each beat puts the animal.
-const REACH: Dictionary = {"pet_pet": .62, "pet_tummy_rub": .62, "pet_tug": 1.0, "pet_teach_trick": .85, "pet_walk": .55}
+const REACH: Dictionary = {"pet_pet": .62, "pet_tummy_rub": .62, "pet_tug": 1.0, "pet_teach_trick": .85, "pet_train_social": .85, "pet_train_logic": .85, "pet_walk": .55}
 const WALK_CLIP: float = .08
 const WALK_LAPS: int = 2
 const PET_STEP: float = 1.1
@@ -97,7 +97,7 @@ func present_pets(delta: float) -> Dictionary:
 		match action_id:
 			"pet_pet", "pet_tummy_rub":
 				goal = person + dir * float(REACH[action_id]); facing = Vector3(-dir.z, 0, dir.x)
-			"pet_tug", "pet_teach_trick":
+			"pet_tug", "pet_teach_trick", "pet_train_social", "pet_train_logic":
 				goal = person + dir * float(REACH[action_id])
 			"pet_feed":
 				# The far side of the bowl from the Lifelet, as close as clear

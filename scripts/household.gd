@@ -46,6 +46,8 @@ var extras_restore_provider:Callable=Callable()
 var family_graph: Dictionary = LifeFamilyGraph.fresh()
 var adoptions: Dictionary = LifeAdoption.fresh()
 var pets: Dictionary = LifePets.fresh()
+## Each adult keeps a chosen half even when somebody else goes to bed first.
+var bed_assignments: Dictionary = {}
 ## The household's post box. Letters and bills are filed here when the household
 ## owns a post box; without one, bills arrive by notice exactly as before.
 var mail: Dictionary = LifeMail.fresh()
@@ -91,6 +93,7 @@ func new_household(profiles: Array) -> void:
 	journeys.clear()
 	adoptions=LifeAdoption.fresh()
 	pets=LifePets.fresh()
+	bed_assignments.clear()
 	mail=LifeMail.fresh()
 	pregnancy=LifeBabyPlan.fresh()
 	birth_homecoming=LifeBirthHomecoming.fresh()
@@ -452,6 +455,7 @@ func get_state(world_data: Array = []) -> Dictionary:
 	var states:Array=[]
 	for member in members:states.append({"id":member.id,"state":member.sim.get_state()})
 	var result:Dictionary={"household_version":2 if not journeys.is_empty() else 1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"pets":pets.duplicate(true),"mail":mail.duplicate(true),"pregnancy":pregnancy.duplicate(true),"birth_homecoming":birth_homecoming.duplicate(true),"birth_serial":birth_serial,"baby_supplies":baby_supplies.duplicate(true),"memorials":memorials.duplicate(true),"heirlooms":heirlooms.duplicate(true),"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state(),"groceries":groceries.duplicate(true),"business":business.duplicate(true),"sanitation":sanitation.get_state(),"extras":extras_provider.call() if extras_provider.is_valid() else {}}
+	result.bed_assignments=bed_assignments.duplicate(true)
 	if not journeys.is_empty():result.journeys=journeys.duplicate(true)
 	if physical_snapshot_provider.is_valid():
 		var physical:Dictionary=physical_snapshot_provider.call()
@@ -460,7 +464,70 @@ func get_state(world_data: Array = []) -> Dictionary:
 			result.household_version=2;result.journeys=physical.journeys.duplicate(true)
 			result.world=physical.world.duplicate(true)
 			for member:Dictionary in result.members:member.state.character.world_state=physical.members[str(member.id)].duplicate(true)
+	# Selling a bed removes its assignments from the next save. Build undo can
+	# still restore the original in-memory assignment before that save is made.
+	var bed_layout:Array=_bed_assignment_layout(result)
+	if not bed_layout.is_empty():
+		var bed_ids:Dictionary=_bed_ids(bed_layout)
+		for owner:String in result.bed_assignments.keys():
+			if not bed_ids.has(str(result.bed_assignments[owner].bed_id)):result.bed_assignments.erase(owner)
 	return result
+
+static func _bed_assignment_layout(data:Dictionary) -> Array:
+	var selected:int=int(data.get("selected_index",0))
+	var saved_members:Array=data.get("members",[])
+	if selected>=0 and selected<saved_members.size():
+		var profile:Variant=saved_members[selected].state.get("character",{})
+		var context:Variant=profile.get("world_state",{}) if profile is Dictionary else {}
+		if context is Dictionary and str(context.get("venue","home"))!="home":
+			return context.get("home_layout",[]) if context.get("home_layout",[]) is Array else []
+	return data.get("world",[]) if data.get("world",[]) is Array else []
+
+static func _bed_ids(layout:Array) -> Dictionary:
+	var result:Dictionary={}
+	for item:Variant in layout:
+		if item is Dictionary and str(item.get("kind",""))=="bed":result[str(item.get("id",""))]=true
+	return result
+
+func assigned_bed_side(member_id:String,bed_id:String) -> String:
+	var assignment:Dictionary=bed_assignments.get(member_id,{})
+	return str(assignment.get("slot","")) if str(assignment.get("bed_id",""))==bed_id else ""
+
+func assign_bed_side(member_id:String,bed_id:String,slot:String) -> Dictionary:
+	var who:LifeSim=member_sim(member_id)
+	if who==null or str(who.character.life_stage)!="adult" or who.is_spirit():
+		return {"ok":false,"error":"Choose an adult Lifelet for this double bed."}
+	if _target_kind(bed_id)!="bed" or slot not in ["left","right"]:
+		return {"ok":false,"error":"Choose the left or right side of a double bed."}
+	for other:String in bed_assignments:
+		if other!=member_id and assigned_bed_side(other,bed_id)==slot:
+			return {"ok":false,"error":"That side is assigned to %s. Clear their assignment first." % str(member_sim(other).character.name)}
+	for member:Dictionary in members:
+		for action:Dictionary in member.sim.action_queue:
+			if str(action.get("target_id",""))==bed_id:
+				return {"ok":false,"error":"Finish or cancel activities at this bed before changing sides."}
+	bed_assignments[member_id]={"bed_id":bed_id,"slot":slot}
+	return {"ok":true}
+
+static func _validate_bed_assignments(data:Dictionary) -> String:
+	var saved:Variant=data.get("bed_assignments",{})
+	if not saved is Dictionary or saved.size()>MAX_MEMBERS:return "Save contains invalid bed assignments."
+	var layout:Array=_bed_assignment_layout(data)
+	var beds:Dictionary=_bed_ids(layout)
+	var occupied:Array[String]=[]
+	for id:Variant in saved:
+		if not id is String or not saved[id] is Dictionary:return "Save contains invalid bed assignments."
+		var entry:Dictionary=saved[id]
+		if not entry.get("bed_id") is String or str(entry.bed_id).is_empty() or str(entry.get("slot","")) not in ["left","right"]:return "Save contains an invalid bed side."
+		if not layout.is_empty() and not beds.has(str(entry.bed_id)):return "Save assigns a Lifelet to a missing double bed."
+		var found:bool=false
+		for member:Dictionary in data.members:
+			if str(member.id)==id and member.state.get("character") is Dictionary and str(member.state.character.get("life_stage",""))=="adult":found=true
+		if not found:return "Save assigns a double bed to an unknown adult."
+		var place:String=str(entry.bed_id)+":"+str(entry.slot)
+		if occupied.has(place):return "Save assigns the same bed side to two Lifelets."
+		occupied.append(place)
+	return ""
 
 func get_family_links() -> Array:
 	var links:Array=LifeFamilyGraph.links(family_graph)
@@ -654,6 +721,8 @@ func restore_state(data: Dictionary) -> Dictionary:
 			if not data.has(key):return {"ok":false,"error":"The physical household save is missing "+key+"."}
 	var identity_error:String=_validate_member_identity(data)
 	if not identity_error.is_empty():return {"ok":false,"error":identity_error}
+	var bed_error:String=_validate_bed_assignments(data)
+	if not bed_error.is_empty():return {"ok":false,"error":bed_error}
 	var family_result:Dictionary=_prepare_saved_family(data)
 	if not bool(family_result.ok):return family_result
 	var candidates:Array=[]
@@ -771,6 +840,7 @@ func restore_state(data: Dictionary) -> Dictionary:
 		for c in candidates:c.sim.free()
 		return {"ok":false,"error":heirloom_error}
 	restoring=true
+	bed_assignments=data.get("bed_assignments",{}).duplicate(true)
 	journeys=data.get("journeys",{}).duplicate(true)
 	if not journeys.is_empty():
 		for index:int in candidates.size():
@@ -947,6 +1017,7 @@ func _record_passing(member_id: String) -> void:
 	var who: LifeSim = member_sim(member_id)
 	if who == null:
 		return
+	bed_assignments.erase(member_id)
 	for existing: Dictionary in memorials:
 		if str(existing.member_id) == member_id:
 			return
@@ -2560,6 +2631,8 @@ func _pet_action_description(id: String, pet: Dictionary) -> String:
 		var next: Dictionary = LifePetCare.next_trick(care)
 		parts.append("Hand signals for the next trick: %s." % str(next.get("label", "something new")) if not next.is_empty() else "%s already knows every trick you can teach." % str(pet.get("name", "your pet")).capitalize())
 	if id == "pet_train": parts.append("Patient repetition. Builds Obedience and your own Parenting.")
+	if id == "pet_train_social": parts.append("Practise calm greetings. Higher levels keep your dog happier and quicker to respond around unfamiliar pets, guests and objects.")
+	if id == "pet_train_logic": parts.append("Find familiar objects and practise detours. Higher levels remember furnishing locations and recover quickly from blocked paths.")
 	var teaches: String = str(entry.get("teaches", ""))
 	if not teaches.is_empty(): parts.append("You build %s too." % teaches.capitalize())
 	return " ".join(parts)
