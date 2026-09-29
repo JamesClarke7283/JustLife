@@ -17,6 +17,12 @@ var penalties:Dictionary={}
 var _support_surfaces:Array=[[],[]]
 var _support_holes:Array=[[],[]]
 var _blockers:Array=[[],[]]
+# Who owns each rectangle in `_blockers`, index for index: a placed item (by its
+# own id, however many solid bands it has), a wall, a staircase or an object
+# that is not furniture (the parked food truck). Blocked-route notices read it.
+var _blocker_sources:Array=[[],[]]
+const ITEM_COST:float=6.0    # weight of a cell a placed item covers, in `blocker_between`
+const HARD_COST:float=40.0   # weight of a wall or staircase cell: crossed only when nothing else joins the two spots
 
 func rebuild(state:Variant,obstacles:Variant=[]) -> Dictionary:
 	var error:String=Building.validate(state)
@@ -35,7 +41,7 @@ func rebuild(state:Variant,obstacles:Variant=[]) -> Dictionary:
 	if not bool(result.ok):return result
 	_state=candidate._state;_obstacles=candidate._obstacles;_graph=candidate._graph
 	_floor_ids=candidate._floor_ids;_locations=candidate._locations;_stair_edges=candidate._stair_edges
-	_support_surfaces=candidate._support_surfaces;_support_holes=candidate._support_holes;_blockers=candidate._blockers
+	_support_surfaces=candidate._support_surfaces;_support_holes=candidate._support_holes;_blockers=candidate._blockers;_blocker_sources=candidate._blocker_sources
 	generation+=1
 	return {"ok":true,"generation":generation,"points":_graph.get_point_count(),"stairs":_state.stairs.size()}
 
@@ -101,7 +107,7 @@ func _build_graph() -> Dictionary:
 	return {"ok":true}
 
 func _prepare_geometry()->void:
-	_support_surfaces=[[],[]];_support_holes=[[],[]];_blockers=[[],[]]
+	_support_surfaces=[[],[]];_support_holes=[[],[]];_blockers=[[],[]];_blocker_sources=[[],[]]
 	for level:int in [0,1]:
 		var surfaces:Array=Building._rects(_state,"floors",level)
 		# Bearings are computed from the original slabs and openings once.
@@ -110,12 +116,16 @@ func _prepare_geometry()->void:
 		_support_surfaces[level]=surfaces
 		_support_holes[level]=Building._rects(_state,"openings",level)
 		for wall:Dictionary in _state.walls:
-			if int(wall.level)==level:_blockers[level].append(Building.rect(wall))
+			if int(wall.level)==level:_block(level,Building.rect(wall),"wall",str(wall.get("id","")))
 		for stair:Dictionary in _state.stairs:
-			if level==int(stair.lower):_blockers[level].append(Building.stair_rect(stair))
-			if level==int(stair.upper):_blockers[level].append_array(Building.guard_footprints(stair))
+			if level==int(stair.lower):_block(level,Building.stair_rect(stair),"stair",str(stair.id))
+			if level==int(stair.upper):
+				for guard:Rect2 in Building.guard_footprints(stair):_block(level,guard,"stair",str(stair.id))
 		for obstacle:Dictionary in _obstacles:
-			if int(obstacle.level)==level:_blockers[level].append(Building.rect(obstacle))
+			if int(obstacle.level)==level:_block(level,Building.rect(obstacle),"item" if obstacle.has("item") else "object",str(obstacle.get("item",obstacle.id)))
+
+func _block(level:int,area:Rect2,kind:String,id:String)->void:
+	_blockers[level].append(area);_blocker_sources[level].append({"kind":kind,"id":id})
 
 func _bounds_clear(level:int,bounds:Rect2)->bool:
 	if not Building.lot().encloses(bounds) or not Building._covered(bounds,_support_surfaces[level],_support_holes[level]):return false
@@ -210,12 +220,17 @@ func penalize_segment(level:int,from:Vector3,to:Vector3,duration_ms:int=45000)->
 			penalties[_edge_key(a,b)]=now+duration_ms
 
 func _ids_near(level:int,point:Vector3)->PackedInt64Array:
+	# The nodes a point stands on: within a fifth of a metre, which is the cell it
+	# is in. A wider net penalized every edge round the walker's own node when it
+	# stood against a solid, leaving it no way out.
 	var found:PackedInt64Array=[]
-	for key:String in _floor_ids:
-		var parts:PackedStringArray=key.split(":")
-		if int(parts[0])!=level:continue
-		var id:int=_floor_ids[key]
-		if _graph.get_point_position(id).distance_to(point)<=.4:found.append(id)
+	var cell:=Vector2i(roundi(point.x/CELL),roundi(point.z/CELL))
+	for x:int in range(-1,2):
+		for z:int in range(-1,2):
+			var key:String=_cell_key(level,cell+Vector2i(x,z))
+			if not _floor_ids.has(key):continue
+			var id:int=_floor_ids[key]
+			if _graph.get_point_position(id).distance_to(point)<=.2:found.append(id)
 	return found
 
 func reachable_from(level:int,point:Vector3,excluded:Dictionary={}) -> Dictionary:
@@ -281,3 +296,157 @@ func route_avoiding(from:Dictionary,to:Dictionary,occupied:Array[Vector3],radius
 	var result:Dictionary=route(from,to)
 	for id:int in changed:_graph.set_point_disabled(id,false)
 	return result
+
+# --- Blocked-route diagnosis --------------------------------------------------
+# Routing itself never asks who is in the way. These answer it afterwards, from
+# the same rectangles the graph was built from, so a notice can name the placed
+# item a Lifelet or pet cannot get past instead of guessing.
+
+static func _rect_gap(area:Rect2,point:Vector2)->float:
+	return Vector2(maxf(maxf(area.position.x-point.x,point.x-area.end.x),0.0),maxf(maxf(area.position.y-point.y,point.y-area.end.y),0.0)).length()
+
+static func _body_box(point:Vector3,slack:float=0.0)->Rect2:
+	var half:=Vector2(RADIUS+slack,RADIUS+slack)
+	return Rect2(Vector2(point.x,point.z)-half,half*2)
+
+static func is_item_source(source:Dictionary)->bool:return str(source.get("kind","")) in ["item","object"]
+
+func blockers_touching(level:int,area:Rect2)->Array:
+	# The solid things a body box meets, nearest first, each {kind,id,rect,gap,level}.
+	# A placed item sorts ahead of a wall at the same distance: it is the one a
+	# player can move.
+	var found:Array=[]
+	if level not in [0,1]:return found
+	var centre:=area.get_center()
+	for index:int in range(_blockers[level].size()):
+		var footprint:Rect2=_blockers[level][index]
+		if not footprint.intersects(area):continue
+		var source:Dictionary=_blocker_sources[level][index].duplicate()
+		source.rect=footprint;source.level=level;source.gap=_rect_gap(footprint,centre)
+		found.append(source)
+	found.sort_custom(func(a:Dictionary,b:Dictionary)->bool:
+		if absf(float(a.gap)-float(b.gap))>.001:return float(a.gap)<float(b.gap)
+		return is_item_source(a) and not is_item_source(b))
+	return found
+
+func first_blocker(level:int,from:Vector3,to:Vector3,slack:float=0.0)->Dictionary:
+	# The first solid a body meets walking straight from one point to the next,
+	# or {} when the way is open. `slack` widens the body for a gap that only
+	# pinches it.
+	var span:float=Vector2(to.x-from.x,to.z-from.z).length()
+	var steps:int=maxi(1,ceili(span/(CELL*.5)))
+	for index:int in range(steps+1):
+		var hits:Array=blockers_touching(level,_body_box(from.lerp(to,float(index)/float(steps)),slack))
+		if not hits.is_empty():return hits[0]
+	return {}
+
+func blocker_between(from_level:int,from:Vector3,to_level:int,to:Vector3,ignore:Array=[])->Dictionary:
+	# Whose footprint a failed route runs into. A spot that itself sits inside a
+	# solid names it; otherwise the cheapest way across the lot is found with
+	# walls and staircases nearly impassable and every placed item merely
+	# expensive, and the item on that way nearest the destination is named (so
+	# among several ringing it, the one closest to it). A wall only when the
+	# two spots are closed off by walls alone, and {} when nothing solid is
+	# responsible. `ignore` lists item ids that are the goal itself.
+	if _state.is_empty() or from_level not in [0,1] or to_level not in [0,1] or not from.is_finite() or not to.is_finite():return {}
+	if from_level!=to_level:return _stair_blocker(from_level,from,to_level,to,ignore)
+	return _level_blocker(from_level,from,to,ignore)
+
+func _level_blocker(level:int,from:Vector3,to:Vector3,ignore:Array)->Dictionary:
+	var fallback:Dictionary={}
+	for point:Vector3 in [to,from]:
+		if point_clear(level,point):continue
+		for hit:Dictionary in blockers_touching(level,_body_box(point)):
+			if ignore.has(str(hit.id)):continue
+			if is_item_source(hit):return hit
+			if fallback.is_empty():fallback=hit
+	var start:=Vector2i(roundi(from.x/CELL),roundi(from.z/CELL));var goal:=Vector2i(roundi(to.x/CELL),roundi(to.z/CELL))
+	for margin:int in [24,-1]:
+		var crossing:Dictionary=_cheapest_crossing(level,start,goal,Vector2(to.x,to.z),margin,ignore)
+		if not bool(crossing.found):continue
+		var hard:Dictionary={};var soft:Dictionary={}
+		for source:Dictionary in crossing.crossed:
+			if is_item_source(source):
+				if soft.is_empty() or float(source.gap)<float(soft.gap):soft=source
+			elif hard.is_empty() or float(source.gap)<float(hard.gap):hard=source
+		if not hard.is_empty():return hard
+		return soft if not soft.is_empty() else fallback
+	return fallback
+
+func _cheapest_crossing(level:int,start:Vector2i,goal:Vector2i,destination:Vector2,margin:int,ignore:Array)->Dictionary:
+	# A weighted 4-neighbour search over the level's cells. A cell the graph
+	# already walks is cheap, a cell an item covers costs ITEM_COST, a wall or
+	# staircase cell HARD_COST and anything else is solid. Returns the owners
+	# of every covered cell on the cheapest way, each once, with their gap to
+	# the destination.
+	var full:Rect2i=Building.cell_range()
+	var window:Rect2i=full
+	if margin>=0:window=Rect2i(Vector2i(mini(start.x,goal.x),mini(start.y,goal.y))-Vector2i(margin,margin),Vector2i(absi(start.x-goal.x),absi(start.y-goal.y))+Vector2i(margin,margin)*2+Vector2i.ONE).intersection(full)
+	if not window.has_point(start) or not window.has_point(goal):return {"found":false,"crossed":[]}
+	var grid:=AStarGrid2D.new()
+	grid.region=window;grid.cell_size=Vector2.ONE;grid.diagonal_mode=AStarGrid2D.DIAGONAL_MODE_NEVER
+	grid.default_compute_heuristic=AStarGrid2D.HEURISTIC_MANHATTAN;grid.default_estimate_heuristic=AStarGrid2D.HEURISTIC_MANHATTAN
+	grid.update()
+	grid.fill_solid_region(window,true)
+	for x:int in range(window.position.x,window.end.x):
+		for z:int in range(window.position.y,window.end.y):
+			if _floor_ids.has(_cell_key(level,Vector2i(x,z))):grid.set_point_solid(Vector2i(x,z),false)
+	var cost:Dictionary={};var owners:Dictionary={};var freed:Dictionary={}
+	for index:int in range(_blockers[level].size()):
+		var source:Dictionary=_blocker_sources[level][index]
+		var area:Rect2=Rect2(_blockers[level][index]).grow(RADIUS)
+		var gone:bool=ignore.has(str(source.id))
+		var weight:float=ITEM_COST if is_item_source(source) else HARD_COST
+		for x:int in range(maxi(floori(area.position.x/CELL),window.position.x),mini(ceili(area.end.x/CELL)+1,window.end.x)):
+			for z:int in range(maxi(floori(area.position.y/CELL),window.position.y),mini(ceili(area.end.y/CELL)+1,window.end.y)):
+				var cell:=Vector2i(x,z)
+				if not area.has_point(Vector2(x*CELL,z*CELL)) or _floor_ids.has(_cell_key(level,cell)):continue
+				if gone:freed[cell]=true;continue
+				cost[cell]=maxf(float(cost.get(cell,0.0)),weight)
+				var entry:Dictionary=source.duplicate();entry.rect=_blockers[level][index];entry.level=level;entry.gap=_rect_gap(entry.rect,destination)
+				if not owners.has(cell):owners[cell]=[]
+				owners[cell].append(entry)
+	for cell:Vector2i in freed:
+		if not cost.has(cell):grid.set_point_solid(cell,false)
+	for cell:Vector2i in cost:
+		grid.set_point_solid(cell,false);grid.set_point_weight_scale(cell,float(cost[cell]))
+	grid.set_point_solid(start,false);grid.set_point_solid(goal,false)
+	var cells:Array[Vector2i]=grid.get_id_path(start,goal)
+	if cells.is_empty():return {"found":false,"crossed":[]}
+	var crossed:Dictionary={}
+	for cell:Vector2i in cells:
+		for entry:Dictionary in owners.get(cell,[]):
+			var key:String=str(entry.kind)+":"+str(entry.id)
+			if not crossed.has(key) or float(entry.gap)<float(crossed[key].gap):crossed[key]=entry
+	return {"found":true,"crossed":crossed.values()}
+
+func _stair_blocker(from_level:int,from:Vector3,to_level:int,to:Vector3,ignore:Array)->Dictionary:
+	# Between floors a walker needs a staircase: name what closes the nearest
+	# one's run or landing, or what stands between the walker and its foot, or
+	# between its head and the destination.
+	var best:Dictionary={};var best_gap:float=INF
+	for stair:Dictionary in _state.stairs:
+		var foot:Vector3=Building.stair_point(stair,-.5)
+		var head:Vector3=Building.stair_point(stair,Building.STAIR_RUN+.5,Building.RISE)
+		var up:bool=from_level==int(stair.lower)
+		var entry:Vector3=foot if up else head
+		var reach:float=Vector2(from.x-entry.x,from.z-entry.z).length()
+		if reach>=best_gap:continue
+		var found:Dictionary={}
+		if not stair_connected(str(stair.id)):found=_landing_blocker(stair,foot,head,ignore)
+		else:
+			found=_level_blocker(from_level,from,entry,ignore)
+			if found.is_empty():found=_level_blocker(to_level,head if up else foot,to,ignore)
+		if found.is_empty():continue
+		best=found;best_gap=reach
+	return best
+
+func _landing_blocker(stair:Dictionary,foot:Vector3,head:Vector3,ignore:Array)->Dictionary:
+	var run:Rect2=Building.stair_rect(stair)
+	for obstacle:Dictionary in _obstacles:
+		if int(obstacle.level)!=int(stair.lower) or not run.intersects(Building.rect(obstacle)) or ignore.has(str(obstacle.get("item",obstacle.id))):continue
+		return {"kind":"item" if obstacle.has("item") else "object","id":str(obstacle.get("item",obstacle.id)),"rect":Building.rect(obstacle),"level":int(obstacle.level),"gap":0.0}
+	for landing:Array in [[int(stair.lower),foot],[int(stair.upper),head]]:
+		for hit:Dictionary in blockers_touching(int(landing[0]),_body_box(landing[1])):
+			if is_item_source(hit) and not ignore.has(str(hit.id)):return hit
+	return {}

@@ -24,6 +24,21 @@ func accident(sim:LifeSim)->bool:
 	actor.speech("Oh no… I couldn't hold on.")
 	actor.react_to_accident()
 	return true
+## A soaked seat: a puddle of water at the spot the sitter stood to sit down, on
+## the same supported floor an accident would use. `false` when there is nowhere
+## flat and supported to leave it, which leaves the seat merely damp.
+func spill(sim:LifeSim)->bool:
+	if app.mode!="live" or app.loading_game or sim.is_away():return false
+	var id:String=member_id(sim)
+	var actor:LifeActor=app.world.actors.get(id)
+	if not is_instance_valid(actor) or not actor.visible or bool(actor.get_meta("away",false)):return false
+	var at:Vector3=actor.position
+	var level:int=app.world.point_level(at)
+	if level<0:return false
+	var scale:float=_supported_scale(at,level)
+	if scale<=0.0:return false
+	app.household.sanitation.add(id,app.current_venue,at,level,(sim.day-1)*1440.0+sim.minutes,scale,"water")
+	return true
 func action_availability(sim:LifeSim,id:String,target:String)->String:
 	if not app.household.meals.carried_by(member_id(sim)).is_empty():return "Put down the food you are carrying first."
 	var error:String=target_error(id,target)
@@ -66,9 +81,9 @@ func sync_world(reconcile:bool=true)->void:
 		var id:String=puddle.id;present[id]=true
 		if not views.has(id) or not is_instance_valid(views[id]) or views[id].get_parent()!=app.world.house or views[id].is_queued_for_deletion():
 			if views.has(id) and is_instance_valid(views[id]):views[id].queue_free()
-			var node:Node3D=make_view(id);node.name=id;app.world.house.add_child(node);views[id]=node
+			var node:Node3D=make_view(id,str(puddle.get("kind","accident")));node.name=id;app.world.house.add_child(node);views[id]=node
 			# The picking volume is broad enough to click but never participates in navigation.
-			app.world.items.append({"id":id,"kind":"puddle","label":"Accident puddle","node":node,"size":Vector2(.9,.5),"transient_puddle":true,"level":int(puddle.level)})
+			app.world.items.append({"id":id,"kind":"puddle","label":"Water puddle" if str(puddle.get("kind","accident"))=="water" else "Accident puddle","node":node,"size":Vector2(.9,.5),"transient_puddle":true,"level":int(puddle.level)})
 			changed=true
 		views[id].position=Vector3(float(puddle.position[0]),_display_height(puddle),float(puddle.position[2]))
 		var scale:float=float(puddle.get("scale",1.0));views[id].scale=Vector3(scale,1.0,scale)
@@ -133,11 +148,13 @@ func reconstruct_actors()->void:
 		actor.set_activity_anchor(anchor.position,anchor.yaw,anchor.kind,str(action.id),anchor)
 		actor.reconstruct_sanitation_pose(str(action.id))
 
-static func make_view(id:String)->Node3D:
+static func make_view(id:String,kind:String="accident")->Node3D:
 	var node:Node3D=Node3D.new()
 	var vertices:PackedVector3Array=PackedVector3Array([Vector3.ZERO])
 	var normals:PackedVector3Array=PackedVector3Array([Vector3.UP])
-	var colors:PackedColorArray=PackedColorArray([Color(.22,.20,.10,.48)])
+	# Water is clear and cool where an accident is dark and yellow.
+	var wet:Color=Color(.30,.52,.72,.40) if kind=="water" else Color(.22,.20,.10,.48)
+	var colors:PackedColorArray=PackedColorArray([wet])
 	var indices:PackedInt32Array=PackedInt32Array()
 	# A low-saturation wet centre fades across an irregular perimeter. It
 	# preserves the visible weave/wood beneath it rather than painting a disc.
@@ -146,7 +163,7 @@ static func make_view(id:String)->Node3D:
 			var angle:float=TAU*i/48.0
 			var radius:float=(.72 if ring==0 else 1.0)*(1.0+.09*sin(angle*3.0)+.04*cos(angle*5.0))
 			vertices.append(Vector3(cos(angle)*.46*radius,0,sin(angle)*.29*radius));normals.append(Vector3.UP)
-			colors.append(Color(.22,.20,.10,.42 if ring==0 else 0.0))
+			colors.append(Color(wet.r,wet.g,wet.b,wet.a-.06 if ring==0 else 0.0))
 	for i:int in 48:
 		var next:int=(i+1)%48
 		indices.append_array(PackedInt32Array([0,i+1,next+1,i+1,i+49,next+49,i+1,next+49,next+1]))

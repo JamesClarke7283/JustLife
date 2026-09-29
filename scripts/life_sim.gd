@@ -6,6 +6,8 @@ signal changed()
 signal action_started(action: Dictionary)
 signal action_finished(action: Dictionary)
 var meal_service: Node
+## The swim, pool-toy and towel flows, which need the world (towels, racks, puddles).
+var water_service: Node
 var sanitation_service: Node
 var household_service: Node
 ## Optional live kitchen: answers whether the household has food, and takes a
@@ -77,6 +79,19 @@ const SECOND_WIND_DECAY_PER_HOUR: float = 14.0
 const SECOND_WIND_MAX: float = 100.0
 const SECOND_WIND_TOOLTIP: String = "Temporary energy from a coffee. It fades on its own at %d a game hour and cannot be topped up above %d; the ordinary Energy need is untouched by it." % [int(SECOND_WIND_DECAY_PER_HOUR), int(SECOND_WIND_MAX)]
 var second_wind: float = 0.0
+## How wet this Lifelet is after a swim or a soak (0 dry, 1 soaked), and the towel
+## they have wrapped round themselves: {"source": furnishing id, "kind": "towel_rack"
+## | "beach_towel", "color": hex}. A Lifelet who put on swimwear for the water and
+## has not changed since changes back once dry (`auto_swimwear`).
+var wetness: float = 0.0
+var towel: Dictionary = {}
+var auto_swimwear: bool = false
+var _wet_seat_minutes: float = 0.0
+var _wet_seat_target: String = ""
+## The seat this Lifelet has soaked through, until the world leaves its puddle.
+var wet_seat_request: String = ""
+## A towel handed back (dry, or sold from under them) until the world hangs it up.
+var towel_returns: Array = []
 const SKILL_NAMES: Array[String] = ["cooking", "creativity", "charisma", "logic", "gardening", "parenting", "fitness", "music"]
 ## What a home insurance policy is. The catalogue lives here so a save and the
 ## phone price the same product; the household owns the purchased record.
@@ -156,6 +171,8 @@ var autonomy_state: Dictionary = {"version":1,"contacts":{},"deferred":{}}
 var social_cooldowns: Dictionary = {}  # neighbour id -> game minute until which the chooser skips them
 var last_hugs: Dictionary = {}  # neighbour id -> game minute of the last hug
 var last_gossip: Dictionary = {}  # neighbour id -> game minute of the last gossip
+var passing_contacts: Dictionary = {}  # passer id -> {"at": game minute, "count": meetings} for casual moments with people walking past
+var last_passing_any: float = -1e18  # game minute of this Lifelet's last passing moment with anybody
 var visited_venue: String = ""  # non-empty while the Lifelet is at a visited venue (a resident's home)
 var last_hosted_credit: float = -1e18  # absolute game minute of the last hosted-activity credit
 var last_companion_credit: float = -1e18  # absolute game minute of the last routine-venue companion credit
@@ -202,7 +219,7 @@ const PRE_DUTY_LEISURE: Array[String] = ["relax", "read", "watch", "stretch", "w
 const DEPARTURE_WALK: float = 15.0  # game minutes allowed for the walk from a pastime to the lot exit in a busy home
 const LEISURE_APPROACH: float = 10.0  # game minutes allowed for the walk to a pastime before it starts
 const WEAR_ACTIONS: Dictionary = {"wear_casual":0, "wear_jacket":1, "wear_cardigan":2, "wear_tee":3, "wear_hoodie":4}
-const WEAR_CATEGORY_ACTIONS: Dictionary = {"wear_everyday":"everyday", "wear_formal":"formal", "wear_athletic":"athletic", "wear_sleep":"sleep", "wear_party":"party"}
+const WEAR_CATEGORY_ACTIONS: Dictionary = {"wear_everyday":"everyday", "wear_formal":"formal", "wear_athletic":"athletic", "wear_sleep":"sleep", "wear_party":"party", "wear_swim":"swim"}
 const ACTIVITY_OUTFITS: Dictionary = {
 	"sleep":"sleep", "nap":"sleep",
 	"jog":"athletic", "morning_run":"athletic", "stretch":"athletic",
@@ -335,6 +352,13 @@ func new_household(profile: Dictionary) -> void:
 	utilities_cut = false
 	insurance_policy_id = ""
 	second_wind = 0.0
+	wetness = 0.0
+	towel = {}
+	auto_swimwear = false
+	_wet_seat_minutes = 0.0
+	_wet_seat_target = ""
+	wet_seat_request = ""
+	towel_returns.clear()
 	purchased_perks.clear()
 	_idle_minutes = 0.0
 	autonomy_state = {"version":1,"contacts":{},"deferred":{}}
@@ -427,6 +451,9 @@ func _build_actions() -> void:
 	_define("wear_athletic", "Wear athletic clothes", 4.0, {}, 0, "", 0.0, "Change into the Athletic look you designed.")
 	_define("wear_sleep", "Wear sleep clothes", 4.0, {}, 0, "", 0.0, "Change into the Sleep look you designed.")
 	_define("wear_party", "Wear party clothes", 4.0, {}, 0, "", 0.0, "Change into the Party look you designed.")
+	_define("wear_swim", "Wear swimwear", 4.0, {}, 0, "", 0.0, "Change into the Swim look you designed.")
+	_define(LifeWetness.DRY_OFF_ID, "Dry off with a towel", 3.0, {"hygiene": 6.0}, 0, "", 0.0, "Take a towel, wrap up in it and rub down until the drips stop. It finishes drying wrapped in the towel.")
+	_define(LifeWetness.DRY_SIT_ID, "Sit and dry off", 5.0, {}, 0, "", 0.0, "Settle on a seat in a towel until completely dry. Sitting damp on a cushion leaves a puddle.")
 	_define("wear_casual", "Wear the casual shirt", 4.0, {}, 0, "", 0.0, "Change into the short-sleeve shirt.")
 	_define("wear_jacket", "Wear the jacket", 4.0, {}, 0, "", 0.0, "Change into the cropped bomber jacket.")
 	_define("wear_cardigan", "Wear the cardigan", 4.0, {}, 0, "", 0.0, "Change into the open knit cardigan.")
@@ -452,6 +479,8 @@ func _build_actions() -> void:
 	_define("break_up", "End the relationship", 25.0, {"social": 5.0, "fun": -8.0}, 0, "", 0.0, "End your partnership honestly. Friendship falls by 12 and romance by 35; both become available again.")
 	_define("comfort_loss", "Comfort over loss", 25.0, {"social": 32.0, "fun": 8.0}, 0, "charisma", 20.0, "Console a grieving friend or family member. Warm words make the sorrow easier to bear.")
 	_define("share_memories", "Share memories", 30.0, {"social": 28.0, "fun": 12.0}, 0, "charisma", 16.0, "Talk about happy times spent together, keeping their spirit alive in the home.")
+	# Casual moments with somebody walking past the home; see LifePassingPolicy.
+	LifePassingPolicy.define_all(self)
 	# Emotion-gated opportunities: offered only while that feeling is the strongest.
 	_define("paint_masterpiece", "Paint a masterpiece", 120.0, {"fun": 45.0, "hygiene": -7.0}, 30, "creativity", 60.0, "Ride the inspiration into something remarkable. Sells for far more than an ordinary canvas.")
 	_define("study_hard", "Study hard", 120.0, {"fun": 6.0, "energy": -12.0}, 0, "logic", 70.0, "Deep work while your mind is sharp. Builds Logic quickly.")
@@ -552,6 +581,7 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"computer": ids = ["order_groceries", "work", "study", "job", "play_games", "study_hard"] + COMPUTER_MASTERY_ACTIONS
 		"plant": ids = ["water","plant_wee"] if float(needs.bladder)<=BLADDER_DESPERATE else ["water"]
 		"puddle": ids = ["mop_puddle"]
+		"towel_rack", "beach_towel": ids = [LifeWetness.DRY_OFF_ID]
 		"bathtub": ids = ["bath"]
 		"mirror": ids = ["talk_to_myself", "change_in_mirror", "practice_speech"]
 		"dressing_table": ids = ["do_makeup", "change_jewelry"]
@@ -570,6 +600,7 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 			ids.append("change_in_wardrobe")
 			ids.append("change_outfit")
 			for wear_id: String in WEAR_CATEGORY_ACTIONS:
+				if wear_id == "wear_swim" and str(character.age_stage) == "baby": continue  # nobody swims yet
 				if str(WEAR_CATEGORY_ACTIONS[wear_id]) != worn_category: ids.append(wear_id)
 			for wear_id: String in WEAR_ACTIONS:
 				if int(WEAR_ACTIONS[wear_id]) != int(character.get("outfit", 0)): ids.append(wear_id)
@@ -583,6 +614,7 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"fireplace": ids = ["warm_up"]
 		"urn", "tombstone", "memorial": ids = ["remember_life", "mourn", "leave_flowers", "remember_passed"]
 		"neighbor", "maya", "leo", "priya", "tom": ids = SOCIAL_ACTIONS
+		"passer": ids = LifePassingPolicy.action_ids_for(self, target_id)
 		"pet": ids = ["pet_feed", "pet_pet", "pet_tummy_rub", "pet_play", "pet_tug", "pet_teach_trick", "pet_walk", "pet_train", "pet_train_social", "pet_train_logic", "bathe_pet"]
 		"cat_toy_box", "dog_toy_box": ids = ["take_pet_toy"]
 		"pet_toy_cat", "pet_toy_dog": ids = ["put_pet_toy", "play_with_pet_toy"]
@@ -626,12 +658,17 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		if minutes >= 900.0 or int(education.get("last_attendance_day", 0)) == day:
 			study.push_front("homework")
 		ids = study
+	if LifeWetness.is_soft_seat(kind) and (wetness > 0.0 or not towel.is_empty()) and not ids.has(LifeWetness.DRY_SIT_ID):
+		ids.append(LifeWetness.DRY_SIT_ID)
 	var result: Array = []
 	for id: String in ids:
 		var data: Dictionary = _actions[id].duplicate(true)
 		var availability: Dictionary = get_action_availability(id, target_id)
 		data["available"] = availability.available
 		data["unavailable_reason"] = availability.reason
+		if kind == "passer":
+			var flavour: Dictionary = LifePassingPolicy.presentation(id, LifePassingPolicy.kind_of(self, target_id))
+			for key: String in flavour:data[key] = flavour[key]
 		if id=="career_day" and LifeCareers.is_police(str(career.get("track",""))):
 			data["label"]="Go to the police station"
 			data["description"]="%s. Earn ℒ%d for the full shift; late arrival reduces pay. Meals and rest breaks keep at least 80% energy for home."%[str(_career_pattern().label),career_pay()]
@@ -1119,13 +1156,11 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 		if not act_reason.is_empty():
 			_emit_notice(act_reason)
 			return false
+		definition = _outdoor_definition(definition, act_kind, _company_at(target_id))
+	if id == LifeWetness.DRY_SIT_ID:
+		# Sit until dry, wrapped in the towel: as long as the drying takes.
 		definition = definition.duplicate(true)
-		definition["label"] = LifeOutdoorActs.act_label(act_kind)
-		definition["duration"] = float(LifeOutdoorActs.acts(act_kind).get("duration", 40.0))
-		definition["changes"] = LifeOutdoorActs.changes_for(act_kind, _company_at(target_id))
-		definition["skill"] = LifeOutdoorActs.skill_for(act_kind)
-		definition["xp"] = LifeOutdoorActs.xp_for(act_kind)
-		definition["description"] = str(LifeOutdoorActs.acts(act_kind).get("note", ""))
+		definition["duration"] = clampf(LifeWetness.minutes_to_dry(wetness) + 1.0, 2.0, 20.0)
 	if id == LifeOutdoorActs.PUSH_ID:
 		var swing_kind: String = _target_kind_of(target_id)
 		var push_reason: String = LifeOutdoorActs.push_refusal(swing_kind, str(character.age_stage), is_away())
@@ -1178,7 +1213,7 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 		else:
 			definition["changes"] = {"fun": 26.0, "social": 18.0}
 			definition["xp"] = 6.0
-	if id in SOCIAL_ACTIONS or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or COMPUTER_MASTERY_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "snack", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "bin_meal", "jog", "play_toys", "play_dollhouse", "child_desk_study", "play_rattle", "play_baby_mat", "use_potty", "sleep", "nap", "put_in_fridge", LifeGardenGames.ACTION_ID, LifeOutdoorActs.ACTION_ID, LifeOutdoorActs.PUSH_ID]:
+	if id in SOCIAL_ACTIONS or id in LifePassingPolicy.ALL or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or COMPUTER_MASTERY_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "snack", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "bin_meal", "jog", "play_toys", "play_dollhouse", "child_desk_study", "play_rattle", "play_baby_mat", "use_potty", "sleep", "nap", "put_in_fridge", LifeGardenGames.ACTION_ID, LifeOutdoorActs.ACTION_ID, LifeOutdoorActs.PUSH_ID]:
 		var availability: Dictionary = get_action_availability(id, target_id)
 		if not bool(availability.available):
 			_emit_notice(str(availability.reason))
@@ -1187,6 +1222,9 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 		# A valid new player instruction takes ownership before departure.
 		cancel_action()
 	var action: Dictionary = definition.duplicate(true)
+	# The furnishing an outdoor act was queued at rides the action, so a saved
+	# swim resumes with the effects of that furnishing rather than the generic ones.
+	if id == LifeOutdoorActs.ACTION_ID: action["target_kind"] = _target_kind_of(target_id)
 	if id in ["school_day","career_day"]: action["target_kind"] = "lot_exit"
 	if id in ["school","homework"]: action["target_kind"] = _education_target_kind(target_id)
 	if id == "birthday": action["birthday_from_stage"] = str(character.age_stage)
@@ -1235,6 +1273,7 @@ func begin_current_action() -> void:
 		if not sanitation_reason.is_empty():
 			_emit_notice(sanitation_reason);cancel_action();return
 	if is_instance_valid(meal_service) and not meal_service.before_begin(self,action):return
+	if is_instance_valid(water_service) and not water_service.before_begin(self,action):return
 	var cost: int = int(action["cost"])
 	if str(action.id) == "birthday" and str(action.get("birthday_from_stage","")) != str(character.age_stage):
 		_emit_notice("This birthday has already arrived. Choose a new celebration for the next stage.")
@@ -1256,7 +1295,7 @@ func begin_current_action() -> void:
 		else:
 			var recipe_reason:String=LifeMeals.recipe_error(str(action.get("recipe","garden_skillet")),int(skills.cooking.level),str(character.age_stage),funds,bool(action.paid))
 			if not recipe_reason.is_empty():_emit_notice(recipe_reason);cancel_action();return
-	if str(action.id) in RELATIONSHIP_ACTIONS or str(action.id) in ["flirt", "birthday", "job", "work"]:
+	if str(action.id) in RELATIONSHIP_ACTIONS or str(action.id) in LifePassingPolicy.ALL or str(action.id) in ["flirt", "birthday", "job", "work"]:
 		var availability: Dictionary = get_action_availability(str(action.id), str(action.target_id))
 		if not bool(availability.available):
 			_emit_notice(str(availability.reason))
@@ -1303,17 +1342,162 @@ func begin_current_action() -> void:
 	if not action.has("started_minutes"):
 		action["started_day"] = day
 		action["started_minutes"] = minutes
-	_wear_for_activity(str(action.id))
+	_wear_for_activity(str(action.id), str(action.get("target_id", "")))
 	action["phase"] = "active"
 	_emit_changed()
 
-func _wear_for_activity(action_id: String) -> void:
+## The enjoy-outdoors action as one furnishing flavours it: its label, length,
+## effects, skill and note. Used when an act is queued and when a saved one is
+## restored, so a swim in progress keeps what it was going to give.
+func _outdoor_definition(definition: Dictionary, act_kind: String, company: int = 0) -> Dictionary:
+	var bound: Dictionary = definition.duplicate(true)
+	bound["label"] = LifeOutdoorActs.act_label(act_kind)
+	bound["duration"] = float(LifeOutdoorActs.acts(act_kind).get("duration", 40.0))
+	bound["changes"] = LifeOutdoorActs.changes_for(act_kind, company)
+	bound["skill"] = LifeOutdoorActs.skill_for(act_kind)
+	bound["xp"] = LifeOutdoorActs.xp_for(act_kind)
+	bound["description"] = str(LifeOutdoorActs.acts(act_kind).get("note", ""))
+	return bound
+
+
+func _wear_for_activity(action_id: String, target_id: String = "") -> void:
 	var category: String = str(ACTIVITY_OUTFITS.get(action_id, ""))
+	# Every pool and hot-tub use is a swim, whatever the furnishing that offers it.
+	if action_id == LifeOutdoorActs.ACTION_ID and LifeWetness.is_water_kind(_target_kind_of(target_id)):
+		category = "swim"
 	if category.is_empty():
 		return
-	if LifeCharacterIdentity.normalize_category(character.get("outfit_category", "everyday")) == category:
+	var worn: String = LifeCharacterIdentity.normalize_category(character.get("outfit_category", "everyday"))
+	if worn == category:
 		return
+	# Swimwear put on for the water is taken off again once dry; swimwear the
+	# player chose from the wardrobe is left alone.
+	auto_swimwear = category == "swim"
 	LifeCharacterIdentity.apply_category(character, category)
+
+## Whether the current action is a swim or a soak that is really under way.
+func _in_water() -> bool:
+	var action: Dictionary = get_current_action()
+	if action.is_empty() or str(action.get("phase", "")) != "active" or str(action.get("id", "")) != LifeOutdoorActs.ACTION_ID:return false
+	return LifeWetness.is_water_kind(_target_kind_of(str(action.get("target_id", ""))))
+
+
+## Out of the pool or the tub: soaked, and looking for a towel if one is to hand.
+func _leave_water() -> void:
+	wetness = LifeWetness.SOAKED
+	if str(character.age_stage) == "baby" or not towel.is_empty():return
+	_queue_follow_up(LifeWetness.DRY_OFF_ID)
+
+
+## After drying off standing, settle on a seat, in the towel, until dry. Whichever
+## soft seat is least busy: the garden's, or a sofa or armchair indoors.
+func _queue_dry_sit(from: Vector3 = Vector3.INF) -> void:
+	if wetness <= 0.0 and towel.is_empty():return
+	if is_away() or action_queue.size() >= MAX_QUEUE:return
+	# The nearest seat that will have them, so they sit down while there is still
+	# drying to do rather than walking across the house until they are dry.
+	var chosen: Dictionary = {}
+	var nearest: float = INF
+	for target: Dictionary in _targets:
+		if not LifeWetness.is_soft_seat(str(target.get("kind", ""))):continue
+		if not bool(get_action_availability(LifeWetness.DRY_SIT_ID, str(target.id)).available):continue
+		var distance: float = 0.0 if not from.is_finite() else Vector3(target.position).distance_to(from)
+		if distance < nearest:
+			nearest = distance
+			chosen = target
+	if chosen.is_empty():return
+	var follow: Dictionary = _actions[LifeWetness.DRY_SIT_ID].duplicate(true)
+	follow.merge({"target_id":str(chosen.id),"target_position":chosen.position,"phase":"queued","elapsed":0.0,"progress":0.0,"paid":false,"autonomous":true,
+		"duration":clampf(LifeWetness.minutes_to_dry(wetness) + 1.0, 2.0, 20.0)},true)
+	action_queue.push_front(follow)
+
+
+## One game-minute-sized step of drying, and of what being wet does to a seat and
+## to the swimwear that no longer needs wearing.
+func _dry_step(game_minutes: float) -> void:
+	if _in_water():
+		wetness = LifeWetness.SOAKED
+		return
+	if wetness > 0.0:
+		var current: Dictionary = get_current_action()
+		var rubbing: bool = str(current.get("id", "")) == LifeWetness.DRY_OFF_ID and str(current.get("phase", "")) == "active"
+		wetness = maxf(0.0, wetness - LifeWetness.dry_rate(not towel.is_empty(), rubbing) * game_minutes)
+		if wetness <= 0.0:
+			_finish_drying()
+	_wet_seat_step(game_minutes)
+	if wetness <= 0.0 and auto_swimwear:
+		_swimwear_step()
+
+
+## Dry at last: the towel goes back where it came from.
+func _finish_drying() -> void:
+	wetness = 0.0
+	_wet_seat_minutes = 0.0
+	if not towel.is_empty():
+		towel_returns.append(towel.duplicate(true))
+		towel = {}
+	_emit_changed()
+
+
+## Sitting damp on a cushion soaks it. Long enough, and the seat leaves a puddle.
+func _wet_seat_step(game_minutes: float) -> void:
+	var current: Dictionary = get_current_action()
+	var seat: String = ""
+	if not current.is_empty() and str(current.get("phase", "")) == "active" and wetness >= LifeWetness.PUDDLE_ABOVE:
+		var target: String = str(current.get("target_id", ""))
+		if LifeWetness.is_soft_seat(_target_kind_of(target)):
+			seat = target
+	if seat.is_empty():
+		_wet_seat_minutes = 0.0
+		_wet_seat_target = ""
+		return
+	if seat != _wet_seat_target:
+		_wet_seat_target = seat
+		_wet_seat_minutes = 0.0
+	_wet_seat_minutes += game_minutes
+	if _wet_seat_minutes >= LifeWetness.PUDDLE_AFTER_MINUTES and wet_seat_request.is_empty():
+		wet_seat_request = seat
+		_wet_seat_minutes = -LifeWetness.PUDDLE_AFTER_MINUTES * 4.0  # one puddle a sitting, not one a minute
+
+
+## Back into everyday clothes once the swimwear is dry and nobody is going in again.
+func _swimwear_step() -> void:
+	if LifeCharacterIdentity.normalize_category(character.get("outfit_category", "everyday")) != "swim":
+		auto_swimwear = false
+		return
+	for queued: Dictionary in action_queue:
+		if str(queued.get("id", "")) == LifeOutdoorActs.ACTION_ID and LifeWetness.is_water_kind(_target_kind_of(str(queued.get("target_id", "")))):return
+	auto_swimwear = false
+	LifeCharacterIdentity.apply_category(character, "everyday")
+	_emit_changed()
+
+
+## Why a towel cannot be used from this furnishing, or "" when it can. The world's
+## own facts (a rack's towels, a towel already in use) come from the water flow.
+func _drying_reason(id: String, target_id: String) -> String:
+	if is_away():return "Wait until this Lifelet is home."
+	var kind: String = _target_kind_of(target_id)
+	if id == LifeWetness.DRY_OFF_ID:
+		if not LifeWetness.is_towel_source(kind):return "Choose a towel or a towel rack."
+		if not towel.is_empty():return "Already wrapped in a towel. Sit and dry off."
+		if wetness <= 0.0:return "Already dry."
+		if is_instance_valid(water_service):
+			var problem: String = str(water_service.towel_error(self, target_id))
+			if not problem.is_empty():return problem
+		else:
+			for entry: Dictionary in _targets:
+				if str(entry.get("id", "")) == target_id and kind == "towel_rack" and int(entry.get("towels", 0)) <= 0:return "This rack has no towels left."
+		return ""
+	if not LifeWetness.is_soft_seat(kind):return "Choose a sofa, armchair, bench or garden seat."
+	if wetness <= 0.0 and towel.is_empty():return "Already dry."
+	return ""
+
+
+func _valid_towel(value: Variant) -> bool:
+	if not value is Dictionary:return false
+	if value.is_empty():return true
+	return value.get("source") is String and str(value.get("kind", "")) in LifeWetness.TOWEL_SOURCES and value.get("color") is String and str(value.color).length() == 6
+
 
 func _wear_home_clothes() -> void:
 	if is_spirit():
@@ -1331,7 +1515,11 @@ func cancel_action(index: int = 0) -> void:
 		cooperation_owner.cancel_cooperative_action(cooperation_member_id)
 		return
 	if is_instance_valid(meal_service):meal_service.canceled(self,action_queue[index])
+	var left_water: bool = index == 0 and str(action_queue[index].get("phase", "")) == "active" and str(action_queue[index].get("id", "")) == LifeOutdoorActs.ACTION_ID and LifeWetness.is_water_kind(_target_kind_of(str(action_queue[index].get("target_id", ""))))
+	if is_instance_valid(water_service):water_service.canceled(self,action_queue[index])
 	action_queue.remove_at(index)
+	if left_water:
+		_leave_water()
 	if index == 0:
 		_start_front()
 	_idle_minutes = 12.0 if _retry_soon else 0.0
@@ -1344,6 +1532,9 @@ func _start_front() -> void:
 	if action_queue.is_empty():
 		return
 	action_queue[0]["phase"] = "approach"
+	# Change first, then walk down to the water in swimwear.
+	if str(action_queue[0].get("id", "")) == LifeOutdoorActs.ACTION_ID:
+		_wear_for_activity(LifeOutdoorActs.ACTION_ID, str(action_queue[0].get("target_id", "")))
 	_emit_action_started(action_queue[0])
 
 
@@ -1423,6 +1614,8 @@ func _step(game_minutes: float) -> void:
 	# whether the Lifelet is at home, away or asleep. Nothing refills it but a
 	# coffee, so a cup is a second wind and not a second sleep.
 	second_wind = clampf(second_wind - SECOND_WIND_DECAY_PER_HOUR * game_minutes / 60.0, 0.0, SECOND_WIND_MAX)
+	if not is_away():
+		_dry_step(game_minutes)
 	if is_away():
 		bladder_grace=0.0 # School and work include bathroom breaks.
 		_tick_away(game_minutes)
@@ -1713,6 +1906,8 @@ func _finish_front() -> void:
 		action["social_accepted"] = _apply_social(action)
 		if bool(action.social_accepted): _record_autonomy_contact(_social_target(str(action.target_id)),id)
 		action["social_events"] = _recent_social_events.duplicate(true)
+	elif id in LifePassingPolicy.ALL:
+		LifePassingPolicy.apply(self, action)
 	elif id == "talk_to_myself":
 		# A full-length mirror is a real confidence practice: one full level of
 		# Charisma a day, and the moodlet that comes with feeling good.
@@ -1825,6 +2020,12 @@ func _finish_front() -> void:
 			_emit_notice("Conquered fear: %s! +%d satisfaction!" % [str(w_res.fear.label), frew])
 	if id in HOME_AFTER:
 		_wear_home_clothes()
+	if id == LifeOutdoorActs.ACTION_ID and LifeWetness.is_water_kind(_target_kind_of(str(action.get("target_id", "")))):
+		_leave_water()
+	elif id == LifeWetness.DRY_OFF_ID:
+		_queue_dry_sit(action.get("target_position", Vector3.INF) if action.get("target_position") is Vector3 else Vector3.INF)
+	elif id == LifeWetness.DRY_SIT_ID:
+		_finish_drying()
 	_emit_action_finished(action)
 	_idle_minutes = 0.0
 	_update_wants()
@@ -1995,6 +2196,10 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 		var push_reason: String = LifeOutdoorActs.push_refusal(_target_kind_of(target_id), str(character.age_stage), is_away())
 		if not push_reason.is_empty():
 			return {"available":false, "reason":push_reason}
+	elif id == LifeWetness.DRY_OFF_ID or id == LifeWetness.DRY_SIT_ID:
+		var wet_reason: String = _drying_reason(id, target_id)
+		if not wet_reason.is_empty():
+			return {"available":false, "reason":wet_reason}
 	if is_spirit() and (id in SPIRIT_BLOCKED or id == LifeBabyPlan.ACTION_ID):
 		return {"available":false, "reason":"A spirit has finished that chapter of life."}
 	# A bicycle's own entry names the ages that fit it, and a helmet must really
@@ -2054,6 +2259,8 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 		reason="Your first shift begins on the next workday."
 	elif id in ["teach_pet_trick","pet_tummy_rub","bathe_pet","pet_feed","pet_play","pet_teach_trick","pet_walk","pet_pet","pet_train","pet_tug","pet_train_social","pet_train_logic"]:
 		reason=_pet_action_error(id,target_id)
+	elif id in LifePassingPolicy.ALL:
+		reason = LifePassingPolicy.reason(self, id, target_id)
 	elif id in SOCIAL_ACTIONS:
 		var target: String = _social_target(target_id)
 		if target.is_empty() or target == _social_member_id:
@@ -3147,6 +3354,9 @@ func _record_autonomy_contact(target:String,id:String) -> void:
 	autonomy_state.contacts[target]={"at":_autonomy_now(),"action":id,"count":mini(1000000,int(previous.get("count",0))+1)}
 
 func _autonomy_social_choice(excluded_target_ids:Array=[]) -> Dictionary:
+	# Somebody walking past, while this Lifelet is idle outside, is company too.
+	var passing:Dictionary=LifePassingPolicy.autonomy_choice(self,excluded_target_ids)
+	if not passing.is_empty():return passing
 	var selected:Dictionary={}
 	var best:float=-INF
 	for target:Dictionary in _targets:
@@ -4061,7 +4271,7 @@ func get_mood() -> Dictionary:
 
 
 func get_state() -> Dictionary:
-	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "second_wind": second_wind, "bladder_grace":bladder_grace, "starvation_minutes":starvation_minutes, "exhaustion_minutes":exhaustion_minutes, "deferred_passing_minutes":deferred_passing_minutes, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "degree": degree, "criminal_record": criminal_record.duplicate(true), "wants": wants.duplicate(true), "whims": whims.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "last_bill_day": last_bill_day, "pending_bill":pending_bill.duplicate(true), "bills_paid_total":bills_paid_total, "bills_late":bills_late, "utilities_cut":utilities_cut, "insurance_policy_id":insurance_policy_id, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "routine_memory_days":routine_memory_days.duplicate(true)}
+	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "second_wind": second_wind, "wetness": wetness, "towel": towel.duplicate(true), "auto_swimwear": auto_swimwear, "bladder_grace":bladder_grace, "starvation_minutes":starvation_minutes, "exhaustion_minutes":exhaustion_minutes, "deferred_passing_minutes":deferred_passing_minutes, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "degree": degree, "criminal_record": criminal_record.duplicate(true), "wants": wants.duplicate(true), "whims": whims.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "last_bill_day": last_bill_day, "pending_bill":pending_bill.duplicate(true), "bills_paid_total":bills_paid_total, "bills_late":bills_late, "utilities_cut":utilities_cut, "insurance_policy_id":insurance_policy_id, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "passing_contacts":passing_contacts.duplicate(true), "last_passing_any":maxf(last_passing_any,-1.0), "routine_memory_days":routine_memory_days.duplicate(true)}
 
 
 func save_game(world_data: Array = []) -> bool:
@@ -4138,6 +4348,14 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 	# Temporary energy is an optional pool: an older save has none, and a
 	# missing key means a Lifelet who has not had a coffee, not a broken save.
 	second_wind = clampf(float(state.get("second_wind", 0.0)), 0.0, SECOND_WIND_MAX)
+	# Wetness and a wrapped towel are optional too: an older save has neither.
+	wetness = clampf(float(state.get("wetness", 0.0)), 0.0, LifeWetness.SOAKED)
+	towel = (state.get("towel", {}) as Dictionary).duplicate(true) if state.get("towel", {}) is Dictionary else {}
+	auto_swimwear = bool(state.get("auto_swimwear", false))
+	_wet_seat_minutes = 0.0
+	_wet_seat_target = ""
+	wet_seat_request = ""
+	towel_returns.clear()
 	bladder_grace=float(state.get("bladder_grace",0.0))
 	starvation_minutes=float(state.get("starvation_minutes",0.0))
 	exhaustion_minutes=float(state.get("exhaustion_minutes",0.0))
@@ -4202,6 +4420,11 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 	for key: Variant in state.get("last_hugs", {}):last_hugs[str(key)] = float(state["last_hugs"][key])
 	last_gossip = {}
 	for key: Variant in state.get("last_gossip", {}):last_gossip[str(key)] = float(state["last_gossip"][key])
+	passing_contacts = {}
+	for key: Variant in state.get("passing_contacts", {}):
+		var contact: Dictionary = state["passing_contacts"][key]
+		passing_contacts[str(key)] = {"at": float(contact.at), "count": int(contact.count)}
+	last_passing_any = float(state.get("last_passing_any", -1.0)) if float(state.get("last_passing_any", -1.0)) >= 0.0 else -1e18
 	social_cooldowns = {}
 	for key: Variant in state.get("social_cooldowns", {}):social_cooldowns[str(key)] = float(state["social_cooldowns"][key])
 	last_hosted_credit = float(state.get("last_hosted_credit", -1e18))
@@ -4259,10 +4482,14 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 		if stored.has("started_day"): action["started_day"] = int(stored.started_day)
 		if stored.has("started_minutes"): action["started_minutes"] = float(stored.started_minutes)
 		if stored.has("target_kind"): action["target_kind"] = str(stored.target_kind)
+		if str(action.id) == LifeOutdoorActs.ACTION_ID and LifeOutdoorActs.is_outdoor_act(str(stored.get("target_kind", ""))):
+			var kept: Dictionary = _outdoor_definition(action, str(stored.target_kind))
+			for key: String in ["label", "changes", "skill", "xp", "description"]: action[key] = kept[key]
 		for key: String in ["cooperation_id","cooperation_role","meal_source","meal_stage","meal_plate","meal_seat","seat_slot"]:
 			if stored.has(key): action[key] = str(stored[key])
 		if stored.has("commute"): action["commute"] = stored.commute.duplicate(true)
 		if stored.has("swim_lane"): action["swim_lane"] = int(stored.swim_lane)
+		if stored.has("toy_stage") and str(stored.toy_stage) in ["fetch", "pickup", "carry", "enter", "swim"]: action["toy_stage"] = str(stored.toy_stage)
 		if stored.has("cooperation_primary"): action["cooperation_primary"] = bool(stored.cooperation_primary)
 		if stored.has("partner_id"): action["partner_id"] = str(stored.partner_id)
 		if stored.has("meal_standing"): action["meal_standing"] = stored.meal_standing
@@ -4297,6 +4524,13 @@ func _validate_social_repeat_state(state:Dictionary) -> String:
 		for target:Variant in stamps:
 			if not target is String or str(target).is_empty() or not _number_in_range(stamps[target],0.0,maxf(now,0.0)):
 				return "Save contains invalid social stamps."
+	var passing:Variant=state.get("passing_contacts",{})
+	if not passing is Dictionary or passing.size()>64:return "Save contains invalid passing-conversation history."
+	for passer:Variant in passing:
+		var contact:Variant=passing[passer]
+		if not passer is String or str(passer).is_empty() or str(passer).length()>64 or not contact is Dictionary or not _number_in_range(contact.get("at"),0.0,maxf(now,0.0)) or not _autonomy_integer(contact.get("count"),1,1000000):
+			return "Save contains invalid passing-conversation history."
+	if state.has("last_passing_any") and not _number_in_range(state.last_passing_any,-1.0,maxf(now,0.0)):return "Save contains an invalid passing-conversation time."
 	var cooldowns:Variant=state.get("social_cooldowns",{})
 	if not cooldowns is Dictionary:return "Save contains an invalid social cooldown."
 	for target:Variant in cooldowns:
@@ -4477,6 +4711,10 @@ func _validate_state(state: Dictionary) -> String:
 	# Temporary energy is either absent (an older save) or one bounded pool.
 	if not _number_in_range(state.get("second_wind", 0.0), 0.0, SECOND_WIND_MAX):
 		return "Save contains invalid temporary energy."
+	if not _number_in_range(state.get("wetness", 0.0), 0.0, LifeWetness.SOAKED):
+		return "Save contains invalid wetness."
+	if state.has("towel") and not _valid_towel(state.towel):
+		return "Save contains an invalid towel."
 	if not _number_in_range(state.get("bladder_grace",0.0),0.0,BLADDER_GRACE_MINUTES):return "Save contains invalid bladder urgency."
 	for key: String in ["starvation_minutes", "exhaustion_minutes", "deferred_passing_minutes"]:
 		var limit: float = {"starvation_minutes":STARVATION_MINUTES, "exhaustion_minutes":EXHAUSTION_MINUTES, "deferred_passing_minutes":DEFERRED_PASSING_MINUTES}[key]
@@ -4683,8 +4921,13 @@ func _validate_state(state: Dictionary) -> String:
 		# shorter Active nap. The ordinary 75-minute nap remains a valid old state.
 		if action_id not in ["cook","school_day","career_day"]:
 			var expected_duration:float=float(_actions[action_id].duration)
+			# A swim, a soak or a float is as long as the furnishing it was queued at
+			# says, and a sit to dry off is as long as the drying takes.
+			if action_id==LifeOutdoorActs.ACTION_ID and LifeOutdoorActs.is_outdoor_act(str(action.get("target_kind",""))):
+				expected_duration=float(LifeOutdoorActs.acts(str(action.target_kind)).get("duration",expected_duration))
+			var drying_sit:bool=action_id==LifeWetness.DRY_SIT_ID and _number_in_range(saved_duration,2.0,20.0)
 			var active_nap:bool=action_id=="nap" and "Active" in profile.traits and float(saved_duration)==60.0
-			if float(saved_duration)!=expected_duration and not active_nap:return "Save contains an invalid activity duration."
+			if float(saved_duration)!=expected_duration and not active_nap and not drying_sit:return "Save contains an invalid activity duration."
 		var position: Variant = action.get("target_position", [0, 0, 0])
 		if not position is Vector3:
 			if not position is Array or position.size() != 3:

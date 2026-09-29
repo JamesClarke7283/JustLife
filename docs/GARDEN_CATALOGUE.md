@@ -98,6 +98,8 @@ only ever offering its two end places.
 | Rubber ring | `pool_ring` | — | 5 | — (`ℒ5`) |
 | Pool noodle float | `pool_noodle` | — | 5 | — (`ℒ5`) |
 | Pool light | `pool_light` | — | 10 | — (`ℒ20` each) |
+| Beach towel | `beach_towel` | 3 (spread flat, folded, rolled) | 10 | — (`ℒ5`) |
+| Garden towel rack | `towel_rack` | — | 10 | 3 (`ℒ30`/`ℒ35`/`ℒ40`; holds 1/2/4 towels) |
 | Kids swing set | `kids_swing` | 3 | 10 | — (`ℒ100`; kids and teens only) |
 | Kids sand pit | `sand_pit` | — | 5 | 3 (`ℒ100`/`ℒ300`/`ℒ500`; fits 2/3/5 players) |
 | Kids slide | `kids_slide` | — | 5 | — (`ℒ100`) |
@@ -136,9 +138,12 @@ Every new furnishing is **usable**, not decoration. `scripts/outdoor_acts.gd`
 
 | Furnishing | Action | Who may |
 | --- | --- | --- |
-| Pool | Go for a swim (Fitness) | child and up |
-| Hot tub | Soak in the hot tub | teen and up |
-| Swimming pool noodle, rubber ring, pool slide, pool ladder, pool light | Float, slide, climb or swim in the lit pool (Fitness) | child and up; refused with a reason while no pool stands |
+| Pool | Go for a swim (Fitness) | child, teen, young adult and adult |
+| Hot tub | Soak in the hot tub | child, teen, young adult and adult (not while pregnant) |
+| Swimming pool noodle, rubber ring | Fetch the toy, carry it to the pool and ride it (Fitness) | child, teen, young adult and adult; refused with a reason while no pool stands |
+| Pool slide, pool ladder, pool light | Slide, climb or swim in the lit pool (Fitness) | child, teen, young adult and adult; refused with a reason while no pool stands |
+| Beach towel, towel rack | Dry off with a towel | anyone but a baby, while wet |
+| Sofa, loveseat, armchair, bench, garden table, garden swing | Sit and dry off | anyone but a baby, while wet or towelled |
 | Kids swing set, kids slide, climbing frame | Play (Fitness, Creativity) | **child and teen exactly** |
 | Kids swing set | **Push the children** | teen and up |
 | Sand pit | Play in the sand pit (Creativity) | child and up; **play only, never a toilet** |
@@ -163,6 +168,43 @@ rather than allowing it silently.
 Garden games (below) each offer their own single activity; the rest reuse an
 action the game already has, so a bought garden table is cleared by exactly the
 code that clears a dining table, and a car is driven by the bicycle's own rule.
+
+## Swimming, wetness and towels
+
+Every use of a pool, its toys or the hot tub is a **swim**, and a swim has
+consequences that live in three small files: `scripts/wetness.gd`
+(`LifeWetness`, the pure numbers), `scripts/life_sim.gd` (the state each Lifelet
+carries) and `scripts/water_flow.gd` (`LifeWaterFlow`, the part that touches the
+world).
+
+* **Swimwear.** Deciding to swim — the moment the action is queued, before the
+  walk to the water — puts the Lifelet into their **Swim** wardrobe category, a
+  sixth look beside Everyday, Formal, Athletic, Sleep and Party that can also be
+  designed in the creator and the wardrobe. They change back to Everyday once dry,
+  unless the player chose the swimwear themselves.
+* **Wetness.** Out of the water a Lifelet is soaked (`wetness` 1.0), and it is
+  saved. It drips (a `CPUParticles3D` on the body) until it falls below 0.55, which
+  takes about twenty game minutes in the air; it air-dries in 45, wrapped in a
+  towel in 8, and faster still while rubbing down.
+* **The toys.** The Lifelet's own card (and a housemate's click menu) offers
+  **Use pool toy…** whenever the household owns a ring or a noodle. The panel lists
+  each one; choosing it queues an ordinary enjoy-outdoors action at that toy, which
+  the water flow runs in stages saved on the action as `toy_stage`: **fetch** (walk
+  to the toy) → **pickup** (bend down and lift it) → **carry** (walk it round the
+  water to the pool's edge, both hands on it) → **enter** (wade in, letting it go
+  onto the surface) → **swim**. In the ring the Lifelet sits in the opening,
+  reclined, hands trailing; on the noodle they lie chest-down with it across the
+  midsection, kicking and paddling in a slow loop round the pool. A toy being
+  carried is not a walking obstacle and is saved where it was picked up from.
+* **Towels.** A wet Lifelet walks to a towel rack (or a loose beach towel), takes a
+  towel — held out, then wrapped round them — and rubs down. A rack keeps its own
+  stock in the layout record (`towels`); taking one leaves an empty slot on the
+  rail, and the towel is hung back when the Lifelet is dry. Wrapped, they go and
+  **Sit and dry off** on the least busy soft seat (a garden chair at the table, the
+  swing, a bench, or a sofa or armchair indoors) until dry.
+* **Puddles.** Sitting on any of those seats while still damp for six game minutes
+  soaks the cushion and leaves a puddle of water in front of the seat, a
+  `LifeSanitation` puddle with `kind: "water"`. It is mopped exactly like an accident.
 
 ## Garden games
 
@@ -201,6 +243,8 @@ one letter per event, so a reload never re-posts the same thing.
 | `scripts/catalog_variants.gd` | `LifeCatalogVariants`: styles, colours, sizes, prices, seats and the stored variant record. Pure static policy. |
 | `scripts/garden_games.gd` | `LifeGardenGames`: the fifty games, their gate, their skill and their action. Pure static policy. |
 | `scripts/outdoor_acts.gd` | `LifeOutdoorActs`: what the pool, hot tub, children's play equipment, adult swing and the rest actually do, and the two rules that govern them. Pure static policy. |
+| `scripts/wetness.gd` | `LifeWetness`: how wet a swim leaves a Lifelet, how fast a towel dries them and when a damp seat leaves a puddle. Pure static policy. |
+| `scripts/water_flow.gd` | `LifeWaterFlow`: fetching, carrying and riding a pool toy, taking and returning towels, and puddles left by a damp seat. |
 | `scripts/mail.gd` | `LifeMail`: letters, bills and a post box's save validation. Pure static policy. |
 | `scripts/catalog.gd` | The catalogue itself. New families sit under `Garden`, `Pool`, `Kids`, `Outdoor` and `Vehicles`. |
 | `tools/create_outdoor_water.py` | Regenerates the pool, hot tub, post box, fences and garden lights. |
@@ -208,5 +252,9 @@ one letter per event, so a reload never re-posts the same thing.
 | `tools/create_garden_plants.py` | Regenerates the trees, shrubs and flowers. |
 | `tools/create_garden_games.py` | Regenerates the fifty garden games. |
 | `tools/create_vehicles.py` | Regenerates the cars and garages. |
+| `tools/create_towels.py` | Regenerates the three beach towels and the garden towel rack. |
 | `tests/test_pet_care.gd` | Covers the garden games' catalogue, models, gate, skills and placement. |
 | `tests/test_garden_catalogue.gd` | Covers the variant axes, pricing, seats and the save record. |
+| `tests/test_swim_wetness.gd` | Covers who may swim, swimwear, wetness, drips, towels, damp seats and the save. |
+| `tests/test_pool_toys.gd` | Covers fetching, carrying and riding the ring and the noodle, from the Lifelet's own card and a housemate's. |
+| `tests/test_towels_and_puddles.gd` | Covers the towel and rack catalogue, a rack's stock, buying, the swim-to-dry sequence and mopping a water puddle. |

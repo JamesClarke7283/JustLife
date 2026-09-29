@@ -200,25 +200,25 @@ func tick_bell(delta:float)->void:
 		if exit.is_finite():
 			var route:PackedVector3Array=app.traversal._floor_route(actor.position,exit,id)
 			if route.size()>1:
-				var next:Vector3=actor.position.move_toward(route[1],delta*speed*.75)
+				var next:Vector3=actor.position.move_toward(route[1],LifePedestrianPace.distance("indoor",delta,speed))
 				if app.traversal._step_clear(id,actor.position,next):
 					var direction:Vector3=route[1]-actor.position
 					actor.rotation.y=lerp_angle(actor.rotation.y,atan2(direction.x,direction.z),minf(delta*6,1))
 					actor.position=next;moving=true
 				if actor.position.distance_to(exit)<.4:
-					_clear_bell();actor.animate(delta,speed,moving,"");return
+					_clear_bell();actor.animate(delta,LifePedestrianPace.gait_factor("indoor",speed) if moving else speed,moving,"");return
 	else:
 		var doorstep:Vector3=bell.doorstep if bell.doorstep is Vector3 else _doorstep_point(id)
 		if actor.position.distance_to(doorstep)>.25:
 			var route:PackedVector3Array=app.traversal._floor_route(actor.position,doorstep,id)
 			if route.size()>1:
-				var next:Vector3=actor.position.move_toward(route[1],delta*speed*.75)
+				var next:Vector3=actor.position.move_toward(route[1],LifePedestrianPace.distance("indoor",delta,speed))
 				if app.traversal._step_clear(id,actor.position,next):
 					actor.position=next;moving=true
 		# Face the door while waiting to be answered.
 		var toward:Vector3=_door()-actor.position
 		if toward.length()>.01:actor.rotation.y=lerp_angle(actor.rotation.y,atan2(toward.x,toward.z),minf(delta*4,1))
-	actor.animate(delta,speed,moving,"")
+	actor.animate(delta,LifePedestrianPace.gait_factor("indoor",speed) if moving else speed,moving,"")
 	bell.position=_packed(actor.position);bell.rotation=actor.rotation.y
 	var resident:Dictionary=app.residents.locations.home.get(id,{})
 	if not resident.is_empty():

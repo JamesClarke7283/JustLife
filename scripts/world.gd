@@ -482,14 +482,20 @@ func _furnishing_basis(entry:Dictionary) -> Basis:
 func furnishing_panels(entry:Dictionary) -> Array[Rect2]:
 	var origin:=Vector2(float(entry.get("x",0)),float(entry.get("z",0)))
 	var basis:Basis=_furnishing_basis(entry)
-	# The buy size rides the layout record or the live variant; either way the
-	# solid bands must match the water or furniture the mesh really covers.
-	var size_choice:String=str(entry.get("size",""))
+	# The buy size and style ride the layout record or the live variant; either
+	# way the solid bands must match the water or furniture the mesh really
+	# covers. A live item's own `size` key is its footprint (a Vector2), not the
+	# size choice: reading that as the choice left every medium or large
+	# furnishing, pools included, blocking only its small footprint.
+	var listed:Variant=entry.get("size","")
+	var size_choice:String=listed if listed is String else ""
+	var style:String=str(entry.get("style",""))
 	var variant_data:Variant=entry.get("variant",{})
-	if size_choice.is_empty() and variant_data is Dictionary:
-		size_choice=str((variant_data as Dictionary).get("size",""))
+	if variant_data is Dictionary:
+		if size_choice.is_empty():size_choice=str((variant_data as Dictionary).get("size",""))
+		if style.is_empty():style=str((variant_data as Dictionary).get("style",""))
 	var result:Array[Rect2]=[]
-	for panel:Dictionary in LifeCatalog.local_panels(str(entry.get("kind","")),size_choice):
+	for panel:Dictionary in LifeCatalog.local_panels(str(entry.get("kind","")),size_choice,style):
 		result.append(_oriented_panel(origin,basis,panel))
 	return result
 
@@ -508,7 +514,7 @@ func _oriented_panel(origin:Vector2,basis:Basis,panel:Dictionary) -> Rect2:
 ## The same bands for a placed item, read off the node the live world owns.
 func item_panels(item:Dictionary) -> Array[Rect2]:
 	var variant:Dictionary=item.get("variant",{}) if item.get("variant",{}) is Dictionary else {}
-	var source:Dictionary={"kind":str(item.kind),"x":item.node.position.x,"z":item.node.position.z,"rotation":item.node.rotation_degrees.y,"size":str(variant.get("size",""))}
+	var source:Dictionary={"kind":str(item.kind),"x":item.node.position.x,"z":item.node.position.z,"rotation":item.node.rotation_degrees.y,"size":str(variant.get("size","")),"style":str(variant.get("style",""))}
 	return furnishing_panels(source)
 
 ## The navigation obstacle records an entry contributes: one per solid band, and
@@ -519,9 +525,16 @@ func furnishing_obstacles(entry:Dictionary,level:int) -> Array:
 	var result:Array=[]
 	var id:String=str(entry.get("id",""))
 	for index:int in range(areas.size()):
-		var area:Rect2=areas[index]
+		# A navigation obstacle must lie inside the lot, and a pool's coping may
+		# reach past the edge the placement rule measured, so the band is clipped
+		# to the lot exactly as the parked van's is.
+		var area:Rect2=areas[index].intersection(Building.lot())
+		if not area.is_equal_approx(areas[index]):area=area.grow(-.001)
+		if area.size.x<=0.0 or area.size.y<=0.0:continue
 		var identifier:String=id if areas.size()==1 else "%s_%d"%[id,index]
-		result.append({"id":identifier,"level":level,"x":area.get_center().x,"z":area.get_center().y,"w":area.size.x,"d":area.size.y})
+		# `item` names the furnishing however many bands it has, so a blocked-route
+		# notice can tell the player which piece to move.
+		result.append({"id":identifier,"level":level,"x":area.get_center().x,"z":area.get_center().y,"w":area.size.x,"d":area.size.y,"item":id})
 	return result
 
 ## Repaint an authored surface by name, exactly as the character actor and the
@@ -941,7 +954,7 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	# ordinary furnishing gets exactly the single box it always had while a
 	# kind with an open interior keeps its bays walkable — which is what lets a
 	# car park inside the two-car garage and the player click its wall to sell it.
-	for panel:Dictionary in LifeCatalog.local_panels(kind,str(variant.size)):
+	for panel:Dictionary in LifeCatalog.local_panels(kind,str(variant.size),str(variant.style)):
 		var shape=CollisionShape3D.new()
 		var bounds=BoxShape3D.new()
 		bounds.size=Vector3(float(panel.w),info.height,float(panel.d))
@@ -952,7 +965,10 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	if kind == "car_garage":
 		node.set_meta("garage_door_open", bool(entry.get("garage_door_open", false)))
 		_apply_garage_door(node, bool(node.get_meta("garage_door_open")))
+	if kind=="towel_rack":
+		info["towels"]=clampi(int(entry.get("towels",Variants.holds(data,str(variant.size)))),0,Variants.holds(data,str(variant.size)))
 	items.append(info)
+	if kind=="towel_rack":refresh_towel_rack(info)
 	if kind in ["car", "car_electric", "electric_car"] and level == 0:
 		# Snap after the car is registered so bay occupancy and transforms match
 		# the live item list the garage helper reads.
@@ -964,6 +980,65 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 			info["z"] = node.position.z
 			info["rotation"] = node.rotation_degrees.y
 	if rebuild:rebuild_navigation()
+
+## The towels hanging over a rack's rail: as many as it holds now, each in its own
+## slot between the two rail markers the rack model authors. Taking a towel
+## leaves its slot empty, and hanging one back fills it again.
+func refresh_towel_rack(item:Dictionary) -> void:
+	if str(item.get("kind",""))!="towel_rack" or not is_instance_valid(item.get("node")):return
+	var node:Node3D=item.node
+	var old:Node=node.get_node_or_null("RackTowels")
+	if old!=null:
+		node.remove_child(old);old.queue_free()
+	var group:Node3D=Node3D.new();group.name="RackTowels";node.add_child(group)
+	var left:Node3D=node.find_child("TowelRail_L",true,false) as Node3D
+	var right:Node3D=node.find_child("TowelRail_R",true,false) as Node3D
+	if left==null or right==null:return
+	var a:Vector3=node.to_local(left.global_position)
+	var b:Vector3=node.to_local(right.global_position)
+	var data:Dictionary=LifeCatalog.get_item("towel_rack")
+	var variant:Dictionary=item.get("variant",{})
+	var size:String=str(variant.get("size",""))
+	var capacity:int=maxi(1,Variants.holds(data,size))
+	var count:int=clampi(int(item.get("towels",0)),0,capacity)
+	var scale:float=Variants.size_scale(size)
+	var width:float=minf(.34*sqrt(scale),a.distance_to(b)/float(capacity)*.86)
+	for index:int in range(count):
+		var at:Vector3=a.lerp(b,(float(index)+.5)/float(capacity))
+		_hang_towel(group,at,width,.44*sqrt(scale),rack_towel_color(item,index))
+
+## The colour of the towel hung in one slot of a rack: the rack's own colour
+## stepped round the palette, so a full rack is a row of different towels.
+func rack_towel_color(item:Dictionary,index:int) -> String:
+	var palette:Array=Variants.colors(LifeCatalog.get_item("towel_rack"))
+	var base:int=maxi(0,palette.find(str((item.get("variant",{}) as Dictionary).get("color",""))))
+	return str(palette[(base+3*(index+1))%palette.size()])
+
+## One towel draped over a rail that runs along local X: a front and a shorter back
+## panel joined by a folded top.
+func _hang_towel(parent:Node3D,at:Vector3,width:float,drop:float,hex:String) -> void:
+	var towel:Node3D=Node3D.new();towel.name="RackTowel";parent.add_child(towel)
+	box(towel,at+Vector3(0,-drop*.5,.032),Vector3(width,drop,.024),hex)
+	box(towel,at+Vector3(0,-drop*.42,-.032),Vector3(width,drop*.84,.024),hex)
+	box(towel,at+Vector3(0,.006,0),Vector3(width,.030,.086),hex)
+
+## Take or hang back towels on a rack, keeping its count within what it holds.
+func change_rack_towels(id:String,delta:int) -> bool:
+	for item:Dictionary in items:
+		if str(item.id)!=id or str(item.kind)!="towel_rack":continue
+		var capacity:int=Variants.holds(LifeCatalog.get_item("towel_rack"),str((item.get("variant",{}) as Dictionary).get("size","")))
+		var now:int=int(item.get("towels",0))
+		var next:int=clampi(now+delta,0,capacity)
+		if next==now:return false
+		item["towels"]=next
+		refresh_towel_rack(item)
+		return true
+	return false
+
+func rack_towels(id:String) -> int:
+	for item:Dictionary in items:
+		if str(item.id)==id and str(item.kind)=="towel_rack":return int(item.get("towels",0))
+	return 0
 
 ## World-space parking bays for every garage on the lot. Occupied bays (another
 ## car already within 1.2 m) are skipped so placement fills empty slots.
@@ -1092,11 +1167,14 @@ func serialize_items() -> Array:
 	var out:Array=[]
 	for item in items:
 		if bool(item.get("transient_food",false)) or bool(item.get("transient_puddle",false)) or bool(item.get("derived",false)):continue
-		var entry:Dictionary={"id":item.id,"kind":item.kind,"x":item.node.position.x,"z":item.node.position.z,"rotation":item.node.rotation_degrees.y}
+		# A pool toy on its way to the water is saved where it was picked up from.
+		var rest:Dictionary=item.get("rest",{}) if bool(item.get("carried",false)) else {}
+		var entry:Dictionary={"id":item.id,"kind":item.kind,"x":float(rest.get("x",item.node.position.x)),"z":float(rest.get("z",item.node.position.z)),"rotation":float(rest.get("rotation",item.node.rotation_degrees.y))}
+		if str(item.kind)=="towel_rack":entry["towels"]=int(item.get("towels",0))
 		if item_level(item)!=0:entry["level"]=item_level(item)
 		# Preserve custom wall placement through ordinary saves and recovered
 		# burglary layouts, as add_item reconstructs y from the floor and hang.
-		var lift:float=item.node.position.y-Building.level_y(item_level(item))
+		var lift:float=float(rest.get("y",item.node.position.y))-Building.level_y(item_level(item))
 		if not is_zero_approx(lift):entry["hang"]=lift
 		# The chosen style, colour and size ride the layout record, so a save
 		# resumes the same object rather than the family's first choice. Only the
@@ -1127,7 +1205,7 @@ func rebuild_navigation() -> void:
 	var solid_panels:Array[Rect2]=[]
 	for item:Dictionary in items:
 		if item_level(item)!=0:continue
-		if str(item.kind) in ["meal","plate","puddle"] or bool(item.get("derived",false)) or LifeCatalog.passable(str(item.kind)):continue
+		if str(item.kind) in ["meal","plate","puddle"] or bool(item.get("derived",false)) or bool(item.get("carried",false)) or LifeCatalog.passable(str(item.kind)):continue
 		for panel:Rect2 in item_panels(item):solid_panels.append(panel.grow(.16))
 	# A non-furnishing blocker (the parked food truck) contributes the same way.
 	for record:Dictionary in extra_obstacles:
@@ -1159,7 +1237,7 @@ func rebuild_navigation() -> void:
 	if not bool(result.ok):last_layout_error=str(result.error);return
 	var obstacles:Array=[]
 	for item:Dictionary in items:
-		if str(item.kind) in ["meal","plate","puddle"] or bool(item.get("derived",false)) or LifeCatalog.passable(str(item.kind)):continue
+		if str(item.kind) in ["meal","plate","puddle"] or bool(item.get("derived",false)) or bool(item.get("carried",false)) or LifeCatalog.passable(str(item.kind)):continue
 		for record:Dictionary in furnishing_obstacles(item,item_level(item)):obstacles.append(record)
 	obstacles.append_array(extra_obstacles)
 	var built:Dictionary=lot_navigation.rebuild(result.state,obstacles)
@@ -1198,6 +1276,44 @@ func route_to(from:Vector3,to:Vector3) -> Dictionary:
 	var from_level:int=point_level(from);var to_level:int=point_level(to)
 	if from_level<0 or to_level<0:return {"ok":false,"error":"A floor route needs explicit supported start and destination levels."}
 	return lot_navigation.route(LotNavigation.floor_location(from_level,from),LotNavigation.floor_location(to_level,to))
+
+## The one sentence every blocked Lifelet or pet route ends in, so a player is
+## told which piece to move instead of guessing. The name is the catalogue's own.
+const BLOCKED_PATH:String="Please move the %s blocking the path."
+
+## What a navigation blocker is called to the player: a placed item by its
+## catalogue label, and the few solids that are not furnishings by their kind.
+func blocker_name(blocker:Dictionary) -> String:
+	match str(blocker.get("kind","")):
+		"item":
+			for item:Dictionary in items:
+				if str(item.id)==str(blocker.get("id","")):return str(LifeCatalog.get_item(str(item.kind)).get("label",""))
+		"wall":return "wall"
+		"stair":return "staircase"
+		"object":
+			var id:String=str(blocker.get("id",""))
+			return "police station" if id.begins_with("police_station_") else id.replace("_"," ")
+	return ""
+
+## The notice for a blocker, or `fallback` when nothing solid is responsible.
+func blocker_notice(blocker:Dictionary,fallback:String="") -> String:
+	var label:String=blocker_name(blocker)
+	if label.is_empty():return fallback
+	return BLOCKED_PATH%label if str(blocker.kind)=="item" else "The %s is blocking the path."%label
+
+## Why a walk between two spots failed, in the player's words: the placed item on
+## the cheapest way across (or sitting on either spot), else `fallback`. `ignore`
+## lists item ids that are the goal itself and so never the answer.
+func blocked_notice(from:Vector3,to:Vector3,fallback:String="",ignore:Array=[]) -> String:
+	var from_level:int=point_level(from);var to_level:int=point_level(to)
+	if from_level<0 or to_level<0:return fallback
+	return blocker_notice(lot_navigation.blocker_between(from_level,from,to_level,to,ignore),fallback)
+
+## The notice for a walker refused at one step: the placed item that step meets.
+func step_notice(from:Vector3,to:Vector3,fallback:String="") -> String:
+	var level:int=point_level(from)
+	if level<0:return fallback
+	return blocker_notice(lot_navigation.first_blocker(level,from,to),fallback)
 
 func nearest_clear_point(point:Vector3,level:int,radius:int=13) -> Vector3:
 	if level not in [0,1]:return Vector3.INF
@@ -1378,7 +1494,11 @@ func simulation_targets() -> Array:
 	for item in items:
 		present[item.node.get_instance_id()]=true
 		var at:Vector3=_simulation_approach(item)
-		if at.is_finite():a.append({"id":item.id,"kind":item.kind,"position":at,"level":item_level(item)})
+		if at.is_finite():
+			var target:Dictionary={"id":item.id,"kind":item.kind,"position":at,"level":item_level(item)}
+			if str(item.kind)=="towel_rack":target["towels"]=int(item.get("towels",0))
+			if bool(item.get("carried",false)):target["carried"]=true
+			a.append(target)
 	for identity:int in _target_approaches.keys():
 		if not present.has(identity):_target_approaches.erase(identity)
 	# People move independently of the static navigation geometry.
@@ -1427,6 +1547,7 @@ func begin_placement(kind:String,style:String="",size:String="",color:String="")
 		elif kind=="bath_mat":_build_bath_mat(ghost,preview)
 		elif kind=="framed_picture":_build_framed_picture(ghost,preview)
 		else:_build_garden_gate(ghost,kind=="garden_gate_double")
+		_ghost_materials(ghost)
 		return
 	if not ResourceLoader.exists(path):
 		clear_placement()
@@ -1442,7 +1563,14 @@ func begin_placement(kind:String,style:String="",size:String="",color:String="")
 	var scale:float=Variants.size_scale(size)
 	if not is_equal_approx(scale,1.0):ghost.scale=Vector3.ONE*scale
 	add_child(ghost)
-	for n in ghost.find_children("*","MeshInstance3D",true,false):
+	_ghost_materials(ghost)
+
+## Every surface of a placement ghost gets a material of its own, so the green
+## and red of a valid or refused spot recolour the ghost and nothing else. The
+## built-in boxes share one cached material per colour, and tinting that would
+## repaint every placed furnishing built from the same colour.
+func _ghost_materials(root:Node) -> void:
+	for n in root.find_children("*","MeshInstance3D",true,false):
 		var m=StandardMaterial3D.new()
 		m.albedo_color=Color(.38,.8,.63,.48)
 		m.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -1566,11 +1694,21 @@ func wall_snap(kind:String,p:Vector3,reach:float=1.0,size_choice:String="") -> D
 			var side:float=1.0 if p.z>=cz else -1.0
 			# Keep clear of the perpendicular walls that meet this one in the corners
 			# (wall thickness plus the floor inset), so a snapped ghost is always placeable.
-			best={"position":Vector3(clampf(p.x,cx-w*.5+size.x*.5+.3,cx+w*.5-size.x*.5-.3),p.y,cz+side*(d*.5+size.y*.5+.01)),"angle":0.0 if side>0 else 180.0}
+			best={"position":Vector3(_along_wall(p.x,cx,w,size.x),p.y,cz+side*(d*.5+size.y*.5+.01)),"angle":0.0 if side>0 else 180.0}
 		else:
 			var side:float=1.0 if p.x>=cx else -1.0
-			best={"position":Vector3(cx+side*(w*.5+size.y*.5+.01),p.y,clampf(p.z,cz-d*.5+size.x*.5+.3,cz+d*.5-size.x*.5-.3)),"angle":90.0 if side>0 else -90.0}
+			best={"position":Vector3(cx+side*(w*.5+size.y*.5+.01),p.y,_along_wall(p.z,cz,d,size.x)),"angle":90.0 if side>0 else -90.0}
 	return best
+
+## Where along a wall of `length` centred on `centre` a piece `width` wide may
+## sit: clear of the corner posts by the usual margin, or, on a stub too short
+## for that, as far along as the wall itself allows. The old clamp had its lower
+## bound above its upper one on a short wall, which threw the piece off the end
+## of it and left the wall looking like it refused the piece.
+func _along_wall(at:float,centre:float,length:float,width:float) -> float:
+	var reach:float=length*.5-width*.5-.3
+	if reach<0.0:reach=maxf(length*.5-width*.5,0.0)
+	return clampf(at,centre-reach,centre+reach)
 
 ## A furnishing that frames a window (a curtain set) slides along the wall it is
 ## already snapped to until it is centred on the nearest window in that wall, so
@@ -1769,32 +1907,40 @@ func _process(delta:float) -> void:
 	if not live_enabled:return
 	refresh_actor_layers()
 	if build_enabled and construction and not construction.tool.is_empty():construction.update_preview(floor_point(get_viewport().get_mouse_position()))
-	if build_enabled and is_instance_valid(ghost):
-		var p=floor_point(get_viewport().get_mouse_position())
-		p.x=snappedf(p.x,.25);p.z=snappedf(p.z,.25)
-		if bool(LifeCatalog.get_item(placement_kind).get("room_pack",false)):
-			var area:Rect2=room_pack_area(placement_kind,p,placement_angle)
-			ghost.position=Vector3(area.get_center().x,Building.level_y(0),area.get_center().y)
-			ghost.rotation_degrees.y=placement_angle
-			ghost_position=ghost.position
-			ghost_valid=view_level==0 and Building.lot().encloses(area)
-			for n in ghost.find_children("*","MeshInstance3D",true,false):n.material_override.albedo_color=Color(.4,.85,.6,.48) if ghost_valid else Color(.9,.3,.25,.48)
-			return
-		if LifeCatalog.wall_mounted(placement_kind):
-			# Wall decor slides along the nearest wall and faces into the room.
-			# Pieces that declare a hang height sit up on the wall, and the
-			# wheel can still move that height while the ghost is showing.
-			var snap:Dictionary=wall_snap(placement_kind,p,1.0,placement_size)
-			if not snap.is_empty():
-				p=window_snap(placement_kind,snap.position,float(snap.angle))
-				placement_angle=float(snap.angle)
-				if placement_hang>0.0:
-					p.y=Building.level_y(view_level)+placement_hang
-		ghost.position=p
+	if build_enabled and is_instance_valid(ghost):update_ghost(floor_point(get_viewport().get_mouse_position()))
+
+## Move the placement ghost to a pointed-at floor point and judge it. Split out of
+## `_process` so a test can point at a spot without a mouse.
+func update_ghost(pointed:Vector3) -> void:
+	if not is_instance_valid(ghost):return
+	var p:=pointed
+	p.x=snappedf(p.x,.25);p.z=snappedf(p.z,.25)
+	if bool(LifeCatalog.get_item(placement_kind).get("room_pack",false)):
+		var area:Rect2=room_pack_area(placement_kind,p,placement_angle)
+		ghost.position=Vector3(area.get_center().x,Building.level_y(0),area.get_center().y)
 		ghost.rotation_degrees.y=placement_angle
-		ghost_position=p
-		ghost_valid=can_place(placement_kind,p,placement_angle,placement_style,placement_size)
+		ghost_position=ghost.position
+		ghost_valid=view_level==0 and Building.lot().encloses(area)
 		for n in ghost.find_children("*","MeshInstance3D",true,false):n.material_override.albedo_color=Color(.4,.85,.6,.48) if ghost_valid else Color(.9,.3,.25,.48)
+		return
+	var lift:float=0.0
+	if LifeCatalog.wall_mounted(placement_kind):
+		# Wall decor slides along the nearest wall and faces into the room.
+		# Pieces that declare a hang height sit up on the wall, and the
+		# wheel can still move that height while the ghost is showing. Only
+		# the picture of the ghost is raised: the point every rule and the
+		# click read stays on the floor, because a placement is judged by the
+		# floor it stands over and the wall behind it, never by its height.
+		var snap:Dictionary=wall_snap(placement_kind,p,1.0,placement_size)
+		if not snap.is_empty():
+			p=window_snap(placement_kind,snap.position,float(snap.angle))
+			placement_angle=float(snap.angle)
+			lift=maxf(placement_hang,0.0)
+	ghost.position=p+Vector3(0,lift,0)
+	ghost.rotation_degrees.y=placement_angle
+	ghost_position=p
+	ghost_valid=can_place(placement_kind,p,placement_angle,placement_style,placement_size)
+	for n in ghost.find_children("*","MeshInstance3D",true,false):n.material_override.albedo_color=Color(.4,.85,.6,.48) if ghost_valid else Color(.9,.3,.25,.48)
 
 func daylight(minutes:float) -> void:
 	var brightness:float=clampf(sin((minutes-360)/1440.0*TAU)*.5+.5,.16,1)
@@ -1997,7 +2143,8 @@ func outdoor_water_anchor(item:Dictionary,landmarks:Dictionary={}) -> Dictionary
 	var lane_z:float=(-half_width*.7)+half_width*1.4*(float(lane)/float(maxi(1,LifeOutdoorActs.MAX_JOIN-1)))
 	var from:Vector3=basin.to_global(Vector3(-reach,.16*scale,lane_z))
 	var to:Vector3=basin.to_global(Vector3(reach,.16*scale,lane_z))
-	return {"position":from,"yaw":atan2(to.x-from.x,to.z-from.z),"kind":"swim","outdoor_kind":kind,"swim_from":from,"swim_to":to}
+	# A ring is sat in: its anchor is the hips, so the body tips about them.
+	return {"position":from,"yaw":atan2(to.x-from.x,to.z-from.z),"kind":"seat" if kind=="pool_ring" else "swim","outdoor_kind":kind,"swim_from":from,"swim_to":to,"swim_span":half_width,"swim_lane_offset":lane_z}
 
 func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -> Dictionary:
 	var node:Node3D=item.node
@@ -2012,6 +2159,16 @@ func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -
 	if action_id==LifeOutdoorActs.ACTION_ID:
 		var water:Dictionary=outdoor_water_anchor(item,landmarks)
 		if not water.is_empty():return water
+	if action_id==LifeWetness.DRY_SIT_ID:
+		# The garden's own seats: a chair at the table (four stand round it, and
+		# every place maps onto one of them) and the swing's cushion.
+		match str(item.kind):
+			"garden_table":
+				var chair:int=posmod(str(landmarks.get("seat_slot","seat_0")).trim_prefix("seat_").to_int(),4)
+				var around:float=float(chair)*PI*.5
+				return {"position":node.to_global(Vector3(sin(around)*.78,.47,cos(around)*.78)),"yaw":node.rotation.y+around+PI,"kind":"seat"}
+			"outdoor_swing":
+				return {"position":node.to_global(Vector3(0,.53,.02)+seat_slot_offset(item,str(landmarks.get("seat_slot","")))),"yaw":node.rotation.y,"kind":"seat"}
 	if str(item.kind)=="stove" and action_id=="cook" and str(landmarks.get("recipe",""))=="harvest_bake":
 		var at:Vector3=landmarks.get("cooking_position",oven_approach(item))
 		at.y=node.global_position.y

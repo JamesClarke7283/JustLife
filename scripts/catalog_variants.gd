@@ -144,6 +144,14 @@ static func seats(data: Dictionary, size: String) -> int:
 	return int(data.get("seat_count", 0))
 
 
+## How many towels one size of rack hangs. A capacity read here, like `seats`, so
+## the size and the capacity are one fact.
+static func holds(data: Dictionary, size: String) -> int:
+	var per_size: Dictionary = data.get("holds", {})
+	if per_size.has(size): return int(per_size[size])
+	return int(data.get("hold_count", 0))
+
+
 ## The colour a variant record actually paints. An unnamed colour falls back to
 ## the entry's authored colour, and a colour outside the offered palette is
 ## refused rather than silently painted.

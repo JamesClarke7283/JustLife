@@ -79,9 +79,9 @@ const MAKEUP_NONE: String = "none"
 ## Which makeup a male Lifelet is offered: the limited set, keyed by the same
 ## names the full set uses.
 const MEN_ALLOWED_MAKEUP: Array[String] = ["none", "lips", "eyes"]
-const OUTFIT_CATEGORIES: Array[String] = ["everyday", "formal", "athletic", "sleep", "party"]
+const OUTFIT_CATEGORIES: Array[String] = ["everyday", "formal", "athletic", "sleep", "party", "swim"]
 const OUTFIT_CATEGORY_LABELS: Dictionary = {
-	"everyday": "Everyday", "formal": "Formal", "athletic": "Athletic", "sleep": "Sleep", "party": "Party"
+	"everyday": "Everyday", "formal": "Formal", "athletic": "Athletic", "sleep": "Sleep", "party": "Party", "swim": "Swim"
 }
 const OUTFIT_CATEGORY_BLURBS: Dictionary = {
 	"everyday": "Easy clothes for the day at home.",
@@ -89,12 +89,14 @@ const OUTFIT_CATEGORY_BLURBS: Dictionary = {
 	"athletic": "Light layers ready to move.",
 	"sleep": "Soft clothes for rest.",
 	"party": "A little more occasion than the everyday set.",
+	"swim": "Swimwear for the pool and the hot tub. Worn automatically for a swim.",
 }
 const OUTFIT_CATEGORY_PRESETS: Dictionary = {
 	"formal": {"outfit": 1, "bottom": 0, "top_color": "394d57", "bottom_color": "2c2a2e", "shoe_color": "1f1c1a"},
 	"athletic": {"outfit": 3, "bottom": 1, "top_color": "397a75", "bottom_color": "3e4940", "shoe_color": "e6e4dc"},
 	"sleep": {"outfit": 4, "bottom": 1, "top_color": "d6ccbb", "bottom_color": "72534b", "shoe_color": "e9e2d6"},
 	"party": {"outfit": 2, "bottom": 0, "top_color": "96454d", "bottom_color": "303d42", "shoe_color": "32292a"},
+	"swim": {"outfit": 0, "bottom": 1, "top_color": "2f8fb3", "bottom_color": "24506b", "shoe_color": "e9e2d6"},
 }
 const CATEGORY_OUTFIT_NAMES: Dictionary = {
 	"everyday": ["Casual", "Jacket", "Cardigan", "Tee", "Hoodie"],
@@ -102,6 +104,7 @@ const CATEGORY_OUTFIT_NAMES: Dictionary = {
 	"athletic": ["Active Tank", "Speed Jersey", "Warm-up Tee", "Sport Crew", "Training Hoodie"],
 	"sleep": ["Comfort Robe", "Lounge Wrap", "Soft Kimono", "Sleep Tunic", "Night Gown"],
 	"party": ["Wrap Dress", "Peplum Cardigan", "Festive Sash", "Cocktail Wrap", "Celebration Knit"],
+	"swim": ["Classic Swimsuit", "Lap Swimsuit", "Striped Swimsuit", "Sun Swimsuit", "Splash Swimsuit"],
 }
 const CATEGORY_OUTFIT_TIPS: Dictionary = {
 	"everyday": [
@@ -139,6 +142,13 @@ const CATEGORY_OUTFIT_TIPS: Dictionary = {
 		"Chic cocktail evening wrap for dancing",
 		"Draped party knit with flowing silhouette"
 	],
+	"swim": [
+		"Classic scoop-neck swimsuit with a contrast waistband",
+		"Racer-back lap swimsuit made for lengths",
+		"Striped swimsuit with a bold side band",
+		"Sun swimsuit in a bright pool colour",
+		"Splash swimsuit ready for the slide"
+	],
 }
 const CATEGORY_BOTTOM_NAMES: Dictionary = {
 	"everyday": ["Trousers", "Shorts"],
@@ -146,6 +156,7 @@ const CATEGORY_BOTTOM_NAMES: Dictionary = {
 	"athletic": ["Track Pants", "Running Shorts"],
 	"sleep": ["Pyjama Bottoms", "Sleep Shorts"],
 	"party": ["Tailored Slacks", "Party Shorts"],
+	"swim": ["Swim Bottoms", "Swim Shorts"],
 }
 const CATEGORY_PALETTES: Dictionary = {
 	"everyday": {
@@ -172,6 +183,11 @@ const CATEGORY_PALETTES: Dictionary = {
 		"top": ["96454d", "6b46c1", "d69e2e", "319795", "b83280", "1a202c"],
 		"bottom": ["303d42", "1a202c", "44337a", "234e52", "2d3748", "e2e8f0"],
 		"shoes": ["32292a", "d69e2e", "6b46c1", "1a202c", "b83280", "4a5568"],
+	},
+	"swim": {
+		"top": ["2f8fb3", "e0607e", "f0b429", "38a169", "6b46c1", "f7fafc"],
+		"bottom": ["24506b", "2d3748", "9b2c5c", "c05621", "234e52", "e2e8f0"],
+		"shoes": ["e9e2d6", "e0607e", "2f8fb3", "f0b429", "1a202c", "f7fafc"],
 	},
 }
 const FIRST_NAMES: Array[String] = ["Mara", "Ellis", "Jules", "Noa", "Robin", "Avery", "Morgan", "Jamie", "Remy", "Sage", "Wren", "Alex", "Drew", "Riley", "Marin", "Sasha", "Indigo", "Quinn", "Rowan", "Kit", "Charlie", "River", "Micah", "Skyler", "Emery", "Finley", "Cameron", "Reese", "Blair", "Lane", "Devon", "Arden"]

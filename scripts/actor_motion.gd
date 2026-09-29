@@ -9,14 +9,23 @@ extends RefCounted
 
 const POOL_KINDS: Array[String] = ["pool", "pool_slide", "pool_ladder", "pool_light", "pool_ring", "pool_noodle"]
 const FLOAT_KINDS: Array[String] = ["pool_ring", "pool_noodle"]
+const DRY_ACTIONS: Array[String] = [LifeWetness.DRY_OFF_ID, LifeWetness.DRY_SIT_ID]
 const CARE_ACTIONS: Array[String] = ["pet_pet", "pet_tummy_rub", "pet_tug", "pet_feed", "pet_walk", "pet_teach_trick", "pet_train_social", "pet_train_logic"]
 const CAR_ACTIONS: Array[String] = ["car_open_door", "car_get_in", "car_buckle", "car_close_door", "car_seated"]
 const SWIM_SPEED: float = .55
 const SWIM_TURN: float = .9
 const STROKE_PERIOD: float = 1.6
+const PADDLE_SPEED: float = .48
+const PADDLE_PERIOD: float = 1.25
+## The height of the top of the floating noodle above the water's surface.
+const NOODLE_TOP: float = .12
+## The authored noodle lies along x with its origin at one end: its middle is this
+## far along the model's own -x, and its tube's axis is this high above the origin.
+const NOODLE_CENTRE: float = .60
+const NOODLE_AXIS_HEIGHT: float = .086
 
 static func handles(action_id: String) -> bool:
-	return action_id == LifeOutdoorActs.ACTION_ID or action_id in CARE_ACTIONS or action_id in CAR_ACTIONS
+	return action_id == LifeOutdoorActs.ACTION_ID or action_id in CARE_ACTIONS or action_id in CAR_ACTIONS or action_id in DRY_ACTIONS
 
 ## Shape `pose` for this activity. Returns what the caller folds into the body:
 ## `lean` (Vector3), `drop` (metres the hips sink), `seated` (sit blend) and
@@ -28,8 +37,11 @@ static func apply(actor, pose: Dictionary, action_id: String, t: float) -> Dicti
 		LifeOutdoorActs.ACTION_ID:
 			var kind: String = str(anchor.get("outdoor_kind", ""))
 			if kind == "hot_tub": return _soak(actor, pose, t)
-			if kind in FLOAT_KINDS and str(anchor.get("kind", "")) == "swim": return _float(actor, pose, t)
+			if kind == "pool_ring": return _ring(actor, pose, t)
+			if kind == "pool_noodle": return _paddle(actor, pose, t)
 			if kind in POOL_KINDS and str(anchor.get("kind", "")) == "swim": return _swim(actor, pose, t)
+		LifeWetness.DRY_OFF_ID: return _rub_down(actor, pose, t)
+		LifeWetness.DRY_SIT_ID: return _sit_in_towel(actor, pose, t)
 		"pet_pet": return _stroke_pet(actor, pose, ct, anchor)
 		"pet_tummy_rub": return _tummy_rub(actor, pose, ct, anchor)
 		"pet_tug": return _tug(actor, pose, ct, anchor)
@@ -235,24 +247,113 @@ static func _crawl_arm(pose: Dictionary, side: String, p: float) -> void:
 		pose["Arm_" + side] = Vector3(-2.85 * q, 0, out * 1.05 * sin(q * PI))
 		pose["Forearm_" + side] = Vector3(-1.25 * sin(q * PI), 0, 0)
 
-## Upright in the water with the ring or noodle, treading and drifting slowly.
-static func _float(actor, pose: Dictionary, t: float) -> Dictionary:
+## Sitting in the middle of the rubber ring, reclined against its far side while
+## it floats and drifts: the hips sit in the opening, the legs are stretched out
+## over the front of the ring, the hands trail in the water either side and now
+## and then give a lazy scull.
+static func _ring(actor, pose: Dictionary, t: float) -> Dictionary:
 	var anchor: Dictionary = actor._activity_anchor
 	var from: Variant = _world(anchor, "swim_from")
 	var to: Variant = _world(anchor, "swim_to")
 	if from == null or to == null: return {}
-	var drift: float = .5 - .5 * cos(actor._action_time * .12)
-	var at: Vector3 = Vector3(from).lerp(to, drift)
-	anchor["position"] = at - Vector3.UP * (actor._hip_height * actor._height * 1.08)
-	anchor["yaw"] = float(anchor.get("yaw", 0.0)) + .25 * sin(actor._action_time * .2)
-	var scull: float = sin(actor._action_time * 2.6)
-	pose["Arm_L"] = Vector3(-.35, .2 * scull, -.95); pose["Arm_R"] = Vector3(-.35, -.2 * scull, .95)
-	pose["Forearm_L"] = Vector3(-.25, 0, 0); pose["Forearm_R"] = Vector3(-.25, 0, 0)
-	var tread: float = sin(actor._action_time * 3.1)
-	pose["Leg_L"] = Vector3(-.45 * tread - .2, 0, .05); pose["Leg_R"] = Vector3(.45 * tread - .2, 0, -.05)
-	pose["Shin_L"] = Vector3(.6 + .3 * tread, 0, 0); pose["Shin_R"] = Vector3(.6 - .3 * tread, 0, 0)
-	pose["Head"] = Vector3(-.08, .25 * sin(actor._action_time * .4), 0)
-	return {"lean": Vector3(.04 * scull, 0, 0)}
+	var clock: float = actor._action_time
+	var drift: float = .5 - .5 * cos(clock * .10)
+	var centre: Vector3 = Vector3(from).lerp(to, drift)
+	var yaw: float = float(anchor.get("yaw", 0.0)) + .32 * sin(clock * .17)
+	var bob: float = .014 * sin(clock * 1.25)
+	# The anchor is the hips, which settle just under the surface inside the hole.
+	anchor["position"] = centre + Vector3(0, -.035 + bob, 0)
+	anchor["yaw"] = yaw
+	actor._seated_pose(pose)
+	var scull: float = sin(clock * 1.6)
+	pose["Leg_L"] = Vector3(-1.34, 0, .17)
+	pose["Leg_R"] = Vector3(-1.34, 0, -.17)
+	pose["Shin_L"] = Vector3(.34 + .07 * sin(clock * 1.9), 0, 0)
+	pose["Shin_R"] = Vector3(.34 + .07 * sin(clock * 1.9 + 1.1), 0, 0)
+	pose["Arm_L"] = Vector3(-.12 + .10 * scull, 0, -.92)
+	pose["Arm_R"] = Vector3(-.12 - .10 * scull, 0, .92)
+	pose["Forearm_L"] = Vector3(-.30, 0, 0)
+	pose["Forearm_R"] = Vector3(-.30, 0, 0)
+	pose["Head"] = Vector3(-.26 + .04 * sin(clock * .5), .12 * sin(clock * .23), 0)
+	# The ring floats level on the water with the seated body in its opening.
+	anchor["toy_transform"] = Transform3D(Basis(Vector3.UP, yaw), Vector3(centre.x, float(from.y) + .07 + bob, centre.z))
+	return {"lean": Vector3(-.60, 0, .04 * sin(clock * .7)), "seated": true}
+
+## Chest-down across the noodle with it under the midsection, kicking with the
+## legs and paddling forward with alternate hands, the head up, round and round
+## the pool at a wander.
+static func _paddle(actor, pose: Dictionary, t: float) -> Dictionary:
+	var anchor: Dictionary = actor._activity_anchor
+	var from: Variant = _world(anchor, "swim_from")
+	var to: Variant = _world(anchor, "swim_to")
+	if from == null or to == null: return {}
+	var clock: float = actor._action_time
+	var centre: Vector3 = (Vector3(from) + Vector3(to)) * .5
+	var axis: Vector3 = Vector3(to) - Vector3(from)
+	var half_length: float = maxf(.3, axis.length() * .5 - .25)
+	var along: Vector3 = axis.normalized() if axis.length() > .001 else Vector3.RIGHT
+	var across: Vector3 = Vector3(along.z, 0, -along.x)
+	var half_width: float = clampf(float(anchor.get("swim_span", .6)) * .55, .18, 1.6)
+	var lane: float = float(anchor.get("swim_lane_offset", 0.0))
+	var omega: float = PADDLE_SPEED / maxf(.35, (half_length + half_width) * .5)
+	var angle: float = clock * omega
+	var at: Vector3 = centre + along * half_length * cos(angle) + across * (half_width * sin(angle) + lane * .0)
+	var heading: Vector3 = -along * half_length * sin(angle) + across * half_width * cos(angle)
+	var yaw: float = atan2(heading.x, heading.z)
+	var forward := Vector3(sin(yaw), 0, cos(yaw))
+	var body: float = actor._authored_height * actor._height * actor._proportion
+	var water_y: float = float(from.y)
+	# The anchor is the feet, and the body is tipped a little head-up, so the feet
+	# sit lower than the belly. Set them so the belly, a body's-length along at the
+	# waist, rests on top of the noodle, whose top is a hand's width above the water.
+	var tilt: float = .16
+	var belly_along: float = body * .58
+	anchor["position"] = Vector3(at.x, water_y + NOODLE_TOP + .10 - sin(tilt) * belly_along, at.z) - forward * belly_along * cos(tilt)
+	anchor["yaw"] = yaw
+	var stroke: float = fmod(clock / PADDLE_PERIOD, 1.0)
+	_paddle_arm(pose, "L", stroke)
+	_paddle_arm(pose, "R", fmod(stroke + .5, 1.0))
+	var kick: float = sin(clock * 10.5)
+	pose["Leg_L"] = Vector3(.26 * kick, 0, .03)
+	pose["Leg_R"] = Vector3(-.26 * kick, 0, -.03)
+	pose["Shin_L"] = Vector3(.20 + .16 * sin(clock * 10.5 + 1.0), 0, 0)
+	pose["Shin_R"] = Vector3(.20 - .16 * sin(clock * 10.5 + 1.0), 0, 0)
+	pose["Head"] = Vector3(-.95 + .05 * sin(clock * 1.1), .10 * sin(clock * .6), 0)
+	# The noodle lies across the body's middle, at right angles to it.
+	var toy_basis := Basis(Vector3.UP, yaw)
+	anchor["toy_transform"] = Transform3D(toy_basis, Vector3(at.x, water_y + NOODLE_TOP - .08 - NOODLE_AXIS_HEIGHT, at.z) + toy_basis.x * NOODLE_CENTRE)
+	return {"lean": Vector3(PI * .5 - tilt, 0, .05 * sin(stroke * TAU))}
+
+## One paddling hand: reach forward and down into the water, pull back beside the body.
+static func _paddle_arm(pose: Dictionary, side: String, p: float) -> void:
+	var out: float = -1.0 if side == "L" else 1.0
+	var reach: float = 0.5 - 0.5 * cos(p * TAU)
+	pose["Arm_" + side] = Vector3(-2.55 + .95 * reach, 0, out * (.18 + .14 * reach))
+	pose["Forearm_" + side] = Vector3(-.15 - .55 * reach, 0, 0)
+
+## Standing wrapped in the towel and rubbing down: the hands go over the opposite
+## shoulder, then the upper arms, then the chest, while the head tips to the side.
+static func _rub_down(actor, pose: Dictionary, t: float) -> Dictionary:
+	var clock: float = actor._action_time
+	var rub: float = sin(clock * 6.5)
+	var phase: float = fmod(clock / 2.4, 3.0)
+	var shoulder: float = 1.0 if phase < 1.0 else 0.0
+	pose["Arm_R"] = Vector3(-.95 + .22 * rub * shoulder - .30 * (1.0 - shoulder), 0, -.10 + .30 * (1.0 - shoulder))
+	pose["Forearm_R"] = Vector3(-1.75 + .30 * rub, 0, 0)
+	pose["Arm_L"] = Vector3(-.85 - .20 * rub * (1.0 - shoulder) - .15 * shoulder, 0, .15)
+	pose["Forearm_L"] = Vector3(-1.55 - .25 * rub * (1.0 - shoulder), 0, 0)
+	pose["Head"] = Vector3(.10, .14 * sin(clock * 1.3), .10 * sin(clock * .9))
+	return {"lean": Vector3(.08 + .03 * rub, 0, 0)}
+
+## Settled in a seat in the towel, holding its edges closed at the chest.
+static func _sit_in_towel(actor, pose: Dictionary, t: float) -> Dictionary:
+	actor._seated_pose(pose)
+	pose["Arm_L"] = Vector3(-.62, 0, -.32)
+	pose["Arm_R"] = Vector3(-.62, 0, .32)
+	pose["Forearm_L"] = Vector3(-1.35, 0, 0)
+	pose["Forearm_R"] = Vector3(-1.35, 0, 0)
+	pose["Head"] = Vector3(.05 * sin(t * 1.1), .12 * sin(t * .4), 0)
+	return {"seated": true}
 
 ## Settled on the tub's bench, arms along the rim and head tipped back.
 static func _soak(actor, pose: Dictionary, t: float) -> Dictionary:

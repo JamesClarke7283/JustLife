@@ -9,10 +9,18 @@ const HAIR_NAMES: Array[String] = ["Hair_Crop", "Hair_Bob", "Hair_Curls", "Hair_
 const OUTFIT_NAMES: Array[String] = ["Outfit_Casual", "Outfit_Jacket", "Outfit_Cardigan", "Outfit_Tee", "Outfit_Hoodie"]
 const BOTTOM_NAMES: Array[String] = ["Trousers", "Shorts"]
 const LOOK_OUTFITS: Dictionary = {
-	"formal": "Outfit_Formal", "athletic": "Outfit_Athletic", "sleep": "Outfit_Sleep", "party": "Outfit_Party"
+	"formal": "Outfit_Formal", "athletic": "Outfit_Athletic", "sleep": "Outfit_Sleep", "party": "Outfit_Party", "swim": "Outfit_Swim"
 }
 const VERIFIED_AGE_ASSETS: Array[String] = ["baby","child","teen","elder"]
 const STAGED_AGE_ASSETS: Array[String] = ["baby","child","teen","elder"]
+## Hugging. An adult torso is about .19 m deep at the chest (.095 either side of
+## the centre); a child's is .13. Chests meet with a small squeeze margin, each
+## body steps in at most this far, and both drift a little to their own right so
+## the heads pass cheek to cheek.
+const EMBRACE_TORSO_DEPTH: float = .095
+const EMBRACE_SQUEEZE: float = .03
+const EMBRACE_MAX_STEP: float = .85
+const EMBRACE_LATERAL: float = .04
 ## The baby's hands-and-knees crawl. One numeric contract with
 ## tools/baby_v60/crawl_pose.py, which solves BABY_CRAWL_LIFT from the posed
 ## geometry and fails the generator run if the two drift apart.
@@ -51,6 +59,10 @@ var _voice_suspended: bool = false
 var _last_voice_action: String = ""
 var _pending_voice: String = ""
 var interaction_offset: Vector3 = Vector3.ZERO
+## A hug being shared, set every frame by the hug controller (LifeEmbrace) so the
+## pose can step in, meet the partner chest to chest and wrap the arms round
+## their back. Empty when nobody is embracing this Lifelet.
+var _embrace: Dictionary = {}
 var _model: Node3D
 var _joints: Dictionary = {}
 var _rest_rotations: Dictionary = {}
@@ -123,6 +135,23 @@ var _blink_elapsed: float = -1.0
 var _smile: float = 0.0
 var _activity_anchor: Dictionary = {}
 var meal_presentation: Dictionary = {}
+## The controller's account of a swim in progress: `stage` ("pickup", "carry",
+## "enter"), the `toy` being handled, `t` seconds into the stage and the world
+## points the pose reaches for. Visual only, like `meal_presentation`.
+var water_presentation: Dictionary = {}
+## Where the pool toy this Lifelet is holding, riding or lying on is, in the
+## world, and whether that is currently a real answer. The water flow sets the
+## toy's own node from these every frame.
+var toy_world_transform: Transform3D = Transform3D.IDENTITY
+var toy_world_valid: bool = false
+var _wetness_shown: float = 0.0
+var _drips: CPUParticles3D
+var _towel_wrap: MeshInstance3D
+var _towel_carry: Node3D
+var _towel_carry_mesh: MeshInstance3D
+var _towel_mode: String = ""
+var _swim_dressed: bool = false
+var _towel_color: Color = Color("e9e2d2")
 # Controller-owned recipe identity and normalized progress; visual state only.
 var cooking_presentation: Dictionary = {}
 var stair_presentation:Dictionary={}
@@ -607,7 +636,7 @@ func set_activity_anchor(world_position: Vector3,world_yaw: float,anchor_kind: S
 	# and phase for a pet-care or car beat.
 	for key: String in ["outdoor_kind","care_phase"]:
 		if details.get(key) is String: _activity_anchor[key] = details[key]
-	for key: String in ["care_time","care_progress"]:
+	for key: String in ["care_time","care_progress","swim_span","swim_lane_offset"]:
 		if (details.get(key) is float or details.get(key) is int) and is_finite(float(details[key])): _activity_anchor[key] = float(details[key])
 
 
@@ -811,6 +840,7 @@ func _look_family() -> String:
 	return _model_age if _model_age in ["child", "teen", "elder"] else "adult"
 
 func _free_look_layers() -> void:
+	if _swim_dressed:_undress_swimming()
 	if is_instance_valid(_look_root):
 		for index: int in range(_rig_bones.size() - 1, -1, -1):
 			if _look_root.is_ancestor_of(_rig_bones[index].skeleton):
@@ -860,9 +890,38 @@ func _apply_look_layers() -> void:
 				break
 	_apply_outfit_visibility(_model, group)
 	_apply_look_variation(_look_root, category, int(profile.get("outfit", 0)))
+	if category == "swim":_dress_for_swimming(_look_root)
 	_recolor(_look_root, {})
 	_ensure_living_opaque(_look_root)
 	_apply_spirit(_look_root)
+
+
+## The swimsuit is cut to fit the body under it. The base trousers or shorts, the
+## waistband, belt loops, button and pockets would all show through it, so they come
+## off and the bare legs are shown whichever bottom was chosen; shoes come off too.
+## The broad frame is the standard body stretched sideways, and every look is
+## authored at the standard width, so a fitted suit is stretched to match.
+func _dress_for_swimming(look: Node3D) -> void:
+	_swim_dressed = true
+	for node: Node in _model.find_children("Bottom_*", "Node3D", true, false):
+		(node as Node3D).visible = false
+	for node: Node in _model.find_children("Skin_Leg*", "Node3D", true, false):
+		(node as Node3D).visible = true
+	for node: Node in _model.find_children("Shoes_*", "Node3D", true, false):
+		(node as Node3D).visible = false
+	if int(profile.get("frame", 0)) == 1:
+		look.scale.x *= 1.12
+
+
+## Put back what the swimsuit covered, ahead of whatever is worn next.
+func _undress_swimming() -> void:
+	_swim_dressed = false
+	if _model == null:return
+	for node: Node in _model.find_children("Bottom_*", "Node3D", true, false):
+		(node as Node3D).visible = true
+	for node: Node in _model.find_children("Shoes_*", "Node3D", true, false):
+		(node as Node3D).visible = true
+	set_bottom(int(profile.get("bottom", 0)))
 
 
 func _apply_look_variation(root_node: Node, category: String, outfit_index: int) -> void:
@@ -898,6 +957,10 @@ func _apply_look_variation(root_node: Node, category: String, outfit_index: int)
 			var shawl = root_node.find_child("Outfit_Sleep_Shawl", true, false)
 			if shawl != null:
 				shawl.visible = outfit_index in [0, 1, 4]
+		"swim":
+			var stripe = root_node.find_child("Outfit_Swim_Stripe", true, false)
+			if stripe != null:
+				stripe.visible = outfit_index in [0, 2, 4]
 		"party":
 			var sash = root_node.find_child("Outfit_Party_Sash", true, false)
 			if sash != null:
@@ -1067,6 +1130,139 @@ func _create_props() -> void:
 	# sphere at its one-metre mesh radius — the "giant bubble" a player sees.
 	_bump.visible = false
 	_update_bump()
+	_create_water_props()
+
+
+## Drips off a wet body, a towel over the forearm and a towel wrapped round the
+## body. Built with the rest of the props so they follow every rebuild.
+func _create_water_props() -> void:
+	_drips = CPUParticles3D.new()
+	_drips.name = "WaterDrips"
+	_drips.emitting = false
+	_drips.amount = 44
+	_drips.lifetime = 1.0
+	_drips.local_coords = false
+	_drips.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	_drips.emission_box_extents = Vector3(.19, .50, .12) * _proportion
+	_drips.direction = Vector3.DOWN
+	_drips.spread = 10.0
+	_drips.initial_velocity_min = .0
+	_drips.initial_velocity_max = .28
+	_drips.gravity = Vector3(0, -5.6, 0)
+	_drips.scale_amount_min = .7
+	_drips.scale_amount_max = 1.25
+	var drop: SphereMesh = SphereMesh.new()
+	drop.radius = .017
+	drop.height = .052
+	drop.radial_segments = 6
+	drop.rings = 3
+	var drop_material: StandardMaterial3D = StandardMaterial3D.new()
+	drop_material.albedo_color = Color(.62, .82, 1.0, .85)
+	drop_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	drop_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	drop.material = drop_material
+	_drips.mesh = drop
+	_model.add_child(_drips)
+	_drips.position = Vector3(0, .96, 0) * _proportion
+	_towel_wrap = MeshInstance3D.new()
+	_towel_wrap.name = "TowelWrap"
+	_towel_wrap.mesh = _towel_wrap_mesh()
+	_towel_wrap.material_override = _material(Color("e9e2d2"))
+	_towel_wrap.material_override.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_model.add_child(_towel_wrap)
+	_towel_wrap.position = Vector3(0, _hip_height - .30 * _proportion, 0)
+	_towel_wrap.scale = Vector3.ONE * _proportion
+	_towel_wrap.visible = false
+	# A cream stripe across the towel, so it reads as a towel and not a tube.
+	var stripe: MeshInstance3D = MeshInstance3D.new()
+	stripe.name = "TowelStripe"
+	stripe.mesh = _towel_band_mesh(.30, .40)
+	stripe.material_override = _material(Color("f3eee2"))
+	stripe.material_override.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_towel_wrap.add_child(stripe)
+	_towel_carry = _hand_anchor("CarriedTowel", "R")
+	_towel_carry.scale = Vector3.ONE * _proportion
+	_towel_carry_mesh = _box(_towel_carry, Vector3(.30, .06, .20), Color("e9e2d2"))
+	_towel_carry_mesh.position = Vector3(0, -.03, .10)
+	_towel_carry.visible = false
+	_towel_mode = ""
+	set_wetness(_wetness_shown)
+
+
+## The rolled edge of a towel wrapped from the chest to the thigh: a slightly
+## flared open tube, with a folded band at the top.
+static func _towel_wrap_mesh() -> ArrayMesh:
+	var tool: SurfaceTool = SurfaceTool.new()
+	tool.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var segments: int = 28
+	var rings: Array = [[.0, 1.08, .94], [.20, .98, .88], [.46, .92, .82], [.63, 1.0, .92], [.70, 1.0, .92]]
+	for i: int in range(rings.size() - 1):
+		for j: int in range(segments):
+			var a0: float = TAU * float(j) / float(segments)
+			var a1: float = TAU * float(j + 1) / float(segments)
+			var pts: Array = []
+			for corner: Array in [[i, a0], [i, a1], [i + 1, a1], [i + 1, a0]]:
+				var ring: Array = rings[int(corner[0])]
+				var angle: float = float(corner[1])
+				pts.append(Vector3(cos(angle) * .205 * float(ring[1]), float(ring[0]), sin(angle) * .150 * float(ring[2])))
+			tool.set_normal(Vector3(cos(a0), 0, sin(a0)).normalized())
+			tool.add_vertex(pts[0])
+			tool.set_normal(Vector3(cos(a1), 0, sin(a1)).normalized())
+			tool.add_vertex(pts[1])
+			tool.add_vertex(pts[2])
+			tool.set_normal(Vector3(cos(a0), 0, sin(a0)).normalized())
+			tool.add_vertex(pts[0])
+			tool.set_normal(Vector3(cos(a1), 0, sin(a1)).normalized())
+			tool.add_vertex(pts[2])
+			tool.set_normal(Vector3(cos(a0), 0, sin(a0)).normalized())
+			tool.add_vertex(pts[3])
+	return tool.commit()
+
+
+## A narrow band round the wrap, a hair outside it, for the towel's stripe.
+static func _towel_band_mesh(from_y: float, to_y: float) -> ArrayMesh:
+	var tool: SurfaceTool = SurfaceTool.new()
+	tool.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var segments: int = 28
+	for j: int in range(segments):
+		var a0: float = TAU * float(j) / float(segments)
+		var a1: float = TAU * float(j + 1) / float(segments)
+		var corners: Array = []
+		for pair: Array in [[from_y, a0], [from_y, a1], [to_y, a1], [to_y, a0]]:
+			var y: float = float(pair[0])
+			var fit: float = .93 + .10 * absf(y - .46) / .30
+			corners.append(Vector3(cos(float(pair[1])) * .205 * fit * 1.012, y, sin(float(pair[1])) * .150 * fit * 1.012))
+		tool.set_normal(Vector3(cos(a0), 0, sin(a0)).normalized())
+		tool.add_vertex(corners[0])
+		tool.set_normal(Vector3(cos(a1), 0, sin(a1)).normalized())
+		tool.add_vertex(corners[1])
+		tool.add_vertex(corners[2])
+		tool.set_normal(Vector3(cos(a0), 0, sin(a0)).normalized())
+		tool.add_vertex(corners[0])
+		tool.set_normal(Vector3(cos(a1), 0, sin(a1)).normalized())
+		tool.add_vertex(corners[2])
+		tool.set_normal(Vector3(cos(a0), 0, sin(a0)).normalized())
+		tool.add_vertex(corners[3])
+	return tool.commit()
+
+
+## How wet the body looks: it drips while wet enough to shed water.
+func set_wetness(value: float) -> void:
+	_wetness_shown = clampf(value, 0.0, 1.0)
+	if is_instance_valid(_drips):
+		_drips.emitting = LifeWetness.drips(_wetness_shown) and visible
+
+
+## The towel this Lifelet has: "" none, "carried" folded over the forearm on the
+## way to a seat, "wrapped" round the body while drying.
+func set_towel(mode: String, color: Color = Color("e9e2d2")) -> void:
+	_towel_mode = mode
+	_towel_color = color
+	if not is_instance_valid(_towel_wrap):return
+	_towel_wrap.visible = mode == "wrapped"
+	_towel_carry.visible = mode == "carried"
+	(_towel_wrap.material_override as StandardMaterial3D).albedo_color = color
+	(_towel_carry_mesh.material_override as StandardMaterial3D).albedo_color = color
 
 
 ## The authored belly ellipsoid, in metres at full term. `_sphere` sets exactly
@@ -1757,15 +1953,39 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 				pose["Head"] = Vector3(-0.04 + 0.05 * react, 0.06 * sin(t * 0.7), 0)
 			"hug":
 				# Both arms come up and around the other Lifelet, holding close.
-				var cling: float = smoothstep(0.0, 0.55, _action_time)
-				var squeeze: float = 0.5 + 0.5 * sin(_action_time * 1.9)
-				var reach: float = (0.34 + 0.05 * squeeze) * cling
-				_reach_hand(pose,"L",Vector3(-0.11*_proportion,_hip_height+(.30+reach*.30)*_proportion,(.18+reach*.30)*_proportion),Vector3(-.85,-.35,-.20))
-				_reach_hand(pose,"R",Vector3( 0.11*_proportion,_hip_height+(.30+reach*.30)*_proportion,(.18+reach*.30)*_proportion),Vector3(.85,-.35,-.20))
-				pose["Forearm_L"] = Vector3(pose.Forearm_L) + Vector3(-0.35*cling,0,0)
-				pose["Forearm_R"] = Vector3(pose.Forearm_R) + Vector3(-0.35*cling,0,0)
-				pose["Head"] = Vector3(-0.05*cling,0.09*cling*sin(_action_time*1.1),0.10*cling)
-				lean.x = 0.05*cling
+				var embrace: Dictionary = _hug_pose(pose)
+				lean = embrace.lean
+				offset += embrace.offset
+			"wave_to_passer":
+				# The right hand goes up beside the head and waves at somebody
+				# walking past; the head follows them with a smile.
+				var raise: float = smoothstep(0.0, 0.45, _action_time)
+				var flutter: float = sin(_action_time * 9.0)
+				var hanging: Vector3 = Vector3(.22 * _proportion, _hip_height - .05 * _proportion, .03 * _proportion)
+				var waving: Vector3 = Vector3((.35 + .06 * flutter) * _proportion, _hip_height + .56 * _proportion, .10 * _proportion)
+				_reach_hand(pose,"R",hanging.lerp(waving,raise),Vector3(.7,-1.0,-.25))
+				pose["Arm_L"] = Vector3(-.10, 0, -.10)
+				pose["Forearm_L"] = Vector3(-.20, 0, 0)
+				pose["Head"] = Vector3(-.03, .10 * sin(t * .9), .04 * flutter * raise)
+			"pet_passing_pet":
+				# Crouch beside the dog and stroke its back with the right hand.
+				var stoop: float = smoothstep(0.0, 0.7, _action_time)
+				var stroke: float = sin(_action_time * 4.2) * .07
+				pose["Leg_L"] = Vector3(-1.05 * stoop, 0, 0)
+				pose["Leg_R"] = Vector3(-1.05 * stoop, 0, 0)
+				pose["Shin_L"] = Vector3(1.55 * stoop, 0, 0)
+				pose["Shin_R"] = Vector3(1.55 * stoop, 0, 0)
+				offset.y -= .36 * _proportion * stoop
+				offset.z -= .16 * _proportion * stoop
+				lean.x = .45 * stoop
+				# The dog's back is about .6 m ahead and half a metre high: solve the
+				# hand there in the crouched, leaning frame.
+				var stroking: Vector3 = Vector3(.05, .50, .62 + stroke) * _proportion
+				var frame: Basis = Basis.from_euler(Vector3(lean.x, 0, 0)).inverse()
+				_reach_hand(pose,"R",frame * (stroking - offset),Vector3(.8,-.6,-.1))
+				pose["Arm_L"] = Vector3(-.25 * stoop, 0, -.12)
+				pose["Forearm_L"] = Vector3(-.55 * stoop, 0, 0)
+				pose["Head"] = Vector3(.25 * stoop, .05 * sin(t * .8), 0)
 			"change_outfit", "wear_casual", "wear_jacket", "wear_cardigan", "wear_tee", "wear_hoodie", "wear_everyday", "wear_formal", "wear_athletic", "wear_sleep", "wear_party":
 				pose["Arm_L"] = Vector3(-1.1, 0, 0.12)
 				pose["Forearm_L"] = Vector3(-1.3, 0, 0)
@@ -1778,8 +1998,8 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 				pose["Forearm_L"] = Vector3(-0.55 + 0.05 * sin(t * 1.5), 0, 0)
 				pose["Forearm_R"] = Vector3(-0.55 + 0.05 * cos(t * 1.5), 0, 0)
 				pose["Head"] = Vector3(0.06, 0.05 * sin(t * 0.5), 0)
-			"friendly", "joke", "deep_talk", "flirt", "argue", "ask_partner", "commit", "break_up", "playful_prank", "bold_introduction", "host_a_chat":
-				var gesture_aliases: Dictionary = {"ask_partner":"deep_talk", "commit":"flirt", "break_up":"deep_talk", "playful_prank":"joke", "bold_introduction":"friendly", "host_a_chat":"deep_talk"}
+			"friendly", "joke", "deep_talk", "flirt", "argue", "ask_partner", "commit", "break_up", "playful_prank", "bold_introduction", "host_a_chat", "greet_passer", "passing_chat", "compliment_passer_dog", "greet_passing_pet":
+				var gesture_aliases: Dictionary = {"ask_partner":"deep_talk", "commit":"flirt", "break_up":"deep_talk", "playful_prank":"joke", "bold_introduction":"friendly", "host_a_chat":"deep_talk", "greet_passer":"friendly", "passing_chat":"friendly", "compliment_passer_dog":"friendly", "greet_passing_pet":"friendly"}
 				_conversation_pose(pose, str(gesture_aliases.get(action_id, action_id)), t)
 			_:
 				if ActorMotion.handles(action_id):
@@ -1792,6 +2012,12 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		# the actual held transform so smaller Lifelets reach the same ceramic.
 		_reach_hand(pose,"L",_meal_carry_hand("L"),Vector3(-.25,-1.0,-.35))
 		_reach_hand(pose,"R",_meal_carry_hand("R"),Vector3(.25,-1.0,-.35))
+	toy_world_valid = false
+	if not water_presentation.is_empty() and not anchored:
+		var water_shape: Dictionary = _water_pose(pose)
+		if water_shape.has("lean"): lean = water_shape.lean
+		offset.y -= float(water_shape.get("drop", 0.0))
+		offset += global_basis.inverse() * (water_shape.get("shift", Vector3.ZERO) as Vector3)
 	if anchored and _activity_anchor.has("attention_target") and action_id in ["homework","help_homework"]:
 		var attention_weight:float=_coaching_attention_weight() if action_id=="homework" else .85
 		var direction:Vector3=_model.to_local(_activity_anchor.attention_target)-_model.to_local(_joints.Head.global_position)
@@ -1868,10 +2094,15 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		var shoe:Node3D=rest.shoe
 		if not moving and ((action_id=="cook" and _has_oven()) or (anchored and action_id in ["plant_wee","mop_puddle"])):shoe.global_basis=Basis(Vector3.UP,float(_activity_anchor.yaw))*Basis(rest.shoe_basis)
 		else:shoe.basis=Basis.IDENTITY
-	var seated: bool = not moving and ((action_id in ["relax", "watch", "toilet", "work", "study", "job", "school", "homework", "play_games", "homework_wait", "eat_meal", "bath", "play_piano", "play_chess", "study_hard", "deep_read", "host_a_chat"] and anchor_kind != "standing") or (action_id in ["sleep", "nap"] and anchor_kind == "seat") or bool(shaped.get("seated", false)))
+	var seated: bool = not moving and ((action_id in ["relax", "watch", "toilet", "work", "study", "job", "school", "homework", "play_games", "homework_wait", "eat_meal", "bath", "play_piano", "play_chess", "study_hard", "deep_read", "host_a_chat", "dry_sit"] and anchor_kind != "standing") or (action_id in ["sleep", "nap"] and anchor_kind == "seat") or bool(shaped.get("seated", false)))
 	_sit_amount = lerpf(_sit_amount, 1.0 if seated else 0.0, blend)
 	for entry: Dictionary in _sit_shapes:
 		entry.mesh.set_blend_shape_value(int(entry.index), _sit_amount)
+	# A towel worn to the thigh would hang through the seat: sitting, it rides
+	# higher and shorter, covering the torso only.
+	if is_instance_valid(_towel_wrap):
+		_towel_wrap.position.y = _hip_height - lerpf(.30, .00, _sit_amount) * _proportion
+		_towel_wrap.scale.y = _proportion * lerpf(1.0, .74, _sit_amount)
 	if not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation and not _reconstructing_meal and not _reconstructing_rest:_update_expression(animation_delta,action_id,blend)
 	if not stair_presentation.is_empty():_apply_stair_pose()
 	_update_held_props(animation_delta,moving,action_id)
@@ -1888,6 +2119,77 @@ func _present_care_props(props: Dictionary) -> void:
 		_care_props = CareProps.new()
 		add_child(_care_props)
 	_care_props.present(props)
+
+
+## Fetching, carrying and wading in with a pool toy. Returns what the caller folds
+## into the body, and records where the toy is so the water flow can place it.
+func _water_pose(pose: Dictionary) -> Dictionary:
+	var stage: String = str(water_presentation.get("stage", ""))
+	var kind: String = str(water_presentation.get("toy", ""))
+	var clock: float = float(water_presentation.get("t", 0.0))
+	var ring: bool = kind == "pool_ring"
+	# The noodle's origin is at its end, not its middle: keep its middle in the hands.
+	var centre_offset: float = ActorMotion.NOODLE_CENTRE if kind == "pool_noodle" else 0.0
+	var hold_y: float = _hip_height + (.40 if ring else .22) * _proportion
+	var hold_z: float = (.34 if ring else .30) * _proportion
+	var side: float = (.23 if ring else .27) * _proportion
+	var hold_left := Vector3(-side, hold_y, hold_z)
+	var hold_right := Vector3(side, hold_y, hold_z)
+	var hold_centre := Vector3(0, hold_y, hold_z)
+	# The ring is carried hugged upright against the chest; the noodle level, in both hands.
+	var hold_basis: Basis = Basis(Vector3.RIGHT, PI * .5) if ring else Basis.IDENTITY
+	var held_basis: Basis = _model.global_basis.orthonormalized() * hold_basis
+	var held_origin: Vector3 = _model.to_global(hold_centre) + held_basis.x * centre_offset
+	var shaped: Dictionary = {}
+	match stage:
+		"pickup":
+			var u: float = clampf(clock / 1.4, 0.0, 1.0)
+			var dip: float = sin(minf(u / .55, 1.0) * PI * .5) if u < .55 else 1.0 - smoothstep(.55, 1.0, u)
+			var rest_origin: Vector3 = water_presentation.get("toy_position", global_position) as Vector3
+			var rest_basis: Basis = water_presentation.get("toy_basis", Basis.IDENTITY) as Basis
+			var toy_centre: Vector3 = rest_origin + rest_basis.x * centre_offset
+			var floor_point: Vector3 = _model.to_local(toy_centre)
+			var reach: float = (.30 if ring else .34) * _proportion
+			var lift: float = smoothstep(.5, 1.0, u)
+			_reach_hand(pose, "L", (floor_point + Vector3(-reach, .05, 0)).lerp(hold_left, lift), Vector3(-.5, -.6, -.3))
+			_reach_hand(pose, "R", (floor_point + Vector3(reach, .05, 0)).lerp(hold_right, lift), Vector3(.5, -.6, -.3))
+			pose["Leg_L"] = Vector3(-.60 * dip, 0, .04)
+			pose["Leg_R"] = Vector3(-.60 * dip, 0, -.04)
+			pose["Shin_L"] = Vector3(.95 * dip, 0, 0)
+			pose["Shin_R"] = Vector3(.95 * dip, 0, 0)
+			pose["Head"] = Vector3(.32 * dip, 0, 0)
+			# Reach out to it: the body leans toward the toy, but the feet stay outside it.
+			var to_toy: Vector3 = toy_centre - global_position
+			to_toy.y = 0.0
+			var lean_in: Vector3 = to_toy.normalized() * maxf(0.0, to_toy.length() - .85 * _proportion) * dip if to_toy.length() > .01 else Vector3.ZERO
+			shaped = {"lean": Vector3(.80 * dip, 0, 0), "drop": .20 * dip * _proportion, "shift": lean_in}
+			toy_world_transform = Transform3D(rest_basis.slerp(held_basis, lift), rest_origin.lerp(held_origin, lift))
+			toy_world_valid = true
+		"carry":
+			_reach_hand(pose, "L", hold_left, Vector3(-.5, -.6, -.3))
+			_reach_hand(pose, "R", hold_right, Vector3(.5, -.6, -.3))
+			pose["Head"] = Vector3(.08, 0, 0)
+			shaped = {"lean": Vector3(-.03, 0, 0)}
+			toy_world_transform = Transform3D(held_basis, held_origin)
+			toy_world_valid = true
+		"enter":
+			# Down off the edge and out over the water with the toy: the knees give,
+			# the toy is let go of onto the surface, and the body follows it in.
+			var u2: float = clampf(clock / 1.6, 0.0, 1.0)
+			var step: float = smoothstep(0.0, 1.0, u2)
+			var release: float = smoothstep(.35, .8, u2)
+			var target: Vector3 = water_presentation.get("toy_target", global_position) as Vector3
+			var basis_to: Basis = Basis(Vector3.UP, float(water_presentation.get("toy_yaw", 0.0)))
+			var goal_origin: Vector3 = target + basis_to.x * centre_offset
+			_reach_hand(pose, "L", hold_left.lerp(_model.to_local(target) + Vector3(-side, 0, 0), release), Vector3(-.5, -.6, -.3))
+			_reach_hand(pose, "R", hold_right.lerp(_model.to_local(target) + Vector3(side, 0, 0), release), Vector3(.5, -.6, -.3))
+			pose["Leg_L"] = Vector3(-.75 * sin(u2 * PI), 0, .04)
+			pose["Leg_R"] = Vector3(-.25 * sin(u2 * PI), 0, -.04)
+			pose["Shin_L"] = Vector3(.55 * sin(u2 * PI), 0, 0)
+			shaped = {"lean": Vector3(.18 * sin(u2 * PI), 0, 0), "drop": .10 * step * _proportion, "shift": (water_presentation.get("shift", Vector3.ZERO) as Vector3) * step}
+			toy_world_transform = Transform3D(held_basis.slerp(basis_to, release), held_origin.lerp(goal_origin, release))
+			toy_world_valid = true
+	return shaped
 
 
 func _baby_kneel_pose(pose: Dictionary, t: float) -> void:
@@ -2027,7 +2329,7 @@ func _update_expression(delta: float,action_id: String,blend: float) -> void:
 	for entry: Dictionary in _blink_shapes:
 		entry.mesh.set_blend_shape_value(int(entry.index),blink)
 	var target_smile: float = 0.10
-	if action_id in ["friendly","joke","flirt","ask_partner","commit","help_homework","playful_prank","bold_introduction","host_a_chat"]:
+	if action_id in ["friendly","joke","flirt","ask_partner","commit","help_homework","playful_prank","bold_introduction","host_a_chat","hug","wave_to_passer","greet_passer","passing_chat","compliment_passer_dog","greet_passing_pet","pet_passing_pet"]:
 		target_smile = 0.55 if action_id in ["joke","playful_prank"] else 0.34
 	elif action_id == "birthday":
 		target_smile = .12 if _action_time > 1.7 and _action_time < 3.2 else .55
@@ -2055,7 +2357,7 @@ func _update_voice(delta: float, speed_factor: float, moving: bool, action_id: S
 		if _speech_remaining > 0.0:
 			_play_voice(_pending_voice)
 		_pending_voice = ""
-	var categories: Dictionary = {"friendly": "greeting", "joke": "happy", "deep_talk": "thoughtful", "flirt": "happy", "argue": "argument", "ask_partner":"thoughtful", "commit":"happy", "break_up":"thoughtful","birthday":"happy","help_homework":"thoughtful","playful_prank":"happy","bold_introduction":"greeting","host_a_chat":"thoughtful"}
+	var categories: Dictionary = {"friendly": "greeting", "joke": "happy", "deep_talk": "thoughtful", "flirt": "happy", "argue": "argument", "ask_partner":"thoughtful", "commit":"happy", "break_up":"thoughtful","birthday":"happy","help_homework":"thoughtful","playful_prank":"happy","bold_introduction":"greeting","host_a_chat":"thoughtful","wave_to_passer":"greeting","greet_passer":"greeting","passing_chat":"thoughtful","compliment_passer_dog":"happy","greet_passing_pet":"happy"}
 	if moving or not categories.has(action_id):
 		_last_voice_action = ""
 		return
@@ -2111,6 +2413,149 @@ func _conversation_pose(pose: Dictionary, action_id: String, t: float) -> void:
 			pose["Arm_R"] = Vector3(-0.85 - gesture * 0.22, 0, 0.02)
 			pose["Forearm_R"] = Vector3(-0.25 - gesture * 0.60, 0, 0)
 			pose["Head"] = Vector3(0.10, sin(t * 3.0) * 0.17, 0)
+
+
+## Half the depth of the torso, front to back: how far the chest and back sit
+## from the body's centre. Two Lifelets embrace with their centres this far
+## apart plus a little squeeze.
+func embrace_depth() -> float:
+	return EMBRACE_TORSO_DEPTH * _proportion * visual.scale.z
+
+
+func embrace_shoulder_height() -> float:
+	if _arm_rest.has("L"):
+		return float(Vector3(_arm_rest.L.shoulder).y)
+	return _hip_height + .46 * _proportion
+
+
+## Tell this Lifelet a hug is being shared: where the partner stands (world),
+## whether the partner is stepping in too, how far through the hug it is (0..1)
+## and the partner's height and torso half-depth.
+func set_embrace(partner_position: Vector3, mutual: bool, progress: float, partner_height: float = 1.76, partner_depth: float = EMBRACE_TORSO_DEPTH, partner_body: Node3D = null) -> void:
+	_embrace = {"partner": partner_position, "mutual": mutual, "progress": clampf(progress, 0.0, 1.0), "height": partner_height, "depth": partner_depth, "body": partner_body}
+
+
+func clear_embrace() -> void:
+	_embrace = {}
+
+
+## True while the body is held to a piece of furniture or a use point by an
+## activity (seated, lying down, working at a counter).
+func is_anchored() -> bool:
+	return not _activity_anchor.is_empty()
+
+
+func is_embracing() -> bool:
+	return not _embrace.is_empty()
+
+
+## Where a hand actually is in the world: the palm at the end of the forearm.
+func palm_world(side: String) -> Vector3:
+	var forearm: Node3D = _joints.get("Forearm_" + side)
+	return forearm.to_global(_grip_offset(side)) if forearm != null else global_position
+
+
+## The full-contact hug. Arms open, the body steps in until the chests meet with
+## the partner (each stepping half the gap when both are hugging), then both arms
+## wrap round the partner's back, one over and one under, the heads pass cheek to
+## cheek and the body leans in and holds before letting go. Everything follows the
+## hug's progress, so it keeps pace with the action at any game speed. Returns the
+## `lean` and visual `offset` for the body.
+func _hug_pose(pose: Dictionary) -> Dictionary:
+	var result: Dictionary = {"lean": Vector3.ZERO, "offset": Vector3.ZERO}
+	if _embrace.is_empty():
+		# No partner information (an old caller): the distance-free reach.
+		var cling: float = smoothstep(0.0, 0.55, _action_time)
+		var squeeze: float = 0.5 + 0.5 * sin(_action_time * 1.9)
+		var reach: float = (0.34 + 0.05 * squeeze) * cling
+		_reach_hand(pose,"L",Vector3(-0.11*_proportion,_hip_height+(.30+reach*.30)*_proportion,(.18+reach*.30)*_proportion),Vector3(-.85,-.35,-.20))
+		_reach_hand(pose,"R",Vector3( 0.11*_proportion,_hip_height+(.30+reach*.30)*_proportion,(.18+reach*.30)*_proportion),Vector3(.85,-.35,-.20))
+		pose["Forearm_L"] = Vector3(pose.Forearm_L) + Vector3(-0.35*cling,0,0)
+		pose["Forearm_R"] = Vector3(pose.Forearm_R) + Vector3(-0.35*cling,0,0)
+		pose["Head"] = Vector3(-0.05*cling,0.09*cling*sin(_action_time*1.1),0.10*cling)
+		result.lean = Vector3(0.05*cling,0,0)
+		return result
+	var progress: float = float(_embrace.progress)
+	var open: float = smoothstep(0.0, 0.07, progress) * (1.0 - smoothstep(0.95, 1.0, progress))
+	var ramp_in: float = smoothstep(0.07, 0.19, progress)
+	var ramp_out: float = smoothstep(0.88, 0.98, progress)
+	var wrap: float = ramp_in * (1.0 - ramp_out)
+	var partner_local: Vector3 = to_local(Vector3(_embrace.partner))
+	var flat: Vector3 = Vector3(partner_local.x, 0.0, partner_local.z)
+	var separation: float = maxf(flat.length(), 0.001)
+	var toward: Vector3 = flat / separation
+	var side: Vector3 = Vector3(toward.z, 0.0, -toward.x)
+	var mutual: bool = bool(_embrace.mutual)
+	var partner_depth: float = float(_embrace.depth)
+	var mine: float = _proportion
+	var theirs: float = float(_embrace.height) / 1.76
+	var my_shoulder: float = embrace_shoulder_height()
+	var their_shoulder: float = float(_embrace.height) * .773
+	# Reaching a smaller partner is a crouch with the knees, then a small lean: the
+	# taller body bends to their level by the difference in shoulder heights.
+	var my_crouch: float = clampf((my_shoulder - their_shoulder) / (.45 * maxf(mine, .6)), 0.0, 1.0)
+	var their_crouch: float = clampf((their_shoulder - my_shoulder) / (.45 * maxf(theirs, .6)), 0.0, 1.0)
+	var my_lean: float = .02 + .12 * my_crouch
+	var their_lean: float = (.02 + .12 * their_crouch) if mutual else 0.0
+	# Chests meet at the height of the lower shoulder. Both bodies lean in from
+	# the feet, so at that height each chest has come forward by the lean's sine:
+	# the model origins must sit that much further apart.
+	var contact_height: float = maxf(.4, minf(my_shoulder, their_shoulder) - .05)
+	var contact: float = embrace_depth() + partner_depth + EMBRACE_SQUEEZE + contact_height * (sin(my_lean) + sin(their_lean))
+	var to_close: float = maxf(0.0, separation - contact)
+	var shift: float = minf(to_close * (0.5 if mutual else 1.0), EMBRACE_MAX_STEP) * wrap
+	var gap: float = separation - shift * (2.0 if mutual else 1.0)
+	var lateral: float = EMBRACE_LATERAL * wrap
+	# The partner's back, in this body's own frame, for a body that cannot tell us
+	# where it is drawn: just past their centre, with the sideways drift both
+	# bodies make so the heads can pass.
+	var squeeze_in: float = 0.5 + 0.5 * sin(_action_time * 1.9)
+	var back: Vector3 = toward * (gap + partner_depth - .02 - .012 * squeeze_in * wrap) - side * (lateral * (2.0 if mutual else 1.0))
+	# With the partner's body to hand the hands go to where their back really is
+	# right now, leans and drift included, so the arms land on it and follow it.
+	var body: Node3D = _embrace.get("body") as Node3D
+	var partner_visual: Node3D = body.get("visual") as Node3D if is_instance_valid(body) else null
+	var shoulder_in_partner: float = my_shoulder
+	if partner_visual != null:
+		shoulder_in_partner = partner_visual.to_local(_model.to_global(Vector3(0, my_shoulder, 0))).y
+	var blade: float = clampf(their_shoulder - .11 * theirs, shoulder_in_partner - .60 * mine, shoulder_in_partner + .10 * mine)
+	for arm: String in ["L", "R"]:
+		if not _arm_rest.has(arm):
+			continue
+		var way: float = -1.0 if arm == "L" else 1.0
+		var rest_hand: Vector3 = Vector3(way * .21 * mine, my_shoulder - .58 * mine, .02 * mine)
+		var open_hand: Vector3 = toward * (.32 * mine) + side * (way * .30 * mine) + Vector3(0, my_shoulder - .18 * mine, 0)
+		# One arm over the partner's shoulder blade, the other under: the left goes
+		# over on both bodies, so the two pairs of arms interlock instead of clashing.
+		var height: float = blade + (.06 if arm == "L" else -.05) * mine
+		var wrap_hand: Vector3 = back + side * (way * .10 * minf(mine, theirs))
+		wrap_hand.y = height
+		if partner_visual != null:
+			var on_back: Vector3 = Vector3(-way * .10 * minf(mine, theirs), height, -partner_depth + .012 - .008 * squeeze_in * wrap)
+			wrap_hand = _model.to_local(partner_visual.to_global(on_back))
+		var hand: Vector3 = rest_hand.lerp(open_hand, open).lerp(wrap_hand, wrap)
+		_reach_hand(pose, arm, hand, Vector3(way * .85, -.35 + (.45 if arm == "L" else 0.0), -.20))
+	var cheek: float = -.78 + .04 * sin(_action_time * 1.1)
+	pose["Head"] = Vector3(.02 * wrap, cheek * wrap, .20 * wrap)
+	result.lean = Vector3(my_lean * wrap, 0, 0)
+	result.offset = toward * shift + side * lateral + Vector3(0, -.30 * mine * my_crouch * wrap, -.13 * mine * my_crouch * wrap)
+	if my_crouch > .01:
+		# Knees bent, feet planted: the thighs come forward and the shins back.
+		var bend: float = my_crouch * wrap
+		pose["Leg_L"] = Vector3(-1.05 * bend, 0, 0)
+		pose["Leg_R"] = Vector3(-1.05 * bend, 0, 0)
+		pose["Shin_L"] = Vector3(1.55 * bend, 0, 0)
+		pose["Shin_R"] = Vector3(1.55 * bend, 0, 0)
+	# The step in and the step back are taken on the feet: a short shuffle while
+	# the gap is closing or opening, and only when there is ground to cover.
+	var stepping: float = (4.0 * ramp_in * (1.0 - ramp_in) + 4.0 * ramp_out * (1.0 - ramp_out)) * clampf(to_close / .15, 0.0, 1.0)
+	var swing: float = sin(_action_time * 10.0) * .40 * stepping
+	if stepping > .001:
+		pose["Leg_L"] = Vector3(pose.Leg_L) + Vector3(swing, 0, 0)
+		pose["Leg_R"] = Vector3(pose.Leg_R) + Vector3(-swing, 0, 0)
+		pose["Shin_L"] = Vector3(pose.Shin_L) + Vector3(maxf(0.0, -cos(_action_time * 10.0)) * .45 * stepping, 0, 0)
+		pose["Shin_R"] = Vector3(pose.Shin_R) + Vector3(maxf(0.0, cos(_action_time * 10.0)) * .45 * stepping, 0, 0)
+	return result
 
 
 func _angle_lerp(from: Vector3, to: Vector3, weight: float) -> Vector3:

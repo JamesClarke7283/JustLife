@@ -190,6 +190,15 @@ const ITEMS = {
 	"pool_ring": {"label":"Rubber ring", "category":"Pool", "price":5, "size":Vector2(.9,.9), "height":.15, "color":"c97c4e", "tint":true},
 	"pool_noodle": {"label":"Swimming pool noodle float", "category":"Pool", "price":5, "size":Vector2(1.5,.16), "height":.16, "color":"d9a0a0", "tint":true},
 	"pool_light": {"label":"Pool light", "category":"Pool", "price":20, "size":Vector2(.24,.24), "height":.10, "color":"e6d8c5", "tint":true},
+	# Towels. A loose beach towel is a floor covering a wet Lifelet can pick up,
+	# and a rack holds towels of its own: one, two or four by size. Both end at a
+	# Lifelet who is dry again, with the towel put back where it was fetched from.
+	"beach_towel": {"label":"Beach towel", "category":"Pool", "price":5, "size":Vector2(.8,.45), "height":.08, "color":"2f8fb3", "tint":true,
+		"styles":["a","b","c"], "style_labels":{"a":"Spread flat","b":"Folded","c":"Rolled"},
+		"description":"A soft beach towel in three styles and ten colours. A wet Lifelet picks it up, wraps it round themselves and dries off."},
+	"towel_rack": {"label":"Garden towel rack", "category":"Pool", "price":30, "size":Vector2(.6,.28), "height":.95, "color":"a8674f", "tint":true,
+		"sizes":["small","medium","large"], "size_prices":{"small":30,"medium":35,"large":40}, "holds":{"small":1,"medium":2,"large":4},
+		"description":"A weathered garden rack that hangs fresh towels by the pool: one on the small rack, two on the medium and four on the large."},
 
 	# ------------------------------------------------------------------ kids
 	"kids_swing": {"label":"Kids swing set", "category":"Kids", "price":100, "size":Vector2(2.6,1.6), "height":2.0, "color":"c9a05a", "tint":true,
@@ -341,8 +350,9 @@ const CATEGORIES: Array[String] = ["All", "Comfort", "Bedroom", "Baby & Kids", "
 # Instruments share one practice action; the authored model is the difference.
 const INSTRUMENTS: Array[String] = ["guitar", "violin"]
 
-# Floor coverings and wall decor: they never block routes, walls or other furnishings.
-const PASSABLE: Array[String] = ["rug", "child_rug", "bath_mat", "painting", "framed_picture", "wall_clock", "shelf", "yoga_mat", "room_light", "memorial", "curtains", "house_door", "house_window", "pet_toy_cat", "pet_toy_dog", "garden_gate", "garden_gate_double"]
+# Floor coverings and wall decor, the telephone and the alarm keypad included: they
+# hang above the furniture and never block routes, walls or other furnishings.
+const PASSABLE: Array[String] = ["rug", "child_rug", "bath_mat", "painting", "framed_picture", "children_picture", "wall_clock", "shelf", "home_phone", "burglar_alarm", "yoga_mat", "beach_towel", "room_light", "memorial", "curtains", "house_door", "house_window", "pet_toy_cat", "pet_toy_dog", "garden_gate", "garden_gate_double"]
 
 ## Fence runs and gates share one edge. Their footprints may touch; a gap is
 ## only the overlap of the panels themselves.
@@ -403,6 +413,32 @@ const BLOCKING_PANELS: Dictionary = {
 	]
 }
 
+## The solid bounds of a water furnishing per style, in its own local metres at
+## the authored (small) size, measured off the shipped models
+## (tools/create_outdoor_water.py). The catalogue `size` is only the planning
+## footprint: a pool's coping and basin reach 0.8 m past it at each end, so a
+## walker stopped only by that smaller box stepped into the water and over the
+## coping. A size choice scales these about the origin exactly as it scales the
+## model, and tests/test_navigation_blockers.gd pins them to the meshes.
+const SOLID_HULLS: Dictionary = {
+	"pool": {
+		"classic": {"x":0.0, "z":0.0, "w":5.60, "d":3.80},
+		"roman": {"x":0.0, "z":0.0, "w":5.62, "d":3.82},
+		"lagoon": {"x":0.04, "z":-0.16, "w":6.26, "d":5.18}
+	},
+	"hot_tub": {
+		"round": {"x":0.0, "z":-0.025, "w":1.82, "d":1.87},
+		"square": {"x":0.0, "z":0.0, "w":2.02, "d":2.02},
+		"oval": {"x":0.0, "z":-0.075, "w":2.20, "d":1.75}
+	},
+	"pool_slide": {
+		"curved": {"x":0.015, "z":0.085, "w":1.27, "d":2.65},
+		"straight": {"x":0.0, "z":0.135, "w":1.24, "d":2.55},
+		"spiral": {"x":0.0, "z":0.14, "w":1.24, "d":2.56}
+	},
+	"pool_noodle": {"": {"x":-0.58, "z":0.0, "w":1.40, "d":0.18}}
+}
+
 ## Local-space parking centres inside a garage. Four bays: left pair then right
 ## pair, facing the open doorway (+z). An empty garage returns four snaps; a
 ## kind without vehicle_snaps returns nothing.
@@ -424,12 +460,17 @@ static func vehicle_snap_locals(kind: String) -> Array[Vector3]:
 ## hot tub blocks the footprint it really occupies so walkers path around the
 ## water rather than across it. Only a kind the catalogue does not know returns
 ## nothing. Authored multi-band kinds keep their authored metres.
-static func local_panels(kind: String, size: String = "") -> Array:
+static func local_panels(kind: String, size: String = "", style: String = "") -> Array:
 	var panels: Array = BLOCKING_PANELS.get(kind, [])
 	if not panels.is_empty(): return panels
 	var data: Dictionary = ITEMS.get(kind, {})
 	if data.is_empty(): return []
-	var span: Vector2 = (data.size as Vector2) * LifeCatalogVariants.size_scale(size)
+	var scale: float = LifeCatalogVariants.size_scale(size)
+	var hulls: Dictionary = SOLID_HULLS.get(kind, {})
+	var hull: Dictionary = hulls.get(LifeCatalogVariants.style_or_default(style, data), {})
+	if not hull.is_empty():
+		return [{"x":float(hull.x) * scale, "z":float(hull.z) * scale, "w":float(hull.w) * scale, "d":float(hull.d) * scale}]
+	var span: Vector2 = (data.size as Vector2) * scale
 	return [{"x":0.0, "z":0.0, "w":span.x, "d":span.y}]
 
 ## Whether a kind is bought in a colour of the player's own choosing.

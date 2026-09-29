@@ -66,12 +66,18 @@ func run() -> void:
 	var water: Rect2 = panels[0]
 	var centre := Vector3(water.get_center().x, .16, water.get_center().y)
 	check(not app.world.lot_navigation.point_clear(0, centre), "The basin centre is solid to walkers")
-	# Stand clearly west and east of the full basin, then snap each to the nearest
-	# clear cell so the chord between them still crosses the water.
+	# Stand clearly on opposite sides of the full basin, then snap each to the
+	# nearest clear cell so the chord between them still crosses the water. The
+	# solid now covers the whole 11.2 m model, which nearly fills the garden's
+	# width, so the sides are taken along whichever axis the lot leaves room on.
 	var west: Vector3 = app.world.nearest_clear_point(Vector3(water.position.x - 2.0, .16, water.get_center().y), 0)
 	var east: Vector3 = app.world.nearest_clear_point(Vector3(water.end.x + 2.0, .16, water.get_center().y), 0)
+	var along_x: bool = west.is_finite() and east.is_finite() and west.x < water.position.x and east.x > water.end.x
+	if not along_x:
+		west = app.world.nearest_clear_point(Vector3(water.get_center().x, .16, water.position.y - 2.0), 0)
+		east = app.world.nearest_clear_point(Vector3(water.get_center().x, .16, water.end.y + 2.0), 0)
 	check(west.is_finite() and east.is_finite(), "Clear standing spots exist on both sides of the pool")
-	check(west.x < water.position.x and east.x > water.end.x, "Standing spots stay on opposite sides of the basin")
+	check((west.x < water.position.x and east.x > water.end.x) if along_x else (west.z < water.position.y and east.z > water.end.y), "Standing spots stay on opposite sides of the basin")
 	var path: PackedVector3Array = app.world.path_to(west, east)
 	check(not path.is_empty(), "A walker finds a route past the pool")
 	var travel: float = 0.0

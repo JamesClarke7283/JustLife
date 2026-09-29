@@ -12,6 +12,12 @@ const STANDOFF_TIME:float=2.0   # scaled seconds stuck on one step before somebo
 const STANDOFF_HOLD:float=2.5   # scaled seconds a yielder waits at its anchor for the other body to pass
 const STANDOFF_LIMIT:int=3      # retreats on one route before the walker squeezes past bodies
 const STANDOFF_ERROR:String="Somebody is in the way."
+const BLOCKED_ERROR:String="The way is blocked."   # a route no detour can save; the response also carries `blocked`, `origin` and `destination` so the caller can name what is in the way
+const MAX_STEP:float=.12   # metres one walking step may cover, so a long frame cannot carry a body through a thin solid
+const STRUCTURE_TURN:float=.4   # scaled seconds a walker turns away from a solid it was refused before it replans
+const STRUCTURE_ATTEMPTS:int=3   # replans around one solid before the walk is given up
+const SIDESTEPS:Array=[Vector2(1,0),Vector2(-1,0),Vector2(0,1),Vector2(0,-1)]   # east, west, south, north
+const SIDESTEP_DISTANCES:Array=[.5,.75,1.0,1.5]
 const WAIT_HOLD_TIME:float=4.0   # scaled seconds an owned turn retries a fresh landing plan
 const WAIT_ENTRY_ERROR:String="The staircase cannot be reached from here."
 const WAIT_EXIT_ERROR:String="There is no clear place to step off the stairs."
@@ -211,7 +217,7 @@ func _walk(id:String,route:Dictionary,time:float,consider_courtesy:bool=true)->D
 		var goal:Vector3=route.points[int(route.point)]
 		var difference:Vector3=goal-actor.position;var distance:float=difference.length()
 		if distance<.00001:route.point+=1;continue
-		var step:float=minf(distance,remaining*WALK_SPEED)
+		var step:float=minf(minf(distance,remaining*WALK_SPEED),MAX_STEP)
 		var next:Vector3=actor.position+difference/distance*step
 		if not courtesy.step_allowed(self,id,actor.position,next):return {"time":0.0,"moved":moved,"blocked":true}
 		var can_squeeze:bool=bool(route.get("squeeze",false)) and _step_clear_of_structure(id,actor.position,next) and not _use_point_occupied(id,next)
@@ -234,13 +240,7 @@ func _walk(id:String,route:Dictionary,time:float,consider_courtesy:bool=true)->D
 				# blocked candidate and no courtesy was ever selected (the
 				# landing checkpoint regressed 19/0 to 19/4).
 				if consider_courtesy:courtesy.note_block(self,id,time,moved)
-				route.structure_refusals=int(route.get("structure_refusals",0))+1
-				if int(route.structure_refusals)>=4:
-					route.structure_refusals=0
-					app.world.lot_navigation.penalize_segment(app.world.point_level(actor.position),actor.position,goal)
-					var detour:PackedVector3Array=_floor_route(actor.position,route.points[-1],id)
-					if not detour.is_empty():route.points=detour;route.point=0
-				return {"time":0.0,"moved":moved,"blocked":true}
+				return _refuse_structure(route,actor,id,goal,next,time,moved)
 			if courtesy.beneficiary(self,id):return {"time":0.0,"moved":moved,"blocked":true}
 			var observing:bool=consider_courtesy and _can_observe_replan(id,route)
 			if observing and _observe_replan(id,route,remaining,moved):return {"time":0.0,"moved":moved,"blocked":true}
@@ -251,10 +251,63 @@ func _walk(id:String,route:Dictionary,time:float,consider_courtesy:bool=true)->D
 			return {"time":0.0,"moved":moved,"blocked":true}
 		actor.rotation.y=lerp_angle(actor.rotation.y,atan2(difference.x,difference.z),minf(1,remaining*12))
 		actor.position=next;remaining-=step/WALK_SPEED;moved=true
+		route.structure_age=0.0
+		route.structure_run=float(route.get("structure_run",0.0))+step
+		# Walking on well past a refusal means the detour worked: the next
+		# solid gets a fresh set of attempts.
+		if float(route.structure_run)>1.0:route.structure_attempts=0;route.structure_run=0.0
 		if route.has("replan_observation"):
 			route.erase("replan_observation");courtesy.blocked.erase(id)
 		if step>=distance-.000001:actor.position=goal;route.point+=1
 	return {"time":remaining,"moved":moved,"blocked":false}
+
+func _refuse_structure(route:Dictionary,actor:LifeActor,id:String,goal:Vector3,next:Vector3,time:float,moved:bool)->Dictionary:
+	# The plan called this corridor clear and the step says otherwise: a solid the
+	# plan did not know. The walker neither slides along it nor freezes against
+	# it. It turns to face away (a smooth half-turn), learns the refused edge so
+	# later plans avoid it, and goes round by whichever of the four sides has room;
+	# `advance` gives the walk up, with a notice naming the item, only when no
+	# way round is left.
+	var level:int=app.world.point_level(actor.position)
+	var solid:bool=level>=0 and not app.world.lot_navigation.point_clear(level,next)
+	var age:float=float(route.get("structure_age",0.0))+time
+	route.structure_age=age
+	var away:Vector3=actor.position-goal
+	if solid and away.length()>.001 and age<STRUCTURE_TURN:
+		actor.rotation.y=lerp_angle(actor.rotation.y,atan2(away.x,away.z),minf(1.0,time*10.0))
+	if age>=STRUCTURE_TURN:
+		route.structure_age=0.0
+		route.structure_attempts=int(route.get("structure_attempts",0))+(1 if solid else 0)
+		app.world.lot_navigation.penalize_segment(level,actor.position,goal)
+		var detour:PackedVector3Array=_floor_route(actor.position,route.points[-1],id)
+		if detour.is_empty() and solid:detour=_sidestep_route(id,actor.position,route.points[-1])
+		if not detour.is_empty():route.points=detour;route.point=0
+		# Only a solid ends a walk: a refusal for a stair reservation is somebody
+		# else's turn and passes.
+		if solid and (detour.is_empty() or int(route.structure_attempts)>=STRUCTURE_ATTEMPTS):route.structure_stuck=true
+	return {"time":0.0,"moved":moved,"blocked":true}
+
+func _sidestep_route(id:String,from:Vector3,destination:Vector3)->PackedVector3Array:
+	# No planned way round from where the body stands: step to the nearest clear
+	# cell east, west, south or north, whichever leaves the shortest way on, and
+	# plan from there.
+	var level:int=app.world.point_level(from)
+	if level<0:return PackedVector3Array()
+	var best:PackedVector3Array=PackedVector3Array();var shortest:float=INF
+	for distance:float in SIDESTEP_DISTANCES:
+		for direction:Vector2 in SIDESTEPS:
+			var point:Vector3=from+Vector3(direction.x,0,direction.y)*distance
+			point.x=snappedf(point.x,.25);point.z=snappedf(point.z,.25)
+			if not _free(id,point) or not app.world.lot_navigation.segment_clear(level,from,point):continue
+			var onward:PackedVector3Array=_floor_route(point,destination,id)
+			if onward.is_empty():continue
+			var length:float=from.distance_to(point)
+			for index:int in range(1,onward.size()):length+=onward[index-1].distance_to(onward[index])
+			if length>=shortest:continue
+			shortest=length;best=PackedVector3Array([point])
+			for index:int in range(1,onward.size()):best.append(onward[index])
+		if not best.is_empty():return best
+	return best
 
 func _step_clear_of_structure(id:String,from:Vector3,to:Vector3)->bool:
 	# The step test without other bodies: walls, floors and stair reservations.
@@ -334,7 +387,12 @@ func advance(id:String,delta:float,speed:int)->Dictionary:
 			routes.erase(id);response.finished=true;break
 		if int(route.generation)!=app.world.lot_navigation.generation and not busy(id):
 			var rebuilt:Dictionary=request(id,route.destination)
-			if not bool(rebuilt.ok):response.error=str(rebuilt.error);break
+			if not bool(rebuilt.ok):
+				# The layout changed under a walk that can no longer be planned.
+				# Retire it with one reason, rather than repeating that reason on
+				# every frame for a route nobody is walking.
+				_give_up(id,route,actor,response,str(rebuilt.error))
+				break
 			route=routes[id];continue
 		var leg:Dictionary=route.legs[int(route.cursor)]
 		if not bool(route.prepared):
@@ -357,6 +415,13 @@ func advance(id:String,delta:float,speed:int)->Dictionary:
 			var attempted:float=remaining
 			var result:Dictionary=_walk(id,route,remaining)
 			remaining=result.time;response.moving=bool(response.moving) or bool(result.moved)
+			if bool(route.get("structure_stuck",false)):
+				# Every side round a solid was tried. On a floor walk that ends the
+				# route; a stair approach or exit keeps its lock and retries.
+				route.erase("structure_stuck")
+				if str(route.phase) in ["route","to_wait"]:
+					_give_up(id,route,actor,response,BLOCKED_ERROR)
+					break
 			# A step refused for the same body long enough is a standoff: somebody
 			# yields, so two Lifelets meeting in a doorway or at a shared use point
 			# never stand facing each other for the rest of the day.
@@ -430,6 +495,16 @@ func advance(id:String,delta:float,speed:int)->Dictionary:
 				actor.present_stair({},true);route.phase="clear";route.points=route.clear_points;route.point=0
 			else:break
 	return response
+
+func _give_up(id:String,route:Dictionary,actor:LifeActor,response:Dictionary,error:String)->void:
+	# Retire a floor route that cannot be walked. The response names the two ends
+	# so the caller can say which placed item is in the way; nothing here claims a
+	# stair, so nothing is left held.
+	response.error=error;response.origin=actor.position;response.destination=route.destination
+	response.blocked=actor.visible
+	_remove_waiter(id)
+	routes.erase(id)
+	courtesy.reconcile(self)
 
 func snapshot()->Dictionary:
 	var people:Dictionary={}

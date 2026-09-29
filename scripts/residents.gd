@@ -173,7 +173,10 @@ func publish_targets(force:bool=false) -> void:
  if not force and generation==_publish_generation and now-_publish_msec<100:return
  _publish_msec=now;_publish_generation=generation
  var targets:Array=app.world.simulation_targets()
- for member:Dictionary in app.household.members:member.sim.register_targets(targets.filter(func(t:Dictionary):return str(t.id)!=str(member.id) and home_visit.social_allowed(str(t.id),member.sim.get_current_action())))
+ for member:Dictionary in app.household.members:
+  # Somebody walking past is a target only for a Lifelet who can see them.
+  var seen:Array=app.passing_chat.targets_for(str(member.id)) if app.passing_chat!=null else []
+  member.sim.register_targets(targets.filter(func(t:Dictionary):return str(t.id)!=str(member.id) and home_visit.social_allowed(str(t.id),member.sim.get_current_action()))+seen)
 
 ## The arrival flavor for a host whose routine has them out: who, where,
 ## and until when. Empty when the host is home.
@@ -202,7 +205,7 @@ func _walk_sidewalk(id:String,state:Dictionary,time:float)->bool:
  if route.points.is_empty():
   if now<float(route.retry_at):return false
   route.points=app.traversal._floor_route(actor.position,goal,id);route.point=0;route.retry_at=now+3.0
- var budget:float=maxf(0,time)*1.1;var moving:bool=false
+ var budget:float=maxf(0,time)*LifePedestrianPace.metres_per_second("adult");var moving:bool=false
  for iteration:int in range(128):
   if int(route.point)>=route.points.size() or budget<=.0000001:break
   var target:Vector3=route.points[int(route.point)]
@@ -324,7 +327,7 @@ func tick(delta:float) -> void:
     if float(state.wait)<=0 and active_place=="home" and app.traversal._free(id,actor.position) and not LifeResidentCatalogue.routine_active(PEOPLE[id],LifeEducation.weekday(app.sim.day),app.sim.minutes):
      sidewalk_routes.erase(id);state.phase="walking";app.world.set_actor_away(id,false,false)
    elif str(state.phase)=="walking":
-    moving=_walk_sidewalk(id,state,delta*speed)
+    moving=_walk_sidewalk(id,state,delta*LifePedestrianPace.clock_scale(speed))
    elif str(state.phase)=="visiting":
     state.wait=maxf(0,float(state.wait)-delta*speed)
     if float(state.wait)<=0:
@@ -334,7 +337,7 @@ func tick(delta:float) -> void:
      var destination:Vector3=destinations[int(state.waypoint)%destinations.size()]
      var route:PackedVector3Array=app.world.path_to(actor.position,destination)
      if route.size()>1:
-      var next:Vector3=actor.position.move_toward(route[1],delta*speed*.75)
+      var next:Vector3=actor.position.move_toward(route[1],LifePedestrianPace.distance("indoor",delta,speed))
       # A visiting resident respects the same body gap as everyone else; a
       # waypoint another body occupies is abandoned for the next one.
       if app.traversal._step_clear(id,actor.position,next):
@@ -348,7 +351,9 @@ func tick(delta:float) -> void:
        else:_yield_to_walkers(id)
      if actor.position.distance_to(destination)<.35 or route.size()<2:state.waypoint=(int(state.waypoint)+1)%destinations.size();state.wait=8.0
     else:_yield_to_walkers(id)
-  actor.animate(delta,speed,moving,talk)
+  # A walking neighbour's gait clock follows the ground they cover: the
+  # sidewalk stroll and the slower indoor circuit each have their own pace.
+  actor.animate(delta,LifePedestrianPace.gait_factor("indoor" if str(state.phase)=="visiting" else "adult",speed) if moving else speed,moving,talk)
   state.position=[actor.position.x,actor.position.y,actor.position.z];state.rotation=actor.rotation.y
  publish_targets(true)
 

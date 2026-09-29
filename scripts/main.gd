@@ -145,6 +145,9 @@ var autosave_slot: String = ""
 var pet_shop: LifePetShopFlow
 var pet_actors: Dictionary = {}
 var pet_arrivals: Dictionary = {}
+## Pets that stepped on the last arrival tick, and how long an arrival may be held.
+var pet_arrival_moved: Dictionary = {}
+const PET_ARRIVAL_TIMEOUT:float=8.0
 ## Each pet's own errand: which need sent it, where it is going and how far it
 ## has got. The controller owns this, like the household's own routes.
 ## The pet the camera and HUD follow and direct floor clicks control, or ""
@@ -212,6 +215,9 @@ var sanitation_flow:LifeSanitationFlow
 var food_truck:LifeFoodTruck
 var school_bus:LifeSchoolBus
 var street_life:LifeStreetLife
+var street_bodies:LifeStreetBodies
+var passing_chat:LifePassingChat
+var embrace:LifeEmbrace
 var _bus_body:Node3D
 var _street_bodies:Dictionary={}
 ## The game day the controller last reconciled the van against, so the arrival
@@ -221,6 +227,7 @@ var _truck_seen_day:int=-1
 ## graph is rebuilt on a real arrival or departure and never on a quiet frame.
 var _truck_parked:bool=false
 var meal_flow:LifeMealFlow
+var water_flow:LifeWaterFlow
 var household_flow:LifeHouseholdFlow
 var idle_space:RefCounted
 var guest_status_card:Control
@@ -245,6 +252,7 @@ func setup_services() -> void:
 	world.name="World"
 	add_child(world)
 	meal_flow=LifeMealFlow.new();meal_flow.app=self;add_child(meal_flow)
+	water_flow=LifeWaterFlow.new();water_flow.app=self;add_child(water_flow)
 	household_flow=LifeHouseholdFlow.new(self);add_child(household_flow)
 	sanitation_flow=LifeSanitationFlow.new();sanitation_flow.app=self;add_child(sanitation_flow)
 	# The weekly food truck owns its own schedule, wallet charge and delivery
@@ -253,6 +261,9 @@ func setup_services() -> void:
 	school_bus=LifeSchoolBus.new()
 	LifeSchoolBus.active=school_bus
 	street_life=LifeStreetLife.new()
+	street_bodies=LifeStreetBodies.new(self)
+	passing_chat=LifePassingChat.new(self)
+	embrace=LifeEmbrace.new(self)
 	idle_space=preload("res://scripts/idle_space.gd").new();idle_space.app=self
 	adoption_flow=LifeAdoptionFlow.new(self)
 	pet_shop=LifePetShopFlow.new(self)
@@ -1873,7 +1884,8 @@ func _tick_food_truck() -> void:
 
 
 ## Weekday mornings the school bus drives in from off the lot and waits at the
-## curb. Children and pets keep walking the lane in front of the house.
+## curb. Neighbours of every age and their dogs keep walking the sidewalk in front
+## of the house; a Lifelet who can see them may wave, say hello or chat.
 func _tick_curb_life(delta:float) -> void:
 	if current_venue!="home" or not is_instance_valid(household) or school_bus==null or street_life==null:
 		return
@@ -1885,7 +1897,8 @@ func _tick_curb_life(delta:float) -> void:
 			pupils+=1
 	school_bus.consider(LifeEducation.weekday(int(household.day)),float(household.minutes),pupils)
 	school_bus.tick(game_minutes)
-	street_life.tick(game_minutes)
+	street_life.tick(delta,float(household.speed),float(household.minutes),street_bodies.obstacles())
+	passing_chat.tick(delta)
 	_sync_bus_body()
 	_sync_street_bodies(delta)
 
@@ -1914,36 +1927,7 @@ func _sync_bus_body() -> void:
 
 
 func _sync_street_bodies(delta:float) -> void:
-	if not is_instance_valid(world) or not is_instance_valid(world.house):return
-	for passer:Dictionary in street_life.passers:
-		var id:String=str(passer.id)
-		var body:Node3D=_street_bodies.get(id)
-		if not is_instance_valid(body):
-			if str(passer.kind)=="pet":
-				var pet:=LifePetActor.new()
-				pet.name=id
-				world.house.add_child(pet)
-				pet.configure(id,"dog",{},"Lane dog","female")
-				body=pet
-			else:
-				var child:=LifeActor.new()
-				child.name=id
-				world.house.add_child(child)
-				child.configure({"name":"Lane child","age_stage":"child","low_detail":true})
-				child.voice_enabled=false
-				body=child
-			_street_bodies[id]=body
-		body.visible=true
-		body.position=street_life.position_of(passer)
-		# The lane runs east–west. Facing 0 looks across the street, so a walker
-		# whose heading is not their velocity slides sideways. +X is dir 1.
-		var heading:float=atan2(float(passer.dir),0.0)
-		body.rotation.y=lerp_angle(body.rotation.y,heading,minf(delta*8.0,1.0))
-		var walking:bool=household.speed>0
-		if body is LifeActor:
-			(body as LifeActor).animate(delta,float(household.speed),walking,"")
-		elif body is LifePetActor:
-			(body as LifePetActor).animate(delta,walking,float(household.speed) if walking else 0.0)
+	street_bodies.sync(delta)
 
 
 ## Open the weekly food truck's shop. A click on the van arrives here, so there
@@ -2072,6 +2056,7 @@ func _pet_spot_blocked(at:Vector3) -> bool:
 
 ## Walk an arriving pet in, then let it idle. Returning true means the pet moved.
 func _advance_pet_arrivals(delta:float) -> bool:
+	pet_arrival_moved.clear()
 	if pet_arrivals.is_empty():return false
 	var speed:float=float(sim.speed)
 	if speed<=0.0:return false
@@ -2096,7 +2081,7 @@ func _advance_pet_arrivals(delta:float) -> bool:
 			if distance<0.001:
 				record.index=int(record.index)+1
 				continue
-			var step:float=minf(distance,budget)
+			var step:float=minf(minf(distance,budget),LifeTraversal.MAX_STEP)
 			var next:Vector3=actor.position.move_toward(point,step)
 			if _pet_step_blocked(actor,next):
 				refused=true
@@ -2106,8 +2091,17 @@ func _advance_pet_arrivals(delta:float) -> bool:
 			actor.position=next
 			budget-=step
 			moved=true
+			pet_arrival_moved[id]=true
+			record.blocked=0.0
 			if distance<=step+0.000001:record.index=int(record.index)+1
 		if refused:
+			# A pet held at a doorway for good would also hold its whole autonomy,
+			# which waits on the arrival: after eight scaled seconds it is set
+			# down at its own spot (or the nearest clear floor) instead.
+			record.blocked=float(record.get("blocked",0.0))+delta*speed
+			if float(record.blocked)>=PET_ARRIVAL_TIMEOUT:
+				_settle_pet_arrival(id,actor)
+				continue
 			# A blocked arrival learns the corridor and takes the detour, so a pet
 			# never stands in the doorway pushing at a body it cannot pass.
 			world.lot_navigation.penalize_segment(world.point_level(actor.position),actor.position,walk[mini(int(record.index),walk.size()-1)])
@@ -2120,6 +2114,16 @@ func _advance_pet_arrivals(delta:float) -> bool:
 			pet_arrivals.erase(id)
 			actor.position=destination
 	return moved
+
+## End an arrival that cannot finish. The pet stays where it stands, or is set
+## on the nearest clear floor when it stands inside something, and its own
+## errands take over from there.
+func _settle_pet_arrival(id:String,actor:LifePetActor) -> void:
+	var level:int=world.point_level(actor.position)
+	if level<0 or not world.lot_navigation.point_clear(level,actor.position):
+		var at:Vector3=world.nearest_clear_point(actor.position,maxi(level,0))
+		if at.is_finite():actor.position=at
+	pet_arrivals.erase(id)
 
 func _pet_step_blocked(actor:LifePetActor,next:Vector3) -> bool:
 	# The step test mirrors a Lifelet's own: the destination tile and the whole
@@ -2185,11 +2189,11 @@ func _pet_record(id:String) -> Dictionary:
 func _tick_pets(delta:float) -> void:
 	if pet_actors.is_empty():return
 	var running:bool=mode=="live" and sim.speed>0
-	var moving:bool=_advance_pet_arrivals(delta) if running else false
+	if running:_advance_pet_arrivals(delta)
 	# A pet looks after itself: its needs drain on the same clock the household
 	# runs on, and it walks to the bowl or to its own bed when one runs low.
 	if running:
-		moving=_tick_pet_autonomy(delta,float(sim.speed)) or moving
+		_tick_pet_autonomy(delta,float(sim.speed))
 	if running:_finish_pending_pet_care()
 	# A pet being fed, stroked, walked or played with stays with that Lifelet.
 	var walked:Dictionary=care_motion().present_pets(delta if running else 0.0)
@@ -2198,7 +2202,8 @@ func _tick_pets(delta:float) -> void:
 		if not is_instance_valid(actor):
 			pet_actors.erase(id)
 			continue
-		var busy:bool=moving and (pet_arrivals.has(id) or _pet_errand(id).get("walking",false))
+		# Only a pet that really stepped trots; one held by a wall or a body stands.
+		var busy:bool=running and (pet_arrival_moved.has(id) or pet_behavior().moved_ids.has(id))
 		actor.animate(delta,busy or walked.has(id),float(sim.speed) if running else 0.0)
 	refresh_pet_layers()
 	_refresh_pet_targets()
@@ -4451,6 +4456,9 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 		# the partner panel rather than queueing a lone action.
 		var dance_reason:String=sim.get_action_availability(LifeDancePlan.ACTION_ID,str(item.id)).reason
 		actions.insert(mini(1,actions.size()),{"id":"dance_together","label":"Dance together…","cost":0,"duration":35,"available":dance_reason.is_empty(),"unavailable_reason":dance_reason,"description":"Put on one record and dance with up to five household Lifelets at once."})
+	if str(item.kind)=="neighbor" and household.member_sim(str(item.id))!=null:
+		var toy_entry:Dictionary=_pool_toy_action(str(item.id))
+		if not toy_entry.is_empty():actions.insert(mini(1,actions.size()),toy_entry)
 	if LifeOutdoorActs.can_ask_to_join(str(item.kind)) and not _find_item(str(item.id)).is_empty():
 		# Ask to Join only when another household Lifelet is on the lot.
 		var partners:Array=household.outdoor_join_partners(str(item.id),bound_member_id)
@@ -4516,6 +4524,7 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 			elif str(a.id)=="supported_homework":show_homework_helpers(item)
 			elif str(a.id)==LifeDancePlan.ACTION_ID:show_dance_partners(item)
 			elif str(a.id)==LifeOutdoorActs.JOIN_ACTION:show_outdoor_join_partners(item)
+			elif str(a.id)==LifeOutdoorActs.POOL_TOY_ACTION:show_pool_toys(str(item.id))
 			elif str(a.id)==LifeOutdoorActs.CALL_FRIEND_ACTION:show_call_friend_over()
 			elif str(a.id)==LifeOutdoorActs.STAY_OVER_ACTION:
 				residents.home_visit.ask_to_stay_over();close_overlay()
@@ -5513,6 +5522,7 @@ func home_value() -> int:
 func _refresh_member_targets(replan:bool=true) -> void:
 	if not is_instance_valid(sim) or not is_instance_valid(world.house):return
 	sim.meal_service=meal_flow
+	sim.water_service=water_flow
 	sim.sanitation_service=sanitation_flow
 	sim.household_service=household_flow
 	sim.social_witness=Callable(self,"_members_can_see_each_other")
@@ -5520,6 +5530,8 @@ func _refresh_member_targets(replan:bool=true) -> void:
 		if str(sim.get_away_state().get("phase",""))=="returning":away_phases.erase(bound_member_id)
 		return
 	var targets:Array=world.simulation_targets()
+	# Somebody walking past is a target only for a Lifelet who can see them.
+	targets.append_array(passing_chat.targets_for(bound_member_id))
 	var by_id:Dictionary={}
 	for target:Dictionary in targets:by_id[str(target.id)]=target
 	sim.register_targets(targets.filter(func(target:Dictionary):return str(target.id)!=bound_member_id))
@@ -5538,7 +5550,8 @@ func _refresh_member_targets(replan:bool=true) -> void:
 			continue
 		# Queued socials resolve when they start. A current social retains its
 		# admitted endpoint until the shared reconciliation below can replan it.
-		if str(action.id) in LifeSim.SOCIAL_ACTIONS:continue
+		# A passing moment keeps the spot beside the passer it was given.
+		if str(action.id) in LifeSim.SOCIAL_ACTIONS or passing_chat.owns(action):continue
 		var destination:Vector3=world.lot_exit_position(_member_index(bound_member_id)) if str(action.id) in ["school_day","career_day","morning_run"] else by_id[target_id].position
 		if str(action.id)=="cook" and str(action.get("recipe",""))=="harvest_bake":
 			var oven:Dictionary=_find_item(target_id)
@@ -5609,6 +5622,7 @@ func _clear_motion(keep_route:bool=false) -> void:
 	path_index=0
 	walk_only=false
 	pending_action={}
+	_path_refusal=0.0;_path_replans=0
 
 func cancel_current_action(index:int=0) -> void:
 	if index==0 and sim.is_away():
@@ -5630,6 +5644,10 @@ func _cancel_all_cooperative_actions() -> void:
 	for member:Dictionary in household.members:household.cancel_cooperative_action(str(member.id))
 
 func queue_interaction(item:Dictionary,id:String) -> void:
+	if str(item.get("kind",""))=="passer":passing_chat.queue(item,id);return
+	if id=="hug" and str(item.get("kind",""))=="neighbor":
+		var refusal:String=embrace.refusal(str(item.id))
+		if not refusal.is_empty():show_notice(refusal);return
 	if LifeResidents.PEOPLE.has(str(item.id)) and not residents.home_visit.social_allowed(str(item.id)):
 		show_notice("Your guest is walking or heading home. Wait until they are ready to talk.");return
 	if id=="friendly" and residents.home_visit.owns(str(item.id)) and str(residents.home_visit.state.phase)=="waiting":
@@ -5720,6 +5738,7 @@ func _bind_member(id:String) -> void:
 	sim=member
 	sim.autonomy_activity_available=_activity_available_for_member.bind(id)
 	sim.meal_service=meal_flow
+	sim.water_service=water_flow
 	sim.sanitation_service=sanitation_flow
 	sim.household_service=household_flow
 	sim.social_witness=Callable(self,"_members_can_see_each_other")
@@ -5903,6 +5922,7 @@ func _on_pregnancy_began(mother_id: String) -> void:
 func _member_action_finished(id:String,action:Dictionary) -> void:
 	if loading_game:return
 	residents.home_visit.action_finished(id,action)
+	water_flow.finished(id,action)
 	var prior:String=bound_member_id
 	_store_motion()
 	_bind_member(id)
@@ -5916,7 +5936,7 @@ func _member_action_finished(id:String,action:Dictionary) -> void:
 func _start_clearing_walk(action:Dictionary) -> void:
 	if walk_only or waiting_for_target or resume_activity or not sim.action_queue.is_empty():return
 	if not is_instance_valid(player) or sim.is_away():return
-	if str(action.get("id","")) in LifeSim.SOCIAL_ACTIONS or str(action.get("id","")) in ["arrive_home","school_day","career_day","morning_run"]:return
+	if str(action.get("id","")) in LifeSim.SOCIAL_ACTIONS or passing_chat.owns(action) or str(action.get("id","")) in ["arrive_home","school_day","career_day","morning_run"]:return
 	if not action.has("target_position"):return
 	var use:Vector3=action.target_position
 	if not use.is_finite() or player.position.distance_to(use)>.1:return
@@ -5959,7 +5979,7 @@ func on_ground_clicked(p:Vector3) -> void:
 		traversal.cancel(bound_member_id);walk_only=true;return
 	_set_route(p)
 	walk_only=not path.is_empty()
-	if path.is_empty():show_notice("That spot is out of reach.")
+	if path.is_empty():notify_blocked(player.position,p,"That spot is out of reach.")
 
 func on_action_started(action:Dictionary) -> void:
 	if loading_game or reconciling_targets or not is_instance_valid(player) or sim.is_away():return
@@ -5967,6 +5987,7 @@ func on_action_started(action:Dictionary) -> void:
 	if traversal.busy(bound_member_id):
 		traversal.cancel(bound_member_id);pending_action=action;return
 	if work_commute.owns(action):work_commute.prepare(action);return
+	if passing_chat.owns(action):passing_chat.prepare(action);return
 	if str(action.id)=="arrive_home":adoption_flow.start_arrival(action);return
 	var social_admitted:bool=traversal.active(bound_member_id) or not path.is_empty() or str(action.phase)=="active"
 	var arrived_waiter:bool=traversal.active(bound_member_id) and str(traversal.routes[bound_member_id].phase)=="waiting" and is_same(action,pending_action)
@@ -6002,6 +6023,7 @@ func on_action_started(action:Dictionary) -> void:
 		action.target_position=destination
 	else:_resolve_activity_target(action,keep_committed_endpoint)
 	meal_flow.resolve(sim,action)
+	water_flow.resolve(sim,action)
 	if not is_same(sim.get_current_action(),action):return
 	pending_action=action
 	if not pending_move.is_empty() and str(action.target_id)==str(pending_move.entry.id):return
@@ -6017,7 +6039,7 @@ func on_action_started(action:Dictionary) -> void:
 		if _activity_available(action):
 			wait_destination=action.target_position
 			if not _set_route(wait_destination):
-				_clear_motion();show_notice("The way is blocked. Try moving a furnishing.")
+				_clear_motion();notify_blocked(player.position,wait_destination,"The way is blocked. Try moving a furnishing.",[str(action.get("target_id",""))])
 				_cancel_blocked_action.call_deferred(route_generation,action,bound_member_id,load_epoch)
 		elif reserved.is_finite() and world.point_level(reserved)==world.point_level(action.target_position) and _wait_position_clear(reserved,reserved==player.position):
 			wait_destination=reserved
@@ -6026,7 +6048,7 @@ func on_action_started(action:Dictionary) -> void:
 		refresh_hud();return
 	_set_route(action.target_position)
 	if path.is_empty():
-		show_notice("The way is blocked. Try moving a furnishing.")
+		notify_blocked(player.position,action.target_position,"The way is blocked. Try moving a furnishing.",[str(action.get("target_id",""))])
 		_cancel_blocked_action.call_deferred(route_generation,action,bound_member_id,load_epoch)
 	refresh_hud()
 
@@ -6059,7 +6081,7 @@ func _cancel_blocked_action(generation:int,action:Dictionary,member_id:String=""
 
 func on_action_finished(action:Dictionary) -> void:
 	if is_instance_valid(player):
-		player.speech({"arrive_home":"This feels like a new beginning.","school_day":"Learned something new today.","career_day":"Home after a busy day.","cook":"Ready to serve.","serve_meal":"Come and get it!","eat_meal":"That was lovely.","store_meal":"Something for later.","clean_plate":"All clean.","read":"One more chapter…","paint":"Made something lovely.","friendly":"Good to talk with you!","joke":"Ha!","deep_talk":"I understand.","hug":"That hug was just right.","share_interests":"We have so much in common!","water":"Looking greener.","work":"All done!","homework":"Ready for tomorrow.","help_homework":"We worked it out.","talk_to_myself":"Yes — I can do this.","take_pet_toy":"Ready to play.","put_pet_toy":"Tucked away.","play_with_pet_toy":"That was fun!"}.get(action.id,"That feels better."))
+		player.speech({"arrive_home":"This feels like a new beginning.","school_day":"Learned something new today.","career_day":"Home after a busy day.","cook":"Ready to serve.","serve_meal":"Come and get it!","eat_meal":"That was lovely.","store_meal":"Something for later.","clean_plate":"All clean.","read":"One more chapter…","paint":"Made something lovely.","friendly":"Good to talk with you!","joke":"Ha!","deep_talk":"I understand.","hug":"That hug was just right.","wave_to_passer":"Nice to see a friendly face.","greet_passer":"Lovely to meet you.","passing_chat":"That was a nice chat.","compliment_passer_dog":"Such a sweet dog.","greet_passing_pet":"Good dog!","pet_passing_pet":"What a good dog.","share_interests":"We have so much in common!","water":"Looking greener.","work":"All done!","homework":"Ready for tomorrow.","help_homework":"We worked it out.","talk_to_myself":"Yes — I can do this.","take_pet_toy":"Ready to play.","put_pet_toy":"Tucked away.","play_with_pet_toy":"That was fun!"}.get(action.id,"That feels better."))
 	var action_id:String=str(action.get("id",""))
 	if action_id=="take_pet_toy":
 		_lifelet_take_pet_toy(str(action.get("target_id","")))
@@ -6191,7 +6213,8 @@ func _queue_kind(kind: String, action_id: String) -> void:
 
 func show_person() -> void:
 	close_overlay();overlay_open=true;dismiss_layer()
-	card(Vector2(492,167),Vector2(456,560),P.WHITE,24,overlay)
+	var toys_offered:bool=not water_flow.toy_options(bound_member_id).is_empty()
+	card(Vector2(492,167),Vector2(456,600 if toys_offered else 560),P.WHITE,24,overlay)
 	small_caps("Your Lifelet",Vector2(525,191),Vector2(390,24),overlay)
 	# A degree earns a professional name: a PHD is addressed as Dr, whatever the
 	# job. The honorific sits in front of the Lifelet's own name, so it is read
@@ -6226,8 +6249,67 @@ func show_person() -> void:
 		button("Celebrate a birthday",Vector2(525,609),Vector2(184 if has_school_history else 386,29),show_birthday,false,overlay)
 	if has_school_history:
 		button("School history",Vector2(726,609),Vector2(186,29),show_school_history,false,overlay)
-	button("Family tree",Vector2(524,649),Vector2(179,48),show_family_tree,false,overlay)
-	button("Back to life",Vector2(717,649),Vector2(196,48),close_overlay,true,overlay)
+	# A household with pool toys lets this Lifelet be sent to one from here.
+	var toy_entry:Dictionary=_pool_toy_action(bound_member_id)
+	var toy_shift:float=0.0
+	if not toy_entry.is_empty():
+		toy_shift=40.0
+		var toy_button:Button=button("Use pool toy…",Vector2(525,649),Vector2(388,34),func():show_pool_toys(bound_member_id),false,overlay)
+		toy_button.name="UsePoolToy"
+		toy_button.disabled=not bool(toy_entry.available)
+		toy_button.tooltip_text=str(toy_entry.get("unavailable_reason","")) if not bool(toy_entry.available) else str(toy_entry.description)
+	button("Family tree",Vector2(524,649+toy_shift),Vector2(179,48),show_family_tree,false,overlay)
+	button("Back to life",Vector2(717,649+toy_shift),Vector2(196,48),close_overlay,true,overlay)
+
+## The "Use pool toy…" entry for one Lifelet's card or menu, or nothing while the
+## household has no pool toy at all. It is present but disabled, with the reason,
+## when the toys exist and this Lifelet cannot use one just now.
+func _pool_toy_action(member_id:String) -> Dictionary:
+	var options:Array=water_flow.toy_options(member_id)
+	if options.is_empty():return {}
+	var reason:String=""
+	var any:bool=false
+	for option:Dictionary in options:
+		if bool(option.available):any=true;break
+		if reason.is_empty():reason=str(option.reason)
+	return {"id":LifeOutdoorActs.POOL_TOY_ACTION,"label":"Use pool toy…","cost":0,"duration":40,"available":any,"unavailable_reason":reason,"description":"Choose a rubber ring or a pool noodle. They fetch it, carry it to the pool and take it into the water."}
+
+## Choose which pool toy a Lifelet takes into the water. The Lifelet walks to the
+## toy, picks it up, carries it to the pool's edge and gets in with it.
+func show_pool_toys(member_id:String) -> void:
+	_begin_pause_overlay()
+	var member:LifeSim=household.member_sim(member_id)
+	if member==null:close_overlay();return
+	var options:Array=water_flow.toy_options(member_id)
+	var list_height:float=clampf(options.size()*76.0-10.0,66.0,320.0)
+	var panel_height:float=250.0+list_height
+	var top:float=(900.0-panel_height)*.5
+	var shade=ColorRect.new();shade.color=Color(.08,.17,.15,.28);rect(shade,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
+	card(Vector2(338,top),Vector2(764,panel_height),P.WHITE,24,overlay)
+	small_caps("A float in the pool",Vector2(373,top+22),Vector2(670,23),overlay)
+	text_label("Use pool toy",Vector2(370,top+56),Vector2(686,57),36,P.INK,true,overlay)
+	paragraph("%s changes into swimwear, walks to the toy, picks it up, carries it to the water's edge and gets in." % str(member.character.name).split(" ")[0],Vector2(374,top+126),Vector2(686,60),16,P.MUTED,overlay)
+	var scroll=ScrollContainer.new();scroll.name="PoolToys";rect(scroll,Vector2(371,top+190),Vector2(692,list_height),overlay)
+	var column=VBoxContainer.new();column.add_theme_constant_override("separation",10);scroll.add_child(column)
+	for option:Dictionary in options:
+		var row=Control.new();row.custom_minimum_size=Vector2(670,66);column.add_child(row)
+		card(Vector2.ZERO,Vector2(670,66),Color("f3f4ed"),12,row)
+		if str(option.color).length()==6:
+			var swatch=ColorRect.new();swatch.color=Color(str(option.color));rect(swatch,Vector2(14,15),Vector2(36,36),row)
+		text_label(str(option.label),Vector2(64,8),Vector2(380,27),20,P.INK,true,row)
+		paragraph(str(option.reason) if not bool(option.available) else ("Rides in the ring" if str(option.kind)=="pool_ring" else "Paddles across the pool"),Vector2(64,36),Vector2(390,26),12,P.MUTED,row)
+		var use:Button=button("Use",Vector2(464,12),Vector2(189,43),_queue_pool_toy.bind(member_id,str(option.id)),true,row)
+		use.name="UsePoolToy_"+str(option.id)
+		use.disabled=not bool(option.available)
+		use.tooltip_text=str(option.reason)
+	button("Back to life",Vector2(820,top+list_height+205),Vector2(246,34),close_overlay,false,overlay)
+
+func _queue_pool_toy(member_id:String,toy_id:String) -> void:
+	var result:Dictionary=water_flow.queue_toy(member_id,toy_id)
+	if not bool(result.ok):show_notice(str(result.error));return
+	close_overlay();refresh_hud()
+	var member:LifeSim=household.member_sim(member_id)
+	show_notice("%s is going for a float." % str(member.character.name).split(" ")[0])
 
 ## The career picker. Every job the game offers is listed with what it asks for,
 ## what it pays now and what its top rung pays, so a Lifelet can see the whole
@@ -7047,6 +7129,7 @@ func _adopt_loaded_world(prepared:Dictionary,slot_id:String,title:String="") -> 
 	meal_flow=candidate.meal_flow;meal_flow.app=self;meal_flow.reparent(self,false)
 	sanitation_flow=candidate.sanitation_flow;sanitation_flow.app=self;sanitation_flow.reparent(self,false)
 	household_flow=candidate.household_flow;household_flow.app=self;household_flow.reparent(self,false)
+	water_flow.reset()
 	motion_states=candidate.motion_states
 	current_venue=candidate.current_venue;home_layout=candidate.home_layout;venue_layouts=candidate.venue_layouts
 	_connect_live_nodes()
@@ -7098,6 +7181,7 @@ func _restore_journeys() -> Dictionary:
 			motion.wait_destination=LifeJourneyState.vector(saved_motion.destination) if not saved_motion.is_empty() else world.actors[id].position
 		motion.resume_active=bool(saved.get("resource_action_active",false)) and str(current.get("phase",""))=="approach"
 		member.sim.meal_service=meal_flow
+		member.sim.water_service=water_flow
 		member.sim.sanitation_service=sanitation_flow
 		member.sim.household_service=household_flow
 		if str(current.get("phase","")) in ["approach","active"] and str(current.get("id","")) in ["plant_wee","mop_puddle"]:
@@ -7359,6 +7443,7 @@ func _process(delta:float) -> void:
 			if not str(action.get("cooperation_id","")).is_empty() and action_id.is_empty():
 				var shared:Dictionary=household.cooperative_presentation(bound_member_id)
 				if bool(shared.get("ready",false)) and str(shared.get("role",""))=="learner":action_id="homework_wait"
+			water_flow.advance(bound_member_id,delta)
 			meal_flow.present_actor(bound_member_id)
 			_update_activity_facing(delta,action,action_id)
 			# A wardrobe preview is the player's own working look. The ordinary
@@ -7372,6 +7457,7 @@ func _process(delta:float) -> void:
 				var bump:float=-1.0
 				if household.pregnancy_mother_id()==str(member.id):bump=household.pregnancy_progress()
 				player.pregnancy_bump=bump if bump>=0.0 else 0.0
+			if embrace.posed(bound_member_id):action_id="hug"
 			player.animate(delta,float(sim.speed),moving,action_id)
 			_store_motion()
 		meal_flow.sync_world(household.speed>0)
@@ -7379,6 +7465,7 @@ func _process(delta:float) -> void:
 		_update_selection_marker(delta)
 		if away_targets_changed:_refresh_sim_targets(false)
 		residents.tick(delta)
+		embrace.tick(delta)
 		_tick_resident_contacts()
 		traversal.courtesy.consider(traversal)
 		if is_instance_valid(safety):safety.tick(delta)
@@ -7405,6 +7492,8 @@ func _process(delta:float) -> void:
 
 func _advance_movement(delta:float) -> bool:
 	if not is_instance_valid(player) or sim.speed<=0:return false
+	# A housemate being hugged stays where they are for the embrace.
+	if embrace.holds(bound_member_id):return false
 	if traversal.safety(bound_member_id):
 		var moved:bool=_advance_path(delta)
 		if not traversal.active(bound_member_id):
@@ -7606,6 +7695,11 @@ func _advance_path(delta:float) -> bool:
 	if traversal.active(bound_member_id):
 		var result:Dictionary=traversal.advance(bound_member_id,delta,sim.speed)
 		if bool(result.finished):path_index=path.size()
+		if bool(result.get("blocked",false)):
+			# No way round is left: name the item that is in the way, once, and
+			# drop the walk whatever asked for it.
+			_abandon_walk(world.blocked_notice(result.origin,result.destination,"The way is blocked. Try moving a furnishing."))
+			return false
 		if not str(result.error).is_empty():
 			show_notice(str(result.error))
 			# A walk that stays blocked by bodies is abandoned for autonomous
@@ -7628,6 +7722,7 @@ func _advance_path(delta:float) -> bool:
 		return bool(result.moving) or bool(result.finished)
 	var was_moving:bool=path_index<path.size()
 	var distance_left:float=maxf(0.0,delta)*1.6*float(sim.speed)
+	var refused:bool=false;var away:Vector3=Vector3.ZERO;var hit:Vector3=Vector3.ZERO
 	while path_index<path.size() and distance_left>0.00001:
 		var goal:Vector3=path[path_index]
 		var direction:Vector3=goal-player.position
@@ -7635,11 +7730,80 @@ func _advance_path(delta:float) -> bool:
 		if distance<.001:
 			path_index+=1;continue
 		player.rotation.y=lerp_angle(player.rotation.y,atan2(direction.x,direction.z),minf(delta*12,1))
-		if distance<=distance_left:
-			player.position=goal;distance_left-=distance;path_index+=1
-		else:
-			player.position+=direction/distance*distance_left;distance_left=0.0
+		# Short steps, each checked: a plain path has no traversal behind it, so
+		# this loop is the only thing that keeps a walker out of a solid.
+		var step:float=minf(minf(distance,distance_left),LifeTraversal.MAX_STEP)
+		var next:Vector3=player.position+direction/distance*step
+		if not _plain_step_clear(player.position,next):
+			refused=true;away=-direction;hit=next;break
+		player.position=next;distance_left-=step
+		if step>=distance-.000001:
+			player.position=goal;path_index+=1
+	if refused:
+		# Turn away from the solid and plan again from here; a walk that is
+		# refused three plans running is dropped with the item named.
+		_path_refusal+=delta
+		player.rotation.y=lerp_angle(player.rotation.y,atan2(away.x,away.z),minf(delta*10,1))
+		if _path_refusal>=.4 and path.size()>0:
+			_path_refusal=0.0;_path_replans+=1
+			var final:Vector3=path[path.size()-1]
+			if _path_replans>=3 or not _set_route(final):
+				# The item on the way to the goal, else the one the refused step hit.
+				var generic:String="The way is blocked. Try moving a furnishing."
+				var message:String=world.blocked_notice(player.position,final,generic)
+				if message==generic:message=world.step_notice(player.position,hit,generic)
+				_abandon_walk(message)
+				return false
+	else:_path_refusal=0.0
 	return was_moving
+
+## Whether a step along a plain path stays out of every solid. A body that
+## already stands inside one may step out of it, and nothing else may step in.
+func _plain_step_clear(from:Vector3,to:Vector3) -> bool:
+	if not world.construction.building_state.is_empty():
+		var level:int=world.point_level(to)
+		return level>=0 and (world.lot_navigation.point_clear(level,to) or not world.lot_navigation.point_clear(level,from))
+	var cell:=Vector2i(roundi(to.x*4),roundi(to.z*4))
+	if not world.navigation.region.has_point(cell):return false
+	return not world.navigation.is_point_solid(cell) or world.navigation.is_point_solid(Vector2i(roundi(from.x*4),roundi(from.z*4)))
+
+## Drop a walk that cannot go on and say why. An autonomous action is cancelled
+## and its Lifelet chooses again shortly, a plain stroll is forgotten, and a
+## player's own instruction is cancelled with the reason on screen.
+func _abandon_walk(message:String) -> void:
+	path.clear();path_index=0
+	var current:Dictionary=sim.get_current_action()
+	# An arrival home keeps its action and retries from where it stands; the
+	# adoption flow says why it waits.
+	if str(current.get("id",""))=="arrive_home":return
+	show_blocked_notice(message)
+	if not current.is_empty():
+		if bool(current.get("autonomous",false)):sim.retry_autonomy_soon()
+		_cancel_blocked_action.call_deferred(route_generation,current,bound_member_id,load_epoch)
+	elif walk_only:
+		walk_only=false;_clear_motion()
+	else:_clear_motion()
+
+var _path_refusal:float=0.0
+var _path_replans:int=0
+var _blocked_notice_text:String=""
+var _blocked_notice_at:int=-100000
+
+## The same refusal repeats every frame a walker stays blocked, so a blocked-route
+## notice is said once and then again only after its card has gone.
+func show_blocked_notice(message:String) -> void:
+	var now:int=Time.get_ticks_msec()
+	if message==_blocked_notice_text and now-_blocked_notice_at<4000:return
+	_blocked_notice_text=message;_blocked_notice_at=now
+	show_notice(message)
+
+## Say which placed item stops a walk between two spots, or `fallback` when no
+## item is responsible, and return what was said. `ignore` lists item ids that
+## are the goal itself.
+func notify_blocked(from:Vector3,to:Vector3,fallback:String,ignore:Array=[]) -> String:
+	var message:String=world.blocked_notice(from,to,fallback,ignore)
+	show_blocked_notice(message)
+	return message
 
 func _route_to_wait_position(action:Dictionary) -> void:
 	var origin:Vector3=action.target_position
@@ -9144,7 +9308,7 @@ func _sync_away_presence() -> bool:
 			var destination:Vector3=_return_destination(_member_index(bound_member_id))
 			if destination.is_finite():
 				_set_route(destination)
-				if path.is_empty():show_notice("The return path is blocked. Clear the front garden to let this Lifelet come home.")
+				if path.is_empty():notify_blocked(player.position,destination,"The return path is blocked. Clear the front garden to let this Lifelet come home.")
 			else:
 				# Every nearby return spot is occupied; try again shortly rather
 				# than leaving the Lifelet stranded at the curb forever.

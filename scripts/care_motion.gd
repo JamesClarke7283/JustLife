@@ -122,9 +122,15 @@ func present_pets(delta: float) -> Dictionary:
 					goal = person + dir * float(REACH.pet_walk); facing = Vector3(-dir.z, 0, dir.x)
 		goal.y = pet.global_position.y
 		if action_id == "pet_walk" and moving.has(str(session.pet)):
-			pet.global_position = goal
+			# The loop was planned on clear floor; a furnishing set down since
+			# holds the dog where it is rather than putting it inside the piece.
+			if _clear(goal): pet.global_position = goal
 		elif goal.distance_to(pet.global_position) > .02 and (_clear(goal) or action_id == "pet_feed"):
-			pet.global_position = pet.global_position.move_toward(goal, delta * PET_STEP * maxf(1.0, float(app.household.speed)))
+			# Each step is checked too: a pet led toward a clear spot across a
+			# solid piece holds where it is, and one already inside a solid may
+			# step out of it.
+			var step: Vector3 = pet.global_position.move_toward(goal, delta * PET_STEP * maxf(1.0, float(app.household.speed)))
+			if _clear(step) or not _clear(pet.global_position) or action_id == "pet_feed": pet.global_position = step
 		if facing.length() > .01:
 			pet.rotation.y = lerp_angle(pet.rotation.y, atan2(facing.x, facing.z), minf(1.0, delta * 6.0))
 		pet.set_interaction(action_id, float(session.time), body.global_position)

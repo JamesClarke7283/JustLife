@@ -291,17 +291,20 @@ func confirm_adoption() -> void:
 	else:app.show_notice(str(result.error))
 	confirming=false
 
-func _blocked_arrival() -> void:
+func _blocked_arrival(target:Vector3=Vector3.INF) -> void:
 	var id:String=app.bound_member_id
 	if not bool(blocked.get(id,false)):
 		blocked[id]=true
-		app.show_notice("The arrival route is blocked. Clear the front garden, or cancel the walk to choose another activity.")
+		var message:String="The arrival route is blocked. Clear the front garden, or cancel the walk to choose another activity."
+		# Name the item in the way when there is one.
+		if target.is_finite():app.notify_blocked(app.player.position,target,message)
+		else:app.show_notice(message)
 
 func start_arrival(action:Dictionary) -> void:
 	app._clear_motion();app.pending_action=action
 	app._set_route(action.target_position)
 	if not app.path.is_empty() and app.path[-1].distance_to(action.target_position)>.001:app.path.clear()
-	if app.path.is_empty() and app.player.position.distance_to(action.target_position)>=.015:_blocked_arrival()
+	if app.path.is_empty() and app.player.position.distance_to(action.target_position)>=.015:_blocked_arrival(action.target_position)
 	else:blocked.erase(app.bound_member_id)
 	app.refresh_hud()
 
@@ -310,7 +313,7 @@ func advance_arrival(delta:float,action:Dictionary) -> bool:
 	var at:Vector3=action.target_position
 	if not _clear_body(at,app.bound_member_id):
 		var replacement:Vector3=_destination(app._member_index(app.bound_member_id),app.player.position,app.bound_member_id)
-		if not replacement.is_finite():app.path.clear();_blocked_arrival();return false
+		if not replacement.is_finite():app.path.clear();_blocked_arrival(at);return false
 		action.target_position=replacement;start_arrival(action);at=replacement
 	if app.player.position.distance_to(at)<.015:
 		blocked.erase(app.bound_member_id);app._clear_motion();app.sim.complete_adoption_arrival(action);return false

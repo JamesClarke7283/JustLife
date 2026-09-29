@@ -4,6 +4,9 @@ class_name LifeSanitation
 const Building=preload("res://scripts/building_state.gd")
 const PATCH_HALF:Vector2=Vector2(.52,.33)
 const MIN_SCALE:float=.28
+## What made the mess. An accident is the default and carries no `kind` key, so
+## older saves and records compare equal; a soaked seat leaves a puddle of water.
+const KINDS:Array[String]=["accident","water"]
 var serial:int=0
 var puddles:Array=[]
 static func fresh()->Dictionary:return {"version":1,"serial":0,"puddles":[]}
@@ -14,10 +17,12 @@ func find(id:String)->Dictionary:
 	for puddle:Dictionary in puddles:
 		if str(puddle.id)==id:return puddle
 	return {}
-func add(member:String,venue:String,at:Vector3,level:int,now:float,scale:float=1.0)->String:
+func add(member:String,venue:String,at:Vector3,level:int,now:float,scale:float=1.0,kind:String="accident")->String:
 	serial+=1
 	var id:String="puddle_%d" % serial
-	puddles.append({"id":id,"member":member,"venue":venue,"position":[at.x,at.y,at.z],"floor_y":at.y,"level":level,"created":now,"scale":scale})
+	var record:Dictionary={"id":id,"member":member,"venue":venue,"position":[at.x,at.y,at.z],"floor_y":at.y,"level":level,"created":now,"scale":scale}
+	if kind!="accident":record["kind"]=kind
+	puddles.append(record)
 	return id
 func remove(id:String)->bool:
 	for index:int in puddles.size():
@@ -41,6 +46,7 @@ static func validate(value:Variant,members:Array,states:Array,now:float)->String
 			if not number(component,-1000.0,1000.0):return "Save contains an invalid puddle position."
 		if not integer(entry.get("level"),0,1) or not number(entry.get("floor_y"),-1.0,4.0) or absf(float(entry.position[1])-float(entry.floor_y))>.000001 or absf(float(entry.floor_y)-(.16+3.0*int(entry.level)))>.000001 or not number(entry.get("created"),0.0,now):return "Save contains invalid puddle floor or time."
 		if not number(entry.get("scale",1.0),MIN_SCALE,1.0):return "Save contains an invalid wet-patch footprint."
+		if not entry.get("kind","accident") is String or not KINDS.has(str(entry.get("kind","accident"))):return "Save contains a puddle of an unknown kind."
 		ids[id]=true
 	var active:Dictionary={}
 	for member:Dictionary in states:
