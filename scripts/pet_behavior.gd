@@ -253,13 +253,24 @@ func _named_blocker(from: Vector3, to: Vector3, fallback: String, ignore: Array,
 ## that slipped past a thin edge) is lifted to the nearest clear floor and its
 ## errand is dropped. Pets that are meant to be inside one - on a bed, in the
 ## kennel, up the cat tree - or that a Lifelet is caring for are left alone.
+var _recover_after: Dictionary = {}
+
 func recover_overlap(id: String, actor: LifePetActor) -> bool:
 	var errand: Dictionary = app.pet_errands.get(id, {})
 	if bool(errand.get("inside", false)) or actor.traversing_stairs or app.care_motion().holds(id): return false
 	var level: int = app.world.point_level(actor.position)
 	if level < 0 or app.world.lot_navigation.point_clear(level, actor.position): return false
-	var clear: Vector3 = app.world.nearest_clear_point(actor.position, level, 8)
-	if not clear.is_finite(): return false
+	# One that could not be helped a moment ago is not searched for again every tick.
+	if float(_recover_after.get(id, 0.0)) > float(Time.get_ticks_msec()): return false
+	# A pet may stand deep inside a large pool's hull, well over two metres from any
+	# clear floor: search outward a ring at a time, and only as far as it takes.
+	var clear: Vector3 = Vector3.INF
+	for radius: int in [8, 24, 56]:
+		clear = app.world.nearest_clear_point(actor.position, level, radius)
+		if clear.is_finite(): break
+	if not clear.is_finite():
+		_recover_after[id] = float(Time.get_ticks_msec()) + 3000.0
+		return false
 	actor.position = clear
 	actor.floor_level = level
 	if not errand.is_empty(): _finish(id, actor, {})

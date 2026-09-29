@@ -79,6 +79,12 @@ func towel_error(_sim: LifeSim, target_id: String) -> String:
 ## itself. The sim then holds it until it is dry.
 func _take_towel(sim: LifeSim, action: Dictionary) -> bool:
 	var target_id: String = str(action.get("target_id", ""))
+	# Already holding this very towel: a saved or re-approached rub carries on with
+	# it rather than taking (or being refused) a second one.
+	if not sim.towel.is_empty() and str(sim.towel.get("source", "")) == target_id: return true
+	if sim.wetness <= 0.0:
+		_stop(sim, "Already dry.")
+		return false
 	var problem: String = towel_error(sim, target_id)
 	if problem.is_empty() and not sim.towel.is_empty(): problem = "Already wrapped in a towel."
 	if not problem.is_empty():
@@ -99,15 +105,18 @@ func _take_towel(sim: LifeSim, action: Dictionary) -> bool:
 
 
 ## Hang a dried Lifelet's towel back where it was fetched from.
-func _return_towel(record: Dictionary) -> void:
+func _return_towel(record: Dictionary) -> bool:
 	var source: Dictionary = item(str(record.get("source", "")))
-	if source.is_empty(): return
+	# Away from home the rack is not in this world: the towel waits to be hung up
+	# when the household is back. At home a missing source was sold, and that is that.
+	if source.is_empty(): return app.current_venue == "home"
 	if str(source.kind) == "towel_rack":
 		app.world.change_rack_towels(str(source.id), 1)
 	else:
 		source["carried"] = false
 		if is_instance_valid(source.get("node")): source.node.visible = true
 	app._refresh_sim_targets()
+	return true
 
 
 # -------------------------------------------------------------------- toys
@@ -158,10 +167,19 @@ func queue_toy(person: String, toy_id: String) -> Dictionary:
 	return {"ok": true}
 
 
+## Past its fetch, a toy swim walks to the water and then rides in it, so the world
+## refreshing its targets must not pull it back to where the toy once lay: the toy
+## is in the pool by then, and its own approach point is somewhere else entirely.
+func keeps_own_target(action: Dictionary) -> bool:
+	return toy_action(action) and str(action.get("toy_stage", "fetch")) != "fetch"
+
+
 ## Called as the action starts, before the route is made, to point it at whatever
 ## the current stage is walking to.
 func resolve(sim: LifeSim, action: Dictionary) -> void:
 	if not toy_action(action): return
+	# A ride already under way is not restarted by anything that re-resolves targets.
+	if str(action.get("phase", "")) == "active": return
 	var toy: Dictionary = item(str(action.target_id))
 	var person: String = member_id(sim)
 	if not action.has("toy_stage") or (str(action.toy_stage) != "fetch" and not stages.has(person)):
@@ -244,22 +262,29 @@ func _water_entry(toy: Dictionary, sim: LifeSim, action: Dictionary) -> Dictiona
 	return {"target": target, "yaw": yaw, "shift": shift}
 
 
+## Only the swim that is really using a toy lets go of it: cancelling one that is
+## still queued behind it must not take the toy from under a Lifelet in the water.
 func canceled(sim: LifeSim, action: Dictionary) -> void:
-	if toy_action(action): _release_toy(member_id(sim))
+	var person: String = member_id(sim)
+	if toy_action(action) and str(holders.get(str(action.target_id), "")) == person:
+		_release_toy(person, str(action.target_id))
 
 
 func finished(person: String, action: Dictionary) -> void:
-	if toy_action(action): _release_toy(person)
+	if toy_action(action) and str(holders.get(str(action.target_id), "")) == person:
+		_release_toy(person, str(action.target_id))
 
 
 ## Put the toy down at the water's edge, clear of whoever brought it, and stop
 ## presenting the fetch.
-func _release_toy(person: String) -> void:
-	stages.erase(person)
+func _release_toy(person: String, only_toy: String = "") -> void:
 	var body: LifeActor = actor(person)
-	if is_instance_valid(body): body.water_presentation = {}
+	if only_toy.is_empty() or str((stages.get(person, {}) as Dictionary).get("toy", "")) == only_toy:
+		stages.erase(person)
+		if is_instance_valid(body): body.water_presentation = {}
 	for toy_id: String in holders.keys():
 		if str(holders[toy_id]) != person: continue
+		if not only_toy.is_empty() and toy_id != only_toy: continue
 		holders.erase(toy_id)
 		var toy: Dictionary = item(toy_id)
 		if toy.is_empty() or not is_instance_valid(toy.get("node")): continue
@@ -268,7 +293,8 @@ func _release_toy(person: String) -> void:
 		toy.erase("rest")
 		var spot: Vector3 = _drop_spot(toy, body, rest)
 		toy.node.global_position = Vector3(spot.x, float(rest.get("y", toy.node.position.y)), spot.z)
-		toy.node.rotation_degrees.y = float(rest.get("rotation", toy.node.rotation_degrees.y))
+		# Level again: held, the ring stood on its edge and the noodle was tilted.
+		toy.node.rotation = Vector3(0.0, deg_to_rad(float(rest.get("rotation", toy.node.rotation_degrees.y))), 0.0)
 		toy["x"] = toy.node.position.x
 		toy["z"] = toy.node.position.z
 		app.world.rebuild_navigation()
@@ -368,6 +394,14 @@ func _place_ridden_toy(sim: LifeSim, body: LifeActor) -> void:
 
 func _present_wet(sim: LifeSim, body: LifeActor) -> void:
 	body.set_wetness(sim.wetness)
+	# A loose towel a Lifelet is holding is not also lying on the floor, however
+	# the world came to be built (a load, a trip home): the held towel is saved
+	# with the Lifelet, the flag on the furnishing is not.
+	if not sim.towel.is_empty() and str(sim.towel.get("kind", "")) == "beach_towel":
+		var held: Dictionary = item(str(sim.towel.get("source", "")))
+		if not held.is_empty() and not bool(held.get("carried", false)):
+			held["carried"] = true
+			if is_instance_valid(held.get("node")): held.node.visible = false
 	var mode: String = ""
 	var color: Color = Color("e9e2d2")
 	if not sim.towel.is_empty():
@@ -387,7 +421,7 @@ func _consume_requests(sim: LifeSim) -> void:
 		var records: Array = sim.towel_returns.duplicate()
 		sim.towel_returns.clear()
 		for record: Variant in records:
-			if record is Dictionary: _return_towel(record)
+			if record is Dictionary and not _return_towel(record): sim.towel_returns.append(record)
 	if not sim.wet_seat_request.is_empty():
 		sim.wet_seat_request = ""
 		if app.sanitation_flow.spill(sim):

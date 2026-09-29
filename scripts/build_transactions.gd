@@ -205,7 +205,7 @@ func _reach_error(state:Dictionary,layout:Array)->String:
 		# hollow interior from the reach test, so a plant already standing
 		# inside would look as if the new building had walled it in.
 		if not LifeCatalog.passable(str(added.kind)):
-			for area:Rect2 in app.world.furnishing_panels(added):
+			for area:Rect2 in app.world.furnishing_panels(added,false):
 				excluded.merge(live.points_touching(int(added.get("level",0)),area))
 	else:
 		candidate=load("res://scripts/lot_navigation.gd").new()

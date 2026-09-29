@@ -25,6 +25,7 @@ func _run() -> void:
 	_access()
 	_swimwear_and_drips()
 	_towel_and_seat()
+	_towel_rules()
 	_save_round_trip()
 	print("SWIM_WETNESS %d checks, %d failures" % [checks, failures.size()])
 	quit(0 if failures.is_empty() else 1)
@@ -181,8 +182,9 @@ func _save_round_trip() -> void:
 	var sim: LifeSim = _sim()
 	_targets(sim)
 	sim.wetness = 0.62
-	sim.towel = {"source": "rack_1", "kind": "towel_rack", "color": "2f8fb3"}
 	sim.queue_action(LifeOutdoorActs.ACTION_ID, "pool_1", Vector3(0, .16, 2))
+	# Wrapped in a towel some time after the swim was queued (a swim starting hands one back).
+	sim.towel = {"source": "rack_1", "kind": "towel_rack", "color": "2f8fb3"}
 	var state: Dictionary = sim.get_state()
 	check(absf(float(state.wetness) - .62) < .001 and state.towel is Dictionary and str(state.towel.source) == "rack_1", "Wetness and the towel are in the saved state.")
 	var loaded: LifeSim = LifeSim.new()
@@ -207,3 +209,42 @@ func _save_round_trip() -> void:
 	sim.free()
 	loaded.free()
 	older.free()
+
+
+## Rules the review found missing: a towel is only for somebody wet, is handed back
+## when a swim starts or the Lifelet is dry, and sitting without one dries nobody.
+func _towel_rules() -> void:
+	var dry: LifeSim = _sim()
+	_targets(dry)
+	check(not dry.queue_action(LifeWetness.DRY_OFF_ID, "rack_1", Vector3(-2, .16, 1)), "A dry Lifelet cannot be sent to dry off.")
+	dry.free()
+	# A towel that is not wanted any more goes back, and is not worn into the pool.
+	var wrapped: LifeSim = _sim()
+	_targets(wrapped)
+	wrapped.wetness = .4
+	wrapped.towel = {"source": "rack_1", "kind": "towel_rack", "color": "2f8fb3"}
+	wrapped.queue_action(LifeOutdoorActs.ACTION_ID, "pool_1", Vector3(0, .16, 2))
+	check(wrapped.towel.is_empty() and wrapped.towel_returns.size() == 1, "Going for a swim hands the towel back first.")
+	wrapped.free()
+	# Dry, and nothing to do with the towel: it goes back.
+	var forgotten: LifeSim = _sim()
+	_targets(forgotten)
+	forgotten.towel = {"source": "rack_1", "kind": "towel_rack", "color": "2f8fb3"}
+	forgotten.tick(1.0)
+	check(forgotten.towel.is_empty() and forgotten.towel_returns.size() == 1, "A dry Lifelet still holding a towel hands it back.")
+	forgotten.free()
+	# Sitting to dry without a towel leaves them as damp as the air makes them.
+	var bare: LifeSim = _sim()
+	_targets(bare)
+	bare.wetness = 1.0
+	bare.queue_action(LifeWetness.DRY_SIT_ID, "sofa_1", Vector3(6, .16, 5))
+	_run_front(bare, 12)
+	check(bare.wetness > .6, "Twelve minutes on a sofa without a towel leaves them damp (%.2f)." % bare.wetness)
+	bare.free()
+	# Towel records pile up only so far while the household is away.
+	var away: LifeSim = _sim()
+	for i: int in range(20):
+		away.towel = {"source": "rack_1", "kind": "towel_rack", "color": "2f8fb3"}
+		away._hand_back_towel()
+	check(away.towel_returns.size() <= 8, "Handed-back towels waiting to be hung up are bounded (%d)." % away.towel_returns.size())
+	away.free()

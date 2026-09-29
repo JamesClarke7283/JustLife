@@ -4027,6 +4027,8 @@ func on_placement(kind:String,p:Vector3,angle:float,style:String="",size:String=
 	if world.view_level==1:entry["level"]=1
 	entry.merge(Variants.record(data,variant.style,variant.color,variant.size),true)
 	if data.has("hang"):entry["hang"]=world.placement_hang
+	# A moved rack keeps the towels that are on it, however many are in use.
+	if moving and pending_move.entry.has("towels"):entry["towels"]=int(pending_move.entry.towels)
 	if moving and pending_move.entry.has("lit"):entry["lit"]=pending_move.entry["lit"] # A moved lamp keeps its switch state.
 	if LifeCatalog.paints(kind):
 		# A car keeps the finish it was bought or moved with: the row's choice
@@ -5266,6 +5268,9 @@ func store_item(item:Dictionary) -> void:
 	var entry:Dictionary={"id":str(existing.id),"kind":str(existing.kind),"x":existing.node.position.x,"z":existing.node.position.z,"rotation":existing.node.rotation_degrees.y,"level":world.item_level(existing)}
 	if _find_item(str(existing.id)).has("lit"):entry["lit"]=bool(existing.get("lit",true))
 	if LifeCatalog.paints(str(existing.kind)):entry["paint"]=LifeCatalog.paint_of(existing)
+	# Stored, it keeps its style, colour and size, and a rack the towels on it.
+	if existing.get("variant") is Dictionary:entry.merge(existing.variant,false)
+	if str(existing.kind)=="towel_rack":entry["towels"]=int(existing.get("towels",0))
 	var result:Dictionary=household_flow.store_furnishing(entry)
 	if not bool(result.ok):show_notice(str(result.error));return
 	var protection:Dictionary=build_protection_context()
@@ -5551,7 +5556,7 @@ func _refresh_member_targets(replan:bool=true) -> void:
 		# Queued socials resolve when they start. A current social retains its
 		# admitted endpoint until the shared reconciliation below can replan it.
 		# A passing moment keeps the spot beside the passer it was given.
-		if str(action.id) in LifeSim.SOCIAL_ACTIONS or passing_chat.owns(action):continue
+		if str(action.id) in LifeSim.SOCIAL_ACTIONS or passing_chat.owns(action) or water_flow.keeps_own_target(action):continue
 		var destination:Vector3=world.lot_exit_position(_member_index(bound_member_id)) if str(action.id) in ["school_day","career_day","morning_run"] else by_id[target_id].position
 		if str(action.id)=="cook" and str(action.get("recipe",""))=="harvest_bake":
 			var oven:Dictionary=_find_item(target_id)
@@ -5622,7 +5627,7 @@ func _clear_motion(keep_route:bool=false) -> void:
 	path_index=0
 	walk_only=false
 	pending_action={}
-	_path_refusal=0.0;_path_replans=0
+	_path_refusals.erase(bound_member_id);_path_replans_by.erase(bound_member_id)
 
 func cancel_current_action(index:int=0) -> void:
 	if index==0 and sim.is_away():
@@ -7187,8 +7192,22 @@ func _restore_journeys() -> Dictionary:
 		if str(current.get("phase","")) in ["approach","active"] and str(current.get("id","")) in ["plant_wee","mop_puddle"]:
 			var target_error:String=sanitation_flow.restore_action_error(id,current)
 			if not target_error.is_empty():return {"ok":false,"error":"The saved sanitation activity cannot resume: "+target_error}
+		# A toy swim's fetch, carry and ride live only in the water flow, which starts
+		# empty on a load: begin the fetch again, from wherever the Lifelet now stands.
+		if not current.is_empty() and water_flow.toy_action(current) and str(current.get("phase","")) in ["approach","active"]:
+			current["phase"]="approach";current["toy_stage"]="fetch"
+			water_flow.resolve(member.sim,current)
 		if not current.is_empty() and str(current.phase)=="approach" and not work_commute.owns(current) and not traversal.active(id) and not motion.waiting and not member.sim.is_away():
 			var built:Dictionary=traversal.request(id,current.target_position)
+			if not bool(built.ok):
+				# A standing spot chosen before a piece's walking hull was measured
+				# can now lie inside it: choose it again rather than refuse the save.
+				var target:Dictionary=_find_item(str(current.get("target_id","")))
+				if not target.is_empty() and not str(current.id) in LifeSim.SOCIAL_ACTIONS:
+					var again:Vector3=world.approach(target)
+					if again.is_finite():
+						current.target_position=again
+						built=traversal.request(id,again)
 			if not bool(built.ok):return built
 			motion.path=built.points;motion.index=0;motion.traversal=traversal.routes[id]
 		meal_flow.present_actor(id)
@@ -7742,19 +7761,24 @@ func _advance_path(delta:float) -> bool:
 	if refused:
 		# Turn away from the solid and plan again from here; a walk that is
 		# refused three plans running is dropped with the item named.
-		_path_refusal+=delta
+		# Counted for this walker alone: another member's turn in the same frame
+		# must not reset it, or a refused walker would never replan or give up.
+		var refused_for:float=float(_path_refusals.get(bound_member_id,0.0))+delta
+		_path_refusals[bound_member_id]=refused_for
 		player.rotation.y=lerp_angle(player.rotation.y,atan2(away.x,away.z),minf(delta*10,1))
-		if _path_refusal>=.4 and path.size()>0:
-			_path_refusal=0.0;_path_replans+=1
+		if refused_for>=.4 and path.size()>0:
+			_path_refusals[bound_member_id]=0.0
+			var replans:int=int(_path_replans_by.get(bound_member_id,0))+1
+			_path_replans_by[bound_member_id]=replans
 			var final:Vector3=path[path.size()-1]
-			if _path_replans>=3 or not _set_route(final):
+			if replans>=3 or not _set_route(final):
 				# The item on the way to the goal, else the one the refused step hit.
 				var generic:String="The way is blocked. Try moving a furnishing."
 				var message:String=world.blocked_notice(player.position,final,generic)
 				if message==generic:message=world.step_notice(player.position,hit,generic)
 				_abandon_walk(message)
 				return false
-	else:_path_refusal=0.0
+	else:_path_refusals[bound_member_id]=0.0
 	return was_moving
 
 ## Whether a step along a plain path stays out of every solid. A body that
@@ -7784,8 +7808,8 @@ func _abandon_walk(message:String) -> void:
 		walk_only=false;_clear_motion()
 	else:_clear_motion()
 
-var _path_refusal:float=0.0
-var _path_replans:int=0
+var _path_refusals:Dictionary={}      # member id -> seconds their plain path has been refused
+var _path_replans_by:Dictionary={}    # member id -> plans made since it was last clear
 var _blocked_notice_text:String=""
 var _blocked_notice_at:int=-100000
 

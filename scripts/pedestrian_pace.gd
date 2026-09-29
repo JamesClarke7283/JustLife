@@ -61,6 +61,14 @@ static func gait_factor(kind: String, game_speed: float) -> float:
 	return metres_per_second(kind) / reference * clock_scale(game_speed)
 
 
+## The gait factor for a body of this kind that is really being moved at
+## `speed` metres a second at game speed 1 (a dog on a lead moves at its walker's
+## pace, not its own), so its feet cover the ground it does.
+static func gait_factor_at(kind: String, speed: float, game_speed: float) -> float:
+	var reference: float = DOG_GAIT_SPEED if kind in ["dog", "cat"] else HUMAN_GAIT_SPEED * float(BODY_SCALE.get(kind, 1.0))
+	return speed / reference * clock_scale(game_speed)
+
+
 ## Ground covered by one full gait cycle of a walker of this kind, in metres.
 ## It depends only on the body, never on speed or age pace: that is what keeps
 ## the feet planted, and what a no-skating check compares against.

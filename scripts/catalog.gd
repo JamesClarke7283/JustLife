@@ -460,13 +460,17 @@ static func vehicle_snap_locals(kind: String) -> Array[Vector3]:
 ## hot tub blocks the footprint it really occupies so walkers path around the
 ## water rather than across it. Only a kind the catalogue does not know returns
 ## nothing. Authored multi-band kinds keep their authored metres.
-static func local_panels(kind: String, size: String = "", style: String = "") -> Array:
+static func local_panels(kind: String, size: String = "", style: String = "", solid: bool = true) -> Array:
 	var panels: Array = BLOCKING_PANELS.get(kind, [])
 	if not panels.is_empty(): return panels
 	var data: Dictionary = ITEMS.get(kind, {})
 	if data.is_empty(): return []
 	var scale: float = LifeCatalogVariants.size_scale(size)
-	var hulls: Dictionary = SOLID_HULLS.get(kind, {})
+	# `solid` is what a walker or a click meets: the model's own measured hull, a
+	# pool's coping included. Placement, save validation and the build reach rule
+	# judge the declared footprint instead (`solid` false), as they always have, so
+	# a layout that was legal when it was made stays legal.
+	var hulls: Dictionary = SOLID_HULLS.get(kind, {}) if solid else {}
 	var hull: Dictionary = hulls.get(LifeCatalogVariants.style_or_default(style, data), {})
 	if not hull.is_empty():
 		return [{"x":float(hull.x) * scale, "z":float(hull.z) * scale, "w":float(hull.w) * scale, "d":float(hull.d) * scale}]

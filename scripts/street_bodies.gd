@@ -72,7 +72,14 @@ func sync(delta: float) -> void:
 			var dog: LifePetActor = body as LifePetActor
 			if not held and dog.interaction != "":
 				dog.clear_interaction()
-			dog.animate(delta, walking, LifePedestrianPace.gait_factor("dog", game_speed) if walking else game_speed)
+			var dog_factor: float = LifePedestrianPace.gait_factor("dog", game_speed)
+			# A dog on a lead is moved at its walker's pace, so its legs keep that pace.
+			if not str(passer.get("follows", "")).is_empty():
+				for other: Dictionary in street.passers:
+					if str(other.id) == str(passer.follows):
+						dog_factor = LifePedestrianPace.gait_factor_at("dog", float(other.speed), game_speed)
+						break
+			dog.animate(delta, walking, dog_factor if walking else game_speed)
 	_sync_leashes(street)
 
 

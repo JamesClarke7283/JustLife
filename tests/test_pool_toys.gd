@@ -63,6 +63,7 @@ func _run() -> void:
 	await _fetch_and_ride(pool, ring, "pool_ring")
 	await _fetch_and_ride(pool, noodle, "pool_noodle")
 	await _panel(pool, ring)
+	await _cancel_behind(pool, ring, noodle)
 	await _housemate(pool, noodle)
 	_finish()
 
@@ -152,6 +153,14 @@ func _fetch_and_ride(pool: Dictionary, toy: Dictionary, kind: String) -> void:
 		var presented: String = str(person.water_presentation.get("stage", ""))
 		if presented == "pickup":
 			picked_near = minf(picked_near, person.global_position.distance_to(rest))
+		if stage == "swim" and phase == "active" and swim_frames == 20 and not seen.has("refreshed"):
+			# Anything that refreshes the world's targets mid-ride (a housemate taking a
+			# towel, a build edit) must leave the ride alone.
+			seen["refreshed"] = true
+			var before_target: Vector3 = action.target_position
+			app._refresh_sim_targets()
+			var still: Dictionary = sim.get_current_action()
+			check(not still.is_empty() and str(still.phase) == "active" and str(still.toy_stage) == "swim" and still.target_position == before_target, "A refresh of the world's targets mid-ride leaves the %s ride as it was." % label)
 		if presented == "carry" and not seen.has("saved_layout"):
 			# Saved mid-carry, the toy is written where it was picked up from and the
 			# layout still loads: never a point in the air or over the water.
@@ -232,3 +241,31 @@ func _housemate(pool: Dictionary, toy: Dictionary) -> void:
 		app._process(DT)
 		if teen.action_queue.is_empty() and frame > 20: break
 	check(teen.wetness > .5 and str(teen.character.outfit_category) == "swim", "The housemate swam in swimwear and came out wet.")
+
+
+## Cancelling a swim that is still queued behind the one under way must not take the
+## toy from a Lifelet who is carrying it; and a toy put down mid-fetch lies flat.
+func _cancel_behind(pool: Dictionary, ring: Dictionary, noodle: Dictionary) -> void:
+	var id: String = app.household.selected_id()
+	var person: LifeActor = app.world.actors[id]
+	var sim: LifeSim = app.sim
+	sim.action_queue.clear()
+	sim.wetness = 0.0
+	check(bool(app.water_flow.queue_toy(id, str(ring.id)).ok), "The ring is queued.")
+	check(bool(app.water_flow.queue_toy(id, str(noodle.id)).ok), "…and the noodle behind it.")
+	var carrying: bool = false
+	for frame: int in range(2000):
+		app._process(DT)
+		if str(person.water_presentation.get("stage", "")) == "carry":
+			carrying = true
+			break
+	check(carrying, "The Lifelet is carrying the ring.")
+	sim.cancel_action(1)
+	await frames(1)
+	check(str(person.water_presentation.get("stage", "")) == "carry" and bool(ring.get("carried", false)), "Cancelling the queued noodle leaves the ring in their arms.")
+	# Now drop the ring mid-carry: it lands level, not on its edge.
+	sim.cancel_action(0)
+	await frames(1)
+	check(not bool(ring.get("carried", false)), "Cancelled mid-carry, the ring is put down.")
+	check(absf(ring.node.global_basis.y.dot(Vector3.UP) - 1.0) < .01, "…lying flat (up %.2f), not stood on its edge." % ring.node.global_basis.y.dot(Vector3.UP))
+	sim.action_queue.clear()

@@ -29,6 +29,10 @@ const HOLD_MINUTES := 3.0
 const LEAD_LENGTH := 0.85
 const CLEAR_AHEAD := 0.9
 const CLEAR_ACROSS := 0.4
+## How long a walker waits behind somebody standing in the way, in game minutes,
+## before walking round them, and how far to the side that takes them.
+const PATIENCE_MINUTES := 2.0
+const DODGE_ACROSS := 0.55
 const HEIGHT := 0.16
 
 ## The cast. Hours are [from, to) in hours of the day. `look` is a character
@@ -173,10 +177,14 @@ func _party(passer: Dictionary) -> Array:
 ## time of day (negative for none) and `obstacles` are body positions a walker
 ## waits behind instead of walking through.
 func tick(delta: float, game_speed: float = 1.0, minutes: float = -1.0, obstacles: Array = []) -> void:
-	if delta <= 0.0 or not is_finite(delta) or game_speed <= 0.0:
+	if delta <= 0.0 or not is_finite(delta):
 		return
+	# Seeded on the very first call, paused or not, so a paused load shows only the
+	# people who are out at this hour and not the whole cast.
 	if not _seeded:
 		_seed(minutes)
+	if game_speed <= 0.0:
+		return
 	var game_minutes: float = delta * game_speed * LifeSim.GAME_MINUTES_PER_SECOND
 	var scale: float = LifePedestrianPace.clock_scale(game_speed)
 	for passer: Dictionary in passers:
@@ -196,7 +204,17 @@ func tick(delta: float, game_speed: float = 1.0, minutes: float = -1.0, obstacle
 			continue
 		if _blocked(passer, obstacles):
 			passer["waiting"] = true
-			continue
+			# Somebody standing in the way is waited behind for a little, then walked
+			# round: a Lifelet idling on the sidewalk must not stop the street for good.
+			passer["waited"] = float(passer.get("waited", 0.0)) + game_minutes
+			if float(passer.waited) < PATIENCE_MINUTES:
+				continue
+			passer["waited"] = 0.0
+			passer["waiting"] = false
+			passer["past"] = CLEAR_AHEAD + .6
+			passer["dodge"] = 1.0 if str(passer.id).hash() % 2 == 0 else -1.0
+		else:
+			passer["waited"] = 0.0
 		_walk(passer, float(passer.speed) * delta * scale, duty)
 	_follow()
 
@@ -234,6 +252,8 @@ func _enter(passer: Dictionary) -> void:
 
 
 func _blocked(passer: Dictionary, obstacles: Array) -> bool:
+	if float(passer.get("past", 0.0)) > 0.0:
+		return false
 	var at: Vector3 = position_of(passer)
 	var dir: float = float(passer.dir)
 	for body: Variant in obstacles:
@@ -251,6 +271,11 @@ func _blocked(passer: Dictionary, obstacles: Array) -> bool:
 func _walk(passer: Dictionary, span: float, duty: bool) -> void:
 	var before: float = float(passer.x)
 	var target: float = lane_for(passer)
+	# Walking round somebody: a step to the side while they are alongside.
+	var past: float = float(passer.get("past", 0.0))
+	if past > 0.0:
+		target += float(passer.get("dodge", 1.0)) * DODGE_ACROSS
+		passer["past"] = maxf(0.0, past - span)
 	var lateral: float = clampf(target - float(passer.lane), -LANE_SHIFT * span / maxf(0.0001, float(passer.speed)), LANE_SHIFT * span / maxf(0.0001, float(passer.speed)))
 	var forward: float = sqrt(maxf(0.0, span * span - lateral * lateral))
 	passer["lane"] = float(passer.lane) + lateral

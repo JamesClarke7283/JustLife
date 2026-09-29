@@ -1213,7 +1213,7 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 		else:
 			definition["changes"] = {"fun": 26.0, "social": 18.0}
 			definition["xp"] = 6.0
-	if id in SOCIAL_ACTIONS or id in LifePassingPolicy.ALL or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or COMPUTER_MASTERY_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "snack", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "bin_meal", "jog", "play_toys", "play_dollhouse", "child_desk_study", "play_rattle", "play_baby_mat", "use_potty", "sleep", "nap", "put_in_fridge", LifeGardenGames.ACTION_ID, LifeOutdoorActs.ACTION_ID, LifeOutdoorActs.PUSH_ID]:
+	if id in SOCIAL_ACTIONS or id in LifePassingPolicy.ALL or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or COMPUTER_MASTERY_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "snack", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "bin_meal", "jog", "play_toys", "play_dollhouse", "child_desk_study", "play_rattle", "play_baby_mat", "use_potty", "sleep", "nap", "put_in_fridge", LifeGardenGames.ACTION_ID, LifeOutdoorActs.ACTION_ID, LifeOutdoorActs.PUSH_ID, LifeWetness.DRY_OFF_ID, LifeWetness.DRY_SIT_ID]:
 		var availability: Dictionary = get_action_availability(id, target_id)
 		if not bool(availability.available):
 			_emit_notice(str(availability.reason))
@@ -1424,6 +1424,9 @@ func _dry_step(game_minutes: float) -> void:
 		wetness = maxf(0.0, wetness - LifeWetness.dry_rate(not towel.is_empty(), rubbing) * game_minutes)
 		if wetness <= 0.0:
 			_finish_drying()
+	elif not towel.is_empty() and not _drying_underway():
+		# Dry, with nothing left to do with the towel: it goes back.
+		_finish_drying()
 	_wet_seat_step(game_minutes)
 	if wetness <= 0.0 and auto_swimwear:
 		_swimwear_step()
@@ -1433,10 +1436,23 @@ func _dry_step(game_minutes: float) -> void:
 func _finish_drying() -> void:
 	wetness = 0.0
 	_wet_seat_minutes = 0.0
-	if not towel.is_empty():
-		towel_returns.append(towel.duplicate(true))
-		towel = {}
+	_hand_back_towel()
 	_emit_changed()
+
+
+## Give the towel back to whatever it was taken from, damp or dry.
+func _hand_back_towel() -> void:
+	if towel.is_empty():return
+	towel_returns.append(towel.duplicate(true))
+	while towel_returns.size() > 8:towel_returns.pop_front()
+	towel = {}
+
+
+## Whether a dry-off or a sit to dry is under way or queued: the towel is in use.
+func _drying_underway() -> bool:
+	for queued: Dictionary in action_queue:
+		if str(queued.get("id", "")) in [LifeWetness.DRY_OFF_ID, LifeWetness.DRY_SIT_ID]:return true
+	return false
 
 
 ## Sitting damp on a cushion soaks it. Long enough, and the seat leaves a puddle.
@@ -1532,8 +1548,10 @@ func _start_front() -> void:
 	if action_queue.is_empty():
 		return
 	action_queue[0]["phase"] = "approach"
-	# Change first, then walk down to the water in swimwear.
+	# Change first, then walk down to the water in swimwear: a towel still wrapped
+	# round them is hung back up, not worn into the pool.
 	if str(action_queue[0].get("id", "")) == LifeOutdoorActs.ACTION_ID:
+		if LifeWetness.is_water_kind(_target_kind_of(str(action_queue[0].get("target_id", "")))):_hand_back_towel()
 		_wear_for_activity(LifeOutdoorActs.ACTION_ID, str(action_queue[0].get("target_id", "")))
 	_emit_action_started(action_queue[0])
 
@@ -2024,7 +2042,9 @@ func _finish_front() -> void:
 		_leave_water()
 	elif id == LifeWetness.DRY_OFF_ID:
 		_queue_dry_sit(action.get("target_position", Vector3.INF) if action.get("target_position") is Vector3 else Vector3.INF)
-	elif id == LifeWetness.DRY_SIT_ID:
+	elif id == LifeWetness.DRY_SIT_ID and not towel.is_empty():
+		# Sitting in the towel finishes the job. Sitting without one leaves them as damp as
+		# they were, still drying at the air's own pace.
 		_finish_drying()
 	_emit_action_finished(action)
 	_idle_minutes = 0.0

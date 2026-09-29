@@ -184,7 +184,10 @@ func prepare(action: Dictionary) -> void:
 
 
 func _fail(action: Dictionary, message: String) -> void:
-	app.show_notice(message)
+	# Only the selected Lifelet's refusals, or one the player asked for, reach the
+	# notice card: a housemate's own passing moment failing is not the player's news.
+	if app.bound_member_id == app.household.selected_id() or not bool(action.get("autonomous", false)):
+		app.show_notice(message)
 	app._cancel_blocked_action.call_deferred(app.route_generation, action, app.bound_member_id, app.load_epoch)
 
 

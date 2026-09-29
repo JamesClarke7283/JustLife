@@ -2147,7 +2147,7 @@ func _water_pose(pose: Dictionary) -> Dictionary:
 			var dip: float = sin(minf(u / .55, 1.0) * PI * .5) if u < .55 else 1.0 - smoothstep(.55, 1.0, u)
 			var rest_origin: Vector3 = water_presentation.get("toy_position", global_position) as Vector3
 			var rest_basis: Basis = water_presentation.get("toy_basis", Basis.IDENTITY) as Basis
-			var toy_centre: Vector3 = rest_origin + rest_basis.x * centre_offset
+			var toy_centre: Vector3 = rest_origin - rest_basis.x * centre_offset
 			var floor_point: Vector3 = _model.to_local(toy_centre)
 			var reach: float = (.30 if ring else .34) * _proportion
 			var lift: float = smoothstep(.5, 1.0, u)

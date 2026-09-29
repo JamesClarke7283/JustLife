@@ -188,6 +188,13 @@ static func _stored_record(entry: Dictionary) -> Dictionary:
 		record["lit"] = bool(entry.lit)
 	if entry.has("paint"):
 		record["paint"] = str(entry.get("paint",""))
+	# Style, colour and size are what a stored piece is when it comes out again;
+	# a rack's towels ride along. Only well-formed values are kept.
+	for key: String in ["style", "color", "size"]:
+		if entry.get(key) is String and not str(entry.get(key)).is_empty():
+			record[key] = str(entry.get(key))
+	if entry.get("towels") is int or entry.get("towels") is float:
+		record["towels"] = clampi(int(entry.get("towels")), 0, 64)
 	return record
 
 

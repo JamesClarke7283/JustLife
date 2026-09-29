@@ -83,7 +83,9 @@ static func layout_context(layout:Array)->Dictionary:
 	if building.is_empty():inspector.free();return {"ok":false,"error":"A journey save requires its complete construction record."}
 	for record:Dictionary in items.values():
 		if str(record.kind) in ["meal","plate"] or LifeCatalog.passable(str(record.kind)):continue
-		for obstacle:Dictionary in inspector.furnishing_obstacles(record,int(record.get("level",0))):obstacles.append(obstacle)
+		# A saved position is judged against the declared footprint, so a save made before
+		# a piece's walking hull was measured still loads with its Lifelet standing where it did.
+		for obstacle:Dictionary in inspector.furnishing_obstacles(record,int(record.get("level",0)),false):obstacles.append(obstacle)
 	inspector.free()
 	var nav:=Navigation.new();var rebuilt:Dictionary=nav.rebuild(building,obstacles)
 	if not bool(rebuilt.ok):return rebuilt

@@ -444,7 +444,9 @@ func validate_home_layout(layout:Variant) -> String:
 		# floor it really covers. The roof test stays on the whole volume: the
 		# garage's roof slab is genuinely under the home's own roof and only the
 		# volume can say so.
-		for area:Rect2 in furnishing_panels(entry):
+		# Judged on the declared footprint, not the walking hull: a layout that
+		# was legal when it was made must stay loadable and editable.
+		for area:Rect2 in furnishing_panels(entry,false):
 			# Level 0 may stand on the lot itself, so a kennel or garden bed
 			# belongs in the garden; an upper furnishing still needs real slab.
 			if not Building.footprint_supported(canonical,level,area,level==0):return "A furnishing crosses unsupported floor or a stair opening."
@@ -479,7 +481,7 @@ func _furnishing_basis(entry:Dictionary) -> Basis:
 ## own bands in its local metres, exactly as a staircase contributes `stair_rect`
 ## plus its guard footprints rather than one solid volume. Nothing in the
 ## obstacle, placement or collider code needs to know which kind it is holding.
-func furnishing_panels(entry:Dictionary) -> Array[Rect2]:
+func furnishing_panels(entry:Dictionary,solid:bool=true) -> Array[Rect2]:
 	var origin:=Vector2(float(entry.get("x",0)),float(entry.get("z",0)))
 	var basis:Basis=_furnishing_basis(entry)
 	# The buy size and style ride the layout record or the live variant; either
@@ -495,7 +497,7 @@ func furnishing_panels(entry:Dictionary) -> Array[Rect2]:
 		if size_choice.is_empty():size_choice=str((variant_data as Dictionary).get("size",""))
 		if style.is_empty():style=str((variant_data as Dictionary).get("style",""))
 	var result:Array[Rect2]=[]
-	for panel:Dictionary in LifeCatalog.local_panels(str(entry.get("kind","")),size_choice,style):
+	for panel:Dictionary in LifeCatalog.local_panels(str(entry.get("kind","")),size_choice,style,solid):
 		result.append(_oriented_panel(origin,basis,panel))
 	return result
 
@@ -512,16 +514,16 @@ func _oriented_panel(origin:Vector2,basis:Basis,panel:Dictionary) -> Rect2:
 	return Rect2(origin+Vector2(offset.x,offset.z)-half,half*2)
 
 ## The same bands for a placed item, read off the node the live world owns.
-func item_panels(item:Dictionary) -> Array[Rect2]:
+func item_panels(item:Dictionary,solid:bool=true) -> Array[Rect2]:
 	var variant:Dictionary=item.get("variant",{}) if item.get("variant",{}) is Dictionary else {}
 	var source:Dictionary={"kind":str(item.kind),"x":item.node.position.x,"z":item.node.position.z,"rotation":item.node.rotation_degrees.y,"size":str(variant.get("size","")),"style":str(variant.get("style",""))}
-	return furnishing_panels(source)
+	return furnishing_panels(source,solid)
 
 ## The navigation obstacle records an entry contributes: one per solid band, and
 ## a band's record reuses the entry's own identity unless there are several, so
 ## a single-box furnishing keeps exactly the obstacle identity it always had.
-func furnishing_obstacles(entry:Dictionary,level:int) -> Array:
-	var areas:Array[Rect2]=furnishing_panels(entry)
+func furnishing_obstacles(entry:Dictionary,level:int,solid:bool=true) -> Array:
+	var areas:Array[Rect2]=furnishing_panels(entry,solid)
 	var result:Array=[]
 	var id:String=str(entry.get("id",""))
 	for index:int in range(areas.size()):
@@ -1006,6 +1008,8 @@ func refresh_towel_rack(item:Dictionary) -> void:
 	for index:int in range(count):
 		var at:Vector3=a.lerp(b,(float(index)+.5)/float(capacity))
 		_hang_towel(group,at,width,.44*sqrt(scale),rack_towel_color(item,index))
+	# The towels belong to the rack's own floor, so an upper rack's do not show below.
+	assign_structure_layer(group,item_level(item))
 
 ## The colour of the towel hung in one slot of a rack: the rack's own colour
 ## stepped round the palette, so a full rack is a row of different towels.
@@ -1328,12 +1332,29 @@ func nearest_clear_point(point:Vector3,level:int,radius:int=13) -> Vector3:
 	options.sort_custom(func(a:Vector3,b:Vector3)->bool:return a.distance_squared_to(point)<b.distance_squared_to(point))
 	return Vector3.INF if options.is_empty() else options[0]
 
+## How far in front of its centre a furnishing's solid reaches, in metres: half its
+## declared depth, or further where the measured model reaches past it (a pool's
+## coping). The standing spot in front is measured from here so that it is never
+## inside the piece that it is the standing spot for.
+func front_extent(kind:String,size_choice:String,style:String) -> float:
+	var data:Dictionary=LifeCatalog.get_item(kind)
+	if data.is_empty():return .5
+	var reach:float=float((data.get("size",Vector2.ONE) as Vector2).y)*Variants.size_scale(size_choice)*.5
+	for panel:Dictionary in LifeCatalog.local_panels(kind,size_choice,style):
+		reach=maxf(reach,float(panel.z)+float(panel.d)*.5)
+	return reach
+
 func layout_approach(entry:Dictionary) -> Vector3:
 	# The standing spot in front of a furnishing described by its layout record
 	# alone (kind, x, z, rotation, level), for placement checks before a node exists.
-	var size:Vector2=LifeCatalog.ITEMS.get(str(entry.get("kind","")),{}).get("size",Vector2(1,1))
+	var kind:String=str(entry.get("kind",""))
+	var choice:String=str(entry.get("size","")) if entry.get("size","") is String else ""
+	var variant_data:Variant=entry.get("variant",{})
+	if choice.is_empty() and variant_data is Dictionary:choice=str((variant_data as Dictionary).get("size",""))
+	var style:String=str(entry.get("style",""))
+	if style.is_empty() and variant_data is Dictionary:style=str((variant_data as Dictionary).get("style",""))
 	var level:int=int(entry.get("level",0))
-	var forward:Vector3=Basis(Vector3.UP,deg_to_rad(float(entry.get("rotation",0.0))))*Vector3(0,0,size.y*.5+.55)
+	var forward:Vector3=Basis(Vector3.UP,deg_to_rad(float(entry.get("rotation",0.0))))*Vector3(0,0,front_extent(kind,choice,style)+.55)
 	return Vector3(float(entry.x),Building.level_y(level),float(entry.z))+forward
 
 func approach(item:Dictionary) -> Vector3:
@@ -1347,7 +1368,9 @@ func approach(item:Dictionary) -> Vector3:
 			var at:Vector3=nearest_clear_point(wanted,level) if not construction.building_state.is_empty() else Vector3(nearest_free(wanted).x*.25,Building.level_y(level),nearest_free(wanted).y*.25)
 			if at.is_finite() and Vector2(at.x-wanted.x,at.z-wanted.z).length()<.24:return at
 		return Vector3.INF
-	var p:Vector3=n.to_global(Vector3(0,0,item.size.y*.5+.55))
+	var variant:Dictionary=item.get("variant",{}) if item.get("variant",{}) is Dictionary else {}
+	var reach:float=maxf(float(item.size.y)*.5,front_extent(str(item.kind),str(variant.get("size","")),str(variant.get("style",""))))
+	var p:Vector3=n.to_global(Vector3(0,0,reach+.55))
 	if not construction.building_state.is_empty():return nearest_clear_point(p,item_level(item))
 	var c=nearest_free(p)
 	return Vector3(c.x*.25,.16,c.y*.25)
@@ -2164,11 +2187,15 @@ func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -
 		# every place maps onto one of them) and the swing's cushion.
 		match str(item.kind):
 			"garden_table":
+				# The model is scaled by the size choice, the node is not: the chair
+				# stands out and up by that same factor.
+				var grown:float=Variants.size_scale(str((item.get("variant",{}) as Dictionary).get("size","")))
 				var chair:int=posmod(str(landmarks.get("seat_slot","seat_0")).trim_prefix("seat_").to_int(),4)
 				var around:float=float(chair)*PI*.5
-				return {"position":node.to_global(Vector3(sin(around)*.78,.47,cos(around)*.78)),"yaw":node.rotation.y+around+PI,"kind":"seat"}
+				return {"position":node.to_global(Vector3(sin(around)*.78*grown,.47*grown,cos(around)*.78*grown)),"yaw":node.rotation.y+around+PI,"kind":"seat"}
 			"outdoor_swing":
-				return {"position":node.to_global(Vector3(0,.53,.02)+seat_slot_offset(item,str(landmarks.get("seat_slot","")))),"yaw":node.rotation.y,"kind":"seat"}
+				var swelled:float=Variants.size_scale(str((item.get("variant",{}) as Dictionary).get("size","")))
+				return {"position":node.to_global(Vector3(0,.53*swelled,.02*swelled)+seat_slot_offset(item,str(landmarks.get("seat_slot","")))),"yaw":node.rotation.y,"kind":"seat"}
 	if str(item.kind)=="stove" and action_id=="cook" and str(landmarks.get("recipe",""))=="harvest_bake":
 		var at:Vector3=landmarks.get("cooking_position",oven_approach(item))
 		at.y=node.global_position.y
