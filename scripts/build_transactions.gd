@@ -37,8 +37,11 @@ func has_unintegrated_levels()->bool:
 		if int(floor.level)>0:return true
 	return false
 
-func _layout(state:Dictionary)->Array:
-	var layout:Array=app.world.serialize_items().filter(func(entry:Dictionary)->bool:return str(entry.get("kind",""))!="__construction")
+func _layout(state:Dictionary,removed:Array=[],restored:Array=[])->Array:
+	var removed_ids:Array=[]
+	for entry:Dictionary in removed:removed_ids.append(str(entry.id))
+	var layout:Array=app.world.serialize_items().filter(func(entry:Dictionary)->bool:return str(entry.get("kind",""))!="__construction" and not removed_ids.has(str(entry.get("id",""))))
+	layout.append_array(restored.duplicate(true))
 	layout.append(state.duplicate(true));return layout
 
 func _protection()->Dictionary:
@@ -62,28 +65,51 @@ func prepare(operation:Dictionary,force:bool=false)->Dictionary:
 	if not force and key==_cache_key:return _cache.duplicate(true)
 	var quote:Dictionary=_propose(before.state,operation,app.sim.funds)
 	if bool(quote.ok):
-		var error:String=_candidate_error(before.state,quote.after)
+		var error:String=_layout_candidate_error(before.state,quote.after,_layout(quote.after,quote.cleared_furnishings))
 		if error.is_empty():quote["context"]=context
 		else:quote=_error(error)
 	_cache_key=key;_cache=quote.duplicate(true)
 	return quote
 
-func _propose(state:Dictionary,operation:Variant,funds:Variant)->Dictionary:
-	if operation is Dictionary and operation.get("op")=="roof_edit":return RoofEdits.propose(state,operation,funds)
-	if operation is Dictionary and operation.get("op")=="structure":return Edits.propose(state,operation,funds)
-	return Building.propose(state,operation,funds)
+func _propose(state:Dictionary,operation:Variant,funds:Variant,original_plants:Array=[])->Dictionary:
+	var quote:Dictionary
+	if operation is Dictionary and operation.get("op")=="roof_edit":quote=RoofEdits.propose(state,operation,funds)
+	elif operation is Dictionary and operation.get("op")=="structure":quote=Edits.propose(state,operation,funds)
+	else:quote=Building.propose(state,operation,funds)
+	if bool(quote.ok):
+		var cleared:Array=app.world.vegetation_clearance(state,quote.after)
+		if not cleared.is_empty() or state.has("cleared_vegetation"):quote.after["cleared_vegetation"]=cleared
+		var error:String=Building.validate(quote.after)
+		if not error.is_empty():return _error(error)
+		quote["cleared_furnishings"]=_cleared_furnishings(state,quote.after,original_plants)
+	return quote
+
+func _cleared_furnishings(before:Dictionary,after:Dictionary,original_plants:Array)->Array:
+	var regions:Array[Rect2]=app.world.construction_clearance_areas(before,after)
+	var cleared:Array=[]
+	if regions.is_empty():return cleared
+	var candidates:Dictionary={}
+	for entry:Dictionary in app.world.serialize_items()+original_plants:
+		if str(entry.get("kind","")) in ["tree_garden","shrub"] and int(entry.get("level",0))==0:candidates[str(entry.id)]=entry
+	for entry:Dictionary in candidates.values():
+		var volume:AABB=app.world.furnishing_volume(entry)
+		var footprint:=Rect2(Vector2(volume.position.x,volume.position.z),Vector2(volume.size.x,volume.size.z))
+		for region:Rect2 in regions:
+			if region.intersects(footprint):cleared.append(entry.duplicate(true));break
+	cleared.sort_custom(func(a:Dictionary,b:Dictionary)->bool:return str(a.id)<str(b.id))
+	return cleared
 
 func _commit_quote(state:Dictionary,quote:Dictionary,funds:int)->Dictionary:
 	var calculated:Dictionary=_propose(state,quote.get("operation"),funds)
 	if not bool(calculated.ok):return calculated
-	for key:String in ["before","after","cost","funds_before","funds_after"]:
+	for key:String in ["before","after","cost","funds_before","funds_after","cleared_furnishings"]:
 		if quote.get(key)!=calculated[key]:return _error("The structure quote changed. Preview it again.")
-	return {"ok":true,"state":calculated.after,"funds":calculated.funds_after,"receipt":{"before":state.duplicate(true),"after":Building.fingerprint(calculated.after),"funds_delta":calculated.cost,"operation":calculated.operation.duplicate(true),"funds_before":calculated.funds_before}}
+	return {"ok":true,"state":calculated.after,"funds":calculated.funds_after,"receipt":{"before":state.duplicate(true),"after":Building.fingerprint(calculated.after),"funds_delta":calculated.cost,"operation":calculated.operation.duplicate(true),"funds_before":calculated.funds_before,"cleared_furnishings":calculated.cleared_furnishings.duplicate(true)}}
 
 func _undo_receipt(state:Dictionary,receipt:Dictionary,funds:int)->Dictionary:
 	if receipt.get("after")!=Building.fingerprint(state) or not Building.number(funds,0,1e9,true):return _error("This history entry no longer matches the structure.")
-	var original:Dictionary=_propose(receipt.before,receipt.operation,receipt.funds_before)
-	if not bool(original.ok) or original.cost!=receipt.funds_delta or Building.fingerprint(original.after)!=receipt.after:return _error("This history entry is not a validated construction.")
+	var original:Dictionary=_propose(receipt.before,receipt.operation,receipt.funds_before,receipt.get("cleared_furnishings",[]))
+	if not bool(original.ok) or original.cost!=receipt.funds_delta or Building.fingerprint(original.after)!=receipt.after or original.cleared_furnishings!=receipt.get("cleared_furnishings",[]):return _error("This history entry is not a validated construction.")
 	var refunded:int=funds+int(receipt.funds_delta)
 	if not Building.number(refunded,0,1e9,true) or int(state.revision)>=1000000000:return _error("Undo exceeds the wallet or revision limits.")
 	var restored:Dictionary=receipt.before.duplicate(true);restored.revision=int(state.revision)+1;restored.next_serial=maxi(int(restored.next_serial),int(state.next_serial))
@@ -349,12 +375,12 @@ func commit(quote:Dictionary)->Dictionary:
 	if not quote.get("operation") is Dictionary:return _error("The building quote is no longer available.")
 	var checked:Dictionary=prepare(quote.operation,true)
 	if not bool(checked.ok):return checked
-	for key:String in ["before","after","cost","funds_before","funds_after","context"]:
+	for key:String in ["before","after","cost","funds_before","funds_after","context","cleared_furnishings"]:
 		if not quote.has(key) or quote[key]!=checked[key]:return _error("The home or quote changed. Preview this construction again.")
 	var before:Dictionary=current()
 	var result:Dictionary=_commit_quote(before.state,checked,app.sim.funds)
 	if not bool(result.ok):return result
-	var applied:Dictionary=_apply(before.state,result.state,int(result.funds))
+	var applied:Dictionary=_apply(before.state,result.state,int(result.funds),checked.cleared_furnishings)
 	if not bool(applied.ok):return applied
 	var token:int=_next_receipt;_next_receipt+=1
 	_history.append({"token":token,"receipt":result.receipt.duplicate(true),"after":result.state.duplicate(true),"live_after":Building.fingerprint(result.state)})
@@ -374,9 +400,10 @@ func undo(receipt:Dictionary)->Dictionary:
 	if not bool(result.ok):return result
 	result.state.revision=int(before.state.revision)+1
 	result.state.next_serial=maxi(int(before.state.next_serial),int(result.state.next_serial))
-	var error:String=_candidate_error(before.state,result.state)
+	var restored:Array=entry.receipt.get("cleared_furnishings",[])
+	var error:String=_layout_candidate_error(before.state,result.state,_layout(result.state,[],restored))
 	if not error.is_empty():return _error(error)
-	var applied:Dictionary=_apply(before.state,result.state,int(result.funds))
+	var applied:Dictionary=_apply(before.state,result.state,int(result.funds),[],restored)
 	if not bool(applied.ok):return applied
 	_history.pop_back()
 	if not _history.is_empty() and _same_geometry(_history[-1].after,result.state):_history[-1].live_after=Building.fingerprint(result.state)
@@ -452,21 +479,43 @@ func _rebuild_for_land()->Dictionary:
 	_cache_key="";_cache.clear();_busy=false
 	return {"ok":true}
 
-func _apply(before:Dictionary,after:Dictionary,funds:int)->Dictionary:
+func _apply(before:Dictionary,after:Dictionary,funds:int,removed:Array=[],restored:Array=[])->Dictionary:
 	var protection:Dictionary=_protection()
 	_busy=true
+	# Retain real nodes until the structure and navigation both succeed. A failed
+	# build puts the exact original objects back without charging or losing them.
+	var detached:Array=[];var added:Array=[]
+	var original_items:Array=app.world.items.duplicate()
+	for entry:Dictionary in removed:
+		for index:int in range(app.world.items.size()-1,-1,-1):
+			var item:Dictionary=app.world.items[index]
+			if str(item.id)!=str(entry.id):continue
+			detached.append({"index":original_items.find(item),"item":item,"parent":item.node.get_parent()})
+			item.node.get_parent().remove_child(item.node)
+			app.world.items.remove_at(index)
+	for entry:Dictionary in restored:
+		var count:int=app.world.items.size()
+		app.world.add_item(entry,false)
+		if app.world.items.size()>count:added.append(app.world.items[-1])
 	app.world.construction.restore(after)
 	app.world.last_layout_error=""
 	app.world.rebuild_navigation()
 	var error:String=app.world.construction.last_error
 	if error.is_empty():error=app.world.last_layout_error
+	if error.is_empty() and added.size()!=restored.size():error="A cleared garden plant could not be restored."
 	if not error.is_empty():
+		for item:Dictionary in added:
+			app.world.items.erase(item);item.node.queue_free()
+		detached.sort_custom(func(a:Dictionary,b:Dictionary)->bool:return int(a.index)<int(b.index))
+		for held:Dictionary in detached:
+			held.parent.add_child(held.item.node);app.world.items.insert(int(held.index),held.item)
 		app.world.construction.restore(before);app.world.last_layout_error="";app.world.rebuild_navigation()
 		_busy=false;return _error(error)
+	for held:Dictionary in detached:held.item.node.queue_free()
 	# Windows and doors stay on the wall face they hung from: when Grab wall
 	# pushes a segment (and its collinear doorway stubs), shift those openings
 	# by the same normal delta so they are not left floating in the old plane.
-	_sync_wall_mounted_after_structure(before,after)
+	if _sync_wall_mounted_after_structure(before,after):app.world.construction.refresh_decorations()
 	# State and graph are installed before the single wallet mutation. No action
 	# is canceled, advanced or rewarded by this transaction.
 	Protection.acknowledge_rebuild(app,protection,Protection.unchanged_routes(protection,before,after,app.world.lot_navigation))
@@ -477,8 +526,9 @@ func _apply(before:Dictionary,after:Dictionary,funds:int)->Dictionary:
 
 ## Move wall-mounted furnishings whose host wall line shifted between `before`
 ## and `after`. Along-wall sliding is unchanged; only the push/pull normal moves.
-func _sync_wall_mounted_after_structure(before:Dictionary,after:Dictionary)->void:
-	if not is_instance_valid(app) or not is_instance_valid(app.world):return
+func _sync_wall_mounted_after_structure(before:Dictionary,after:Dictionary)->bool:
+	if not is_instance_valid(app) or not is_instance_valid(app.world):return false
+	var changed:bool=false
 	var line_delta:Dictionary={}
 	for wall:Dictionary in after.get("walls",[]):
 		var old:Dictionary=Building.find(before,str(wall.id))
@@ -493,13 +543,17 @@ func _sync_wall_mounted_after_structure(before:Dictionary,after:Dictionary)->voi
 	# any surviving panel on that old line moved; gather by old line key too.
 	var line_shifts:Array=[]
 	for info:Dictionary in line_delta.values():
-		var key:String=("%s:%.3f" % ["h" if bool(info.horizontal) else "v", float(info.old.z) if bool(info.horizontal) else float(info.old.x)])
+		var level:int=int(info.old.get("level",0))
+		var key:String=("%d:%s:%.3f" % [level,"h" if bool(info.horizontal) else "v", float(info.old.z) if bool(info.horizontal) else float(info.old.x)])
+		var center:float=float(info.old.x) if bool(info.horizontal) else float(info.old.z)
+		var half:float=maxf(float(info.old.w),float(info.old.d))*.5
 		var found:bool=false
 		for entry:Dictionary in line_shifts:
 			if str(entry.key)==key:
+				entry.low=minf(float(entry.low),center-half);entry.high=maxf(float(entry.high),center+half)
 				found=true;break
-		if not found:line_shifts.append({"key":key,"horizontal":bool(info.horizontal),"delta":float(info.delta),"old_line":float(info.old.z) if bool(info.horizontal) else float(info.old.x)})
-	if line_shifts.is_empty():return
+		if not found:line_shifts.append({"key":key,"level":level,"low":center-half,"high":center+half,"horizontal":bool(info.horizontal),"delta":float(info.delta),"old_line":float(info.old.z) if bool(info.horizontal) else float(info.old.x)})
+	if line_shifts.is_empty():return false
 	for item:Dictionary in app.world.items:
 		var kind:String=str(item.get("kind",""))
 		if not LifeCatalog.wall_mounted(kind):continue
@@ -525,9 +579,14 @@ func _sync_wall_mounted_after_structure(before:Dictionary,after:Dictionary)->voi
 				item.x=float(item.x)+float(info.delta);item.z=float(item.z)
 				item.node.position.x+=float(info.delta)
 			moved=true;break
-		if moved:continue
+		if moved:
+			changed=true
+			continue
 		# Door leaf in a doorway gap: not inside either stub, but on the old line.
 		for shift:Dictionary in line_shifts:
+			if int(shift.level)!=level:continue
+			var along:float=sample.x if bool(shift.horizontal) else sample.y
+			if along+size.x*.5<float(shift.low)-.01 or along-size.x*.5>float(shift.high)+.01:continue
 			var on_line:float=sample.y if bool(shift.horizontal) else sample.x
 			if absf(on_line-float(shift.old_line))>.35:continue
 			if bool(shift.horizontal):
@@ -536,4 +595,6 @@ func _sync_wall_mounted_after_structure(before:Dictionary,after:Dictionary)->voi
 			else:
 				item.x=float(item.x)+float(shift.delta)
 				item.node.position.x+=float(shift.delta)
+			changed=true
 			break
+	return changed

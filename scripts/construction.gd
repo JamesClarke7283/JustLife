@@ -20,6 +20,7 @@ var proposal: Dictionary = {}
 var valid: bool = false
 var cutaway: bool = true
 var building_state:Dictionary={}
+var cleared_vegetation:Array=[]
 var stair_nodes:Dictionary={}
 var guard_nodes:Dictionary={}
 var roof_nodes:Dictionary={}
@@ -77,6 +78,9 @@ func _window_supports()->Dictionary:
 	var out:Dictionary={}
 	for window:Node3D in world.house.get_children():
 		if window.has_meta("window_aperture"):out[window]=WindowGeometry.supported_wall_ids(window,descriptors)
+	for item:Dictionary in world.items:
+		var window:Node3D=item.node
+		if window.has_meta("window_aperture"):out[window]=WindowGeometry.supported_wall_ids(window,descriptors)
 	return out
 
 func _rebuild_wall(e:Dictionary, supports:Dictionary)->void:
@@ -97,8 +101,8 @@ func _rebuild_wall(e:Dictionary, supports:Dictionary)->void:
 		var size:Vector3=Vector3(piece.size.x,piece.size.y,float(e.d)) if horizontal else Vector3(float(e.w),piece.size.y,piece.size.x)
 		world.box(node,pos,size,str(e.color))
 	var pattern:String=str(e.get("pattern",""))
-	if pattern in ["two_tone","patterned"]:_dress_home_coat(node,e,horizontal,length,h,pattern)
-	elif not pattern.is_empty():_dress_nursery_pattern(node,e,horizontal,length,h,pattern)
+	if pattern in ["two_tone","patterned"]:_dress_home_coat(node,e,horizontal,length,h,pattern,pieces)
+	elif not pattern.is_empty():_dress_nursery_pattern(node,e,horizontal,length,h,pattern,pieces)
 	world.box(node,Vector3(0,h+.025,0),Vector3(float(e.w)+.025,.05,float(e.d)+.025),"f5efdf")
 	world.box(node,Vector3(0,.055,0),Vector3(float(e.w)+.015,.11,float(e.d)+.015),"f5efdf")
 	if not building_state.is_empty() and not cutaway:
@@ -129,7 +133,9 @@ func remove_wall(id: String) -> void:
 
 func snapshot() -> Dictionary:
 	if not building_state.is_empty():return building_state.duplicate(true)
-	return {"kind":"__construction","walls":records.duplicate(true),"floors":floor_records.duplicate(true)}
+	var data:Dictionary={"kind":"__construction","walls":records.duplicate(true),"floors":floor_records.duplicate(true)}
+	if not cleared_vegetation.is_empty():data["cleared_vegetation"]=cleared_vegetation.duplicate()
+	return data
 
 func has_upper_floor() -> bool:
 	if building_state.is_empty():return false
@@ -156,6 +162,7 @@ func restore(data: Dictionary) -> void:
 	for node:Node3D in roof_nodes.values():node.queue_free()
 	roof_nodes.clear()
 	building_state=canonical
+	cleared_vegetation=result.state.get("cleared_vegetation",[]).duplicate()
 	if not canonical.is_empty():
 		_render_building()
 		refresh_decorations()
@@ -234,20 +241,24 @@ func _carpet_material(finish:String,style:String)->Material:
 	_carpet_materials[key]=surface
 	return surface
 
-func _dress_home_coat(node:Node3D,entry:Dictionary,horizontal:bool,length:float,height:float,pattern:String)->void:
+func _dress_home_coat(node:Node3D,entry:Dictionary,horizontal:bool,length:float,height:float,pattern:String,pieces:Array[Rect2])->void:
 	var accent:String=str(entry.get("accent","eae7d7"))
+	var bands:Array[Rect2]=[]
 	if pattern=="two_tone":
-		var band:float=height*.46
-		var pos:=Vector3(0,band*.5,.02) if horizontal else Vector3(.02,band*.5,0)
-		var size:=Vector3(length,band,.04) if horizontal else Vector3(.04,band,length)
-		world.box(node,pos,size,accent)
-		return
-	for band:int in 4:
-		var y:float=.35+float(band)*.45
-		if y>height-.2:break
-		var pos:=Vector3(0,y,.02) if horizontal else Vector3(.02,y,0)
-		var size:=Vector3(length,.08,.03) if horizontal else Vector3(.03,.08,length)
-		world.box(node,pos,size,accent)
+		bands.append(Rect2(-length*.5,0,length,height*.46))
+	else:
+		for band:int in 4:
+			var y:float=.35+float(band)*.45
+			if y>height-.2:break
+			bands.append(Rect2(-length*.5,y-.04,length,.08))
+	for band:Rect2 in bands:
+		for piece:Rect2 in pieces:
+			var part:Rect2=band.intersection(piece)
+			if not part.has_area():continue
+			var c:Vector2=part.get_center()
+			var pos:=Vector3(c.x,c.y,.02) if horizontal else Vector3(.02,c.y,c.x)
+			var size:=Vector3(part.size.x,part.size.y,.04) if horizontal else Vector3(.04,part.size.y,part.size.x)
+			world.box(node,pos,size,accent)
 
 func set_roof_visibility(value:bool)->void:
 	roofs_visible=value
@@ -867,13 +878,18 @@ func floor_area(entries:Array) -> float:
 	return total
 
 func commit(data: Dictionary) -> void:
+	var before:Dictionary=validated_state().get("state",{})
 	if data.get("building_state") is Dictionary:
-		restore(data.building_state)
+		var after:Dictionary=data.building_state.duplicate(true)
+		var cleared:Array=world.vegetation_clearance(before,after)
+		if not cleared.is_empty():after["cleared_vegetation"]=cleared
+		restore(after)
 		if not last_error.is_empty():return
 		anchored=false;proposal.clear();world.rebuild_navigation();refresh_decorations();return
 	if data.has("remove_id"):remove_wall(data.remove_id)
 	for e in data.get("walls",[]):add_wall(e)
 	for e in data.get("floors",[]):add_floor(e)
+	cleared_vegetation=world.vegetation_clearance(before,validated_state().get("state",{}))
 	anchored=false
 	proposal.clear()
 	world.rebuild_navigation()
@@ -882,20 +898,21 @@ func commit(data: Dictionary) -> void:
 ## Cover a painted nursery wall with the authored pattern panel, tinted to the
 ## chosen colour and scaled to the wall face so Structure paint uses the same
 ## five meshes as the Baby & Kids catalogue sample.
-func _dress_nursery_pattern(node:Node3D,entry:Dictionary,horizontal:bool,length:float,height:float,pattern:String)->void:
+func _dress_nursery_pattern(node:Node3D,entry:Dictionary,horizontal:bool,_length:float,_height:float,pattern:String,pieces:Array[Rect2])->void:
 	var path:String=LifeCatalogVariants.model_path("nursery_paint",pattern)
 	if not ResourceLoader.exists(path):return
-	var panel:Node3D=load(path).instantiate()
-	node.add_child(panel)
 	var data:Dictionary=LifeCatalog.get_item("nursery_paint")
 	var authored_w:float=maxf(.01,float(data.size.x))
 	var authored_h:float=maxf(.01,float(data.height))
-	var scale_x:float=length/authored_w
-	var scale_y:float=height/authored_h
-	panel.scale=Vector3(scale_x,scale_y,1.0)
-	panel.position=Vector3(0,height*.5,0)
-	if not horizontal:panel.rotation_degrees.y=90.0
-	world._apply_variant_colour(panel,data,{"style":pattern,"color":str(entry.get("color",entry.get("material","8faf9f"))),"size":""})
+	for piece:Rect2 in pieces:
+		var panel:Node3D=load(path).instantiate()
+		node.add_child(panel)
+		panel.scale=Vector3(piece.size.x/authored_w,piece.size.y/authored_h,1.0)
+		var center:Vector2=piece.get_center()
+		# Authored nursery panels start at the bottom of their local Y axis.
+		panel.position=Vector3(center.x,piece.position.y,0) if horizontal else Vector3(0,piece.position.y,center.x)
+		if not horizontal:panel.rotation_degrees.y=90.0
+		world._apply_variant_colour(panel,data,{"style":pattern,"color":str(entry.get("color",entry.get("material","8faf9f"))),"size":""})
 
 func _visible_wall_height(entry:Dictionary)->float:
 	var height:float=float(entry.height)
@@ -995,6 +1012,7 @@ func refresh_decorations() -> void:
 	doors.set_cutaway(cutaway)
 	var supports:Dictionary=_window_supports()
 	for e:Dictionary in records:_rebuild_wall(e,supports)
+	for window:Node3D in supports:window.visible=not supports[window].is_empty()
 	for n in world.house.get_children():
 		if n.has_meta("wall_decoration"):
 			n.visible=not supports.get(n,[]).is_empty() if n.has_meta("window_aperture") else _decoration_supported(n)
@@ -1003,3 +1021,4 @@ func refresh_decorations() -> void:
 			for floor:Dictionary in floor_records:
 				if int(floor.get("level",0))!=0:continue
 				if wall_rect(floor).grow(.15).has_point(Vector2(n.position.x,n.position.z)):n.visible=false;break
+	world.refresh_vegetation()

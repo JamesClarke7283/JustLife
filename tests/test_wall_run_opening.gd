@@ -90,11 +90,12 @@ func _initialize() -> void:
 	if bool(grab.ok):
 		var south: Dictionary = Building.find(grab.after, "s")
 		var west: Dictionary = Building.find(grab.after, "w")
-		check(is_equal_approx(float(south.z), 3.0) and is_equal_approx(float(west.d), 5.0), "Grab wall still stretches the connectors and moves the wall.")
+		var north: Dictionary = Building.find(grab.after, "n")
+		check(is_equal_approx(float(south.z), 3.0) and is_equal_approx(Building.rect(west).position.y, Building.rect(north).position.y) and is_equal_approx(Building.rect(west).end.y, Building.rect(south).end.y), "Grab wall stretches the connector through both outside corner edges.")
 		var interior := Vector2(0.0, 2.7)
 		var covered: bool = false
 		for floor: Dictionary in grab.after.floors:
 			if Building.rect(floor).has_point(interior): covered = true
-		check(covered, "Grab wall still grows the floor under the push.")
+		check(not covered and grab.after.floors == grab_room.floors, "Grab wall leaves the independent floor unchanged.")
 	print("WALL_RUN %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)

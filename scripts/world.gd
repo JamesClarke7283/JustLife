@@ -6,6 +6,8 @@ const Variants=preload("res://scripts/catalog_variants.gd")
 const Kitchen=preload("res://scripts/kitchen_furnishings.gd")
 const LotNavigation=preload("res://scripts/lot_navigation.gd")
 const ActorMotion=preload("res://scripts/actor_motion.gd")
+const GardenSwing=preload("res://scripts/garden_swing.gd")
+const WindowGeometry=preload("res://scripts/window_geometry.gd")
 const VIEW_ENVIRONMENT:int=1
 const VIEW_GROUND:int=2
 const VIEW_UPPER:int=4
@@ -94,10 +96,12 @@ var rng = RandomNumberGenerator.new()
 var material_cache: Dictionary = {}
 var construction: LifeConstruction
 var landscape_trees:Array[Node3D]=[]
+var _garden_vegetation:Array[Node3D]=[]
 var ceiling_beams:Array[MeshInstance3D]=[]
 var indoor_lights:Array[Dictionary]=[]
 var indoor_lights_lit:bool=true
 var _desk_boosters:Dictionary={}
+var _garden_swings:Array[Node3D]=[]
 var oven_presentations:Dictionary={}
 var oven_food_views:Dictionary={}
 ## Picks the world does not own. Pets live in the controller's own registry
@@ -240,6 +244,7 @@ func _build_bath_mat(parent: Node3D, variant: Dictionary) -> void:
 	var style: String = str(variant.get("style", "plush"))
 	if style == "oval":
 		var disc := MeshInstance3D.new()
+		disc.name = "TintOval"
 		var mesh := CylinderMesh.new()
 		mesh.top_radius = 0.28
 		mesh.bottom_radius = 0.34
@@ -247,14 +252,15 @@ func _build_bath_mat(parent: Node3D, variant: Dictionary) -> void:
 		disc.mesh = mesh
 		disc.material_override = material(colour)
 		disc.position = Vector3(0, 0.02, 0)
+		disc.scale.z = 1.6
 		parent.add_child(disc)
 		return
 	if style == "grid":
 		for x: int in range(-1, 2):
 			for z: int in range(-1, 2):
-				box(parent, Vector3(float(x) * 0.18, 0.02, float(z) * 0.28), Vector3(0.14, 0.03, 0.22), colour)
+				box(parent, Vector3(float(x) * 0.18, 0.02, float(z) * 0.28), Vector3(0.14, 0.03, 0.22), colour).name = "TintPad_%d_%d" % [x,z]
 		return
-	box(parent, Vector3(0, 0.025, 0), Vector3(0.62, 0.045, 1.05), colour)
+	box(parent, Vector3(0, 0.025, 0), Vector3(0.62, 0.045, 1.05), colour).name = "TintPlush"
 
 
 func _build_framed_picture(parent: Node3D, variant: Dictionary) -> void:
@@ -399,7 +405,11 @@ func create_home(layout: Array = []) -> void:
 	# is redrawn whenever the household buys a neighbouring plot.
 	for x in [-6.85,6.85]:
 		for z in range(-5,5):
-			if z%2==0:sphere(house,Vector3(x,.16,z),Vector3(.68,.34,.65),"84a366").set_meta("garden_decoration",true)
+			if z%2==0:
+				var bush:MeshInstance3D=sphere(house,Vector3(x,.16,z),Vector3(.68,.34,.65),"84a366")
+				_register_vegetation(bush,"bush")
+	# Keep planting identities stable across repeated reconstruction of this home.
+	rng.seed=91517
 	for x in [-3.5,3.5]:
 		for i in range(12):
 			var p=Vector3(x+rng.randf_range(-.9,.9),-.09,6.8+rng.randf_range(-.45,.45))
@@ -737,6 +747,64 @@ func tree(p: Vector3, s: float, parent: Node3D = null) -> void:
 		var tree_material:StandardMaterial3D=mesh.get_active_material(0)
 		tree_material.vertex_color_use_as_albedo=true
 	landscape_trees.append(tree_root)
+	_register_vegetation(tree_root,"tree")
+
+## Authored planting is tracked separately from purchased furnishings. Its stable
+## identity survives a ground redraw; hidden plants remain available for undo.
+func _register_vegetation(node:Node3D,kind:String,footprint:Rect2=Rect2())->void:
+	if not footprint.has_area():
+		var vertices:Array[Vector3]=[]
+		_gather_visual_bounds(node,Transform3D.IDENTITY,vertices)
+		if vertices.is_empty():return
+		var low:=Vector2(INF,INF);var high:=Vector2(-INF,-INF)
+		for vertex:Vector3 in vertices:
+			low=low.min(Vector2(vertex.x,vertex.z));high=high.max(Vector2(vertex.x,vertex.z))
+		footprint=Rect2(low,high-low)
+	var id:String="%s_%d_%d" % [kind,roundi(node.position.x*1000),roundi(node.position.z*1000)]
+	node.set_meta("garden_decoration",true)
+	node.set_meta("vegetation_id",id)
+	node.set_meta("vegetation_footprint",footprint)
+	_garden_vegetation.append(node)
+
+func _live_vegetation()->Array[Node3D]:
+	_garden_vegetation=_garden_vegetation.filter(func(node:Node3D)->bool:return is_instance_valid(node) and not node.is_queued_for_deletion() and is_instance_valid(house) and house.is_ancestor_of(node))
+	return _garden_vegetation
+
+## A quote records only planting touched by newly placed or changed ground
+## walls/floors. It never changes visibility or the committed construction state.
+func construction_clearance_areas(before:Dictionary,after:Dictionary)->Array[Rect2]:
+	var changed:Array[Rect2]=[]
+	for group:String in ["walls","floors"]:
+		for record:Dictionary in after.get(group,[]):
+			if int(record.get("level",0))!=0:continue
+			var old:Dictionary=Building.find(before,str(record.id))
+			var area:Rect2=Building.rect(record)
+			if not old.is_empty() and int(old.get("level",0))==0 and Building.rect(old).is_equal_approx(area):continue
+			changed.append(area)
+	return changed
+
+func vegetation_clearance(before:Dictionary,after:Dictionary)->Array:
+	var cleared:Array=before.get("cleared_vegetation",[]).duplicate()
+	var changed:Array[Rect2]=construction_clearance_areas(before,after)
+	if changed.is_empty():return cleared
+	for node:Node3D in _live_vegetation():
+		var id:String=str(node.get_meta("vegetation_id"))
+		if cleared.has(id):continue
+		var footprint:Rect2=node.get_meta("vegetation_footprint")
+		for area:Rect2 in changed:
+			if footprint.intersects(area):cleared.append(id);break
+	cleared.sort()
+	return cleared
+
+func refresh_vegetation()->void:
+	if not is_instance_valid(construction):return
+	for node:Node3D in _live_vegetation():
+		node.visible=not construction.cleared_vegetation.has(str(node.get_meta("vegetation_id")))
+		if not node.visible:continue
+		var footprint:Rect2=node.get_meta("vegetation_footprint")
+		for record:Dictionary in construction.records+construction.floor_records:
+			if int(record.get("level",0))==0 and footprint.intersects(Building.rect(record)):
+				node.visible=false;break
 
 ## Draw the household's land: the lawn it covers, the boundary hedges on its own
 ## outer edges, the street in front and the trees behind.
@@ -769,12 +837,13 @@ func draw_ground() -> void:
 	var west_edge:float=ground.position.x
 	var east_edge:float=ground.end.x
 	for z in [back_edge+.6, back_edge+1.2]:
-		for x in range(int(west_edge)+1,int(east_edge)):sphere(parent,Vector3(x,.25,z),Vector3(1.0,.64,.80),"71945e")
+		for x in range(int(west_edge)+1,int(east_edge)):
+			_register_vegetation(sphere(parent,Vector3(x,.25,z),Vector3(1.0,.64,.80),"71945e"),"hedge")
 	for side_x:float in [west_edge+.85, east_edge-.85]:
 		var span:int=int(maxf(1.0,(ground.end.y-2.0)-back_edge))
 		for step:int in range(span):
 			var z:float=back_edge+1.0+float(step)
-			sphere(parent,Vector3(side_x,.25,z),Vector3(.9,.5,.80),"71945e")
+			_register_vegetation(sphere(parent,Vector3(side_x,.25,z),Vector3(.9,.5,.80),"71945e"),"hedge")
 	# The street stays where it is: the lot grows away from the frontage.
 	box(parent,Vector3(0,-.02,8.5),Vector3(75,.10,1.25),"e0d9c7")
 	box(parent,Vector3(0,-.07,11.0),Vector3(100,.12,3.7),"798781")
@@ -785,6 +854,7 @@ func draw_ground() -> void:
 	box(parent,Vector3(2,1.06,7.8),Vector3(.45,.35,.33),"397e70")
 	box(parent,Vector3(2,1.07,7.98),Vector3(.26,.05,.008),"c8a562")
 	rebuild_build_grid()
+	refresh_vegetation()
 
 
 ## The Build-mode construction grid covers the whole owned lot (every bought
@@ -935,8 +1005,10 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	if kind=="house_window" and is_instance_valid(model):
 		# Authored origin is the pane centre; lift it to the usual wall height.
 		model.position.y=1.62
-		node.set_meta("window_aperture",Rect2(-.878,-.692,1.756,1.384))
-		node.set_meta("window_frame_bounds",Rect2(-1.09,-.825,2.18,1.655))
+		model.position.z=-.045
+		_catalog_window_glass(model)
+		# These bounds use the furnishing's floor origin, including its lift.
+		_catalog_window_geometry(node)
 		node.set_meta("wall_decoration",true)
 	if kind=="mirror" and is_instance_valid(model):_dress_mirror(node,model)
 	if kind=="floor_lamp":
@@ -990,7 +1062,7 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 		bounds.size=Vector3(float(panel.w),info.height,float(panel.d))
 		shape.shape=bounds
 		shape.position=Vector3(float(panel.x),float(info.height)/2,float(panel.z))
-		if LifeCatalog.wall_mounted(kind) and data.has("hang"):
+		if LifeCatalog.wall_mounted(kind) and (data.has("hang") or kind=="house_window"):
 			# A wall model may extend below its attachment origin. Pick its real
 			# raised picture/clock, without a tall invisible box above the wall.
 			var vertices:Array[Vector3]=[]
@@ -1021,6 +1093,39 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 			info["z"] = node.position.z
 			info["rotation"] = node.rotation_degrees.y
 	if rebuild:rebuild_navigation()
+	if rebuild and kind=="house_window":construction.refresh_decorations()
+
+## Imported panes are boxes. A single transparent, two-sided surface lets the
+## real sun traverse the matching wall aperture without stacked glass shadows.
+func _catalog_window_glass(model:Node3D)->void:
+	for pane:MeshInstance3D in model.find_children("Glass*","MeshInstance3D",true,false):
+		var glass:=QuadMesh.new();glass.size=Vector2(1.72,1.34);pane.mesh=glass
+		var tint:=StandardMaterial3D.new();tint.albedo_color=Color(.72,.82,.84,.13)
+		tint.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA;tint.cull_mode=BaseMaterial3D.CULL_DISABLED
+		tint.roughness=.14;tint.metallic_specular=.55
+		pane.material_override=tint;pane.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+func _catalog_window_geometry(window:Node3D)->void:
+	window.set_meta("window_aperture",Rect2(-.88,.93,1.76,1.38))
+	window.set_meta("window_frame_bounds",Rect2(-.96,.83,1.92,1.54))
+	window.set_meta("window_attachment_offset",.06)
+
+## A window needs uninterrupted support for its whole frame. Judge the real
+## wall height even while the player lowers the displayed walls for building.
+func _catalog_window_supported(at:Vector3,angle:float)->bool:
+	var window:=Node3D.new()
+	window.position=at
+	window.rotation_degrees.y=angle
+	_catalog_window_geometry(window)
+	var descriptors:Array=[]
+	for record:Dictionary in construction.records:
+		var wall:Dictionary=record.duplicate()
+		wall["base_y"]=Building.level_y(int(record.get("level",0)))
+		wall["display_height"]=float(record.height)
+		descriptors.append(wall)
+	var supported:bool=not WindowGeometry.supported_wall_ids(window,descriptors).is_empty()
+	window.free()
+	return supported
 
 ## The towels hanging over a rack's rail: as many as it holds now, each in its own
 ## slot between the two rail markers the rack model authors. Taking a towel
@@ -1209,6 +1314,7 @@ func remove_item(id: String, keep_supported:bool=false) -> Dictionary:
 					for key:String in ["support_id","support_x","support_z","support_rotation","hang"]:supported.erase(key)
 			_rebuild_supported_items()
 			rebuild_navigation()
+			if str(data.kind)=="house_window":construction.refresh_decorations()
 			return data
 	return {}
 
@@ -1602,6 +1708,7 @@ func begin_placement(kind:String,style:String="",size:String="",color:String="")
 		return
 	if Kitchen.cabinet(kind):
 		ghost=Kitchen.build(kind,Variants.resolve(bought,{"style":style,"size":size,"color":color}))
+		ghost.scale*=Kitchen.model_scale(kind)
 		add_child(ghost)
 		_ghost_materials(ghost)
 		return
@@ -1636,6 +1743,10 @@ func begin_placement(kind:String,style:String="",size:String="",color:String="")
 	if ghost==null:
 		clear_placement()
 		return
+	if kind=="house_window":
+		var pane:Node3D=ghost
+		ghost=Node3D.new();ghost.add_child(pane)
+		pane.position=Vector3(0,1.62,-.045)
 	var scale:float=Variants.size_scale(size)
 	if not is_equal_approx(scale,1.0):ghost.scale=Vector3.ONE*scale
 	ghost.scale*=Kitchen.model_scale(kind)
@@ -1739,6 +1850,7 @@ func can_place(kind:String,p:Vector3,angle:float,style:String="",size_choice:Str
 	for corner in [rect.position,rect.end,Vector2(rect.position.x,rect.end.y),Vector2(rect.end.x,rect.position.y)]:
 		if not grounds(corner,level):return false
 	if LifeCatalog.wall_mounted(kind) and not wall_behind(kind,p,angle,variant.size):return false
+	if kind=="house_window" and not _catalog_window_supported(p,angle):return false
 	if LifeCatalog.passable(kind):
 		# A rug can lie anywhere. A fence or gate may touch the next panel and
 		# the face of a wall, and is refused only when the panels themselves overlap.
@@ -1751,7 +1863,7 @@ func can_place(kind:String,p:Vector3,angle:float,style:String="",size_choice:Str
 		return true
 	# Interior walls and doorways stay usable. A fence or gate may touch a wall;
 	# other furnishings keep the small margin that stops them sinking into it.
-	var wall_slack:float=-.01 if LifeCatalog.runs_flush(kind) else .03
+	var wall_slack:float=-.001 if kind=="fridge" else (-.01 if LifeCatalog.runs_flush(kind) else .03)
 	if construction.rect_blocked(rect,level,wall_slack):return false
 	for item in items:
 		if item_level(item)!=level:continue
@@ -1805,6 +1917,36 @@ func kitchen_snap(kind:String,p:Vector3,angle:float,reach:float=.6) -> Vector3:
 				var delta:float=Vector2(candidate.x-p.x,candidate.z-p.z).length()
 				if delta<distance:
 					distance=delta;best=candidate
+	return _kitchen_wall_snap(kind,best,angle,reach)
+
+## A fridge's back may meet a solid wall, but never rotate through the wall or
+## span a doorway. Keep the chosen orientation and slide only toward its back.
+func _kitchen_wall_snap(kind:String,p:Vector3,angle:float,reach:float) -> Vector3:
+	if kind!="fridge" or not is_instance_valid(construction):return p
+	var front:Vector3=Basis(Vector3.UP,deg_to_rad(angle))*Vector3.BACK
+	var along_x:bool=absf(front.z)>.999
+	if not along_x and absf(front.x)<.999:return p
+	var size:Vector2=LifeCatalog.get_item(kind).size
+	var level:int=point_level(p)
+	var best:Vector3=p
+	var nearest:float=reach
+	for wall:Dictionary in construction.records:
+		if int(wall.get("level",0))!=level or (float(wall.w)>=float(wall.d))!=along_x:continue
+		var sign:float=signf(front.z if along_x else front.x)
+		var at:float=p.z if along_x else p.x
+		var centre:float=float(wall.z) if along_x else float(wall.x)
+		if (at-centre)*sign<=0.0:continue
+		var along:float=p.x if along_x else p.z
+		var wall_along:float=float(wall.x) if along_x else float(wall.z)
+		var length:float=float(wall.w) if along_x else float(wall.d)
+		if absf(along-wall_along)+size.x*.5>length*.5+.001:continue
+		var thickness:float=float(wall.d) if along_x else float(wall.w)
+		var target:float=centre+sign*(thickness+size.y)*.5
+		var distance:float=absf(target-at)
+		if distance>=nearest:continue
+		nearest=distance
+		if along_x:best.z=target
+		else:best.x=target
 	return best
 
 ## Move countertop appliances with their host; selling a host grounds them.
@@ -2248,8 +2390,11 @@ func set_item_lit(item:Dictionary,lit:bool)->void:
 		var glow:Node=item.node.find_child("LampGlow",true,false)
 		if glow!=null:glow.visible=lit
 
-func begin_activity_frame(paused:bool=false) -> void:
+func begin_activity_frame(paused:bool=false,delta:float=0.0,speed:float=1.0) -> void:
 	if paused:return
+	for index:int in range(_garden_swings.size()-1,-1,-1):
+		if not is_instance_valid(_garden_swings[index]):_garden_swings.remove_at(index)
+		else:_garden_swings[index].advance(delta*clampf(speed,0.0,3.0))
 	for id:int in _desk_boosters.keys():
 		if not is_instance_valid(_desk_boosters[id]):_desk_boosters.erase(id)
 		else:_desk_boosters[id].visible=false
@@ -2284,7 +2429,7 @@ func seat_capacity(item:Dictionary) -> int:
 	if str(item.kind) in SHARED_BEDS:return 2
 	var variant:Dictionary=item.get("variant",{})
 	var size:String=str(variant.get("size",""))
-	return maxi(1,Variants.seats(data,size))
+	return maxi(1,Variants.seats(data,size,str(variant.get("style",""))))
 
 ## The names of a furnishing's own places, in the order they are offered. A bed
 ## keeps its named halves, because a save and the intimacy action both name them;
@@ -2315,7 +2460,7 @@ func seat_slot_offset(item:Dictionary,slot:String) -> Vector3:
 		var base:float=float((LifeCatalog.get_item(str(item.kind)).get("size",Vector2.ONE) as Vector2).x)
 		var scale:float=float(item.get("size",Vector2.ONE).x)/maxf(.01,base)
 		return Vector3(float(authored[index])*scale,0,0)
-	var span:float=maxf(.1,float(item.get("size",Vector2(.6,.6)).x)*.8)
+	var span:float=maxf(.1,float(item.get("size",Vector2(.6,.6)).x)*(.52 if str(item.kind)=="outdoor_swing" else .8))
 	var step:float=span/float(maxi(1,count-1)) if count>1 else 0.0
 	return Vector3(-span*.5+step*float(index),0,0)
 
@@ -2449,6 +2594,12 @@ func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -
 	if action_id==LifeOutdoorActs.ACTION_ID:
 		var water:Dictionary=outdoor_water_anchor(item,landmarks)
 		if not water.is_empty():return water
+	if str(item.kind)=="outdoor_swing" and action_id in [LifeOutdoorActs.ACTION_ID,LifeWetness.DRY_SIT_ID,"host_a_chat","relax"]:
+		var motion:Node3D=node.get_node_or_null("GardenSwingMotion")
+		if motion==null:
+			motion=GardenSwing.new();motion.name="GardenSwingMotion"
+			node.add_child(motion);motion.configure(item);_garden_swings.append(motion)
+		return motion.anchor(seat_slot_offset(item,str(landmarks.get("seat_slot",""))))
 	if action_id==LifeWetness.DRY_SIT_ID:
 		# The garden's own seats: a chair at the table (four stand round it, and
 		# every place maps onto one of them) and the swing's cushion.
@@ -2460,9 +2611,6 @@ func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -
 				var chair:int=posmod(str(landmarks.get("seat_slot","seat_0")).trim_prefix("seat_").to_int(),4)
 				var around:float=float(chair)*PI*.5
 				return {"position":node.to_global(Vector3(sin(around)*.78*grown,.47*grown,cos(around)*.78*grown)),"yaw":node.rotation.y+around+PI,"kind":"seat"}
-			"outdoor_swing":
-				var swelled:float=Variants.size_scale(str((item.get("variant",{}) as Dictionary).get("size","")))
-				return {"position":node.to_global(Vector3(0,.53*swelled,.02*swelled)+seat_slot_offset(item,str(landmarks.get("seat_slot","")))),"yaw":node.rotation.y,"kind":"seat"}
 	if str(item.kind)=="stove" and action_id=="cook" and str(landmarks.get("recipe",""))=="harvest_bake":
 		var at:Vector3=landmarks.get("cooking_position",oven_approach(item))
 		at.y=node.global_position.y
@@ -2636,7 +2784,6 @@ func flower_clump(at: Vector3, rng: RandomNumberGenerator, petal_color: String) 
 	# A single draw per clump; construction can hide the whole plant under a floor.
 	var plant := MultiMeshInstance3D.new()
 	plant.position = at
-	plant.set_meta("garden_decoration", true)
 	var mesh := SphereMesh.new()
 	mesh.radial_segments = 8; mesh.rings = 4
 	mesh.radius = .5; mesh.height = 1.0
@@ -2671,6 +2818,7 @@ func flower_clump(at: Vector3, rng: RandomNumberGenerator, petal_color: String) 
 		batch.set_instance_transform(i, transforms[i]); batch.set_instance_color(i, colors[i])
 	plant.multimesh = batch
 	house.add_child(plant)
+	_register_vegetation(plant,"flowers",Rect2(Vector2(at.x-.18,at.z-.12),Vector2(.36,.24)))
 
 func create_resident_home(place:String,layout:Array) -> void:
 	layout=normalize_layout_rotations(layout)

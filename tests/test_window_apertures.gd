@@ -76,7 +76,7 @@ func v2_controls()->void:
 	for entry:Dictionary in lowered.walls:
 		if int(entry.level)==1:entry.cut=true
 	world.construction.restore(lowered);world.set_cutaway(true);await process_frame
-	check(lower.visible and not upper.visible,"Upper cutaway hides only its unsupported window and leaves ground glass visible.")
+	check(not lower.visible and not upper.visible,"Global cutaway hides full-height windows on both floors regardless of legacy cut flags.")
 	world.set_cutaway(false);await process_frame
 	check(lower.visible and upper.visible,"Full walls restore the same window nodes on both floors.")
 	check(wall_hit(Vector3(-2.7,4.8,-4.7),Vector3(-2.7,4.8,-5.4)),"Upper wall surrounding the opening remains opaque geometry.")
@@ -85,8 +85,15 @@ func run()->void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(output_dir))
 	world=load("res://scripts/world.gd").new();root.add_child(world);await process_frame
 	world.create_home(LifeCatalog.starter_layout());world.set_process(false);world.set_cutaway(false);await process_frame
-	check(windows().size()==5,"The starter home retains all five framed windows.")
+	check(windows().size()==4,"The starter home has two back windows and two side windows beside its separate rear entrance.")
 	var snapshot:Dictionary=world.construction.snapshot().duplicate(true)
+	var back_windows:Array=windows().filter(func(n:Node3D)->bool:return is_zero_approx(n.rotation_degrees.y))
+	check(back_windows.size()==2,"Both back windows remain on the wall to the left of the rear entrance.")
+	var back_wall_id:String=""
+	for entry:Dictionary in snapshot.walls:
+		if is_equal_approx(float(entry.z),-5.04) and float(entry.w)>float(entry.d) and world.construction.wall_rect(entry).has_point(Vector2(back_windows[0].position.x,-5.04)):
+			back_wall_id=str(entry.id)
+	check(not back_wall_id.is_empty(),"The test locates the actual back wall carrying its window controls.")
 	for n:Node3D in windows():
 		var glass:MeshInstance3D=n.get_child(0)
 		check(glass.mesh is QuadMesh and glass.material_override.cull_mode==BaseMaterial3D.CULL_DISABLED,"Glass is a single two-sided pane rather than stacked transparent box faces.")
@@ -111,17 +118,14 @@ func run()->void:
 	check(world.construction.snapshot()==saved,"Window restore preserves the exact decoded saved structural records.")
 	var modified:Dictionary=snapshot.duplicate(true)
 	for entry:Dictionary in modified.walls:
-		if float(entry.w)>10:entry.cut=true
+		if str(entry.id)==back_wall_id:entry.cut=true
 	world.construction.restore(modified);world.set_cutaway(true);await process_frame
-	var hidden:int=0
-	for n:Node3D in windows():
-		if is_zero_approx(n.rotation_degrees.y):hidden+=int(not n.visible)
-	check(hidden==3,"Cutaway hides unsupported full-height back windows.")
+	check(windows().all(func(n:Node3D)->bool:return not n.visible),"Global cutaway hides all unsupported full-height window frames.")
 	world.set_cutaway(false);await process_frame
 	check(windows().all(func(n:Node3D)->bool:return n.visible),"Raising walls restores complete window frames.")
 	var shortened:Dictionary=snapshot.duplicate(true)
 	for entry:Dictionary in shortened.walls:
-		if float(entry.w)>10:entry.w=1.0;entry.x=-4.25
+		if str(entry.id)==back_wall_id:entry.w=1.0;entry.x=-4.25
 	world.construction.restore(shortened);world.construction.refresh_decorations();await process_frame
 	check(windows().filter(func(n:Node3D)->bool:return is_zero_approx(n.rotation_degrees.y) and n.visible).is_empty(),"A narrowed wall cannot retain a partly unsupported window or clipped hole.")
 	check(wall_hit(Vector3(-4.25,1.8,-4.7),Vector3(-4.25,1.8,-5.4)),"User-edited short wall stays solid when no full frame fits.")
@@ -129,7 +133,7 @@ func run()->void:
 	check(windows().all(func(n:Node3D)->bool:return n.visible),"Restoring the original wall shape restores windows.")
 	var shifted:Dictionary=snapshot.duplicate(true)
 	for entry:Dictionary in shifted.walls:
-		if float(entry.w)>10:entry.z-=.03
+		if str(entry.id)==back_wall_id:entry.z-=.03
 	world.construction.restore(shifted);await process_frame
 	check(windows().filter(func(n:Node3D)->bool:return is_zero_approx(n.rotation_degrees.y) and n.visible).is_empty(),"A nearby parallel wall on another plane cannot support these windows.")
 	check(wall_hit(Vector3(-4.25,1.8,-4.7),Vector3(-4.25,1.8,-5.4)),"Misaligned supporting wall keeps solid geometry.")
@@ -139,20 +143,20 @@ func run()->void:
 	check(bool(door.get("valid",false)),"Actual door tool accepts a split through the first back window.")
 	world.construction.commit(door);world.construction.cancel();await process_frame
 	check(not windows()[0].visible,"Splitting the wall through a window removes its unsupported decoration.")
-	check(windows()[1].visible and windows()[2].visible,"Other windows remain when their whole frames still fit a split wall.")
+	check(windows().slice(1).all(func(n:Node3D)->bool:return n.visible),"All other windows remain when their whole frames still fit a split wall.")
 	check(not world.construction.point_blocked(Vector2(-4.25,-5.04)),"An intentional door opening remains walkable, unlike a glazed window.")
 	world.construction.restore(snapshot);await process_frame
-	var remove_id:String=""
-	for entry:Dictionary in snapshot.walls:
-		if float(entry.w)>10:remove_id=str(entry.id)
-	world.construction.remove_wall(remove_id);await process_frame
+	world.construction.remove_wall(back_wall_id);await process_frame
 	check(windows().filter(func(n:Node3D)->bool:return is_zero_approx(n.rotation_degrees.y) and n.visible).is_empty(),"Erasing a supporting wall immediately hides all attached back windows.")
 	var joined:Dictionary=snapshot.duplicate(true)
 	var split:Array=[]
 	for entry:Dictionary in joined.walls:
-		if float(entry.w)<=10:split.append(entry);continue
-		var left:Dictionary=entry.duplicate(true);left.id=str(entry.id)+"_left";left.x=-3.675;left.w=4.85
-		var right:Dictionary=entry.duplicate(true);right.id=str(entry.id)+"_right";right.x=2.425;right.w=7.35
+		if str(entry.id)!=back_wall_id:split.append(entry);continue
+		var seam:float=back_windows[1].position.x
+		var start:float=float(entry.x)-float(entry.w)*.5
+		var end:float=float(entry.x)+float(entry.w)*.5
+		var left:Dictionary=entry.duplicate(true);left.id=str(entry.id)+"_left";left.x=(start+seam)*.5;left.w=seam-start
+		var right:Dictionary=entry.duplicate(true);right.id=str(entry.id)+"_right";right.x=(seam+end)*.5;right.w=end-seam
 		split.append(left);split.append(right)
 	joined.walls=split
 	world.construction.restore(joined);await process_frame

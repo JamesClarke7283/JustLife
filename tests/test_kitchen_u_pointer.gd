@@ -173,7 +173,7 @@ func run()->void:
 	for i:int in bought.size():
 		for j:int in range(i+1,bought.size()):overlaps=overlaps or rect_of(bought[i]).grow(-.001).intersects(rect_of(bought[j]).grow(-.001))
 	check(not overlaps,"No nonadjacent U units overlap")
-	check(app.household.funds==start_funds-6*150-2*20-480-520,"The U charges six cabinets, two 20-Simoleon corners, oven and fridge once")
+	check(app.household.funds==start_funds-6*150-2*15-480-520,"The U charges six cabinets, two 15-Simoleon corners, oven and fridge once")
 	app.world.clear_placement();app.world.camera_target=Vector3(0,.5,6.9)+SITE_OFFSET;app.world.camera.size=9;app.world.camera_angle=0;app.world.camera_elevation=1.05;app.world.update_camera()
 	await frames();await screenshot("03-complete-u-kitchen")
 	check(app.save_game("native_u_kitchen","Native kitchen U"),"The completed U and native finish choices save through the public save path")

@@ -264,6 +264,12 @@ static func validate(state:Variant) -> String:
 	if not number(state.get("revision"),0,1e9,true) or not number(state.get("next_serial"),1,1e9,true):return "Invalid building revision."
 	var levels:Variant=state.get("levels")
 	if not levels is Array or levels.size()!=2 or not number(levels[0],0,0,true) or not number(levels[1],1,1,true):return "Invalid building levels."
+	var cleared:Variant=state.get("cleared_vegetation",[])
+	if not cleared is Array or cleared.size()>4096:return "Invalid cleared garden plants."
+	var seen_plants:Dictionary={}
+	for plant_id:Variant in cleared:
+		if not identifier(plant_id) or seen_plants.has(plant_id):return "Invalid cleared garden plant identity."
+		seen_plants[plant_id]=true
 	var ids:Dictionary={};var count:int=0
 	for group:String in GROUPS:
 		if not state.get(group) is Array:return "Invalid building collection: "+group
@@ -332,6 +338,7 @@ static func migrate(legacy:Variant) -> Dictionary:
 	for field:String in ["stairs","openings","roofs","levels"]:
 		if legacy.has(field):return _error("Legacy construction cannot contain unversioned level geometry.")
 	var state:Dictionary=fresh()
+	if legacy.has("cleared_vegetation"):state["cleared_vegetation"]=legacy.cleared_vegetation.duplicate() if legacy.cleared_vegetation is Array else legacy.cleared_vegetation
 	state.floors.append({"id":"legacy_starter_floor","level":0,"x":0.0,"z":0.0,"w":12.0,"d":10.0,"material":"cfa97e"})
 	for group:String in ["walls","floors"]:
 		for index:int in range(legacy[group].size()):

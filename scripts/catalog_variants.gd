@@ -136,9 +136,11 @@ static func face_area(data: Dictionary, size: String) -> float:
 	return maxf(0.01, span.x * height(data, size))
 
 
-## How many people, or cars, one size seats or holds. Reading a capacity here
-## rather than in the placement code keeps the size and the capacity one fact.
-static func seats(data: Dictionary, size: String) -> int:
+## How many people, or cars, a style and size seats or holds. The basket swing
+## is a single chair even though the other styles are benches.
+static func seats(data: Dictionary, size: String, style: String = "") -> int:
+	var per_style: Dictionary = data.get("style_seats", {})
+	if per_style.has(style): return int(per_style[style])
 	var per_size: Dictionary = data.get("seats", {})
 	if per_size.has(size): return int(per_size[size])
 	return int(data.get("seat_count", 0))

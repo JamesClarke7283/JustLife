@@ -637,7 +637,7 @@ func set_activity_anchor(world_position: Vector3,world_yaw: float,anchor_kind: S
 	# and phase for a pet-care or car beat.
 	for key: String in ["outdoor_kind","care_phase"]:
 		if details.get(key) is String: _activity_anchor[key] = details[key]
-	for key: String in ["care_time","care_progress","swim_span","swim_lane_offset"]:
+	for key: String in ["care_time","care_progress","swim_span","swim_lane_offset","swing_angle","swing_phase"]:
 		if (details.get(key) is float or details.get(key) is int) and is_finite(float(details[key])): _activity_anchor[key] = float(details[key])
 
 
@@ -2009,6 +2009,9 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 					if shaped.has("lean"): lean = shaped.lean
 					if not anchored: offset.y -= float(shaped.get("drop", 0.0))
 	if _accident_visible:_accident_pose(pose)
+	if anchored and str(_activity_anchor.get("outdoor_kind",""))=="outdoor_swing":
+		shaped=ActorMotion.garden_swing(self,pose)
+		lean=shaped.lean
 	if bool(meal_presentation.get("carrying",false)):
 		# Props keep their authored metre scale across ages. Solve the hands from
 		# the actual held transform so smaller Lifelets reach the same ceramic.
@@ -2071,7 +2074,10 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 			world_origin=_activity_anchor.position+upright*(hips+Vector3(0,-.09*_height*_proportion,.04+.50*(1.0-_proportion))+reach_shift)-world_orientation*hips
 		offset = to_local(world_origin) + interaction_offset
 		lean = (global_basis.orthonormalized().inverse() * world_orientation).get_euler()
-	var body_blend:float=1.0 if anchored and action_id=="mop_puddle" else blend
+	# Once settled, follow a moving cushion exactly. Repeated interpolation
+	# trails the seat and draws the pelvis through it on every return stroke.
+	var moving_seat:bool=anchored and str(_activity_anchor.get("outdoor_kind",""))=="outdoor_swing" and _action_time>1.0
+	var body_blend:float=1.0 if (anchored and action_id=="mop_puddle") or moving_seat else blend
 	visual.position = offset if _reconstructing_rest else visual.position.lerp(offset, body_blend)
 	visual.rotation = _angle_lerp(visual.rotation, lean, body_blend)
 	_update_visual_followers(anchored,action_id)

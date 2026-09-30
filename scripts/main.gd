@@ -3524,6 +3524,7 @@ func model_thumbnail(kind:String,p:Vector2,s:Vector2,portrait:bool=false,parent:
 		var span:float=maxf(maxf(framed.x,framed.y),framed_height)
 		var focus:Vector3=Vector3(0,framed_height*.44,0)
 		var elevation:float=clampf(framed_height/span*.55,.12,.45)
+		if kind=="bath_mat":elevation=1.15
 		cam.size=span*1.45
 		cam.position=focus+Vector3(span*.78,span*elevation,span*1.02)
 		cam.look_at(focus)
@@ -3535,10 +3536,11 @@ func model_thumbnail(kind:String,p:Vector2,s:Vector2,portrait:bool=false,parent:
 ## disk. One place decides that, so every caller of a model — the thumbnail, the
 ## ghost and the placed body — agrees about what exists.
 func _variant_model(kind:String,style:String,data:Dictionary) -> Resource:
-	if kind in ["burglar_alarm","home_phone","counter","corner_counter"]:
+	if Kitchen.cabinet(kind) or kind in ["bath_mat","burglar_alarm","home_phone"]:
 		var root:Node3D=Kitchen.build(kind,Variants.resolve(data,{"style":style})) if Kitchen.cabinet(kind) else Node3D.new()
 		if kind=="burglar_alarm":world._build_burglar_alarm(root)
 		elif kind=="home_phone":world._build_home_phone(root)
+		elif kind=="bath_mat":world._build_bath_mat(root,Variants.resolve(data,{"style":style}))
 		for child:Node in root.find_children("*","",true,false):child.owner=root
 		var generated:=PackedScene.new();generated.pack(root);root.free();return generated
 	var model_path:String=Variants.model_path(kind,Variants.style_or_default(style,data))
@@ -5483,7 +5485,7 @@ func pick_furnishing(kind:String,working:Dictionary={}) -> void:
 			held["size"]=size_id
 			var option=button("%s · ℒ%d" % [Variants.size_label(str(size_id)),Variants.price(data,str(size_id))],Vector2.ZERO,Vector2(178,40),pick_furnishing.bind(kind,held),str(size_id)==str(working.size),size_row)
 			option.name="VariantSize_"+str(size_id)
-			var holds:int=Variants.seats(data,str(size_id))
+			var holds:int=Variants.seats(data,str(size_id),str(working.style))
 			if holds>0:option.tooltip_text="Holds %d." % holds
 			option.custom_minimum_size=Vector2(178,40)
 			compact_button(option)
@@ -5530,7 +5532,7 @@ func pick_furnishing(kind:String,working:Dictionary={}) -> void:
 			compact_button(chip);chip.size=Vector2(swatch,swatch)
 		y+=minf(colour_block,colour_limit)+6.0
 	var price:int=Variants.price(data,str(working.size))
-	var holds:int=Variants.seats(data,str(working.size))
+	var holds:int=Variants.seats(data,str(working.size),str(working.style))
 	var detail:String="ℒ%d" % price
 	if holds>0:detail+="  ·  holds %d" % holds
 	text_label(detail,p+Vector2(28,y+4),Vector2(panel_width-56,30),20,P.TEAL,false,overlay)
@@ -7661,7 +7663,7 @@ func _process(delta:float) -> void:
 		idle_space.update(delta)
 		world.daylight(household.minutes)
 		world.construction.doors.tick(delta*float(household.speed))
-		world.begin_activity_frame(household.speed<=0)
+		world.begin_activity_frame(household.speed<=0,delta,float(household.speed))
 		var away_targets_changed:bool=false
 		for member:Dictionary in household.members:
 			_bind_member(member.id)
@@ -8476,7 +8478,8 @@ func _assign_seat_slot(action:Dictionary,item:Dictionary) -> void:
 	# Otherwise take the first place this furnishing still has free, so a table
 	# for ten seats ten people in turn rather than only ever its two end places.
 	var taken_slot:bool=action.has("seat_slot") and taken.has(str(action.seat_slot))
-	if not action.has("seat_slot") or taken_slot:
+	if not action.has("seat_slot") or taken_slot or not slots.has(str(action.get("seat_slot",""))):
+		action.erase("seat_slot")
 		for slot:String in slots:
 			if not taken.has(slot):
 				action["seat_slot"]=slot

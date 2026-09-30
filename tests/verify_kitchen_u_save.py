@@ -56,8 +56,8 @@ def main():
         if kind in ("counter", "corner_counter"):
             check(entry.get("style") == "drawers" and entry.get("color") == "c97c66",
                   f"Unit {index}: selected drawer style and terracotta finish survive")
-    check(data["funds"] == 18060,
-          "Funds retain exactly six cabinets, two 20-Simoleon corners, oven and fridge")
+    check(data["funds"] == 18070,
+          "Funds retain exactly six cabinets, two 15-Simoleon corners, oven and fridge")
     if len(ordered) == 10:
         rectangles = [bounds(e) for e in ordered]
         for a, b in [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]:

@@ -34,7 +34,7 @@ func run()->void:
 			check(tint_ok,style+" tints its cabinet front")
 			check(not signatures.has(signature),kind+" "+style+" has distinct geometry")
 			signatures.append(signature);model.free()
-	check(Variants.price(LifeCatalog.get_item("corner_counter"),"")==20,"Corner cabinet costs 20")
+	check(Variants.price(LifeCatalog.get_item("corner_counter"),"")==15,"Corner cabinet costs 15")
 	app=load("res://scenes/main.tscn").instantiate();root.add_child(app)
 	await frames(3)
 	app.set_sound(false);app.selected_lot=0;app.start_household();await frames(3)
@@ -71,7 +71,7 @@ func run()->void:
 	var funds:int=app.sim.funds
 	app.on_placement("corner_counter",corner_at,0,"slatted","")
 	var corner:Dictionary=find_item("corner_counter",corner_at)
-	check(not corner.is_empty() and app.sim.funds==funds-20,"Public corner purchase charges exactly 20")
+	check(not corner.is_empty() and app.sim.funds==funds-15,"Public corner purchase charges exactly 15")
 	var returned:Vector3=world.kitchen_snap("counter",corner_at+Vector3(0,0,1),90)
 	var return_rect:Rect2=world.furnishing_rect({"kind":"counter","x":returned.x,"z":returned.z,"rotation":90})
 	var corner_rect:Rect2=world.item_panels(corner,false)[0]

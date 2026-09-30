@@ -8,7 +8,7 @@ const UNITS: Array[String] = ["counter", "corner_counter", "fridge", "stove", "s
 const SURFACES := {"counter":.952, "corner_counter":.952, "dining":.847, "table":.527, "coffee_table":.484, "desk":.872, "study_desk":.715}
 
 static func cabinet(kind: String) -> bool:
-	return kind in ["counter", "corner_counter"]
+	return kind in ["counter", "corner_counter", "sink", "fridge"]
 
 static func model_scale(kind: String) -> Vector3:
 	# The appliance meshes were authored narrower than their modular footprint.
@@ -27,6 +27,7 @@ static func _box(parent: Node3D, label: String, at: Vector3, size: Vector3, colo
 	return node
 
 static func build(kind: String, variant: Dictionary) -> Node3D:
+	if kind == "fridge":return _fridge(variant)
 	var root := Node3D.new();root.name = "KitchenCabinet"
 	var corner: bool = kind == "corner_counter"
 	var width: float = .8 if corner else 1.05
@@ -41,6 +42,55 @@ static func build(kind: String, variant: Dictionary) -> Node3D:
 		var return_face := Node3D.new();return_face.name = "CornerReturn";root.add_child(return_face)
 		return_face.rotation_degrees.y = 90
 		_front(return_face,style,color,.75)
+	if kind == "sink":
+		# Keep the authored basin and brass tap exactly where their use poses
+		# expect them; only the cabinet beneath gets a new style and finish.
+		var fittings:Node3D=load("res://assets/models/sink.glb").instantiate()
+		for mesh:MeshInstance3D in fittings.find_children("*","MeshInstance3D",true,false):
+			if str(mesh.name).begins_with("Basin") or str(mesh.name).begins_with("Tap"):
+				# Detach these authored pieces from their inherited scene. Packing
+				# a partially deleted scene would restore its old cabinet in previews.
+				mesh.owner=null;mesh.get_parent().remove_child(mesh);root.add_child(mesh)
+		fittings.free()
+	return root
+
+static func _fridge(variant:Dictionary) -> Node3D:
+	var root:Node3D=load("res://assets/models/fridge.glb").instantiate()
+	root.name="KitchenFridge"
+	var color:String=str(variant.get("color","417a71"))
+	var style:String=str(variant.get("style","shaker"))
+	# The authored carcass is .77 m deep inside a .85 m placement footprint.
+	# Shift it back by .04 m, so its physical back meets that footprint edge.
+	# The door and handle retain their relative geometry and remain in front.
+	for child:Node in root.get_children():
+		if child is Node3D:child.position.z-=.04
+	for mesh:MeshInstance3D in root.find_children("*","MeshInstance3D",true,false):
+		var label:String=str(mesh.name)
+		# A pinned note rests on the raised finish rather than being cut into
+		# stripes by slats or crossed by the farmhouse braces.
+		if label.begins_with("Note") and style!="slab":mesh.position.z+=.024
+		if label.begins_with("Refrigerator") or label.begins_with("Freezer") or label.begins_with("Fresh"):
+			mesh.name="Tint"+label
+			var material:=StandardMaterial3D.new();material.albedo_color=Color(color);material.roughness=.62
+			mesh.material_override=material
+	# Finish the real freezer and fresh-food doors, keeping their seam and
+	# working handles visible in every style.
+	for door:Vector2 in [Vector2(1.56,.50),Vector2(.65,1.23)]:
+		var y:float=door.x;var height:float=door.y
+		if style in ["shaker","farmhouse"]:
+			for side:float in [-1.0,1.0]:
+				_box(root,"TintDoorStile",Vector3(side*.35,y,.412),Vector3(.045,height-.06,.022),color)
+				_box(root,"TintDoorRail",Vector3(0,y+side*(height*.5-.05),.412),Vector3(.74,.045,.022),color)
+			if style == "farmhouse":
+				for direction:float in [-1.0,1.0]:
+					var brace:=_box(root,"TintCrossBrace",Vector3(0,y,.414),Vector3(.032,sqrt(.62*.62+pow(height-.15,2)),.022),color)
+					brace.rotation.z=direction*atan2(.62,height-.15)
+		elif style == "drawers":
+			for fraction:float in [-.25,.25]:
+				_box(root,"DrawerSeam",Vector3(0,y+height*fraction,.414),Vector3(.74,.012,.018),"383735")
+		elif style == "slatted":
+			for index:int in 9:
+				_box(root,"TintDoorSlat",Vector3(-.34+float(index)*.085,y,.415),Vector3(.04,height-.06,.025),color)
 	return root
 
 static func _front(root: Node3D, style: String, color: String, width: float) -> void:

@@ -366,8 +366,8 @@ func _no_dead_catalogue_keys() -> void:
 		"A teenager may use the grown-up swing.")
 	check(LifeOutdoorActs.act_error("outdoor_swing", "adult", false).is_empty(),
 		"An adult may use the grown-up swing.")
-	check(LifeCatalogVariants.seats(swing, "large") == 8,
-		"The grown-up swing still states how many it seats (%d)." % LifeCatalogVariants.seats(swing, "large"))
+	check(LifeCatalogVariants.seats(swing, "large") == 4 and LifeCatalogVariants.seats(swing, "large", "c") == 1,
+		"The grown-up swing states its physical bench capacity and single basket seat.")
 
 
 ## A furnishing really seats the number the catalogue advertises.

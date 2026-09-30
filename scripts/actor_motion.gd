@@ -36,6 +36,7 @@ static func apply(actor, pose: Dictionary, action_id: String, t: float) -> Dicti
 	match action_id:
 		LifeOutdoorActs.ACTION_ID:
 			var kind: String = str(anchor.get("outdoor_kind", ""))
+			if kind == "outdoor_swing": return garden_swing(actor, pose)
 			if kind == "hot_tub": return _soak(actor, pose, t)
 			if kind == "pool_ring": return _ring(actor, pose, t)
 			if kind == "pool_noodle": return _paddle(actor, pose, t)
@@ -53,6 +54,24 @@ static func apply(actor, pose: Dictionary, action_id: String, t: float) -> Dicti
 		"car_buckle": return _buckle(actor, pose, ct, anchor)
 		"car_seated": return _seated_passenger(actor, pose, t)
 	return {}
+
+static func garden_swing(actor, pose: Dictionary) -> Dictionary:
+	actor._seated_pose(pose)
+	var anchor: Dictionary = actor._activity_anchor
+	var phase: float = float(anchor.get("swing_phase", 0.0))
+	# A small leg pump and a relaxed torso follow the same pendulum as the
+	# cushion. The hips stay supported while the knees and ankles move.
+	var pump: float = sin(phase) * .12
+	pose["Leg_L"].x += pump
+	pose["Leg_R"].x += pump
+	pose["Shin_L"].x -= pump * 1.6
+	pose["Shin_R"].x -= pump * 1.6
+	pose["Arm_L"] = Vector3(-.36, 0, -.10)
+	pose["Arm_R"] = Vector3(-.36, 0, .10)
+	pose["Forearm_L"] = Vector3(-.82, 0, 0)
+	pose["Forearm_R"] = Vector3(-.82, 0, 0)
+	pose["Head"] = Vector3(-.04, .06 * sin(phase * .5), 0)
+	return {"lean": Vector3(float(anchor.get("swing_angle", 0.0)) - .04, 0, 0), "seated": true}
 
 static func _local(actor, world_point: Vector3) -> Vector3:
 	return actor._model.to_local(world_point)

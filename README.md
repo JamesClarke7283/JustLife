@@ -59,7 +59,9 @@ Build & buy offers a catalogue of 136 original furnishings across Comfort, Kitch
 
 Click a wall once to raise all walls and doors, then again to lower them; the **Raise walls / Lower walls** button does the same. The starter front, rear, bedroom and bathroom openings have working doors. Lifelets reach for a handle, open the door, pass through and close it behind them. Wall pictures preview at their mounting height; scroll to adjust the height and left-click to place them.
 
-Kitchen cabinets offer **Shaker, Modern slab, Farmhouse, Drawer stack and Slatted wood** designs in ten colours. Counters, fridges and ovens snap together, and the **ℒ20 corner cabinet** joins perpendicular runs for an L-shaped or U-shaped kitchen. Place the coffee machine on the floor, a worktop or a table; its preview shows the supporting height.
+Kitchen cabinets, fridges and sinks offer **Shaker, Modern slab, Farmhouse, Drawer stack and Slatted wood** designs in ten colours. Counters, fridges and ovens snap together, fridges sit flush against walls, and the **ℒ15 corner cabinet** joins perpendicular runs for an L-shaped or U-shaped kitchen. Place the coffee machine on the floor, a worktop or a table; its preview shows the supporting height. Bath mats have live previews for all three shapes and ten colours.
+
+Purchased windows create real openings for daylight. Dragging walls leaves flooring unchanged; use the Floor or Room tool to extend it. New construction clears obstructing trees and shrubs, including purchased plants, and Undo restores them. Garden swings carry seated riders with the moving cushion; benches seat two to four by size, and basket swings seat one.
 
 Build & buy supports two storeys, straight stairs with landing rails, and rectangular gable roofs. Choose Ground or Upper before editing. New roof and Edit roof use two corners; R changes the ridge direction, and the pitch and finish controls update the preview. Quotes show the price and any placement conflict before purchase. Undo reverses the latest valid purchase or edit while Build mode stays open.
 

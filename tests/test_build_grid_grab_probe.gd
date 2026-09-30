@@ -21,6 +21,19 @@ func frames(n: int = 2) -> void:
 		await process_frame
 
 
+func window_hole_clear(window:Node3D)->bool:
+	var hole:Rect2=window.get_meta("window_aperture")
+	var at:Vector3=window.to_global(Vector3(hole.get_center().x,hole.get_center().y,0))
+	var axis:Vector3=window.global_basis.z.normalized()*.4
+	for wall:Node3D in app.world.construction.wall_nodes.values():
+		for mesh:Node in wall.get_children():
+			if not mesh is MeshInstance3D:continue
+			var faces:PackedVector3Array=mesh.mesh.get_faces()
+			for i:int in range(0,faces.size(),3):
+				if Geometry3D.segment_intersects_triangle(at-axis,at+axis,mesh.to_global(faces[i]),mesh.to_global(faces[i+1]),mesh.to_global(faces[i+2]))!=null:return false
+	return true
+
+
 func _initialize() -> void:
 	run.call_deferred()
 
@@ -35,8 +48,8 @@ func run() -> void:
 	check(grown.size.x > base.size.x + 1.0, "Buying east land widens the lot")
 	check(not Land.SIDES.has("south"), "South/street side is not a purchasable plot")
 
-	# Detached grab: push a room wall, stretch connectors, and grow the floor so
-	# the new interior stays supported and walkable.
+	# Detached grab: push a room wall and stretch connectors without changing
+	# the independently edited floor.
 	var room: Dictionary = Building.fresh()
 	room.walls = [
 		{"id": "n", "level": 0, "x": 0.0, "z": -2.0, "w": 4.0, "d": 0.14, "height": 2.6, "cut": true, "material": "eae7d7"},
@@ -56,18 +69,19 @@ func run() -> void:
 		check(is_equal_approx(float(south.z), 3.0), "Grabbed south wall moved to the new line")
 		var west: Dictionary = Building.find(after, "w")
 		var east_wall: Dictionary = Building.find(after, "e")
-		check(is_equal_approx(float(west.d), 5.0) and is_equal_approx(float(east_wall.d), 5.0), "Connecting side walls stretch to the new south line")
+		var north: Dictionary = Building.find(after, "n")
+		check(is_equal_approx(Building.rect(west).position.y, Building.rect(north).position.y) and is_equal_approx(Building.rect(west).end.y, Building.rect(south).end.y) and is_equal_approx(Building.rect(east_wall).position.y, Building.rect(north).position.y) and is_equal_approx(Building.rect(east_wall).end.y, Building.rect(south).end.y), "Both connecting walls span the exact outside corner edges")
 		check(int(grab.cost) > 0, "Grab wall charges for the push")
-		# Interior just inside the new south wall must sit on a floor slab.
+		# The expanded interior is left for an explicit Floor or Room operation.
 		var interior := Vector2(0.0, 2.7)
 		var covered: bool = false
 		for floor: Dictionary in after.floors:
 			if int(floor.level) != 0: continue
 			if Building.rect(floor).has_point(interior):
 				covered = true; break
-		check(covered, "Floor covers the pushed wall's new interior at %s" % interior)
+		check(not covered, "Wall movement does not add floor in the expanded interior at %s" % interior)
 		var floor_after: Dictionary = Building.find(after, "f0")
-		check(not floor_after.is_empty() and float(floor_after.d) >= 4.9, "Existing floor slab grew with the room (d=%s)" % str(floor_after.get("d", "?")))
+		check(floor_after == room.floors[0], "Existing floor footprint and finish remain unchanged")
 
 	# Collinear doorway stubs ride with the grab so the opening stays intact.
 	var doorway: Dictionary = Building.fresh()
@@ -89,7 +103,7 @@ func run() -> void:
 		check(is_equal_approx(float(left.z), 3.0), "Grabbed doorway stub moved to the new line")
 		check(is_equal_approx(float(right.z), 3.0), "Collinear doorway stub moved with the grab")
 
-	# Roof footprint follows the outermost walls after a grab.
+	# Roof footprint remains independent of a wall grab.
 	Building.set_land(Land.fresh())
 	var roofed: Dictionary = Building.fresh()
 	roofed.walls = [
@@ -104,14 +118,18 @@ func run() -> void:
 	roofed.roofs = [
 		{"id": "r0", "level": 0, "x": 0.0, "z": 0.0, "w": 4.0, "d": 4.0, "pitch": 0.5, "rotation": 0, "material": "57736a", "supports": ["w", "e"]},
 	]
-	var roof_grab: Dictionary = Edits.propose(roofed, {"op": "structure", "tool": "grab", "level": 0, "id": "s", "line": 3.0}, 5000)
-	check(bool(roof_grab.ok), "Grab with a roof succeeds (%s)" % str(roof_grab.get("error", "")))
+	var roof_before:Dictionary=roofed.duplicate(true)
+	var obstructed_grab: Dictionary = Edits.propose(roofed, {"op": "structure", "tool": "grab", "level": 0, "id": "s", "line": 3.0}, 5000)
+	check(not bool(obstructed_grab.ok) and str(obstructed_grab.get("error", "")).contains("eave"), "Exterior wall cannot extend through the independently retained roof eave")
+	check(roofed==roof_before,"Refused exterior grab leaves floor, roof and walls unchanged")
+	roofed.walls.append({"id":"partition","level":0,"x":0.0,"z":0.0,"w":2.0,"d":.14,"height":2.6,"cut":true,"material":"eae7d7"})
+	var roof_grab: Dictionary = Edits.propose(roofed, {"op": "structure", "tool": "grab", "level": 0, "id": "partition", "line": .5}, 5000)
+	check(bool(roof_grab.ok), "Interior wall can move beneath an existing roof (%s)" % str(roof_grab.get("error", "")))
 	if bool(roof_grab.ok):
-		var roof: Dictionary = Building.find(roof_grab.after, "r0")
-		check(not roof.is_empty() and float(roof.d) >= 4.7, "Roof depth grew with the outermost walls (d=%s)" % str(roof.get("d", "?")))
-		check(absf(float(roof.z) - 0.5) < 0.2, "Roof centre shifted with the expanded footprint (z=%s)" % str(roof.get("z", "?")))
+		check(roof_grab.after.roofs == roofed.roofs, "Existing supported roof footprint and finish remain unchanged")
+		check(roof_grab.after.floors == roofed.floors, "Wall movement under a roof does not grow the floor")
 
-	# Empty shell (no floor yet): grab must add a slab over the new footprint.
+	# Empty shell: the wall tool must not create an unrequested floor.
 	var shell: Dictionary = Building.fresh()
 	shell.walls = [
 		{"id": "n", "level": 0, "x": 0.0, "z": -2.0, "w": 4.0, "d": 0.14, "height": 2.6, "cut": true, "material": "eae7d7"},
@@ -128,8 +146,8 @@ func run() -> void:
 			if int(floor.level) != 0: continue
 			if Building.rect(floor).has_point(shell_interior):
 				shell_covered = true; break
-		check(shell_covered, "Grab adds a floor covering the new interior when none existed")
-		check(shell_grab.after.floors.size() >= 1, "Empty-shell grab creates at least one floor slab")
+		check(not shell_covered, "A wall grab leaves an unfloored interior unfloored")
+		check(shell_grab.after.floors.is_empty(), "Empty-shell grab creates no floor slab")
 
 	app = load("res://scenes/main.tscn").instantiate()
 	root.add_child(app)
@@ -249,6 +267,8 @@ func run() -> void:
 					host_id = str(wall.id); break
 			check(not host_id.is_empty(), "Host wall for window grab found")
 			if not host_id.is_empty() and not win_item.is_empty():
+				app.world.set_cutaway(false)
+				check(win_item.node.visible and window_hole_clear(win_item.node), "Purchased window has a visible frame and actual wall aperture before grab")
 				var before_z: float = float(win_item.z)
 				app.world.construction.quote_provider = app.build_transactions.prepare
 				var win_grab: Dictionary = app.build_transactions.prepare({
@@ -256,7 +276,8 @@ func run() -> void:
 				})
 				check(bool(win_grab.ok), "Grab quote with window succeeds (%s)" % str(win_grab.get("error", "")))
 				if bool(win_grab.ok):
-					check(bool(app.build_transactions.commit(win_grab).ok), "Grab with window commits")
+					var window_purchase:Dictionary=app.build_transactions.commit(win_grab)
+					check(bool(window_purchase.ok), "Grab with window commits")
 					await frames(2)
 					var after_win: Dictionary = {}
 					for item: Dictionary in app.world.items:
@@ -264,6 +285,10 @@ func run() -> void:
 							after_win = item; break
 					check(not after_win.is_empty() and absf(float(after_win.z) - (before_z + 1.0)) < 0.2,
 						"Window moved with its wall (z %s -> %s)" % [str(before_z), str(after_win.get("z", "?"))])
+					check(win_item.node.visible and window_hole_clear(win_item.node), "Moved purchased window refreshes both frame visibility and real wall aperture")
+					if bool(window_purchase.ok):
+						check(bool(app.build_transactions.undo(window_purchase.receipt).ok), "Window-bearing wall grab can be undone")
+						check(absf(win_item.node.position.z-before_z)<.01 and win_item.node.visible and window_hole_clear(win_item.node), "Undo restores the window position and aperture together")
 
 	print("BUILD_GRID_GRAB_PROBE %d/%d" % [checks - failures.size(), checks])
 	for failure: String in failures:

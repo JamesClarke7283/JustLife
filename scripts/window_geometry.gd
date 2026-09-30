@@ -11,7 +11,8 @@ static func opening(window:Node3D, wall:Dictionary, height:float, base_y:float=F
 	if absf(normal.z if horizontal else normal.x)<.999:return Rect2()
 	var depth:float=float(wall.d) if horizontal else float(wall.w)
 	var center:Vector3=Vector3(float(wall.x),base_y,float(wall.z))
-	if absf((window.position-center).dot(normal)-(depth*.5+ATTACHMENT_OFFSET))>TOLERANCE:return Rect2()
+	var attachment:float=float(window.get_meta("window_attachment_offset",ATTACHMENT_OFFSET))
+	if absf((window.position-center).dot(normal)-(depth*.5+attachment))>TOLERANCE:return Rect2()
 	var offset:float=window.position.x-center.x if horizontal else window.position.z-center.z
 	var length:float=float(wall.w) if horizontal else float(wall.d)
 	var frame:Rect2=window.get_meta("window_frame_bounds")
