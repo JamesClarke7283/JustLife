@@ -36,6 +36,7 @@ var paint_palette:String="home"
 var paint_pattern:String="solid"
 var carpet_style:String="plain"
 var carpet_color:String="decfaf"
+var floor_finish_color:String="cfa97e"
 var _carpet_materials:Dictionary={}
 var roof_edit_id:String=""
 var grab_id:String=""
@@ -496,8 +497,32 @@ func _make_carpet_proposal(p: Vector3) -> Dictionary:
 	if not bool(quote.ok):return {"valid":false,"error":str(quote.error)}
 	return {"valid":true,"build_quote":quote,"cost":int(quote.cost),"op":"carpet"}
 
+func _make_room_paint_proposal(p:Vector3)->Dictionary:
+	if not quote_provider.is_valid():return {"valid":false,"error":"Paint needs a build quote."}
+	var operation:Dictionary={"op":"structure","tool":"paint","level":build_level,"px":p.x,"pz":p.z,"material":paint_material,"scope":"room","palette":paint_palette,"pattern":paint_pattern}
+	var nearest:Dictionary=_nearest_wall(p)
+	if not nearest.is_empty():operation["id"]=str(nearest.id)
+	var quote:Dictionary=quote_provider.call(operation)
+	if not bool(quote.ok):return {"valid":false,"error":str(quote.error)}
+	return {"valid":true,"build_quote":quote,"cost":int(quote.cost)}
+
+func delete_proposal(id:String)->Dictionary:
+	if not quote_provider.is_valid():return {"valid":false,"error":"Delete needs a build quote."}
+	var quote:Dictionary=quote_provider.call({"op":"remove","id":id})
+	if not bool(quote.ok):return {"valid":false,"error":str(quote.error)}
+	return {"valid":true,"build_quote":quote,"cost":int(quote.cost),"remove_id":id}
+
 func make_proposal(p: Vector3) -> Dictionary:
 	if tool=="carpet":return _make_carpet_proposal(p)
+	if tool=="paint":return _make_room_paint_proposal(p)
+	if tool=="floor_finish":
+		var quote:Dictionary=quote_provider.call({"op":"structure","tool":"floor_finish","level":build_level,"px":p.x,"pz":p.z,"material":floor_finish_color})
+		if not bool(quote.ok):return {"valid":false,"error":str(quote.error)}
+		return {"valid":true,"build_quote":quote,"cost":int(quote.cost)}
+	if tool=="delete":
+		var wall:Dictionary=_nearest_wall(p)
+		if not wall.is_empty():return delete_proposal(str(wall.id))
+		return _make_level_proposal(p)
 	if tool in ["roof","roof_edit","roof_remove"]:return _make_roof_proposal(p)
 	if tool in ["floor","stairs","remove_structure"]:return _make_level_proposal(p)
 	var data:Dictionary=_make_legacy_proposal(p)

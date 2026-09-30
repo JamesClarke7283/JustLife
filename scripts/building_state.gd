@@ -13,6 +13,7 @@ const STAIR_STEPS:int=15
 const GUARD_EDGE:float=.68
 const GUARD_HALF:float=.043
 const EPS:float=.000001
+const REFUND_RATES:Dictionary={"walls":20.0,"floors":4.0,"roofs":6.0}
 ## The navigable lot: the household's own land, which is the starting plot plus
 ## every neighbouring plot it has bought. `LifeLand` owns the arithmetic; this is
 ## the one live copy the building rules, the navigation graph, the compatibility
@@ -192,7 +193,11 @@ static func surface_tiles(state:Dictionary,level:int) -> Array:
 	surfaces.append_array(bearings)
 	var holes:Array=_rects(state,"openings",level)
 	var xs:Array[float]=[];var zs:Array[float]=[];var result:Array=[]
-	for area:Rect2 in surfaces+holes:
+	var finish_bounds:Array=[]
+	for floor:Dictionary in state.floors:
+		if int(floor.level)==level:
+			for finish:Dictionary in floor.get("finish_regions",[]):finish_bounds.append(rect(finish))
+	for area:Rect2 in surfaces+holes+finish_bounds:
 		for x:float in [area.position.x,area.end.x]:
 			if not xs.has(x):xs.append(x)
 		for z:float in [area.position.y,area.end.y]:
@@ -204,7 +209,10 @@ static func surface_tiles(state:Dictionary,level:int) -> Array:
 			if not _covered(tile,surfaces,holes):continue
 			var owner:Dictionary={"id":"wall_bearing","material":"cfa97e"}
 			for floor:Dictionary in state.floors:
-				if int(floor.level)==level and rect(floor).has_point(tile.get_center()):owner=floor
+				if int(floor.level)==level and rect(floor).has_point(tile.get_center()):
+					owner=floor.duplicate()
+					for finish:Dictionary in floor.get("finish_regions",[]):
+						if rect(finish).has_point(tile.get_center()):owner.merge(finish,true)
 			result.append({"rect":tile,"level":level,"source_id":str(owner.id),"material":str(owner.material),"carpet":str(owner.get("carpet",""))})
 	return result
 
@@ -278,6 +286,8 @@ static func validate(state:Variant) -> String:
 		for value:Variant in state[group]:
 			if not value is Dictionary or not identifier(value.get("id")) or ids.has(value.id):return "Duplicate or invalid building identity."
 			ids[value.id]=group
+			if value.has("refund_rate") and (not REFUND_RATES.has(group) or not number(value.refund_rate,0,float(REFUND_RATES.get(group,0)))):return "Invalid construction refund rate."
+			if value.has("refund_value") and (group!="stairs" or not number(value.refund_value,0,250,true)):return "Invalid staircase refund value."
 			if group=="stairs":
 				if not number(value.get("lower"),0,0,true) or not number(value.get("upper"),1,1,true) or not number(value.get("rotation"),0,270,true) or int(value.rotation)%90!=0:return "A stair must join adjacent supported levels with a right-angle rotation."
 				for key:String in ["x","z"]:
@@ -296,6 +306,11 @@ static func validate(state:Variant) -> String:
 					if style not in LifeRoofGeometry.STYLES:return "Choose a valid roof style."
 					if style!="flat" and float(value.pitch)<.2:return "Invalid roof pitch for that style."
 	for floor:Dictionary in state.floors:
+		var finishes:Variant=floor.get("finish_regions",[])
+		if not finishes is Array or finishes.size()>512:return "Invalid floor finish regions."
+		for finish:Variant in finishes:
+			if not finish is Dictionary or not _rect_error(finish).is_empty() or not rect(floor).encloses(rect(finish)) or not _material(finish.get("material")):return "A floor finish must stay inside its slab."
+			if str(finish.get("carpet","")) not in ["","plain","geometric","loop","striped","vintage"]:return "Invalid carpet style."
 		var error:String=_support_error(state,floor)
 		if not error.is_empty():return error
 	for wall:Dictionary in state.walls:
@@ -415,7 +430,12 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant) -> Dicti
 		var old:Dictionary=find(after,operation.id)
 		after[group]=after[group].filter(func(record:Dictionary)->bool:return record.id!=operation.id)
 		if group=="stairs":after.openings=after.openings.filter(func(record:Dictionary)->bool:return record.stair!=old.id)
-		if group=="walls":cost=-int(maxf(float(old.w),float(old.d))*20)
+		if group=="walls":cost=-floori(maxf(float(old.w),float(old.d))*float(old.get("refund_rate",20.0)))
+		elif group=="floors":
+			var area:float=maxf(0.0,_union_area(_rects(current,"floors",int(old.level)))-_union_area(_rects(after,"floors",int(old.level))))
+			cost=-floori(area*float(old.refund_rate)) if old.has("refund_rate") else -roundi(area*4)
+		elif group=="stairs":cost=-int(old.get("refund_value",250))
+		elif group=="roofs":cost=-floori(float(old.w)*float(old.d)*float(old.refund_rate)) if old.has("refund_rate") else -roundi(float(old.w)*float(old.d)*6)
 		error=validate(after)
 		if not error.is_empty():return _error(error)
 	else:return _error("Unsupported construction operation.")

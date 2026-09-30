@@ -119,7 +119,7 @@ func _run()->void:
 		check(bool(grab.get("valid",false)),"Second grab click quotes the moved wall through the shrub")
 		if bool(grab.get("valid",false)):
 			var moved:Dictionary=tx.commit(grab.build_quote)
-			check(bool(moved.ok) and app.world.construction.building_state.floors==before_floor and plant(app.world,"bought_shrub").is_empty(),"Confirmed wall grab clears obstruction without resizing or repainting floor")
+			check(bool(moved.ok) and app.world.construction.building_state.floors!=before_floor and Building.footprint_supported(app.world.construction.building_state,0,Rect2(7.0,-2.25,.25,.25)) and plant(app.world,"bought_shrub").is_empty(),"Confirmed wall grab extends floor into the new interior and clears obstruction")
 			if bool(moved.ok):check(bool(tx.undo(moved.receipt).ok) and not plant(app.world,"bought_shrub").is_empty(),"Grab undo restores the purchased shrub and wall")
 		check(bool(tx.undo(seed_purchase.receipt).ok),"Earlier wall history remains usable after grab undo")
 	reopened.queue_free();_finish(app)

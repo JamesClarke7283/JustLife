@@ -14,7 +14,7 @@ class_name LifeHouseholdFlow
 ## own changes and the ordinary controller commits money. Its data round-trips
 ## through `get_state`/`restore`, so a save always resumes it.
 
-const SERVICE_ACTIONS: Array[String] = ["buy_book", "study_book", "empty_bin", "clear_table", "practice_instrument", "watch_together"]
+const SERVICE_ACTIONS: Array[String] = ["buy_book", "study_book", "empty_bin", "clean_litter_tray", "clear_table", "practice_instrument", "watch_together"]
 ## One book per skill in `LifeSim.SKILL_NAMES`, so every subject has a shelf
 ## route. Prices and XP follow the difficulty of the skill: the original four
 ## keep their tuned values, and the four added later are priced to match.
@@ -40,6 +40,7 @@ const MAX_STORAGE: int = 30
 
 var app: Node
 var books: Array = []                       # [{"id":"book_1","skill":"cooking","shelf":"item_6"}]
+var litter: Dictionary = {}                 # tray id -> completed uses
 var fill: Dictionary = {}                   # bin item id -> whole units of rubbish
 var safety_data: Dictionary = {}
 var safety_restored: bool = false
@@ -72,7 +73,7 @@ func helmet_ids() -> Array[String]:
 # ---------------------------------------------------------------- persistence
 
 func get_state() -> Dictionary:
-	return {"version":1, "serial":serial, "books":books.duplicate(true), "fill":fill.duplicate(true), "storage":storage.duplicate(true), "truck":_truck_state(), "safety":app.safety.snapshot() if is_instance_valid(app.safety) else safety_data.duplicate(true)}
+	return {"version":1, "serial":serial, "books":books.duplicate(true), "fill":fill.duplicate(true), "litter":_saved_litter(), "storage":storage.duplicate(true), "truck":_truck_state(), "safety":app.safety.snapshot() if is_instance_valid(app.safety) else safety_data.duplicate(true)}
 
 
 ## The weekly food truck's own small record rides here rather than in a system
@@ -90,12 +91,15 @@ func restore(data: Variant) -> void:
 	safety_restored=true
 	books = []
 	fill = {}
+	litter = {}
 	storage = []
 	serial = 0
 	if not data is Dictionary:
 		return
 	if data.get("safety") is Dictionary:safety_data=data.safety.duplicate(true)
 	serial = int(data.get("serial", 0))
+	if data.get("litter", {}) is Dictionary:
+		for key: Variant in data.get("litter", {}): litter[str(key)] = clampi(int(data.litter[key]), 0, 4)
 	var raw_fill: Variant = data.get("fill", {})
 	if raw_fill is Dictionary:
 		for key: Variant in raw_fill:
@@ -135,6 +139,10 @@ static func validate(data: Variant, layout: Array, day: int = 0) -> String:
 			return "A saved rubbish bin holds an impossible amount."
 		if str(kinds.get(str(key), "")) != "rubbish_bin":
 			return "Saved rubbish refers to a missing bin."
+	var saved_litter: Variant = data.get("litter", {})
+	if not saved_litter is Dictionary or saved_litter.size() > 4096: return "The saved litter trays are invalid."
+	for key: Variant in saved_litter:
+		if not key is String or not LifeBuildingState.number(saved_litter[key], 0, 4, true): return "A saved litter tray holds an impossible amount."
 	var saved_books: Variant = data.get("books", [])
 	if not saved_books is Array or saved_books.size() > MAX_BOOKS:
 		return "The saved skill books are invalid."
@@ -193,6 +201,8 @@ static func _stored_record(entry: Dictionary) -> Dictionary:
 	for key: String in ["style", "color", "size"]:
 		if entry.get(key) is String and not str(entry.get(key)).is_empty():
 			record[key] = str(entry.get(key))
+	if entry.has("refund_value"):
+		record["refund_value"] = LifeCatalogVariants.resale_value(entry)
 	if entry.get("towels") is int or entry.get("towels") is float:
 		record["towels"] = clampi(int(entry.get("towels")), 0, 64)
 	return record
@@ -311,7 +321,7 @@ func sell_stored(id: String) -> Dictionary:
 		if str(storage[index].id) != id:
 			continue
 		var record: Dictionary = storage[index]
-		var credit: int = int(LifeCatalog.ITEMS[str(record.kind)].price * .7)
+		var credit: int = LifeCatalogVariants.resale_value(record)
 		storage.remove_at(index)
 		return {"ok":true, "credit":credit, "kind":str(record.kind)}
 	return {"ok":false, "error":"That furnishing is no longer in storage."}
@@ -326,7 +336,13 @@ func refresh_props() -> void:
 		var node: Node3D = item.get("node") as Node3D
 		if not is_instance_valid(node):
 			continue
-		if str(item.kind) == "rubbish_bin":
+		if str(item.kind) == "litter_tray":
+			var soil:Node3D=node.get_node_or_null("UsedLitter")
+			if soil==null:
+				soil=Node3D.new();soil.name="UsedLitter";node.add_child(soil)
+				for i:int in range(4):app.world.box(soil,Vector3(-.15+float(i%2)*.25,.105,-.08+float(i/2)*.13),Vector3(.07,.025,.045),"847354")
+			soil.visible=int(litter.get(str(item.id),0))>0
+		elif str(item.kind) == "rubbish_bin":
 			var bag: Node = node.find_child("BinBag", true, false)
 			if bag != null and is_instance_valid(bag):
 				bag.visible = bin_is_full(str(item.id))
@@ -396,6 +412,12 @@ func action_availability(sim: LifeSim, id: String, target_id: String) -> String:
 			if not study_skill_for(sim, target_id).is_empty():
 				return ""
 			return "Every skill book on this shelf is already at level %d. Mastery at level 10 needs the computer." % BOOK_MAX_LEVEL
+		"clean_litter_tray":
+			if str(sim.character.age_stage) not in ["teen", "young_adult", "adult"]: return "Only teens, young adults and adults can clean litter trays."
+			if kind != "litter_tray": return "Choose a litter tray."
+			for errand:Dictionary in app.pet_errands.values():
+				if str(errand.get("target",""))==target_id: return "Wait until the cat has finished using this tray."
+			if int(litter.get(target_id, 0)) == 0: return "This litter tray is already clean."
 		"empty_bin":
 			if kind != "rubbish_bin":
 				return "Choose the rubbish bin."
@@ -508,3 +530,33 @@ func _pet_record(pet_id: String) -> Dictionary:
 
 func _now() -> float:
 	return (app.household.day - 1) * 1440.0 + app.household.minutes
+
+
+func _saved_litter() -> Dictionary:
+	var owned: Dictionary = {}
+	var layouts: Array = [app.world.items, storage]
+	if str(app.current_venue) != "home": layouts.append(app.home_layout)
+	for layout: Array in layouts:
+		for item: Dictionary in layout:
+			if str(item.get("kind", "")) == "litter_tray": owned[str(item.id)] = true
+	for id: String in litter.keys():
+		if not owned.has(id): litter.erase(id)
+	return litter.duplicate(true)
+
+func litter_full(id: String) -> bool:
+	return int(litter.get(id, 0)) >= 4
+
+func use_litter(id: String) -> void:
+	if str(_item(id).get("kind", "")) != "litter_tray": return
+	litter[id] = mini(4, int(litter.get(id, 0)) + 1)
+	refresh_props()
+	if litter_full(id): app.show_notice("The litter tray needs cleaning.")
+
+func clean_litter(sim: LifeSim, id: String) -> bool:
+	if not action_availability(sim, "clean_litter_tray", id).is_empty(): return false
+	litter.erase(id)
+	refresh_props()
+	return true
+
+func pet_walk_ready(sim: LifeSim) -> bool:
+	return app.care_motion().walk_ready(sim._social_member_id)

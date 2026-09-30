@@ -102,6 +102,21 @@ func run() -> void:
 	app.household.pet_care(PET).needs.energy = 90.0
 	controller.command(PET, "pet_move", lower)
 	check(until_using() and actor.position.distance_to(lower) < .01, "Cat returns to ground after its autonomous upstairs rest")
+	controller.command(PET, "pet_move", upper)
+	var released_on_stairs:bool=false
+	for n:int in range(1500):
+		advance()
+		if world.point_level(actor.position)<0:
+			var at:Vector3=actor.position
+			controller.command(PET,"pet_free")
+			released_on_stairs=actor.position==at and app.pet_errands.has(PET) and app.pet_errands[PET].has("pending_command")
+			break
+	check(released_on_stairs,"Free Will retains a moving pet's stair route without teleporting")
+	for n:int in range(1500):
+		advance()
+		if app.pet_errands.get(PET,{}).is_empty():break
+	check(world.point_level(actor.position)>=0 and not actor.traversing_stairs and app.pet_errands.get(PET,{}).is_empty(),"Free Will releases autonomy only after a supported landing")
+	actor.position=lower
 	var no_stair: Dictionary = state.duplicate(true)
 	no_stair.stairs.clear()
 	no_stair.openings.clear()

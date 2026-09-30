@@ -13,13 +13,21 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 	var record:Dictionary=operation.record.duplicate(true)
 	if record.has("id"):return {"ok":false,"error":"The roof's existing identity must be preserved."}
 	record["id"]=str(old.id)
+	if old.has("refund_rate"):record["refund_rate"]=float(old.refund_rate)
 	if record==old:return {"ok":false,"error":"Move a corner, rotate, or choose a different pitch or finish."}
 	var after:Dictionary=current.duplicate(true)
 	for index:int in range(after.roofs.size()):
 		if str(after.roofs[index].id)==str(old.id):after.roofs[index]=record
 	error=Building.validate(after)
 	if not error.is_empty():return {"ok":false,"error":error}
-	var cost:int=roundi(float(record.w)*float(record.d)*18)-roundi(float(old.w)*float(old.d)*18)
+	var old_area:float=float(old.w)*float(old.d)
+	var new_area:float=float(record.w)*float(record.d)
+	var cost:int=roundi(new_area*18)-roundi(old_area*18)
+	if old.has("refund_rate"):
+		# Discounted bundle geometry retains its paid refund basis when edited.
+		# New area is individually purchased; shrinking only returns its capped rate.
+		if new_area<old_area:cost=-floori((old_area-new_area)*float(old.refund_rate))
+		elif new_area>old_area:record["refund_rate"]=(old_area*float(old.refund_rate)+(new_area-old_area)*6.0)/new_area
 	if int(funds)<cost or int(funds)-cost>1000000000:return {"ok":false,"error":"The roof replacement exceeds the available wallet."}
 	after.revision=int(current.revision)+1
 	return {"ok":true,"operation":operation.duplicate(true),"before":Building.fingerprint(current),"after":after,"cost":cost,"funds_before":int(funds),"funds_after":int(funds)-cost}

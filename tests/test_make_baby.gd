@@ -2,7 +2,7 @@ extends SceneTree
 ## "Try for Baby" and the baby creator, headless through the public paths.
 ##
 ## The pair's beat is a cooperative session: it is offered only for a male and
-## a female adult partner asleep in one bed, refused for every other pair, runs
+## a female Young Adult/Adult partner at one bed, also works from sleep, runs
 ## a bounded beat whose clock belongs to one member, and on completion opens the
 ## ordinary creator seeded as the baby stage. Confirming adds the edited baby to
 ## the household, and a fresh save/load restores both the pending birth and the
@@ -136,7 +136,7 @@ func _offer_cases()->void:
 	app.queue_free();await process_frame
 
 func _refusal_cases()->void:
-	for scenario:String in ["same_gender","non_partner","not_asleep","baby_present","household_full"]:
+	for scenario:String in ["same_gender","non_partner","elder","baby_present","household_full"]:
 		var app=_home()
 		await process_frame
 		await process_frame
@@ -153,14 +153,14 @@ func _refusal_cases()->void:
 					var relationship:Dictionary=household.members[pair[0]].sim.relationships[ids[pair[1]]]
 					relationship["bond"]="none"
 					relationship["romance"]=0.0
-			"not_asleep":pass
+			"elder":household.members[0].sim.character.age_stage="elder"
 			"baby_present":
 				household.add_member({"name":"Baby Vale","age_stage":"baby","life_stage":"minor","gender":"female"})
 			"household_full":
 				while household.members.size()<LifeHousehold.MAX_MEMBERS:household.add_member({"name":"Extra","age_stage":"adult","gender":"Male"})
 		_ensure_actors(app)
 		var first=household.members[0].sim
-		if scenario!="not_asleep":
+		if scenario!="elder":
 			_sleep(app,bed,0)
 			_sleep(app,bed,1)
 			await _admit(app,bed)
@@ -224,6 +224,8 @@ func _beat_case()->void:
 	var has_moodlet:bool=false
 	for mood:Dictionary in expecting.moodlets:has_moodlet = has_moodlet or str(mood.get("label",""))=="Expecting"
 	check(has_moodlet,"The expecting mother carries a visible Expecting moodlet with the countdown.")
+	var conception_save:Dictionary=LifeSaveLibrary._validate_household(household.get_state(app.world.serialize_items()))
+	check(bool(conception_save.ok),"The fourteen-day conception moodlet is valid in a household save: %s." % str(conception_save.get("error","")))
 	var blocked:Dictionary=household.try_for_baby_plan(str(household.members[0].id),str(bed.id))
 	check(not bool(blocked.ok),"A household already expecting is refused another beat: %s." % str(blocked.error))
 	var baby:Dictionary=household.pending_baby_profile()
@@ -234,7 +236,13 @@ func _beat_case()->void:
 	# day of slack; it used to be sized for the old three-day pregnancy.
 	var guard:int=0
 	var hours:int=ceili(LifeBabyPlan.PREGNANCY_MINUTES/60.0)+24
+	# This checks pregnancy timing. With autonomy disabled, the unattended
+	# household would starve and pause at the mortality prompt on day one.
+	for member:Dictionary in household.members:
+		member.sim.set_aging(str(member.sim.lifecycle.lifespan),false)
 	while bool(household.pregnancy.get("active",false)) and guard<hours:
+		for member:Dictionary in household.members:
+			for key:String in member.sim.needs:member.sim.needs[key]=80.0
 		household.tick(60.0/LifeSim.GAME_MINUTES_PER_SECOND)
 		guard+=1
 	check(not bool(household.pregnancy.get("active",false)) and bool(household.pregnancy.get("pending",false)),"Completing the countdown delivers the birth.")

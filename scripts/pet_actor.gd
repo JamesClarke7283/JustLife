@@ -319,6 +319,15 @@ func _behavior_pose(delta: float) -> void:
 			body_position.y = h * .35
 			legs[0].x = -.9; legs[1].x = -.9
 			legs[2].x = sin(t * 6.0) * .3; legs[3].x = -legs[2].x
+		"toilet_dog":
+			body_rotation.z = -.10
+			legs[3] = Vector3(-.35, 0, -1.15)
+			head = Vector3(.08, -.25, 0)
+		"toilet_cat":
+			body_position.y = -h * .20
+			body_rotation.x = -.12
+			legs[2].x = -.85; legs[3].x = -.85
+			head.x = -.12
 		"rest":
 			body_position.y = -h * .30 + sin(t * .7) * .003
 			legs = [Vector3(-1.25, 0, .1), Vector3(-1.25, 0, -.1), Vector3(1.2, 0, .1), Vector3(1.2, 0, -.1)]

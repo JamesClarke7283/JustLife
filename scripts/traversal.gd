@@ -26,6 +26,8 @@ const ASIDE_DISTANCES:Array=[.5,.75,1.0,1.5]
 const ASIDE_DIRECTIONS:Array=[Vector2(1,0),Vector2(-1,0),Vector2(0,1),Vector2(0,-1),Vector2(.7071,.7071),Vector2(-.7071,.7071),Vector2(.7071,-.7071),Vector2(-.7071,-.7071)]
 var app:Node
 var routes:Dictionary={}
+## Only a currently leashed companion participates in its walker's routing.
+var companion_bodies:Dictionary={}
 var stairs:Dictionary={}
 var next_ticket:int=1
 var next_identity:int=1
@@ -36,7 +38,7 @@ var make_way_count:int=0   # idle Lifelets asked to step aside
 func _init(controller:Node)->void:app=controller
 
 func reset()->void:
-	routes.clear();stairs.clear();next_ticket=1;next_identity=1;courtesy.reset()
+	routes.clear();stairs.clear();companion_bodies.clear();next_ticket=1;next_identity=1;courtesy.reset()
 
 func busy(id:String)->bool:
 	return routes.has(id) and str(routes[id].phase) in ["entry","transit","clear"]
@@ -124,6 +126,8 @@ func _free(id:String,point:Vector3,include_waits:bool=true)->bool:
 		var actor:LifeActor=app.world.actors[other_id]
 		if not actor.visible:continue
 		if _same_floor(point,actor.position) and point.distance_to(actor.position)<BODY_GAP:return false
+	var companion:Node3D=companion_bodies.get(id)
+	if is_instance_valid(companion) and _same_floor(point,companion.position) and point.distance_to(companion.position)<BODY_GAP:return false
 	for key:String in stairs:
 		var lock:Dictionary=stairs[key]
 		if str(lock.owner).is_empty() or str(lock.owner)==id:continue
@@ -142,6 +146,8 @@ func _occupied(id:String)->Array[Vector3]:
 	var occupied:Array[Vector3]=[]
 	for other_id:String in app.world.actors:
 		if other_id!=id and app.world.actors[other_id].visible:occupied.append(app.world.actors[other_id].position)
+	var companion:Node3D=companion_bodies.get(id)
+	if is_instance_valid(companion):occupied.append(companion.position)
 	for lock:Dictionary in stairs.values():
 		if str(lock.owner).is_empty() or str(lock.owner)==id:continue
 		occupied.append(lock.exit);occupied.append(lock.clear)
@@ -322,6 +328,13 @@ func _step_clear_of_structure(id:String,from:Vector3,to:Vector3)->bool:
 	return true
 
 func _step_clear(id:String,from:Vector3,to:Vector3,boundary_entry:bool=false)->bool:
+	var companion:Node3D=companion_bodies.get(id)
+	if is_instance_valid(companion) and _same_floor(to,companion.position):
+		var step:Vector3=to-from
+		var fraction:float=clampf((companion.position-from).dot(step)/maxf(.00000001,step.length_squared()),0.0,1.0)
+		var before:float=from.distance_to(companion.position)
+		var closest:float=from.lerp(to,fraction).distance_to(companion.position)
+		if closest<minf(BODY_GAP,before)-.000001 or (before<BODY_GAP and to.distance_to(companion.position)<=before):return false
 	if not courtesy.step_allowed(self,id,from,to):return false
 	var level:int=app.world.point_level(to)
 	if level<0:return false

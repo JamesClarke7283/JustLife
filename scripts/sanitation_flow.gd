@@ -3,6 +3,40 @@ class_name LifeSanitationFlow
 ## Floor-level accident presentation and cleanup are independent of food custody.
 var app:Node
 var views:Dictionary={}
+
+## The bathroom visit carries its room with it. Cabinet sinks in the kitchen
+## must not win merely because they occur earlier in the furnishing list.
+func bathroom_sink(sim:LifeSim,toilet_id:String)->Dictionary:
+	var toilet:Dictionary=app._find_item(toilet_id)
+	if toilet.is_empty():return {}
+	var checked:Dictionary=app.world.construction.validated_state()
+	var building:Dictionary=checked.state if bool(checked.ok) else {}
+	var rooms:Array=[]
+	var level:int=app.world.item_level(toilet)
+	for item:Dictionary in app.world.items:
+		if str(item.kind)!="toilet" or app.world.item_level(item)!=level:continue
+		var at:Vector3=app.world.approach(item)
+		var room:Dictionary=LifeBuildingEdits._enclosed_cells(building,level,Vector2(at.x,at.z)) if not building.is_empty() else {}
+		if not room.is_empty() and not bool(room.escaped):rooms.append({"id":str(item.id),"cells":room.cells})
+	var selected:Dictionary={}
+	var best:float=INF
+	for item:Dictionary in app.world.items:
+		if str(item.kind)!="sink" or app.world.item_level(item)!=level:continue
+		var at:Vector3=app.world.approach(item)
+		if not at.is_finite() or not bool(sim.get_action_availability("wash_hands",str(item.id)).available):continue
+		var cell:=Vector2i(floori(at.x/LifeBuildingState.CELL),floori(at.z/LifeBuildingState.CELL))
+		var room_cost:float=INF
+		for room:Dictionary in rooms:
+			if room.cells.has(cell):room_cost=minf(room_cost,0.0 if str(room.id)==toilet_id else 100.0)
+		if not is_finite(room_cost):continue
+		var from:Vector3=app.world.approach(toilet)
+		var route:PackedVector3Array=app.world.path_to(from,at)
+		if route.is_empty():continue
+		var cost:float=room_cost+from.distance_to(at)+sim._autonomy_target_load(str(item.id))
+		if cost<best:
+			best=cost;selected={"id":"wash_hands","target_id":str(item.id),"position":at}
+	return selected
+
 func member_id(sim:LifeSim)->String:
 	for member:Dictionary in app.household.members:
 		if member.sim==sim:return str(member.id)

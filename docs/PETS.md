@@ -104,6 +104,10 @@ A cat keeps its own coat up by grooming (`LifePets.CAT_GROOM_PER_HOUR` outpaces 
 
 A pet with nothing to walk to simply waits: the need stays low until the household places a bowl or a bed, and its card says so. The card also offers teaching a trick; a trick is learned across several sessions (`LifePets.TRICK_SESSIONS`), and progress toward the next one is kept on the record.
 
+Cats can use a litter tray autonomously or through its **Use** option; the pet card also offers an outdoor toilet trip. Dogs always go outdoors and lift a hind leg. A tray needs cleaning after four uses, and only Teen, Young Adult and Adult Lifelets can clean it. Tray cleanliness survives saving and loading.
+
+**Free Will** releases a selected pet to its own routines, finishing a stair crossing first if needed. A dog walk begins with the Lifelet attaching the lead, then both walk through the front door, along the street and home. Loading a walk resumes from the current positions and ends inside the front door; it does not restore the exact transient lead route.
+
 ## Save format
 
 Pets ride the household save as an optional `pets` record beside `adoptions` and `pregnancy`:

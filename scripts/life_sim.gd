@@ -7,6 +7,7 @@ signal action_started(action: Dictionary)
 signal action_finished(action: Dictionary)
 var meal_service: Node
 ## The swim, pool-toy and towel flows, which need the world (towels, racks, puddles).
+var stroller_service: Node
 var water_service: Node
 var sanitation_service: Node
 var household_service: Node
@@ -394,12 +395,13 @@ func _build_actions() -> void:
 	_define("snack", "Grab a snack", 15.0, {"hunger": 32.0}, 4, "", 0.0, "A quick bite to keep the day going.")
 	_define("cook", "Cook a fresh meal", 45.0, {"fun": 8.0, "hygiene": -5.0}, 8, "cooking", 34.0, "Choose a recipe to prepare and share. Cooking skill unlocks more dishes. Eating restores hunger. Ingredients start at ℒ8.")
 	_define("sleep", "Sleep", 360.0, {"energy": 95.0, "fun": 15.0}, 0, "", 0.0, "A full night's rest restores energy and chases the boredom away.")
-	_define("try_for_baby", "Try for Baby", LifeBabyPlan.DURATION, {"social": 20.0, "fun": 14.0, "energy": -6.0}, 0, "", 0.0, "An intimate moment with your partner while you share the bed. If you both want to, this can begin a pregnancy.")
+	_define("try_for_baby", "Make Baby", LifeBabyPlan.DURATION, {"social": 20.0, "fun": 14.0, "energy": -6.0}, 0, "", 0.0, "An intimate moment with your partner while you share the bed. If you both want to, this can begin a pregnancy.")
 	_define("nap", "Take a nap", 75.0, {"energy": 38.0}, 0, "", 0.0, "A short, refreshing nap.")
 	_define("shower", "Take a shower", 30.0, {"hygiene": 85.0, "fun": 4.0}, 0, "", 0.0, "Freshen up and feel ready for the day.")
 	_define("wash_hands", "Wash your hands", 5.0, {"hygiene": 16.0}, 0, "", 0.0, "Soap and warm water at the sink. A quick freshen up after the bathroom, cooking or time outdoors.")
 	_define("brush_teeth", "Brush your teeth", 8.0, {"hygiene": 22.0, "fun": 2.0}, 0, "", 0.0, "Two minutes at the sink for a minty, clean feeling.")
 	_define("clear_table", "Clear the table", 10.0, {"hygiene": -1.0}, 0, "", 0.0, "Gather the used plates and finished dishes from this surface and take them to the sink.")
+	_define("clean_litter_tray", "Clean Litter Tray", 12.0, {"hygiene": -3.0}, 0, "", 0.0, "Scoop out the used litter and leave a clean tray for the cat.")
 	_define("empty_bin", "Empty the bin", 8.0, {"hygiene": -2.0}, 0, "", 0.0, "Take the full rubbish bag out to the street. A tidy home smells fresher.")
 	_define("practice_instrument", "Practise an instrument", 60.0, {"fun": 38.0, "energy": -5.0}, 0, "music", 36.0, "Play through a few pieces. Music skill grows with every session.")
 	_define("study_book", "Study from a book", 60.0, {"fun": 12.0, "energy": -4.0}, 0, "", 0.0, "Work through a book from the shelf. Skill books teach every skill up to level 9; the computer takes a Lifelet the rest of the way to 10.")
@@ -563,6 +565,7 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"stove", "kitchen": ids = ["cook", "experiment_recipe"]
 		"sink": ids = ["wash_hands", "brush_teeth", "deep_clean"]
 		"dining", "counter", "coffee_table": ids = ["clear_table", "deep_clean"]
+		"litter_tray": ids = ["clean_litter_tray"]
 		"rubbish_bin": ids = ["empty_bin"]
 		"bed": ids = ["sleep", "nap", "try_for_baby"]
 		"child_bed":
@@ -1129,7 +1132,7 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 		_emit_notice("Choose Dance together at the music player to invite the household.")
 		return false
 	if id == LifeBabyPlan.ACTION_ID:
-		_emit_notice("Choose Try for Baby on the bed both partners are sleeping in.")
+		_emit_notice("Choose Make Baby on a double bed to invite your partner.")
 		return false
 	if id == "visit" and (is_away() or action_queue.any(func(queued:Dictionary)->bool:return str(queued.id)=="visit")):
 		_emit_notice("Finish the trip you are already on before leaving again.")
@@ -1213,7 +1216,7 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 		else:
 			definition["changes"] = {"fun": 26.0, "social": 18.0}
 			definition["xp"] = 6.0
-	if id in SOCIAL_ACTIONS or id in LifePassingPolicy.ALL or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or COMPUTER_MASTERY_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "snack", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "bin_meal", "jog", "play_toys", "play_dollhouse", "child_desk_study", "play_rattle", "play_baby_mat", "use_potty", "sleep", "nap", "put_in_fridge", LifeGardenGames.ACTION_ID, LifeOutdoorActs.ACTION_ID, LifeOutdoorActs.PUSH_ID, LifeWetness.DRY_OFF_ID, LifeWetness.DRY_SIT_ID]:
+	if id == "clean_litter_tray" or id in SOCIAL_ACTIONS or id in LifePassingPolicy.ALL or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or COMPUTER_MASTERY_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "snack", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "bin_meal", "jog", "play_toys", "play_dollhouse", "child_desk_study", "play_rattle", "play_baby_mat", "use_potty", "sleep", "nap", "put_in_fridge", LifeGardenGames.ACTION_ID, LifeOutdoorActs.ACTION_ID, LifeOutdoorActs.PUSH_ID, LifeWetness.DRY_OFF_ID, LifeWetness.DRY_SIT_ID]:
 		var availability: Dictionary = get_action_availability(id, target_id)
 		if not bool(availability.available):
 			_emit_notice(str(availability.reason))
@@ -1264,7 +1267,7 @@ func begin_current_action() -> void:
 	if action.has("cooperation_id"):
 		if is_instance_valid(cooperation_owner): cooperation_owner.mark_cooperative_ready(cooperation_member_id)
 		return
-	if str(action.id) in AGE_GATED_ACTIONS:
+	if str(action.id) == "clean_litter_tray" or str(action.id) in AGE_GATED_ACTIONS:
 		var age_reason:Dictionary=get_action_availability(str(action.id),str(action.get("target_id","")))
 		if not bool(age_reason.available):
 			_emit_notice(str(age_reason.reason));cancel_action();return
@@ -1274,6 +1277,7 @@ func begin_current_action() -> void:
 			_emit_notice(sanitation_reason);cancel_action();return
 	if is_instance_valid(meal_service) and not meal_service.before_begin(self,action):return
 	if is_instance_valid(water_service) and not water_service.before_begin(self,action):return
+	if is_instance_valid(stroller_service) and not stroller_service.before_begin(self,action):return
 	var cost: int = int(action["cost"])
 	if str(action.id) == "birthday" and str(action.get("birthday_from_stage","")) != str(character.age_stage):
 		_emit_notice("This birthday has already arrived. Choose a new celebration for the next stage.")
@@ -1533,6 +1537,7 @@ func cancel_action(index: int = 0) -> void:
 	if is_instance_valid(meal_service):meal_service.canceled(self,action_queue[index])
 	var left_water: bool = index == 0 and str(action_queue[index].get("phase", "")) == "active" and str(action_queue[index].get("id", "")) == LifeOutdoorActs.ACTION_ID and LifeWetness.is_water_kind(_target_kind_of(str(action_queue[index].get("target_id", ""))))
 	if is_instance_valid(water_service):water_service.canceled(self,action_queue[index])
+	if is_instance_valid(stroller_service):stroller_service.canceled(self,action_queue[index])
 	action_queue.remove_at(index)
 	if left_water:
 		_leave_water()
@@ -1640,10 +1645,14 @@ func _step(game_minutes: float) -> void:
 		_check_need_notices()
 		_update_wants()
 		return
+	if is_instance_valid(stroller_service) and stroller_service.passenger(self):return
 	_reconsider_active_autonomy()
 	if not action_queue.is_empty() and str(action_queue[0]["phase"]) == "active" and str(action_queue[0].id) != "help_homework" and not (str(action_queue[0].id) == LifeBabyPlan.ACTION_ID and not bool(action_queue[0].get("cooperation_primary",false))):
 		var action: Dictionary = action_queue[0]
 		var actual_step: float = minf(game_minutes, float(action["duration"]) - float(action["elapsed"]))
+		# A leash walk earns completion only after the pair has physically returned.
+		if str(action.id) == "pet_walk" and is_instance_valid(household_service) and not household_service.pet_walk_ready(self):
+			actual_step = minf(actual_step, maxf(0.0, float(action.duration) - .01 - float(action.elapsed)))
 		action["elapsed"] = float(action["elapsed"]) + actual_step
 		# Accumulating the timer minute by minute leaves it a hair short of the
 		# boundary it was meant to cross (a duration of 60.0 reached through a
@@ -1953,7 +1962,10 @@ func _finish_front() -> void:
 		# Washing hands afterwards is part of using the bathroom, not a separate
 		# chore the player has to remember. A sink in reach queues the short
 		# wash as this Lifelet's next action; without one the visit ends as before.
-		_queue_follow_up("wash_hands")
+		_queue_follow_up("wash_hands", str(action.get("target_id", "")))
+	elif id == "clean_litter_tray":
+		if is_instance_valid(household_service) and household_service.clean_litter(self, str(action.target_id)):
+			_emit_notice("The litter tray is clean again.")
 	elif id == "empty_bin":
 		if is_instance_valid(household_service):household_service.empty_bin(str(action.get("target_id","")))
 		_emit_notice("The rubbish is out. The kitchen smells fresher already.")
@@ -2155,7 +2167,13 @@ func _social_target(target_id: String) -> String:
 
 
 func get_action_availability(id: String, target_id: String = "") -> Dictionary:
+	if is_instance_valid(stroller_service) and stroller_service.passenger(self):return {"available":false,"reason":"This child is out for a stroller walk."}
 	var reason: String = ""
+	if id == "clean_litter_tray":
+		if str(character.age_stage) not in ["teen", "young_adult", "adult"]: return {"available": false, "reason": "Only teens, young adults and adults can clean litter trays."}
+		if not is_instance_valid(household_service): return {"available": false, "reason": "Choose a litter tray at home."}
+		reason = household_service.action_availability(self, id, target_id)
+		if not reason.is_empty(): return {"available": false, "reason": reason}
 	if id == "drive_to_work":
 		reason = _career_departure_error("lot_exit")
 		if reason.is_empty() and _target_kind_of(target_id) not in ["car", "car_electric", "electric_car"]: reason = "Choose a household car to drive to work."
@@ -2210,6 +2228,7 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 	elif id == LifeOutdoorActs.ACTION_ID:
 		var act_kind: String = _target_kind_of(target_id)
 		var act_reason: String = LifeOutdoorActs.act_error(act_kind, str(character.age_stage), is_away(), _pool_present(), _actor_is_pregnant())
+		if act_reason.is_empty() and act_kind in LifeStrollerFlow.KINDS and is_instance_valid(stroller_service):act_reason=stroller_service.availability(self,target_id)
 		if not act_reason.is_empty():
 			return {"available":false, "reason":act_reason}
 	elif id == LifeOutdoorActs.PUSH_ID:
@@ -2973,12 +2992,12 @@ func remember(label:String,detail:String) -> void:
 	memories.push_front({"day":day,"minutes":int(minutes),"label":label,"detail":detail})
 	while memories.size()>40:memories.pop_back()
 
-func _queue_follow_up(id:String) -> bool:
+func _queue_follow_up(id:String, previous_target:String="") -> bool:
 	# A short automatic continuation of the action that just finished (washing
 	# hands after the bathroom). It rides the same queue as a player instruction,
 	# so it survives a save and yields to any later plan the player already made.
 	if id not in _actions or is_away() or action_queue.size() >= MAX_QUEUE:return false
-	var chosen:Dictionary=_autonomy_target_for(id)
+	var chosen:Dictionary=sanitation_service.bathroom_sink(self,previous_target) if id=="wash_hands" and not previous_target.is_empty() and is_instance_valid(sanitation_service) else _autonomy_target_for(id)
 	if chosen.is_empty():return false
 	var follow:Dictionary=_actions[id].duplicate(true)
 	follow.merge({"target_id":str(chosen.target_id),"target_position":chosen.position,"phase":"queued",
@@ -4507,6 +4526,7 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 			for key: String in ["label", "changes", "skill", "xp", "description"]: action[key] = kept[key]
 		for key: String in ["cooperation_id","cooperation_role","meal_source","meal_stage","meal_plate","meal_seat","seat_slot"]:
 			if stored.has(key): action[key] = str(stored[key])
+		if stored.has("stroller"): action["stroller"] = stored.stroller.duplicate(true)
 		if stored.has("commute"): action["commute"] = stored.commute.duplicate(true)
 		if stored.has("swim_lane"): action["swim_lane"] = int(stored.swim_lane)
 		if stored.has("toy_stage") and str(stored.toy_stage) in ["fetch", "pickup", "carry", "enter", "swim"]: action["toy_stage"] = str(stored.toy_stage)
@@ -4827,7 +4847,10 @@ func _validate_state(state: Dictionary) -> String:
 	if not state.get("moodlets",[]) is Array or state.get("moodlets",[]).size()>8 or not state.get("memories",[]) is Array or state.get("memories",[]).size()>40:
 		return "Save contains invalid memories."
 	for entry in state.get("moodlets",[]):
-		if not entry is Dictionary or not entry.get("label") is String or not entry.get("emotion") is String or not entry.get("description") is String or not _number_in_range(entry.get("remaining"),0,10000) or not _number_in_range(entry.get("strength"),0,10):return "Save contains an invalid mood."
+		if not entry is Dictionary or not entry.get("label") is String or not entry.get("emotion") is String or not entry.get("description") is String or not _number_in_range(entry.get("strength"),0,10):return "Save contains an invalid mood."
+		# The authored pregnancy mood lasts the full fourteen-day term.
+		var mood_limit:float=LifeBabyPlan.PREGNANCY_MINUTES if str(entry.label)=="A little one on the way" else 10000.0
+		if not _number_in_range(entry.get("remaining"),0,mood_limit):return "Save contains an invalid mood."
 	for entry in state.get("memories",[]):
 		if not entry is Dictionary or not entry.get("label") is String or not entry.get("detail") is String or not _number_in_range(entry.get("day"),1,1000000) or not _number_in_range(entry.get("minutes"),0,1440):return "Save contains an invalid memory."
 	for want: Variant in state["wants"]:
@@ -4850,6 +4873,9 @@ func _validate_state(state: Dictionary) -> String:
 		if not action is Dictionary or not _actions.has(str(action.get("id", ""))):
 			return "Save contains an invalid action."
 		var action_id: String = str(action.id)
+		if action.has("stroller"):
+			var stroller_error:String=LifeStrollerFlow.save_error(action)
+			if not stroller_error.is_empty():return stroller_error
 		if action_id in ["plant_wee","mop_puddle"]:
 			var expected:Dictionary=_actions[action_id]
 			if not action.get("target_id") is String or str(action.target_id).is_empty() or action.get("cost")!=0 or not action.get("paid") is bool or not action.get("autonomous") is bool or not _number_in_range(action.get("duration"),float(expected.duration),float(expected.duration)) or not _number_in_range(action.get("elapsed"),0.0,float(expected.duration)) or str(action.get("phase","")) not in ["queued","approach","active"]:
@@ -5675,4 +5701,3 @@ func trigger_fear(fear_id: String) -> bool:
 	var ok: bool = LifeWantsManager.add_fear(whims, fear_id)
 	if ok: _emit_changed()
 	return ok
-

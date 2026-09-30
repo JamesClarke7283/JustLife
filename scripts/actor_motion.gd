@@ -25,7 +25,7 @@ const NOODLE_CENTRE: float = .60
 const NOODLE_AXIS_HEIGHT: float = .086
 
 static func handles(action_id: String) -> bool:
-	return action_id == LifeOutdoorActs.ACTION_ID or action_id in CARE_ACTIONS or action_id in CAR_ACTIONS or action_id in DRY_ACTIONS
+	return action_id == "clean_litter_tray" or action_id == LifeOutdoorActs.ACTION_ID or action_id in CARE_ACTIONS or action_id in CAR_ACTIONS or action_id in DRY_ACTIONS
 
 ## Shape `pose` for this activity. Returns what the caller folds into the body:
 ## `lean` (Vector3), `drop` (metres the hips sink), `seated` (sit blend) and
@@ -34,6 +34,12 @@ static func apply(actor, pose: Dictionary, action_id: String, t: float) -> Dicti
 	var anchor: Dictionary = actor._activity_anchor
 	var ct: float = float(anchor.get("care_time", actor._action_time))
 	match action_id:
+		"clean_litter_tray":
+			var amount:float=smoothstep(0.0,.6,t)
+			var drop:float=_kneel(actor,pose,amount)
+			var target:Variant=_world(anchor,"care_target")
+			if target!=null:actor._reach_hand(pose,"R",_local(actor,target+Vector3(.10*sin(t*4.0),0,0)),Vector3(.7,-.6,-.1))
+			return {"lean":Vector3(.35*amount,0,0),"drop":drop}
 		LifeOutdoorActs.ACTION_ID:
 			var kind: String = str(anchor.get("outdoor_kind", ""))
 			if kind == "outdoor_swing": return garden_swing(actor, pose)

@@ -237,3 +237,15 @@ static func style_label(style: String, data: Dictionary = {}) -> String:
 
 static func size_label(size: String) -> String:
 	return "One size" if size.is_empty() else size.capitalize()
+
+## Use the stored variant on live objects (whose `size` is a Vector2 footprint),
+## or the saved size on detached records. Bundle refunds survive save and move.
+static func resale_value(item:Dictionary)->int:
+	var data:Dictionary=LifeCatalog.get_item(str(item.get("kind","")))
+	var variant:Dictionary=item.get("variant",{})
+	var size_value:Variant=variant.get("size",item.get("size",""))
+	var size_id:String=size_value if size_value is String else ""
+	var standard:int=int(price(data,size_id)*.7)
+	if item.has("refund_value") and (item.refund_value is int or item.refund_value is float):
+		return clampi(int(item.refund_value),0,standard)
+	return standard

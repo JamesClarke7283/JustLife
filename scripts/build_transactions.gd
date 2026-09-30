@@ -10,6 +10,7 @@ const Land=preload("res://scripts/land.gd")
 const Navigation=preload("res://scripts/lot_navigation.gd")
 const Protection=preload("res://scripts/build_protection.gd")
 const Variants=preload("res://scripts/catalog_variants.gd")
+const Upstairs=preload("res://scripts/upstairs_presets.gd")
 var app:Node
 var _busy:bool=false
 var _cache_key:String=""
@@ -65,7 +66,7 @@ func prepare(operation:Dictionary,force:bool=false)->Dictionary:
 	if not force and key==_cache_key:return _cache.duplicate(true)
 	var quote:Dictionary=_propose(before.state,operation,app.sim.funds)
 	if bool(quote.ok):
-		var error:String=_layout_candidate_error(before.state,quote.after,_layout(quote.after,quote.cleared_furnishings))
+		var error:String=_layout_candidate_error(before.state,quote.after,_layout(quote.after,quote.cleared_furnishings,quote.added_furnishings))
 		if error.is_empty():quote["context"]=context
 		else:quote=_error(error)
 	_cache_key=key;_cache=quote.duplicate(true)
@@ -73,10 +74,12 @@ func prepare(operation:Dictionary,force:bool=false)->Dictionary:
 
 func _propose(state:Dictionary,operation:Variant,funds:Variant,original_plants:Array=[])->Dictionary:
 	var quote:Dictionary
-	if operation is Dictionary and operation.get("op")=="roof_edit":quote=RoofEdits.propose(state,operation,funds)
+	if operation is Dictionary and operation.get("op")=="upstairs_preset":quote=Upstairs.propose(state,operation,funds)
+	elif operation is Dictionary and operation.get("op")=="roof_edit":quote=RoofEdits.propose(state,operation,funds)
 	elif operation is Dictionary and operation.get("op")=="structure":quote=Edits.propose(state,operation,funds)
 	else:quote=Building.propose(state,operation,funds)
 	if bool(quote.ok):
+		if not quote.has("added_furnishings"):quote["added_furnishings"]=[]
 		var cleared:Array=app.world.vegetation_clearance(state,quote.after)
 		if not cleared.is_empty() or state.has("cleared_vegetation"):quote.after["cleared_vegetation"]=cleared
 		var error:String=Building.validate(quote.after)
@@ -102,14 +105,14 @@ func _cleared_furnishings(before:Dictionary,after:Dictionary,original_plants:Arr
 func _commit_quote(state:Dictionary,quote:Dictionary,funds:int)->Dictionary:
 	var calculated:Dictionary=_propose(state,quote.get("operation"),funds)
 	if not bool(calculated.ok):return calculated
-	for key:String in ["before","after","cost","funds_before","funds_after","cleared_furnishings"]:
+	for key:String in ["before","after","cost","funds_before","funds_after","cleared_furnishings","added_furnishings"]:
 		if quote.get(key)!=calculated[key]:return _error("The structure quote changed. Preview it again.")
-	return {"ok":true,"state":calculated.after,"funds":calculated.funds_after,"receipt":{"before":state.duplicate(true),"after":Building.fingerprint(calculated.after),"funds_delta":calculated.cost,"operation":calculated.operation.duplicate(true),"funds_before":calculated.funds_before,"cleared_furnishings":calculated.cleared_furnishings.duplicate(true)}}
+	return {"ok":true,"state":calculated.after,"funds":calculated.funds_after,"receipt":{"before":state.duplicate(true),"after":Building.fingerprint(calculated.after),"funds_delta":calculated.cost,"operation":calculated.operation.duplicate(true),"funds_before":calculated.funds_before,"cleared_furnishings":calculated.cleared_furnishings.duplicate(true),"added_furnishings":calculated.added_furnishings.duplicate(true)}}
 
 func _undo_receipt(state:Dictionary,receipt:Dictionary,funds:int)->Dictionary:
 	if receipt.get("after")!=Building.fingerprint(state) or not Building.number(funds,0,1e9,true):return _error("This history entry no longer matches the structure.")
 	var original:Dictionary=_propose(receipt.before,receipt.operation,receipt.funds_before,receipt.get("cleared_furnishings",[]))
-	if not bool(original.ok) or original.cost!=receipt.funds_delta or Building.fingerprint(original.after)!=receipt.after or original.cleared_furnishings!=receipt.get("cleared_furnishings",[]):return _error("This history entry is not a validated construction.")
+	if not bool(original.ok) or original.cost!=receipt.funds_delta or Building.fingerprint(original.after)!=receipt.after or original.cleared_furnishings!=receipt.get("cleared_furnishings",[]) or original.added_furnishings!=receipt.get("added_furnishings",[]):return _error("This history entry is not a validated construction.")
 	var refunded:int=funds+int(receipt.funds_delta)
 	if not Building.number(refunded,0,1e9,true) or int(state.revision)>=1000000000:return _error("Undo exceeds the wallet or revision limits.")
 	var restored:Dictionary=receipt.before.duplicate(true);restored.revision=int(state.revision)+1;restored.next_serial=maxi(int(restored.next_serial),int(state.next_serial))
@@ -375,12 +378,12 @@ func commit(quote:Dictionary)->Dictionary:
 	if not quote.get("operation") is Dictionary:return _error("The building quote is no longer available.")
 	var checked:Dictionary=prepare(quote.operation,true)
 	if not bool(checked.ok):return checked
-	for key:String in ["before","after","cost","funds_before","funds_after","context","cleared_furnishings"]:
+	for key:String in ["before","after","cost","funds_before","funds_after","context","cleared_furnishings","added_furnishings"]:
 		if not quote.has(key) or quote[key]!=checked[key]:return _error("The home or quote changed. Preview this construction again.")
 	var before:Dictionary=current()
 	var result:Dictionary=_commit_quote(before.state,checked,app.sim.funds)
 	if not bool(result.ok):return result
-	var applied:Dictionary=_apply(before.state,result.state,int(result.funds),checked.cleared_furnishings)
+	var applied:Dictionary=_apply(before.state,result.state,int(result.funds),checked.cleared_furnishings,checked.added_furnishings)
 	if not bool(applied.ok):return applied
 	var token:int=_next_receipt;_next_receipt+=1
 	_history.append({"token":token,"receipt":result.receipt.duplicate(true),"after":result.state.duplicate(true),"live_after":Building.fingerprint(result.state)})
@@ -401,9 +404,10 @@ func undo(receipt:Dictionary)->Dictionary:
 	result.state.revision=int(before.state.revision)+1
 	result.state.next_serial=maxi(int(before.state.next_serial),int(result.state.next_serial))
 	var restored:Array=entry.receipt.get("cleared_furnishings",[])
-	var error:String=_layout_candidate_error(before.state,result.state,_layout(result.state,[],restored))
+	var removed:Array=entry.receipt.get("added_furnishings",[])
+	var error:String=_layout_candidate_error(before.state,result.state,_layout(result.state,removed,restored))
 	if not error.is_empty():return _error(error)
-	var applied:Dictionary=_apply(before.state,result.state,int(result.funds),[],restored)
+	var applied:Dictionary=_apply(before.state,result.state,int(result.funds),removed,restored)
 	if not bool(applied.ok):return applied
 	_history.pop_back()
 	if not _history.is_empty() and _same_geometry(_history[-1].after,result.state):_history[-1].live_after=Building.fingerprint(result.state)
@@ -493,11 +497,12 @@ func _apply(before:Dictionary,after:Dictionary,funds:int,removed:Array=[],restor
 			detached.append({"index":original_items.find(item),"item":item,"parent":item.node.get_parent()})
 			item.node.get_parent().remove_child(item.node)
 			app.world.items.remove_at(index)
+	app.world.construction.restore(after)
 	for entry:Dictionary in restored:
 		var count:int=app.world.items.size()
 		app.world.add_item(entry,false)
 		if app.world.items.size()>count:added.append(app.world.items[-1])
-	app.world.construction.restore(after)
+	app.world.construction.refresh_decorations()
 	app.world.last_layout_error=""
 	app.world.rebuild_navigation()
 	var error:String=app.world.construction.last_error

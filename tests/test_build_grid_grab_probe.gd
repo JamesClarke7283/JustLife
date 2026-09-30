@@ -48,8 +48,7 @@ func run() -> void:
 	check(grown.size.x > base.size.x + 1.0, "Buying east land widens the lot")
 	check(not Land.SIDES.has("south"), "South/street side is not a purchasable plot")
 
-	# Detached grab: push a room wall and stretch connectors without changing
-	# the independently edited floor.
+	# Detached grab: pushing the wall stretches connectors and grows the floor.
 	var room: Dictionary = Building.fresh()
 	room.walls = [
 		{"id": "n", "level": 0, "x": 0.0, "z": -2.0, "w": 4.0, "d": 0.14, "height": 2.6, "cut": true, "material": "eae7d7"},
@@ -72,14 +71,14 @@ func run() -> void:
 		var north: Dictionary = Building.find(after, "n")
 		check(is_equal_approx(Building.rect(west).position.y, Building.rect(north).position.y) and is_equal_approx(Building.rect(west).end.y, Building.rect(south).end.y) and is_equal_approx(Building.rect(east_wall).position.y, Building.rect(north).position.y) and is_equal_approx(Building.rect(east_wall).end.y, Building.rect(south).end.y), "Both connecting walls span the exact outside corner edges")
 		check(int(grab.cost) > 0, "Grab wall charges for the push")
-		# The expanded interior is left for an explicit Floor or Room operation.
+		# The expanded interior receives the same floor automatically.
 		var interior := Vector2(0.0, 2.7)
 		var covered: bool = false
 		for floor: Dictionary in after.floors:
 			if int(floor.level) != 0: continue
 			if Building.rect(floor).has_point(interior):
 				covered = true; break
-		check(not covered, "Wall movement does not add floor in the expanded interior at %s" % interior)
+		check(covered, "Wall movement adds floor in the expanded interior at %s" % interior)
 		var floor_after: Dictionary = Building.find(after, "f0")
 		check(floor_after == room.floors[0], "Existing floor footprint and finish remain unchanged")
 

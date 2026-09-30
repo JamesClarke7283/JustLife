@@ -738,6 +738,10 @@ func restore_state(data: Dictionary) -> Dictionary:
 			for c in candidates:c.sim.free()
 			return result
 		ids.append(entry.id);candidates.append({"id":entry.id,"sim":sim})
+	var stroller_error:String=LifeStrollerFlow.household_error(data)
+	if not stroller_error.is_empty():
+		for candidate:Dictionary in candidates:candidate.sim.free()
+		return {"ok":false,"error":stroller_error}
 	var cooperation_error: String = _validate_saved_cooperations(data)
 	if not cooperation_error.is_empty():
 		for candidate: Dictionary in candidates: candidate.sim.free()
@@ -1892,7 +1896,7 @@ func _baby_session_error(session: Dictionary) -> String:
 	# beat carries its own action, so a partner who was woken already broke the
 	# shared action identity below; no separate sleep check is needed.
 	if str(session.phase) == "assembling" and float(session.waited) >= COOPERATION_WAIT_LIMIT:
-		return "The Lifelets could not settle in together. Choose the bed again when they are both asleep."
+		return "The Lifelets could not settle in together. Clear a path to both sides of the bed and try again."
 	var first: LifeSim = member_sim(str(session.a_id))
 	var second: LifeSim = member_sim(str(session.b_id))
 	if first == null or second == null: return "One partner is no longer part of this household."
@@ -2311,22 +2315,22 @@ func try_for_baby_plan(initiator_id: String, bed_id: String) -> Dictionary:
 	var partner:LifeSim=member_sim(str(initiator.romantic_partner))
 	var pair:Array=LifeBabyPlan.mother_of(initiator,initiator_id,partner,str(initiator.romantic_partner))
 	var bed:Dictionary=_target(bed_id)
-	if bed.is_empty():return {"ok":false,"error":"Choose the bed both partners are sleeping in."}
-	# Both sleepers keep the half they already hold; the beat adds no new slot.
+	if bed.is_empty() or str(bed.kind)!="bed":return {"ok":false,"error":"Choose a double bed for both partners."}
+	for member:Dictionary in members:
+		if str(member.id) in pair:continue
+		if str(member.sim.get_current_action().get("target_id", ""))==bed_id:return {"ok":false,"error":"That bed is already being used."}
+	# Partners already sleeping keep their halves; awake partners walk to opposite sides.
 	var a:LifeSim=member_sim(str(pair[0]))
-	var b:LifeSim=member_sim(str(pair[1]))
+	var slot_a:String=str(a.get_current_action().get("seat_slot","left")) if LifeBabyPlan.sleeping_in(a,bed_id) else "left"
+	if slot_a not in ["left","right"]:slot_a="left"
+	var slot_b:String="right" if slot_a=="left" else "left"
 	if LifeBabyPlan.now_of(day,minutes) <= 0.0:return {"ok":false,"error":"The household clock is not ready."}
-	return {"ok":true,"request":{"token":LifeBabyPlan.TOKEN_PREFIX+str(cooperation_serial+1),"a_id":str(pair[0]),"b_id":str(pair[1]),"mother_id":str(pair[0]),"father_id":str(pair[1]),"bed_id":bed_id,"slot_a":str(a.get_current_action().get("seat_slot","left")),"slot_b":str(b.get_current_action().get("seat_slot","right")),"position_a":a.get_current_action().get("target_position",Vector3.ZERO),"position_b":b.get_current_action().get("target_position",Vector3.ZERO),"day":day,"minutes":minutes}}
+	return {"ok":true,"request":{"token":LifeBabyPlan.TOKEN_PREFIX+str(cooperation_serial+1),"a_id":str(pair[0]),"b_id":str(pair[1]),"mother_id":str(pair[0]),"father_id":str(pair[1]),"bed_id":bed_id,"slot_a":slot_a,"slot_b":slot_b,"position_a":bed.position,"position_b":bed.position,"day":day,"minutes":minutes}}
 
 func begin_try_for_baby(initiator_id: String, bed_id: String) -> Dictionary:
 	var plan:Dictionary=try_for_baby_plan(initiator_id,bed_id)
 	if not bool(plan.ok):return plan
 	var request:Dictionary=plan.request
-	# Re-check the exact bed claim, since a live household may have changed
-	# between the menu and the click.
-	for id:String in [str(request.a_id),str(request.b_id)]:
-		var actor:LifeSim=member_sim(id)
-		if not LifeBabyPlan.sleeping_in(actor,str(request.bed_id)):return {"ok":false,"error":"Both partners must be asleep in the same bed first."}
 	_begin_cooperation_change()
 	cooperation_serial += 1
 	var token:String=LifeBabyPlan.TOKEN_PREFIX+str(cooperation_serial)
@@ -2340,9 +2344,10 @@ func begin_try_for_baby(initiator_id: String, bed_id: String) -> Dictionary:
 		var slot:String=str(request.slot_a) if id==str(request.a_id) else str(request.slot_b)
 		var position:Vector3=request.position_a if id==str(request.a_id) else request.position_b
 		action.merge({"target_id":str(request.bed_id),"target_kind":"bed","target_position":position,"seat_slot":slot,"phase":"queued","elapsed":0.0,"progress":0.0,"paid":false,"autonomous":false,"cooperation_id":token,"cooperation_role":id,"cooperation_primary":id==str(request.a_id),"partner_id":str(request.b_id) if id==str(request.a_id) else str(request.a_id)},true)
-		# The pair is already asleep in this bed: the beat takes the front of
-		# the queue and the sleep it interrupted waits behind it, so finishing
-		# or cancelling the beat puts both partners straight back to sleep.
+		# Preserve a queued rest. Other activities must relinquish their resource
+		# before this cooperative instruction takes both partners to the bed.
+		if not LifeBabyPlan.sleeping_in(actor, str(request.bed_id)):
+			while not actor.action_queue.is_empty():actor.cancel_action(actor.action_queue.size()-1)
 		actor.action_queue.push_front(action)
 		actor._idle_minutes=0.0
 		actor._start_front()

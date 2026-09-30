@@ -54,6 +54,8 @@ func commands(id: String) -> Array[Dictionary]:
 		{"id": "pet_cat_tree" if cat else "pet_go_dog_house", "label": "Command to Play on Cat Tree" if cat else "Go to Dog House"},
 		{"id": "pet_play_toys", "label": "Play with Toys"},
 	]
+	if cat: result.append({"id": "pet_litter", "label": "Use Litter Tray"})
+	result.append({"id": "relieve_outside", "label": "Go to the Toilet Outside"})
 	var action: String = str(state(id).action)
 	if action == "pet_play_toys" and not bool(muted.get(id, false)):
 		result.append({"id": "pet_stop_squeaking", "label": "Stop Squeaking"})
@@ -69,6 +71,7 @@ func commands(id: String) -> Array[Dictionary]:
 func command(id: String, action: String, ground: Vector3 = Vector3.INF) -> Dictionary:
 	var actor: LifePetActor = app.pet_actors.get(id)
 	if not is_instance_valid(actor): return _failure("That pet is not at home.")
+	if action == "pet_free": _interrupt_care(id)
 	if action == "pet_move" and (not ground.is_finite() or not app.world.lot_navigation.point_clear(app.world.point_level(ground), ground)):
 		return _failure(_named_blocker(actor.position, ground, "Choose a clear, supported spot on the ground or floor.", [], true))
 	if action == "pet_move_out":
@@ -79,6 +82,12 @@ func command(id: String, action: String, ground: Vector3 = Vector3.INF) -> Dicti
 	if action != "pet_stop_squeaking" and str(walking.get("phase", "")) == "walking" and app.world.point_level(actor.position) < 0:
 		walking["pending_command"] = {"action": action, "ground": ground}
 		return {"ok": true, "message": "%s will follow that command at the stair landing." % actor.display_name}
+	if action == "pet_free":
+		_interrupt_care(id)
+		_finish(id, actor, {})
+		actor.traversing_stairs = false
+		idle_minutes[id] = 0.0
+		return {"ok": true, "message": "%s is free to look after themselves." % actor.display_name}
 	if action == "pet_stop_squeaking":
 		muted[id] = true
 		actor.stop_squeak()
@@ -150,6 +159,13 @@ func _species(id: String) -> String:
 	return str(app.household.pet_record(id).get("species", "cat"))
 
 func _availability(id: String, action: String) -> String:
+	if action == "relieve_outside": return ""
+	if action.get_slice(":", 0) == "pet_litter":
+		if _species(id) != "cat": return "Only cats use a litter tray."
+		var tray: Dictionary = _item(action.get_slice(":", 1)) if action.contains(":") else _target(id, "relieve")
+		if tray.is_empty() or str(tray.kind) != "litter_tray": return "Place a clean litter tray first."
+		if app.household_flow.litter_full(str(tray.id)): return "Clean this litter tray first."
+		return ""
 	if action == "pet_cat_tree" and _species(id) != "cat": return "Only cats use a cat tree."
 	if action == "pet_go_dog_house" and _species(id) != "dog": return "Only dogs use a dog house."
 	if action.begins_with("pet_trick:"):
@@ -175,6 +191,9 @@ func _target(id: String, action: String) -> Dictionary:
 			if str(item.kind) != "pet_toy_" + _species(id) or bool(item.get("held", false)): continue
 			if toy_claims.has(str(item.id)) and str(toy_claims[str(item.id)]) != id: continue
 		elif str(item.kind) != kind: continue
+		if action == "relieve":
+			if app.household_flow.litter_full(str(item.id)): continue
+			if not _approach(id, item, action, actor.position).is_finite(): continue
 		# The kennel itself makes its cell solid. Test the underlying lot/floor,
 		# rather than outdoor_cell(), which is intended for empty walking cells.
 		if action == "pet_go_dog_house" and (app.world.item_level(item) != 0 or app.world.construction.floor_contains(Vector2(item.node.position.x, item.node.position.z), 0)): continue
@@ -317,12 +336,15 @@ func _start(id: String, action: String, commanded: bool, ground: Vector3 = Vecto
 	var actor: LifePetActor = app.pet_actors.get(id)
 	var level: int = app.world.point_level(actor.position)
 	if level >= 0: actor.floor_level = level
-	var target: Dictionary = _target(id, action)
+	var explicit_tray: String = action.get_slice(":", 1) if action.begins_with("pet_litter:") else ""
+	var outside: bool = action == "relieve_outside"
+	if action.get_slice(":", 0) == "pet_litter" or outside: action = "relieve"
+	var target: Dictionary = _item(explicit_tray) if not explicit_tray.is_empty() else _target(id, action)
 	var access: Dictionary = target
 	if action == "pet_play_toys" and not str(target.get("box_id", "")).is_empty(): access = _item(str(target.box_id))
 	var at: Vector3 = ground
 	if action == "wander": at = _wander_spot(id, actor.position)
-	elif action == "relieve" and (_species(id) == "dog" or target.is_empty()):
+	elif action == "relieve" and (outside or _species(id) == "dog" or target.is_empty()):
 		target = {}; access = {}; at = app._pet_outdoor_spot("bladder")
 	elif action != "pet_move":
 		if target.is_empty() or access.is_empty(): return false
@@ -424,10 +446,11 @@ func _advance(id: String, actor: LifePetActor, needs: Dictionary, minutes: float
 		"pet_play_toys":
 			_play(id, actor, errand, target, elapsed, minutes, needs)
 		"relieve":
-			actor.set_behavior("sniff", elapsed)
+			actor.set_behavior("toilet_dog" if _species(id) == "dog" else "toilet_cat", elapsed)
 			errand.label = "Using the litter tray" if not target.is_empty() else "Taking a toilet break outside"
 			if elapsed >= 3.0:
 				needs.bladder = 95.0
+				if not target.is_empty(): app.household_flow.use_litter(str(target.id))
 				_finish(id, actor, {})
 		"pet_move", "wander":
 			actor.set_behavior("sniff", elapsed)
@@ -514,11 +537,12 @@ func _walk(id: String, actor: LifePetActor, errand: Dictionary, seconds: float) 
 			care["familiar_items"] = familiar
 			var toward: Vector3 = target.node.position - actor.position
 			if toward.length() > .01: actor.rotation.y = atan2(toward.x, toward.z)
-		if str(errand.action) in ["pet_go_bed", "pet_go_dog_house"] and not target.is_empty():
+		if str(errand.action) in ["pet_go_bed", "pet_go_dog_house", "relieve"] and not target.is_empty():
 			errand.phase = "entering"
 			errand.inside = true
 			var node: Node3D = target.node
 			errand.inner = node.position + node.basis * (Vector3(0, .10, .02) if str(errand.action) == "pet_go_dog_house" else Vector3(0, .10, 0))
+			if str(errand.action) == "relieve": errand.inner = node.position + Vector3(0, .04, 0)
 			# A bed's cushion is higher on the dog model.
 			if str(errand.kind) == "pet_bed_dog": errand.inner = Vector3(errand.inner) + Vector3(0, .03, 0)
 	return moved

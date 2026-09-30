@@ -70,12 +70,12 @@ func _run()->void:
 	foreign=edit.duplicate(true);foreign.id="ground"
 	check(not bool(tx.prepare(foreign,true).ok),"A floor identity cannot be used as a roof replacement.")
 	var remove_quote:Dictionary=tx.prepare({"op":"remove","id":id},true)
-	check(bool(remove_quote.ok) and int(remove_quote.cost)==0,"Demolition previews zero resale value separately from resize refunds.")
+	check(bool(remove_quote.ok) and int(remove_quote.cost)==-144,"Demolition previews the roof area refund.")
 	var removed:Dictionary=tx.commit(remove_quote)
-	check(bool(removed.ok) and app.world.construction.roof_nodes.is_empty() and app.sim.funds==funds-432,"Demolition removes the model and record together without a fabricated refund.")
+	check(bool(removed.ok) and app.world.construction.roof_nodes.is_empty() and app.sim.funds==funds-288,"Demolition removes the model and record together with its area refund.")
 	if not bool(removed.ok):print(removed);_finish(app);return
-	check(not bool(tx.commit(remove_quote).ok) and app.sim.funds==funds-432,"Repeated demolition cannot mutate the wallet.")
-	check(bool(tx.undo(removed.receipt).ok) and app.world.construction.building_state.roofs[0]==smaller and app.sim.funds==funds-432,"Undo demolition reconstructs the edited roof once, with no money change.")
+	check(not bool(tx.commit(remove_quote).ok) and app.sim.funds==funds-288,"Repeated demolition cannot mutate the wallet.")
+	check(bool(tx.undo(removed.receipt).ok) and app.world.construction.building_state.roofs[0]==smaller and app.sim.funds==funds-432,"Undo demolition reconstructs the edited roof once and reverses its refund.")
 	check(bool(tx.undo(replaced.receipt).ok) and app.world.construction.building_state.roofs[0]==old and app.sim.funds==funds-1440,"Undo replacement restores the original roof and reverses only its area refund.")
 	check(bool(tx.undo(purchase.receipt).ok) and app.world.construction.roof_nodes.is_empty() and app.sim.funds==funds,"Undo purchase restores the exact initial wallet and roof-free structure.")
 	check(not bool(tx.undo(purchase.receipt).ok) and app.sim.funds==funds,"Consumed roof history cannot refund twice.")

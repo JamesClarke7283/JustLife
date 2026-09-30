@@ -3038,3 +3038,28 @@ func _solve_stair_pelvis(state:Dictionary,orientation:Basis)->bool:
 	if highest<lowest:return false
 	visual.position.y=highest
 	return _stair_targets_reachable(state,orientation)
+
+## Exact, final contact override for a stroller's real handle or a carried child.
+## Walking legs retain their ordinary gait; only the arms are constrained.
+func stroller_pose(hands:Dictionary,passenger:bool,lying:bool,bend:float=0.0,grasp:float=.35)->void:
+	var pose:Dictionary={}
+	if passenger:
+		for joint:String in _joints:pose[joint]=Vector3.ZERO
+		pose["Leg_L"]=Vector3(-.35 if lying else -PI*.5,0,.08)
+		pose["Leg_R"]=Vector3(-.35 if lying else -PI*.5,0,-.08)
+		pose["Shin_L"]=Vector3(.45 if lying else PI*.5,0,0)
+		pose["Shin_R"]=Vector3(.45 if lying else PI*.5,0,0)
+		pose["Arm_L"]=Vector3(-.3,0,-.2);pose["Arm_R"]=Vector3(-.3,0,.2)
+		pose["Forearm_L"]=Vector3(-.6,0,0);pose["Forearm_R"]=Vector3(-.6,0,0)
+	else:
+		if bend>0.0:
+			pose["Leg_L"]=Vector3(-.9*bend,0,.08);pose["Leg_R"]=Vector3(-.9*bend,0,-.08)
+			pose["Shin_L"]=Vector3(1.6*bend,0,0);pose["Shin_R"]=Vector3(1.6*bend,0,0)
+		for side:String in hands:
+			_grip_amounts[side]=grasp
+			for entry:Dictionary in _grip_shapes[side]:entry.mesh.set_blend_shape_value(int(entry.index),grasp)
+			_reach_hand(pose,side,_model.to_local(hands[side]),Vector3(-.7 if side=="L" else .7,-.7,-.25),Vector3.RIGHT)
+	for joint:String in pose:
+		if _joints.has(joint):_joints[joint].quaternion=Quaternion.from_euler(_rest_rotations[joint]+pose[joint])
+	for entry:Dictionary in _rig_bones:
+		if pose.has(entry.name):entry.skeleton.set_bone_pose_rotation(int(entry.index),entry.rest.inverse()*Quaternion.from_euler(pose[entry.name])*entry.rest)

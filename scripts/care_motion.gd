@@ -8,10 +8,10 @@ extends RefCounted
 const CARE_ACTIONS: Array[String] = ["pet_pet", "pet_tummy_rub", "pet_play", "pet_tug", "pet_feed", "pet_walk", "pet_teach_trick", "pet_train", "pet_train_social", "pet_train_logic", "bathe_pet"]
 ## How far in front of the Lifelet each beat puts the animal.
 const REACH: Dictionary = {"pet_pet": .62, "pet_tummy_rub": .62, "pet_play": .85, "pet_tug": 1.0, "pet_teach_trick": .85, "pet_train": .85, "pet_train_social": .85, "pet_train_logic": .85, "pet_walk": .55, "bathe_pet": .62}
-const WALK_CLIP: float = .08
-const WALK_LAPS: int = 2
 const PET_STEP: float = 1.1
 
+const Walk = preload("res://scripts/pet_walk.gd")
+var walker: RefCounted
 var app: Node
 ## member id -> {pet, action, time, origin, path, length}
 var sessions: Dictionary = {}
@@ -22,6 +22,7 @@ var exit_waits: Dictionary = {}
 
 func _init(owner_app: Node = null) -> void:
 	app = owner_app
+	walker = Walk.new(app)
 
 
 func prepare(member_id: String, action: Dictionary) -> bool:
@@ -91,20 +92,11 @@ func anchor(member_id: String, action: Dictionary, action_id: String, delta: flo
 			details["care_target"] = bowl
 			toward = bowl - at
 		"pet_walk":
+			at = body.global_position
+			toward = body.global_basis.z
 			details["care_collar"] = pet.collar_point()
-			var progress: float = float(action.get("progress", 0.0))
-			if progress < WALK_CLIP:
-				details["care_phase"] = "clip"
-			else:
-				if (session.path as Array).is_empty() and float(session.length) >= 0.0: _plan_walk(session, at, toward)
-				if float(session.length) > 0.0:
-					var s: float = fmod(clampf((progress - WALK_CLIP) / (1.0 - WALK_CLIP), 0.0, 1.0) * WALK_LAPS, 1.0) * float(session.length)
-					var point: Dictionary = _along(session.path, s)
-					at = point.position
-					toward = point.tangent
-					details["care_phase"] = "walk"
-				else:
-					details["care_phase"] = "hold"
+			details["care_phase"] = walker.phase(member_id)
+			details["care_time"] = float(walker.walks.get(member_id, {}).get("clock", 0.0))
 	toward.y = 0.0
 	details["position"] = at
 	details["yaw"] = atan2(toward.x, toward.z) if toward.length() > .01 else body.global_rotation.y
@@ -150,20 +142,12 @@ func present_pets(delta: float) -> Dictionary:
 					if _clear(spot): goal = spot; break
 				facing = (bowl - goal).normalized()
 			"pet_walk":
-				if float(session.length) > 0.0 and float(current.get("progress", 0.0)) >= WALK_CLIP:
-					var s: float = fmod(clampf((float(current.progress) - WALK_CLIP) / (1.0 - WALK_CLIP), 0.0, 1.0) * WALK_LAPS, 1.0) * float(session.length)
-					# The dog trots a lead's length ahead of the walker.
-					var point: Dictionary = _along(session.path, fmod(s + .8, float(session.length)))
-					goal = point.position; facing = point.tangent
-					moving[str(session.pet)] = true
-				else:
-					goal = person + dir * float(REACH.pet_walk); facing = Vector3(-dir.z, 0, dir.x)
+				# Positions belong to the checked walking controller, never the pose.
+				pet.set_interaction(action_id, float(session.time), body.global_position)
+				if bool(walker.walks.get(member_id, {}).get("pet_moving", false)): moving[str(session.pet)] = true
+				continue
 		goal.y = pet.global_position.y
-		if action_id == "pet_walk" and moving.has(str(session.pet)):
-			# The loop was planned on clear floor; a furnishing set down since
-			# holds the dog where it is rather than putting it inside the piece.
-			if _clear(goal): pet.global_position = goal
-		elif goal.distance_to(pet.global_position) > .02 and (_clear(goal) or action_id == "pet_feed"):
+		if goal.distance_to(pet.global_position) > .02 and (_clear(goal) or action_id == "pet_feed"):
 			# Each step is checked too: a pet led toward a clear spot across a
 			# solid piece holds where it is, and one already inside a solid may
 			# step out of it.
@@ -182,6 +166,7 @@ func _drop(member_id: String) -> Dictionary:
 
 func _release(member_id: String) -> void:
 	var session: Dictionary = sessions.get(member_id, {})
+	walker.release(member_id)
 	sessions.erase(member_id)
 	if session.is_empty(): return
 	var pet: LifePetActor = app.pet_actors.get(str(session.pet))
@@ -210,38 +195,8 @@ func _bowl_point(session: Dictionary) -> Vector3:
 	return origin + (body.global_basis.z if is_instance_valid(body) else Vector3.FORWARD) * .5
 
 
-## A loop that starts and ends where the Lifelet stands, on clear floor all the
-## way round. Tries a few sizes and directions; none clear means they stand and
-## hold the lead instead.
-func _plan_walk(session: Dictionary, start: Vector3, toward: Vector3) -> void:
-	var base: float = atan2(toward.x, toward.z) if toward.length() > .01 else 0.0
-	for radius: float in [1.6, 1.25, .95]:
-		for turn: int in range(8):
-			var heading: float = base + float(turn) * TAU / 8.0
-			var center: Vector3 = start + Vector3(sin(heading), 0, cos(heading)) * radius
-			var points: Array = []
-			var ok: bool = true
-			for i: int in range(24):
-				var a: float = heading + PI + float(i) * TAU / 24.0
-				var point: Vector3 = center + Vector3(sin(a), 0, cos(a)) * radius
-				point.y = start.y
-				if not _clear(point) or app.world.point_level(point) != app.world.point_level(start): ok = false; break
-				points.append(point)
-			if ok:
-				points.append(points[0])
-				session.path = points
-				session.length = TAU * radius
-				return
-	session.length = -1.0
+func advance_walk(member_id: String, action: Dictionary, delta: float) -> bool:
+	return walker.advance(member_id, action, delta)
 
-
-static func _along(path: Array, distance: float) -> Dictionary:
-	var left: float = distance
-	for i: int in range(path.size() - 1):
-		var a: Vector3 = path[i]; var b: Vector3 = path[i + 1]
-		var step: float = a.distance_to(b)
-		if left <= step or i == path.size() - 2:
-			var at: Vector3 = a.lerp(b, clampf(left / maxf(step, .0001), 0.0, 1.0))
-			return {"position": at, "tangent": (b - a).normalized()}
-		left -= step
-	return {"position": path[0] if not path.is_empty() else Vector3.ZERO, "tangent": Vector3.FORWARD}
+func walk_ready(member_id: String) -> bool:
+	return walker.ready(member_id)

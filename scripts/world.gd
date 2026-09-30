@@ -1325,7 +1325,7 @@ func serialize_items() -> Array:
 		# A pool toy on its way to the water is saved where it was picked up from.
 		var rest:Dictionary=item.get("rest",{}) if bool(item.get("carried",false)) else {}
 		var entry:Dictionary={"id":item.id,"kind":item.kind,"x":float(rest.get("x",item.node.position.x)),"z":float(rest.get("z",item.node.position.z)),"rotation":fmod(float(rest.get("rotation",item.node.rotation_degrees.y)),360.0)}
-		for key:String in ["support_id","support_x","support_z","support_rotation"]:
+		for key:String in ["support_id","support_x","support_z","support_rotation","refund_value"]:
 			if item.has(key):entry[key]=item[key]
 		if str(item.kind)=="towel_rack":entry["towels"]=int(item.get("towels",0))
 		if item_level(item)!=0:entry["level"]=item_level(item)
@@ -2213,6 +2213,19 @@ func placement_point(screen:Vector2)->Vector3:
 
 func pick(screen:Vector2) -> void:
 	if not live_enabled:return
+	if build_enabled and construction.tool=="delete":
+		var origin:Vector3=camera.project_ray_origin(screen)
+		var direction:Vector3=camera.project_ray_normal(screen)
+		var query:=PhysicsRayQueryParameters3D.create(origin,origin+direction*150,PICK_GROUND if view_level==0 else PICK_UPPER)
+		var hit:Dictionary=get_world_3d().direct_space_state.intersect_ray(query)
+		var wall:Dictionary=construction.pick_wall(origin,direction,view_level)
+		if not wall.is_empty() and (hit.is_empty() or float(wall.distance)<origin.distance_to(hit.position)):
+			construction_requested.emit(construction.delete_proposal(str(wall.id)));return
+		if not hit.is_empty():
+			var id:String=str(hit.collider.get_meta("item_id",""))
+			for item:Dictionary in items:
+				if str(item.id)==id:object_clicked.emit(item,screen);return
+		construction_requested.emit(construction._make_level_proposal(floor_point(screen)));return
 	if build_enabled and construction and (not construction.tool.is_empty() or construction.roofs_visible):
 		var proposal:Dictionary=construction.click(floor_point(screen))
 		if not proposal.is_empty():construction_requested.emit(proposal)

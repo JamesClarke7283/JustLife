@@ -157,8 +157,8 @@ static func sleeping_in(sim: LifeSim, bed_id: String) -> bool:
 
 ## The single refusal path for the whole feature. Empty means the pair may try.
 static func try_error(sim: LifeSim, bed_id: String, members: Array, pregnancy: Dictionary) -> String:
-	if sim == null or str(sim.character.get("life_stage","adult")) != "adult":
-		return "Only an adult Lifelet can try for a baby."
+	if sim == null or LifeLifecycle.stage_for(sim.character) not in ["young_adult", "adult"]:
+		return "Make Baby needs a Young Adult or Adult Lifelet."
 	var partner_id:String = str(sim.romantic_partner)
 	var partner:LifeSim = null
 	for member:Dictionary in members:
@@ -169,12 +169,16 @@ static func try_error(sim: LifeSim, bed_id: String, members: Array, pregnancy: D
 		return "Try for Baby needs your household partner."
 	if str(partner.romantic_partner) != mine:
 		return "Try for Baby needs your household partner."
-	if str(partner.character.get("life_stage","adult")) != "adult":
-		return "Try for Baby needs two adults."
+	if LifeLifecycle.stage_for(partner.character) not in ["young_adult", "adult"]:
+		return "Make Baby needs two Young Adult or Adult partners."
+	if LifeFamilyGraph.is_family(sim._family_role(partner_id)) or LifeFamilyGraph.is_family(partner._family_role(mine)):
+		return "Make Baby needs unrelated partners."
 	if gender_of(sim.character) == gender_of(partner.character):
 		return "Try for Baby needs a male and a female partner."
-	if not sleeping_in(sim,bed_id) or not sleeping_in(partner,bed_id):
-		return "Both partners must be asleep in the same bed first."
+	if sim.is_away() or partner.is_away():
+		return "Both partners need to be home."
+	if not str(sim.get_current_action().get("cooperation_id", "")).is_empty() or not str(partner.get_current_action().get("cooperation_id", "")).is_empty():
+		return "Finish your shared activity first."
 	if bool(pregnancy.get("active",false)):
 		return "Your household is already expecting a baby."
 	if has_baby(members):
@@ -182,7 +186,7 @@ static func try_error(sim: LifeSim, bed_id: String, members: Array, pregnancy: D
 	if members.size() >= LifeHousehold.MAX_MEMBERS:
 		return "Your household already has eight Lifelets."
 	if str(bed_id).is_empty():
-		return "Choose the bed both partners are sleeping in."
+		return "Choose a double bed for both partners."
 	return ""
 
 static func _member_id_of(sim: LifeSim, members: Array) -> String:

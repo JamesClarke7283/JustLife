@@ -228,6 +228,7 @@ var _truck_seen_day:int=-1
 ## graph is rebuilt on a real arrival or departure and never on a quiet frame.
 var _truck_parked:bool=false
 var meal_flow:LifeMealFlow
+var stroller_flow:LifeStrollerFlow
 var water_flow:LifeWaterFlow
 var household_flow:LifeHouseholdFlow
 var idle_space:RefCounted
@@ -254,6 +255,7 @@ func setup_services() -> void:
 	add_child(world)
 	meal_flow=LifeMealFlow.new();meal_flow.app=self;add_child(meal_flow)
 	water_flow=LifeWaterFlow.new();water_flow.app=self;add_child(water_flow)
+	stroller_flow=LifeStrollerFlow.new();stroller_flow.app=self;add_child(stroller_flow)
 	household_flow=LifeHouseholdFlow.new(self);add_child(household_flow)
 	sanitation_flow=LifeSanitationFlow.new();sanitation_flow.app=self;add_child(sanitation_flow)
 	# The weekly food truck owns its own schedule, wallet charge and delivery
@@ -924,7 +926,7 @@ func try_for_baby(item:Dictionary) -> void:
 		return
 	_start_cover_beat(str(result.session_id),str(item.id))
 	refresh_hud()
-	show_notice("The covers rustle over the pair. Stay close for the whole moment, or click the bed again to stop.")
+	show_notice("Both partners are heading to the bed. Click the bed again to stop.")
 
 func _start_cover_beat(token:String,bed_id:String) -> void:
 	_end_cover_beat()
@@ -935,6 +937,7 @@ func _start_cover_beat(token:String,bed_id:String) -> void:
 	# runs. The session token ties the animation to the live household state.
 	var node:=Node3D.new()
 	node.name="BabyCoverBeat"
+	node.visible=false
 	item.node.add_child(node)
 	var mesh:=MeshInstance3D.new()
 	var shape:=SphereMesh.new()
@@ -964,11 +967,14 @@ func _update_cover_beat(delta:float) -> void:
 	if mode!="live" or household.cooperation_state(str(cover_beat.get_meta("token",""))).is_empty():
 		_end_cover_beat()
 		return
+	var session:Dictionary=household.cooperation_state(str(cover_beat.get_meta("token","")))
+	cover_beat.visible=str(session.get("phase", ""))=="active"
+	if not cover_beat.visible:return
 	cover_beat_time+=delta*clampf(float(household.speed),0.0,3.0)
 	var swell:float=.5+.5*sin(cover_beat_time*2.2)
 	var mesh:MeshInstance3D=cover_beat.get_node_or_null("Quilt")
 	if is_instance_valid(mesh):
-		mesh.scale=Vector3(1.0+.06*swell,1.0+.10*swell,1.0+.05*swell)
+		mesh.scale=Vector3(1.35+.03*swell,.25+.025*swell,1.15+.03*swell)
 		mesh.rotation.z=.05*sin(cover_beat_time*3.4)
 	var item:Dictionary=_find_item(str(cover_beat.get_parent().name))
 	if not item.is_empty():
@@ -1714,6 +1720,7 @@ func remove_creator_member() -> void:
 	select_creator_member(mini(creator_index,household_profiles.size()-1))
 
 func start_household() -> void:
+	if is_instance_valid(stroller_flow):stroller_flow.reset()
 	if is_instance_valid(safety):safety.free()
 	safety=null
 	household_flow.safety_data={}
@@ -1746,6 +1753,7 @@ func start_household() -> void:
 	show_notice("Welcome home, %s. Click a furnishing to choose what happens next." % str(sim.character.name).split(" ")[0])
 
 func setup_live(layout:Array) -> void:
+	if is_instance_valid(stroller_flow):stroller_flow.reset()
 	_set_studio_render_quality(false)
 	close_overlay(false)
 	pending_move.clear()
@@ -2665,8 +2673,31 @@ func show_pet_card(id:String,with_lifelet:bool=false) -> void:
 			var perform:=button("Perform: "+LifePetCare.trick_label(trick),Vector2.ZERO,Vector2(328,35),_direct_pet_command.bind(id,"pet_trick:"+trick),false,list)
 			perform.custom_minimum_size=Vector2(320,35)
 	button("Move on the floor",p+Vector2(22,651),Vector2(293,36),func():close_overlay();show_notice("Click the floor to move "+str(record.name)+"."),true,overlay).name="PetMoveOnFloor"
-	button("Close",p+Vector2(330,651),Vector2(296,36),close_overlay,false,overlay)
+	button("Free Will",p+Vector2(330,651),Vector2(296,36),_free_pet.bind(id),false,overlay).name="PetFreeWill"
 	refresh_hud()
+
+func _free_pet(id:String) -> void:
+	var result:Dictionary=pet_behavior().command(id,"pet_free")
+	close_overlay()
+	_clear_pet_selection()
+	if is_instance_valid(player):player.set_selected(true)
+	show_notice(str(result.get("message","")))
+
+func _use_litter_tray(tray_id:String) -> void:
+	var cats:Array[String]=[]
+	for id:String in pet_actors:
+		if str(_pet_record(id).get("species",""))=="cat":cats.append(id)
+	if cats.has(selected_pet_id):
+		_direct_pet_command(selected_pet_id,"pet_litter:"+tray_id);return
+	if cats.size()==1:
+		_direct_pet_command(cats[0],"pet_litter:"+tray_id);return
+	close_overlay();overlay_open=true;dismiss_layer()
+	var p:=Vector2(470,210)
+	card(p,Vector2(450,110+cats.size()*48),P.WHITE,18,overlay)
+	text_label("Which cat?",p+Vector2(20,15),Vector2(410,38),24,P.INK,true,overlay)
+	for index:int in cats.size():
+		var id:String=cats[index]
+		button(str(_pet_record(id).name),p+Vector2(20,65+index*48),Vector2(410,40),_direct_pet_command.bind(id,"pet_litter:"+tray_id),false,overlay)
 
 func _direct_pet_command(id:String,action:String) -> void:
 	var result:Dictionary=pet_behavior().command(id,action)
@@ -3647,151 +3678,9 @@ func draw_build_catalog() -> void:
 		show_land_panel()
 		return
 	if catalog_category=="Structure":
-		# Roof styles sit below the card. The whole tool block scrolls inside the
-		# card, and a scrollbar appears only when the block is taller or wider.
-		var tools_scroll:=ScrollContainer.new()
-		tools_scroll.name="StructureTools"
-		tools_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
-		tools_scroll.vertical_scroll_mode=ScrollContainer.SCROLL_MODE_AUTO
-		rect(tools_scroll,Vector2(300,718),Vector2(1108,164))
-		var tools:=Control.new()
-		tools.name="StructureToolsBody"
-		tools.mouse_filter=Control.MOUSE_FILTER_IGNORE
-		tools.custom_minimum_size=Vector2(1088,196)
-		tools_scroll.add_child(tools)
-		var tools_origin:=Vector2(300,718)
-		var at:=func(point:Vector2)->Vector2:return point-tools_origin
-		button("Wall",at.call(Vector2(305,725)),Vector2(146,46),func():begin_construction("wall"),false,tools)
-		button("Room",at.call(Vector2(461,725)),Vector2(146,46),func():begin_construction("room"),false,tools)
-		button("Door",at.call(Vector2(617,725)),Vector2(146,46),func():begin_construction("door"),false,tools)
-		button("Floor",at.call(Vector2(773,725)),Vector2(146,46),func():begin_construction("floor"),false,tools)
-		button("Stairs",at.call(Vector2(929,725)),Vector2(146,46),func():begin_construction("stairs"),false,tools)
-		button("Remove floor / stairs",at.call(Vector2(1085,725)),Vector2(294,46),func():begin_construction("remove_structure"),false,tools)
-		# The action row sits at y=784. Paint swatches used to share that band
-		# and drew on top of Grab wall and Paint wall. They now start below it,
-		# and the roof row drops by the same amount so the two do not meet.
-		var paint_open:bool=world.construction.tool=="paint"
-		var carpet_open:bool=world.construction.tool=="carpet"
-		var paint_drop:float=96.0 if paint_open or carpet_open else 0.0
-		if paint_open:
-			var nursery_set:Dictionary=LifeCatalog.get_item("nursery_paint")
-			var using_nursery:bool=world.construction.paint_palette=="nursery"
-			button("Home",at.call(Vector2(305,756)),Vector2(88,28),func():
-				world.construction.paint_palette="home"
-				world.construction.paint_pattern=""
-				if not ["eae7d7","8faf9f","e6d8c5","c8d7e0","d9b7a3","7d8a99","efd9a0","a3ad7a","f4b6c8","6aa6e0"].has(world.construction.paint_material):
-					world.construction.paint_material="8faf9f"
-				draw_live(),not using_nursery,tools)
-			button("Nursery",at.call(Vector2(401,756)),Vector2(110,28),func():
-				world.construction.paint_palette="nursery"
-				if world.construction.paint_pattern.is_empty():
-					world.construction.paint_pattern=str(LifeCatalogVariants.styles(nursery_set).front())
-				if not LifeCatalogVariants.color_offered(world.construction.paint_material,nursery_set):
-					world.construction.paint_material=str(LifeCatalogVariants.colors(nursery_set).front())
-				draw_live(),using_nursery,tools).tooltip_text="Five patterns and ten colours at ℒ5 per square metre."
-			if using_nursery:
-				var patterns:Array=LifeCatalogVariants.styles(nursery_set)
-				var pattern_labels:Dictionary={"stars":"Stars","clouds":"Clouds","animals":"Animals","dots":"Dots","stripes":"Stripes"}
-				for i in range(patterns.size()):
-					var pattern:String=str(patterns[i])
-					var chip=button(str(pattern_labels.get(pattern,pattern.capitalize())),at.call(Vector2(525+i*92,756)),Vector2(88,28),func():
-						world.construction.paint_pattern=pattern;draw_live(),world.construction.paint_pattern==pattern,tools)
-					chip.tooltip_text="%s nursery pattern" % str(pattern_labels.get(pattern,pattern))
-				var colours:Array=LifeCatalogVariants.colors(nursery_set)
-				for i in range(colours.size()):
-					var colour:String=str(colours[i])
-					var col:int=i%10
-					var swatch=button("",at.call(Vector2(305+col*58,848)),Vector2(50,32),func():world.construction.paint_material=colour;draw_live(),false,tools)
-					swatch.tooltip_text="Nursery wall paint · ℒ5/m²"
-					swatch.add_theme_stylebox_override("normal",P.panel(Color(colour),16,P.TEAL if world.construction.paint_material==colour else Color("ffffff"),3))
-					swatch.add_theme_stylebox_override("hover",P.panel(Color(colour).lightened(.1),16,P.TEAL,3))
-					if world.construction.paint_material==colour:swatch.text="•";swatch.add_theme_color_override("font_color",Color.WHITE)
-			else:
-				if world.construction.paint_pattern not in ["solid","two_tone","patterned"]:world.construction.paint_pattern="solid"
-				var coat_labels:Dictionary={"solid":"Solid","two_tone":"Two-tone","patterned":"Patterned"}
-				var coat_index:int=0
-				for coat:String in ["solid","two_tone","patterned"]:
-					var coat_id:String=coat
-					var coat_btn=button(str(coat_labels[coat]),at.call(Vector2(525+coat_index*118,756)),Vector2(110,28),func():
-						world.construction.paint_pattern=coat_id;draw_live(),world.construction.paint_pattern==coat_id,tools)
-					coat_btn.tooltip_text="Room paint · ℒ4/m² · inner walls only"
-					coat_index+=1
-				var home_paints:Array[String]=["eae7d7","8faf9f","e6d8c5","c8d7e0","d9b7a3","7d8a99","efd9a0","a3ad7a","f4b6c8","6aa6e0"]
-				var home_names:Array[String]=["Cream","Sage","Blush","Sky","Clay","Dusk","Butter","Moss","Pink","Blue"]
-				for i in range(home_paints.size()):
-					var colour:String=home_paints[i]
-					var swatch=button("",at.call(Vector2(305+i*58,848)),Vector2(50,32),func():world.construction.paint_material=colour;draw_live(),false,tools)
-					swatch.tooltip_text=home_names[i]+" wall paint · ℒ4/m² · this room only"
-					swatch.add_theme_stylebox_override("normal",P.panel(Color(colour),16,P.TEAL if world.construction.paint_material==colour else Color("ffffff"),3))
-					swatch.add_theme_stylebox_override("hover",P.panel(Color(colour).lightened(.1),16,P.TEAL,3))
-					if world.construction.paint_material==colour:swatch.text="•";swatch.add_theme_color_override("font_color",Color.WHITE)
-			button("Warm oak",at.call(Vector2(305,888)),Vector2(146,31),func():change_floor("cfa97e"),false,tools)
-			button("Pale stone",at.call(Vector2(461,888)),Vector2(146,31),func():change_floor("dcd6c6"),false,tools)
-			button("Walnut",at.call(Vector2(617,888)),Vector2(146,31),func():change_floor("896953"),false,tools)
-		else:
-			button("Warm oak",at.call(Vector2(305,784)),Vector2(150,47),func():change_floor("cfa97e"),false,tools)
-			button("Pale stone",at.call(Vector2(465,784)),Vector2(150,47),func():change_floor("dcd6c6"),false,tools)
-			button("Walnut",at.call(Vector2(625,784)),Vector2(150,47),func():change_floor("896953"),false,tools)
-		var house_view:Button=button("Full house" if world.cutaway or not world.construction.roofs_visible else "Walls cutaway",at.call(Vector2(785,784)),Vector2(130,47),func():toggle_house_view(),not world.cutaway and world.construction.roofs_visible,tools)
-		house_view.tooltip_text="Toggle walls cutaway versus the full house with its roof visible."
-		button("Remove wall",at.call(Vector2(925,784)),Vector2(140,47),func():begin_construction("erase"),false,tools)
-		var grab=button("Grab wall",at.call(Vector2(1075,784)),Vector2(140,47),func():begin_construction("grab"),world.construction.tool=="grab",tools)
-		grab.tooltip_text="Select a wall, then click where to push or pull it. Connected walls stretch to keep the room closed."
-		var paint=button("Paint wall",at.call(Vector2(1225,784)),Vector2(150,47),func():begin_construction("paint"),world.construction.tool=="paint",tools)
-		paint.tooltip_text="Paints the inner walls of the closed room you click. Solid, two-tone and patterned coats are ℒ4/m²."
-		var carpet_btn=button("Carpet",at.call(Vector2(1075,831)),Vector2(150,31),func():begin_construction("carpet"),world.construction.tool=="carpet",tools)
-		carpet_btn.tooltip_text="Lays a carpet inside the closed room you click. ℒ2/m². Five weaves, ten colours."
-		if carpet_open:
-			var weaves:Array[String]=["plain","geometric","loop","striped","vintage"]
-			var weave_labels:Array[String]=["Plain","Geometric","Loop","Striped","Vintage"]
-			for i in range(weaves.size()):
-				var weave:String=weaves[i]
-				var weave_btn=button(weave_labels[i],at.call(Vector2(305+i*118,756)),Vector2(110,28),func():
-					world.construction.carpet_style=weave;draw_live(),world.construction.carpet_style==weave,tools)
-				weave_btn.tooltip_text=weave_labels[i]+" carpet · ℒ2/m² · this room only"
-			var carpet_colours:Array[String]=["decfaf","8faf9f","e6d8c5","c8d7e0","d9b7a3","7d8a99","efd9a0","a3ad7a","f4b6c8","6aa6e0"]
-			var carpet_names:Array[String]=["Cream","Sage","Blush","Sky","Clay","Dusk","Butter","Moss","Pink","Blue"]
-			for i in range(carpet_colours.size()):
-				var colour:String=carpet_colours[i]
-				var chip=button("",at.call(Vector2(305+i*58,848)),Vector2(50,32),func():
-					world.construction.carpet_color=colour;draw_live(),false,tools)
-				chip.tooltip_text=carpet_names[i]+" carpet · ℒ2/m²"
-				chip.add_theme_stylebox_override("normal",P.panel(Color(colour),16,P.TEAL if world.construction.carpet_color==colour else Color("ffffff"),3))
-				chip.add_theme_stylebox_override("hover",P.panel(Color(colour).lightened(.1),16,P.TEAL,3))
-				if world.construction.carpet_color==colour:chip.text="•";chip.add_theme_color_override("font_color",Color.WHITE)
-		var whole=button("Whole room",at.call(Vector2(1235,831)),Vector2(144,31),func():
-			world.construction.paint_scope="wall" if world.construction.paint_scope=="room" else "room"
-			draw_live(),world.construction.paint_scope=="room",tools)
-		whole.tooltip_text="Paints the enclosed room on the side you click; a wall shared with the next room changes for both rooms."
-		button("New roof",at.call(Vector2(305,841+paint_drop)),Vector2(110,31),func():begin_construction("roof"),false,tools)
-		button("Edit roof",at.call(Vector2(425,841+paint_drop)),Vector2(110,31),func():begin_construction("roof_edit"),false,tools)
-		button("Remove roof",at.call(Vector2(545,841+paint_drop)),Vector2(120,31),func():begin_construction("roof_remove"),false,tools)
-		# Roof panel: five architecture styles plus a colour tint on the tiles.
-		var style_labels:Dictionary={"gabled":"Gable","hipped":"Hip","flat":"Flat","mansard":"Mansard","a_frame":"A-frame"}
-		var style_order:Array[String]=["gabled","hipped","flat","mansard","a_frame"]
-		for i in range(style_order.size()):
-			var style:String=style_order[i]
-			var style_btn:Button=button(str(style_labels[style]),at.call(Vector2(305+i*108,876+paint_drop)),Vector2(100,28),func():set_roof_style(style),world.construction.roof_style==style,tools)
-			style_btn.name="RoofStyle_"+style
-			style_btn.tooltip_text="Roof style: %s" % str(style_labels[style])
-		button("Low",at.call(Vector2(675,841+paint_drop)),Vector2(70,31),func():set_roof_pitch(.25),is_equal_approx(world.construction.roof_pitch,.25),tools)
-		button("Med",at.call(Vector2(755,841+paint_drop)),Vector2(70,31),func():set_roof_pitch(.5),is_equal_approx(world.construction.roof_pitch,.5),tools)
-		button("Steep",at.call(Vector2(835,841+paint_drop)),Vector2(70,31),func():set_roof_pitch(.75),is_equal_approx(world.construction.roof_pitch,.75),tools)
-		roof_visibility_button=button("Hide roofs" if world.construction.roofs_visible else "Show roofs",at.call(Vector2(915,841+paint_drop)),Vector2(130,31),func():
-			world.construction.set_roof_visibility(not world.construction.roofs_visible)
-			if world.construction.roofs_visible:world.set_cutaway(false)
-			draw_live(),false,tools)
-		var tints:Array[String]=["57736a","56606b","8b5a3c","4a5568","c4a574","6b3a4a","2f4f4f","b87333"]
-		var tint_names:Array[String]=["Sage","Slate","Terracotta","Lead","Straw","Wine","Pine","Copper"]
-		for i in range(tints.size()):
-			var tint:String=tints[i]
-			var swatch:Button=button("",at.call(Vector2(1055+i*40,841+paint_drop)),Vector2(34,31),func():set_roof_finish(tint),world.construction.roof_material==tint,tools)
-			swatch.name="RoofTint_"+tint
-			swatch.tooltip_text=tint_names[i]+" roof tint"
-			swatch.add_theme_stylebox_override("normal",P.panel(Color(tint),10,P.TEAL if world.construction.roof_material==tint else Color("ffffff"),2))
-			swatch.add_theme_stylebox_override("hover",P.panel(Color(tint).lightened(.1),10,P.TEAL,2))
-		tools.custom_minimum_size=Vector2(1088,196.0+paint_drop)
+		preload("res://scripts/build_buy_panel.gd").draw(self)
 		return
+
 	if LifeCatalog.paints(world.placement_kind):
 		# A paintable furnishing is being placed, so the swatch row replaces the
 		# catalogue strip: the player picks the finish, then the spot. Leaving
@@ -3956,15 +3845,89 @@ func draw_car_paint_row() -> void:
 		draw_live())
 	paragraph("Choose the finish, then click an open spot. R rotates; Esc cancels.",Vector2(40,782),Vector2(232,66),12)
 
+func show_upstairs_presets(working:Dictionary={}) -> void:
+	if mode!="build":return
+	const Presets=preload("res://scripts/upstairs_presets.gd")
+	const ToolsPanel=preload("res://scripts/build_buy_panel.gd")
+	var choices:Dictionary={"choice":0,"wall_color":"8faf9f","floor_color":"cfa97e","roof_color":"57736a","roof_style":"gabled","window_style":"a","door_style":"a","window_sides":Presets.SIDES.duplicate()}
+	choices.merge(working,true)
+	close_overlay();overlay_open=true;dismiss_layer()
+	var origin:=Vector2(200,70)
+	var panel:Panel=card(origin,Vector2(1040,750),P.WHITE,20,overlay)
+	panel.name="UpstairsPresetPanel"
+	text_label("Add an upstairs",origin+Vector2(28,22),Vector2(900,40),28,P.INK,true,overlay)
+	text_label("Complete rooms with doors, windows, roof and a working staircase. Choose finishes before building.",origin+Vector2(28,66),Vector2(984,36),15,P.MUTED,false,overlay)
+	var body:=VBoxContainer.new();body.add_theme_constant_override("separation",12)
+	rect(body,origin+Vector2(28,114),Vector2(984,540),overlay)
+	var plans:HBoxContainer=ToolsPanel.row(body)
+	for index:int in 3:
+		var next:Dictionary=choices.duplicate(true);next.choice=index
+		var choose:Button=ToolsPanel.action(self,plans,"ℒ%d\n%s" % [Presets.PRICES[index],Presets.LABELS[index]],show_upstairs_presets.bind(next),int(choices.choice)==index,322)
+		choose.custom_minimum_size.y=72;choose.name="UpstairsChoice_"+str(index);choose.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	var walls:HBoxContainer=ToolsPanel.row(body)
+	ToolsPanel.action(self,walls,"Wall colour",func():pass,false,112).disabled=true
+	for color:String in ToolsPanel.COLORS:
+		var next:Dictionary=choices.duplicate(true);next.wall_color=color
+		var chip:Button=ToolsPanel.action(self,walls,"•" if str(choices.wall_color)==color else "",show_upstairs_presets.bind(next),false,42)
+		chip.name="UpstairsWall_"+color;chip.add_theme_stylebox_override("normal",P.panel(Color(color),10,P.TEAL if str(choices.wall_color)==color else Color.WHITE,3))
+	var floors:HBoxContainer=ToolsPanel.row(body)
+	ToolsPanel.action(self,floors,"Floor finish",func():pass,false,112).disabled=true
+	for finish:Array in [["Warm oak","cfa97e"],["Pale stone","dcd6c6"],["Walnut","896953"]]:
+		var next:Dictionary=choices.duplicate(true);next.floor_color=finish[1]
+		ToolsPanel.action(self,floors,finish[0],show_upstairs_presets.bind(next),str(choices.floor_color)==str(finish[1]))
+	for family:String in ["roof","door","window"]:
+		var styles:HBoxContainer=ToolsPanel.row(body)
+		ToolsPanel.action(self,styles,family.capitalize()+" style",func():pass,false,112).disabled=true
+		var values:Array=["gabled","hipped","flat","mansard","a_frame"] if family=="roof" else ["a","b","c","d","e"]
+		var labels:Dictionary={} if family=="roof" else LifeCatalog.get_item("house_"+family).style_labels
+		for style:String in values:
+			var next:Dictionary=choices.duplicate(true);next[family+"_style"]=style
+			ToolsPanel.action(self,styles,str(labels.get(style,style.replace("_"," ").capitalize())),show_upstairs_presets.bind(next),str(choices[family+"_style"])==style,142).name="Upstairs_"+family+"_"+style
+	var colors:HBoxContainer=ToolsPanel.row(body)
+	ToolsPanel.action(self,colors,"Roof colour",func():pass,false,112).disabled=true
+	for color:String in ["57736a","56606b","8b5a3c","4a5568","c4a574","6b3a4a","2f4f4f","b87333"]:
+		var next:Dictionary=choices.duplicate(true);next.roof_color=color
+		var chip:Button=ToolsPanel.action(self,colors,"•" if str(choices.roof_color)==color else "",show_upstairs_presets.bind(next),false,42)
+		chip.add_theme_stylebox_override("normal",P.panel(Color(color),10,P.TEAL if str(choices.roof_color)==color else Color.WHITE,3))
+	var directions:HBoxContainer=ToolsPanel.row(body)
+	ToolsPanel.action(self,directions,"Windows",func():pass,false,112).disabled=true
+	for side:String in Presets.SIDES:
+		var next:Dictionary=choices.duplicate(true)
+		if side in next.window_sides:next.window_sides.erase(side)
+		else:next.window_sides.append(side)
+		ToolsPanel.action(self,directions,Presets.SIDE_LABELS[side],show_upstairs_presets.bind(next),side in choices.window_sides,188).name="UpstairsSide_"+side
+	text_label("The rooms are ready for your furnishings. Stairs use a clear route on the ground floor; existing objects stay in place.",origin+Vector2(28,635),Vector2(984,40),14,P.MUTED,false,overlay)
+	button("Cancel",origin+Vector2(28,690),Vector2(220,40),close_overlay,false,overlay)
+	var buy:Button=button("Build upstairs · ℒ%d" % Presets.PRICES[int(choices.choice)],origin+Vector2(670,690),Vector2(342,40),_buy_upstairs_preset.bind(choices),false,overlay)
+	buy.name="UpstairsConfirm";buy.disabled=sim.funds<Presets.PRICES[int(choices.choice)]
+
+func _buy_upstairs_preset(choices:Dictionary) -> void:
+	const Presets=preload("res://scripts/upstairs_presets.gd")
+	var confirm:Button=overlay.find_child("UpstairsConfirm",true,false)
+	if is_instance_valid(confirm):confirm.disabled=true;confirm.text="Finding a clear staircase…"
+	var current:Dictionary=build_transactions.current()
+	if not bool(current.ok):show_notice(str(current.error));return
+	var quote:Dictionary={"ok":false,"error":"The house needs a supported footprint at least 9 × 8.5 metres for these layouts."}
+	for operation:Dictionary in Presets.candidates(current.state,choices):
+		quote=build_transactions.prepare(operation)
+		if bool(quote.ok):break
+		await get_tree().process_frame
+		if not is_instance_valid(confirm) or not confirm.is_inside_tree():return
+	if not is_instance_valid(confirm) or not confirm.is_inside_tree():return
+	if not bool(quote.ok):
+		show_upstairs_presets(choices);show_notice(str(quote.error));return
+	var result:Dictionary=build_transactions.commit(quote)
+	if not bool(result.ok):show_upstairs_presets(choices);show_notice(str(result.error));return
+	build_undo.append({"architecture":result.receipt,"level":world.view_level})
+	close_overlay();world.set_view_level(1);world.set_cutaway(true);world.construction.set_roof_visibility(false)
+	_refresh_sim_targets(false);refresh_hud();draw_live()
+	show_notice("Upstairs built with rooms, windows, doors, roof and stairs. −ℒ%d." % int(result.cost))
+
 func change_floor(color:String) -> void:
 	if mode=="build":
-		var quote:Dictionary=build_transactions.prepare({"op":"structure","tool":"finish","level":world.view_level,"material":color})
-		if not bool(quote.ok):show_notice(str(quote.error));return
-		var result:Dictionary=build_transactions.commit(quote)
-		if not bool(result.ok):show_notice(str(result.error));return
-		build_undo.append({"architecture":result.receipt,"level":world.view_level})
-		if world.view_level==0:floor_color=color
-		refresh_hud();show_notice("A fresh finish for your home.");return
+		world.construction.floor_finish_color=color
+		begin_construction("floor_finish")
+		return
 	if world.construction.building_state.is_empty() and color==floor_color:return
 	_apply_floor_color(color)
 	show_notice("A fresh finish for your home.")
@@ -4054,10 +4017,13 @@ func begin_construction(tool:String) -> void:
 	elif tool=="floor" and world.view_level==0:show_notice("This paints the ground-floor finish. For a second storey, press Upper first — it starts the upper floor tool for you.")
 	elif tool=="stairs":world.placement_angle=0;show_notice("Point near the upper slab's free edge. R rotates; the stair snaps to the nearest clear spot with its opening and guard included.")
 	elif tool=="remove_structure":show_notice("Point at a floor or staircase to review its removal. Esc cancels.")
-	elif tool=="grab":show_notice("Select a wall, then click where to push or pull it. Connected walls stretch so the room stays closed. Esc cancels.")
-	elif tool=="paint":show_notice("Click a wall. The closed room on that side is painted, at ℒ4 per square metre.")
+	elif tool=="grab":show_notice("Select a wall, then click to push or pull it. Connected walls and outward floor extensions follow. Esc cancels.")
+	elif tool=="paint":show_notice("Click inside a walled room to paint its walls. Select a colour and style below.")
+	elif tool=="floor_finish":show_notice("Click the floor inside a walled room to apply this finish. ℒ2 per square metre.")
+	elif tool=="delete":show_notice("Click a wall, floor, staircase or furnishing to delete it for the shown refund. Esc cancels.")
 	elif tool=="carpet":show_notice("Click inside a closed room. The carpet stays in that room, at ℒ2 per square metre.")
 	else:show_notice("Click two corners to create a %s. Esc cancels." % tool if tool in ["wall","room","floor"] else "Click a wall to %s. Esc cancels." % ("add a doorway" if tool=="door" else "remove it"))
+	draw_live()
 
 func on_construction(data:Dictionary) -> void:
 	if mode!="build":return
@@ -4110,6 +4076,7 @@ func on_placement(kind:String,p:Vector3,angle:float,style:String="",size:String=
 	entry.merge(world.surface_placement(kind,p,angle),true)
 	if data.has("hang"):entry["hang"]=world.placement_hang if world.placement_kind==kind else float(data.hang)
 	# A moved rack keeps the towels that are on it, however many are in use.
+	if moving and pending_move.entry.has("refund_value"):entry["refund_value"]=Variants.resale_value(pending_move.entry)
 	if moving and pending_move.entry.has("towels"):entry["towels"]=int(pending_move.entry.towels)
 	if moving and pending_move.entry.has("lit"):entry["lit"]=pending_move.entry["lit"] # A moved lamp keeps its switch state.
 	if LifeCatalog.paints(kind):
@@ -4397,7 +4364,7 @@ func show_storage() -> void:
 		text_label("Level %d" % (int(entry.get("level",0))+1),Vector2(4,32),Vector2(120,22),12,P.MUTED,false,row)
 		var take=button("Take out",Vector2(292,10),Vector2(96,42),func():withdraw_stored(str(entry.id)),false,row)
 		take.tooltip_text="Place this furnishing back into the home."
-		var sale=button("Sell  +ℒ%d" % sale_value(kind,str(entry.get("size",""))),Vector2(394,10),Vector2(96,42),func():sell_stored(str(entry.id)),false,row)
+		var sale=button("Sell  +ℒ%d" % Variants.resale_value(entry),Vector2(394,10),Vector2(96,42),func():sell_stored(str(entry.id)),false,row)
 	button("Back to Build & buy",p+Vector2(32,522),Vector2(516,48),func():close_overlay();draw_live(),true,overlay)
 
 ## Withdraw a stored furnishing and begin placing it. The placement path is the
@@ -4438,6 +4405,12 @@ func on_object_clicked(item:Dictionary,screen:Vector2) -> void:
 			close_overlay();show_notice("Food and dishes can be handled in Live mode.");return
 		if not LifeCatalog.ITEMS.has(str(item.kind)):
 			show_notice("Lifelets can be visited in Live mode.");return
+		if world.construction.tool=="delete":
+			var credit:int=Variants.resale_value(item)
+			sell_item(item)
+			if _find_item(str(item.id)).is_empty():
+				begin_construction("delete");show_notice("Furnishing deleted. +ℒ%d" % credit)
+			return
 		show_build_object(item,screen);return
 	if mode=="live":
 		if household.member_sim(str(item.id)) and str(item.id)!=household.selected_id():
@@ -4518,6 +4491,12 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 	# older tummy-rub-only list, so a click on a dog opens the same interaction
 	# panel every other object uses.
 	var actions:Array=household.pet_actions(str(item.id),bound_member_id) if str(item.kind)=="pet" else sim.get_actions_for(str(item.kind),str(item.id))
+	if str(item.kind)=="litter_tray":
+		var has_cat:bool=false
+		for pet:Dictionary in household.pets.get("pets",[]):
+			if str(pet.species)=="cat" and pet_actors.has(str(pet.id)):has_cat=true
+		var reason:String="Adopt a cat first." if not has_cat else ("Clean this litter tray first." if household_flow.litter_full(str(item.id)) else "")
+		actions.insert(0,{"id":"use_litter_tray","label":"Use","cost":0,"duration":3,"available":reason.is_empty(),"unavailable_reason":reason,"description":"Ask your cat to walk to and use this litter tray."})
 	if str(item.kind)=="bed" and current_venue=="home":
 		for action:Dictionary in actions:
 			if str(action.id)=="sleep":action.label="Go to Bed"
@@ -4598,7 +4577,8 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 		b.disabled=not bool(a.available)
 		b.pressed.connect(func():
 			play_click()
-			if str(a.id)=="cook":meal_flow.show_recipes(str(item.id))
+			if str(a.id)=="use_litter_tray":_use_litter_tray(str(item.id))
+			elif str(a.id)=="cook":meal_flow.show_recipes(str(item.id))
 			elif str(a.id)=="assign_bed_sides":show_bed_assignments(str(item.id))
 			elif str(a.id)=="choose_leftovers":meal_flow.show_leftovers(str(item.id))
 			elif str(a.id)=="switch_light":switch_lamp(item);close_overlay()
@@ -5287,7 +5267,7 @@ func show_build_object(item:Dictionary,screen:Vector2) -> void:
 	card(p,Vector2(290,70.0+float(rows)*51.0),P.WHITE,17,overlay)
 	text_label(item.label,p+Vector2(18,14),Vector2(261,38),22,P.INK,true,overlay)
 	var y:float=71.0
-	button("Sell  +ℒ%d" % sale_value(str(item.kind),str(item.get("size",""))),p+Vector2(16,y),Vector2(258,40),func():sell_item(item);close_overlay(),false,overlay)
+	button("Sell  +ℒ%d" % Variants.resale_value(item),p+Vector2(16,y),Vector2(258,40),func():sell_item(item);close_overlay(),false,overlay)
 	y+=51.0
 	button("Move furnishing",p+Vector2(16,y),Vector2(258,40),func():move_item(item);close_overlay(),false,overlay)
 	y+=51.0
@@ -5377,7 +5357,7 @@ func sell_item(item:Dictionary) -> void:
 	var problem:String=build_transactions.furnishing_error(proposed)
 	if not problem.is_empty():show_notice(problem);return
 	var protection:Dictionary=build_protection_context()
-	var credit:int=sale_value(str(existing.kind),str(existing.get("size","")))
+	var credit:int=Variants.resale_value(existing)
 	build_undo.append(_build_snapshot(-credit))
 	_cancel_all_cooperative_actions()
 	world.remove_item(existing.id)
@@ -5617,6 +5597,7 @@ func _refresh_member_targets(replan:bool=true) -> void:
 	if not is_instance_valid(sim) or not is_instance_valid(world.house):return
 	sim.meal_service=meal_flow
 	sim.water_service=water_flow
+	sim.stroller_service=stroller_flow
 	sim.sanitation_service=sanitation_flow
 	sim.household_service=household_flow
 	sim.social_witness=Callable(self,"_members_can_see_each_other")
@@ -5648,7 +5629,7 @@ func _refresh_member_targets(replan:bool=true) -> void:
 		# Queued socials resolve when they start. A current social retains its
 		# admitted endpoint until the shared reconciliation below can replan it.
 		# A passing moment keeps the spot beside the passer it was given.
-		if str(action.id) in LifeSim.SOCIAL_ACTIONS or passing_chat.owns(action) or water_flow.keeps_own_target(action):continue
+		if str(action.id) in LifeSim.SOCIAL_ACTIONS or passing_chat.owns(action) or (water_flow.keeps_own_target(action) or LifeStrollerFlow.owns(action)):continue
 		var destination:Vector3=world.lot_exit_position(_member_index(bound_member_id)) if str(action.id) in ["school_day","career_day","morning_run"] else by_id[target_id].position
 		# Generic furnishing targets do not name an occupied cushion or bed half.
 		# Resolve the existing place without allocating it again, so an unrelated
@@ -5728,6 +5709,7 @@ func _clear_motion(keep_route:bool=false) -> void:
 	_path_refusals.erase(bound_member_id);_path_replans_by.erase(bound_member_id)
 
 func cancel_current_action(index:int=0) -> void:
+	if index==0 and is_instance_valid(stroller_flow) and stroller_flow.cancel_request(sim):return
 	if index==0 and sim.is_away():
 		sim.request_return_home();refresh_hud();return
 	if index==0 and not sim.get_current_action().is_empty() and bool(sim.get_current_action().get("autonomous",false)):
@@ -5872,6 +5854,7 @@ func _bind_member(id:String) -> void:
 	sim.autonomy_activity_available=_activity_available_for_member.bind(id)
 	sim.meal_service=meal_flow
 	sim.water_service=water_flow
+	sim.stroller_service=stroller_flow
 	sim.sanitation_service=sanitation_flow
 	sim.household_service=household_flow
 	sim.social_witness=Callable(self,"_members_can_see_each_other")
@@ -6056,6 +6039,7 @@ func _member_action_finished(id:String,action:Dictionary) -> void:
 	if loading_game:return
 	residents.home_visit.action_finished(id,action)
 	water_flow.finished(id,action)
+	if LifeStrollerFlow.owns(action):stroller_flow.cleanup(id,action)
 	var prior:String=bound_member_id
 	_store_motion()
 	_bind_member(id)
@@ -6093,6 +6077,9 @@ func show_housemate_interactions(item:Dictionary,screen:Vector2) -> void:
 	show_interactions(enriched,screen)
 
 func on_ground_clicked(p:Vector3) -> void:
+	if mode=="build":
+		preload("res://scripts/room_finish_panel.gd").show_room(self,p)
+		return
 	if mode!="live":return
 	if not selected_pet_id.is_empty():
 		close_overlay()
@@ -6115,6 +6102,7 @@ func on_ground_clicked(p:Vector3) -> void:
 	if path.is_empty():notify_blocked(player.position,p,"That spot is out of reach.")
 
 func on_action_started(action:Dictionary) -> void:
+	if is_instance_valid(stroller_flow) and stroller_flow.passenger(sim):return
 	if loading_game or reconciling_targets or not is_instance_valid(player) or sim.is_away():return
 	if not work_commute.owns(action) and work_commute.views.has(bound_member_id):work_commute._release(bound_member_id)
 	if traversal.busy(bound_member_id):
@@ -6164,6 +6152,7 @@ func on_action_started(action:Dictionary) -> void:
 		return
 	meal_flow.resolve(sim,action)
 	water_flow.resolve(sim,action)
+	stroller_flow.resolve(sim,action)
 	if not is_same(sim.get_current_action(),action):return
 	pending_action=action
 	if not pending_move.is_empty() and str(action.target_id)==str(pending_move.entry.id):return
@@ -7165,6 +7154,7 @@ func load_game(slot_id:String="") -> void:
 	if not household.journeys.is_empty():
 		_restore_journeys()
 	else:
+		stroller_flow.restore()
 		loading_game=false
 		_refresh_sim_targets(true,false)
 		_restore_resource_waits()
@@ -7292,6 +7282,7 @@ func _prepare_loaded_world(data:Dictionary) -> Dictionary:
 	candidate.traversal=LifeTraversal.new(candidate)
 	candidate.meal_flow=LifeMealFlow.new();candidate.meal_flow.app=candidate;candidate.add_child(candidate.meal_flow)
 	candidate.water_flow=LifeWaterFlow.new();candidate.water_flow.app=candidate;candidate.add_child(candidate.water_flow)
+	candidate.stroller_flow=LifeStrollerFlow.new();candidate.stroller_flow.app=candidate;candidate.add_child(candidate.stroller_flow)
 	candidate.sanitation_flow=LifeSanitationFlow.new();candidate.sanitation_flow.app=candidate;candidate.add_child(candidate.sanitation_flow)
 	for member:Dictionary in candidate.household.members:
 		var id:String=str(member.id)
@@ -7348,6 +7339,8 @@ func _adopt_loaded_world(prepared:Dictionary,slot_id:String,title:String="") -> 
 	sanitation_flow=candidate.sanitation_flow;sanitation_flow.app=self;sanitation_flow.reparent(self,false)
 	household_flow=candidate.household_flow;household_flow.app=self;household_flow.reparent(self,false)
 	water_flow.reset()
+	stroller_flow.queue_free()
+	stroller_flow=candidate.stroller_flow;stroller_flow.app=self;stroller_flow.reparent(self,false)
 	motion_states=candidate.motion_states
 	current_venue=candidate.current_venue;home_layout=candidate.home_layout;venue_layouts=candidate.venue_layouts
 	_connect_live_nodes()
@@ -7376,6 +7369,8 @@ func _adopt_loaded_world(prepared:Dictionary,slot_id:String,title:String="") -> 
 	show_notice("Welcome back, %s." % sim.character.name)
 
 func _restore_journeys() -> Dictionary:
+	var stroller_error:String=stroller_flow.restore()
+	if not stroller_error.is_empty():return {"ok":false,"error":stroller_error}
 	var restored:Dictionary=traversal.restore(household.journeys)
 	if not bool(restored.ok):return restored
 	# Build food picking/presentation without repairing the ledger or beginning
@@ -7403,6 +7398,7 @@ func _restore_journeys() -> Dictionary:
 		motion.resume_active=bool(saved.get("resource_action_active",false)) and str(current.get("phase",""))=="approach"
 		member.sim.meal_service=meal_flow
 		member.sim.water_service=water_flow
+		member.sim.stroller_service=stroller_flow
 		member.sim.sanitation_service=sanitation_flow
 		member.sim.household_service=household_flow
 		if str(current.get("phase","")) in ["approach","active"] and str(current.get("id","")) in ["plant_wee","mop_puddle"]:
@@ -7462,6 +7458,7 @@ func _reconstruct_paused_rest() -> void:
 	for member:Dictionary in household.members:
 		var current:Dictionary=member.sim.get_current_action()
 		var action_id:String=str(current.get("id",""))
+		if LifeBabyPlan.is_beat(action_id):action_id="sleep"
 		if member.sim.speed>0 or member.sim.is_away() or str(current.get("phase",""))!="active" or action_id not in ["sleep","nap"]:continue
 		_bind_member(str(member.id))
 		_update_activity_facing(0.0,current,action_id)
@@ -7676,10 +7673,12 @@ func _process(delta:float) -> void:
 			var moving:bool=_advance_away_movement(delta) if sim.is_away() else _advance_movement(delta)
 			var action:Dictionary=sim.get_current_action()
 			var action_id:String="" if action.is_empty() or action.phase!="active" else action.id
+			if LifeBabyPlan.is_beat(action_id):action_id="sleep"
 			if not str(action.get("cooperation_id","")).is_empty() and action_id.is_empty():
 				var shared:Dictionary=household.cooperative_presentation(bound_member_id)
 				if bool(shared.get("ready",false)) and str(shared.get("role",""))=="learner":action_id="homework_wait"
 			water_flow.advance(bound_member_id,delta)
+			stroller_flow.advance(bound_member_id,delta)
 			meal_flow.present_actor(bound_member_id)
 			_update_activity_facing(delta,action,action_id)
 			# A wardrobe preview is the player's own working look. The ordinary
@@ -7694,7 +7693,8 @@ func _process(delta:float) -> void:
 				if household.pregnancy_mother_id()==str(member.id):bump=household.pregnancy_progress()
 				player.pregnancy_bump=bump if bump>=0.0 else 0.0
 			if embrace.posed(bound_member_id):action_id="hug"
-			player.animate(delta,float(sim.speed),moving,action_id)
+			if not stroller_flow.passenger(sim):player.animate(delta,float(sim.speed),moving,action_id)
+			stroller_flow.present(bound_member_id)
 			_store_motion()
 		meal_flow.sync_world(household.speed>0)
 		_bind_member(selected_id)
@@ -7727,6 +7727,7 @@ func _process(delta:float) -> void:
 			world.update_camera()
 
 func _advance_movement(delta:float) -> bool:
+	if is_instance_valid(stroller_flow) and stroller_flow.holds(sim):return false
 	if not is_instance_valid(player) or sim.speed<=0:return false
 	# A housemate being hugged stays where they are for the embrace.
 	if embrace.holds(bound_member_id):return false
@@ -7738,6 +7739,9 @@ func _advance_movement(delta:float) -> bool:
 			elif walk_only:_set_route(walk_destination)
 			else:_clear_motion()
 		return moved
+	var pet_walk_action:Dictionary=sim.get_current_action()
+	if str(pet_walk_action.get("id",""))=="pet_walk" and str(pet_walk_action.get("phase",""))=="active":
+		return care_motion().advance_walk(bound_member_id,pet_walk_action,delta)
 	var current_social:Dictionary=sim.get_current_action()
 	var guest_id:String=str(current_social.get("target_id",""))
 	if str(current_social.get("id","")) in LifeSim.SOCIAL_ACTIONS and LifeResidents.PEOPLE.has(guest_id):
@@ -8222,8 +8226,16 @@ func _has_placement_tool() -> bool:
 	return not world.placement_kind.is_empty() or (is_instance_valid(world.construction) and not world.construction.tool.is_empty())
 
 func _update_activity_facing(delta:float,action:Dictionary,action_id:String) -> void:
+	if LifeStrollerFlow.owns(action) or stroller_flow.passenger(sim):
+		player.clear_activity_anchor();return
 	if player.has_method("clear_activity_anchor"):player.clear_activity_anchor()
 	if action_id.is_empty():return
+	if action_id=="clean_litter_tray":
+		var tray:Dictionary=_find_item(str(action.target_id))
+		if not tray.is_empty():
+			var toward:Vector3=tray.node.position-player.position
+			player.set_activity_anchor(player.position,atan2(toward.x,toward.z),"standing",action_id,{"care_target":tray.node.position+Vector3(0,.12,0)})
+		return
 	var care:Dictionary=care_motion().anchor(bound_member_id,action,action_id,delta)
 	if not care.is_empty():
 		player.set_activity_anchor(care.position,care.yaw,"standing",action_id,care)
@@ -9574,6 +9586,7 @@ func _away_status(state:Dictionary) -> String:
 	return "At %s · Back %02d:%02d" % [activity,until/60,until%60]
 
 func _sync_away_presence() -> bool:
+	if is_instance_valid(stroller_flow) and stroller_flow.passenger(sim):return false
 	var state:Dictionary=sim.get_away_state()
 	var phase:String=str(state.get("phase",""))
 	var changed:bool=world.set_actor_away(bound_member_id,phase=="away",not state.is_empty())
