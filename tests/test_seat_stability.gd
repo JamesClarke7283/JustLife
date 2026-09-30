@@ -51,6 +51,8 @@ func _run() -> void:
 
 	# Two refreshes, exactly as the courtesy controls perform them.
 	app._refresh_sim_targets(false)
+	check(str(action.get("seat_slot", "")) == seat and Vector3(action.target_position).distance_to(target) < .01,
+		"The first non-replanning refresh preserves the endpoint immediately.")
 	await frames(3)
 	app._refresh_sim_targets(true)
 	await frames(3)

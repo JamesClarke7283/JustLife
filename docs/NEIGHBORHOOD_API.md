@@ -36,7 +36,9 @@ A Lifelet who can see a passer (ground floor, within 18 m, no wall between; `Lif
 
 An idle Lifelet who is short of company (`social` below 52) and can see a passer may start a moment by themselves (`LifePassingPolicy.autonomy_choice`): a wave first, then a hello, then small talk with a familiar face, gated by a per-Lifelet, per-passer, per-20-minute draw. Queued moments persist through saves like any queued action; `passing_contacts` (passer id to `{at, count}`) and `last_passing_any` are new optional `LifeSim` state fields, validated on load.
 
-`tests/test_pedestrian_pacing.gd`, `tests/test_passing_chat.gd` and `tests/test_hug.gd` cover pace, schedule, gait and hold behaviour, the passing chat flow, and the embrace.
+The shared `world_state.street` snapshot records each roster leader's position, direction, lane, presence and walking/waiting progress. Static identities come from `ROSTER`; a leashed dog follows its restored walker, and holds are rebuilt from the actual queued moments. Restoration happens before target reconciliation and action preparation, including staged journey loads, so a fresh process retains the saved counterpart and a paused first frame does not reseed the street. Old saves without this optional snapshot use the normal on-duty roster. Their already queued moments may reapproach that real passer from out of sight without losing payment or elapsed progress; new requests still require ordinary visibility, and unavailable passers or blocked standing spots still refuse the interaction.
+
+`tests/test_pedestrian_pacing.gd`, `tests/test_passing_chat.gd`, `tests/test_passing_fresh_load.gd` and `tests/test_hug.gd` cover pace, schedule, gait and hold behaviour, the passing chat flow, fresh-process continuation and the embrace.
 
 ## Verification
 

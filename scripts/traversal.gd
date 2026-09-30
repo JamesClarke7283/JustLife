@@ -249,6 +249,7 @@ func _walk(id:String,route:Dictionary,time:float,consider_courtesy:bool=true)->D
 			if not alternative.is_empty():route.points=alternative;route.point=0
 			elif not observing and consider_courtesy and str(route.get("phase",""))!="clear":courtesy.note_block(self,id,time,moved)
 			return {"time":0.0,"moved":moved,"blocked":true}
+		if app.world.construction.doors.before_step(actor,id,next,remaining):return {"time":0.0,"moved":moved,"blocked":false}
 		actor.rotation.y=lerp_angle(actor.rotation.y,atan2(difference.x,difference.z),minf(1,remaining*12))
 		actor.position=next;remaining-=step/WALK_SPEED;moved=true
 		route.structure_age=0.0
@@ -320,10 +321,12 @@ func _step_clear_of_structure(id:String,from:Vector3,to:Vector3)->bool:
 			if reserved.is_finite() and _same_floor(to,reserved) and to.distance_to(reserved)<BODY_GAP:return false
 	return true
 
-func _step_clear(id:String,from:Vector3,to:Vector3)->bool:
+func _step_clear(id:String,from:Vector3,to:Vector3,boundary_entry:bool=false)->bool:
 	if not courtesy.step_allowed(self,id,from,to):return false
 	var level:int=app.world.point_level(to)
-	if level<0 or not app.world.lot_navigation.point_clear(level,to):return false
+	if level<0:return false
+	if not app.world.lot_navigation.point_clear(level,to):
+		if not boundary_entry or not app.world.lot_navigation.boundary_entry_step(from,to):return false
 	for other_id:String in app.world.actors:
 		if other_id==id:continue
 		var actor:LifeActor=app.world.actors[other_id]

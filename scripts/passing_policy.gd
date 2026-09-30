@@ -116,7 +116,7 @@ static func reason(sim: Object, id: String, target_id: String) -> String:
 	if sim.is_away():
 		return "This Lifelet is away."
 	var target: Dictionary = entry_for(sim, target_id)
-	if target.is_empty():
+	if target.is_empty() or not bool(target.get("visible", true)):
 		return "Step outside, in sight of the sidewalk, to greet someone passing by."
 	var passer_kind: String = str(target.get("passer_kind", ""))
 	var name: String = str(target.get("name", "them"))

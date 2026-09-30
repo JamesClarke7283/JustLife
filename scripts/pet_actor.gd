@@ -412,7 +412,7 @@ func _body_goal(caring: bool) -> Array:
 	var scale: float = h / 0.52
 	if not caring: return [Vector3.ZERO, Vector3.ZERO]
 	match interaction:
-		"pet_pet", "pet_teach_trick", "pet_train_social", "pet_train_logic":
+		"pet_pet", "pet_play", "pet_teach_trick", "pet_train", "pet_train_social", "pet_train_logic", "bathe_pet":
 			return [Vector3(-.38, 0, 0), Vector3(0, .05 * scale, 0)]
 		"pet_tummy_rub":
 			var roll: float = smoothstep(0.0, .9, interaction_time)
@@ -443,10 +443,10 @@ func _care_pose(delta: float) -> void:
 	var head := Vector3(-.1, 0, 0)
 	var wag: float = sin(_time * 14.0) * .5
 	match interaction:
-		"pet_pet", "pet_teach_trick", "pet_train_social", "pet_train_logic":
+		"pet_pet", "pet_play", "pet_teach_trick", "pet_train", "pet_train_social", "pet_train_logic", "bathe_pet":
 			legs = [Vector3(.38, 0, 0), Vector3(.38, 0, 0), Vector3(-1.1, 0, .08), Vector3(-1.1, 0, -.08)]
 			head = Vector3(-.30, 0, .10 * sin(ct * 1.3))
-			if interaction == "pet_teach_trick":
+			if interaction in ["pet_play", "pet_teach_trick"]:
 				var beg: float = smoothstep(1.8, 2.1, fmod(ct, 3.2)) * (1.0 - smoothstep(2.9, 3.2, fmod(ct, 3.2)))
 				legs[1] = Vector3(.38 - 1.3 * beg, 0, 0)
 				head.x -= .15 * beg

@@ -45,6 +45,10 @@ var _waited: Dictionary = {}
 var _dropped: Dictionary = {}
 var _spoken: Dictionary = {}
 var _replied: Dictionary = {}
+## A loaded instruction was already admitted before saving. The old format
+## did not save street positions; let it approach the reconstructed passer even
+## if that new position is temporarily out of sight from the saved Lifelet.
+var _restored: Dictionary = {}
 
 
 func _init(controller: Node) -> void:
@@ -53,6 +57,31 @@ func _init(controller: Node) -> void:
 
 func owns(action: Dictionary) -> bool:
 	return str(action.get("id", "")) in LifePassingPolicy.ALL
+
+
+func restore_actions(had_street_snapshot: bool) -> void:
+	_restored.clear()
+	for member: Dictionary in app.household.members:
+		var admitted: Array = []
+		for action: Dictionary in member.sim.action_queue:
+			if not owns(action): continue
+			var passer: Dictionary = app.street_life.find(str(action.get("target_id", "")))
+			if passer.is_empty() or not bool(passer.active): continue
+			admitted.append(action)
+			if is_same(action, member.sim.get_current_action()):
+				app.street_life.hold(str(passer.id), str(member.id))
+				if not had_street_snapshot and str(action.get("phase", "")) == "active": action.phase = "approach"
+		if not admitted.is_empty(): _restored[str(member.id)] = admitted
+
+
+func _restored_target(member_id: String, passer_id: String) -> bool:
+	var member: LifeSim = app.household.member_sim(member_id)
+	if member == null: return false
+	for action: Dictionary in _restored.get(member_id, []):
+		if str(action.get("target_id", "")) != passer_id: continue
+		for queued: Dictionary in member.action_queue:
+			if is_same(action, queued): return true
+	return false
 
 
 ## The passers this Lifelet can hail right now: on the ground floor, within
@@ -70,9 +99,12 @@ func targets_for(member_id: String) -> Array:
 		return result
 	for passer: Dictionary in street.visible_passers():
 		var at: Vector3 = street.position_of(passer)
-		if actor.position.distance_to(at) > REACH or not app.world.sight_line_clear(actor.position, at):
+		var visible: bool = actor.position.distance_to(at) <= REACH and app.world.sight_line_clear(actor.position, at)
+		if not visible and not _restored_target(member_id, str(passer.id)):
 			continue
-		result.append({"id": str(passer.id), "kind": "passer", "position": at, "passer_kind": str(passer.kind), "name": str(passer.name), "walks_dog": walks_dog(str(passer.id))})
+		# Retaining an admitted instruction does not admit a new request
+		# through a wall. Policy still uses actual visibility for the menu.
+		result.append({"id": str(passer.id), "kind": "passer", "position": at, "passer_kind": str(passer.kind), "name": str(passer.name), "walks_dog": walks_dog(str(passer.id)), "visible": visible})
 	return result
 
 

@@ -5,6 +5,8 @@ class_name LifeCatalog
 ## the family consistent and the catalogue readable.
 const GAMES_SIZES: Array[String] = ["small", "medium", "large"]
 
+const Kitchen = preload("res://scripts/kitchen_furnishings.gd")
+
 const ITEMS = {
 	"home_phone": {"label":"Home telephone", "category":"Activities", "price":60, "size":Vector2(.24,.09), "height":.38, "color":"e9eee8", "wall_mounted":true, "hang":1.25, "description":"A wall telephone for household services and emergency police calls. Children and older Lifelets can use it."},
 	"burglar_alarm": {"label":"Burglar prevention keypad", "category":"Activities", "price":300, "size":Vector2(.30,.08), "height":.42, "color":"e9eee8", "wall_mounted":true, "hang":1.45, "description":"A wall keypad with an audible security siren. Detects a break-in and calls the police automatically. Included with home insurance."},
@@ -19,7 +21,10 @@ const ITEMS = {
 		"size_labels":{"double":"Double","single":"Single"}},
 	"fridge": {"label":"Fresh start fridge", "category":"Kitchen", "price":520, "size":Vector2(.9,.85), "height":1.9, "color":"86ada0"},
 	"stove": {"label":"Home chef range", "category":"Kitchen", "price":480, "size":Vector2(1.05,.85), "height":1.2, "color":"e6dec9"},
-	"counter": {"label":"Sage cabinet", "category":"Kitchen", "price":150, "size":Vector2(1.05,.8), "height":1.0, "color":"417a71"},
+	"counter": {"label":"Kitchen cabinet", "category":"Kitchen", "price":150, "size":Vector2(1.05,.8), "height":1.0, "color":"417a71",
+		"styles":Kitchen.STYLES, "style_labels":Kitchen.STYLE_LABELS, "colors":Kitchen.COLORS},
+	"corner_counter": {"label":"Kitchen corner cabinet", "category":"Kitchen", "price":20, "size":Vector2(.8,.8), "height":1.0, "color":"417a71",
+		"styles":Kitchen.STYLES, "style_labels":Kitchen.STYLE_LABELS, "colors":Kitchen.COLORS, "description":"A continuous corner worktop for L-shaped and U-shaped kitchens. Joins cabinets on either side."},
 	"sink": {"label":"Brass & stone sink", "category":"Kitchen", "price":230, "size":Vector2(1.05,.8), "height":1.3, "color":"c8a562"},
 	"dining": {"label":"Gathering table", "category":"Kitchen", "price":280, "size":Vector2(1.6,1.12), "height":1.0, "color":"d7ae7e"},
 	"chair": {"label":"Everyday chair", "category":"Comfort", "price":85, "size":Vector2(.6,.6), "height":1.0, "color":"d7ae7e"},
@@ -115,12 +120,9 @@ const ITEMS = {
 	"coffee_table": {"label":"Teatime coffee table", "category":"Decor", "price":150, "size":Vector2(1.15,.62), "height":.5, "color":"d7ae7e"},
 	"floor_lamp": {"label":"Reading arc floor lamp", "category":"Decor", "price":110, "size":Vector2(.55,.55), "height":1.85, "color":"c8a562"},
 	"rubbish_bin": {"label":"Pedal rubbish bin", "category":"Kitchen", "price":45, "size":Vector2(.45,.45), "height":.72, "color":"4a4f55"},
-	# A counter-top espresso machine. It stands on the floor like every other
-	# furnishing rather than on a worktop, so its declared box is the appliance's
-	# own 42 x 55 cm footprint and its 86 cm column; the group head, portafilter
-	# and cup shelf that face +z are inside that box. Beans cost a few ℒ at the
-	# machine and the lift they give is the separate temporary-energy pool.
-	"coffee_machine": {"label":"Counter-top espresso machine", "category":"Kitchen", "price":280, "size":Vector2(.42,.55), "height":.86, "color":"4a4f55"},
+	# Freestanding or supported: the same appliance may stand on the floor,
+	# a cabinet worktop or a table. Placement records its chosen support height.
+	"coffee_machine": {"label":"Counter-top espresso machine", "category":"Kitchen", "price":280, "size":Vector2(.42,.55), "height":.86, "color":"4a4f55", "surface_placeable":true, "description":"Place on the floor, a kitchen worktop or a table."},
 	"memorial": {"label":"Garden remembrance stone", "category":"Decor", "price":80, "size":Vector2(.72,.72), "height":.48, "color":"8c8a84"},
 	"guitar": {"label":"Sit-and-strum guitar", "category":"Activities", "price":320, "size":Vector2(.5,.55), "height":1.05, "color":"d7ae7e"},
 	"violin": {"label":"Evening violin", "category":"Activities", "price":380, "size":Vector2(.4,.5), "height":.65, "color":"624435"},
@@ -363,7 +365,7 @@ static func runs_flush(kind: String) -> bool:
 
 ## True when the incoming footprint may not stand next to one that is already there.
 static func blocks_neighbor(incoming: Rect2, existing: Rect2, incoming_kind: String, existing_kind: String) -> bool:
-	if runs_flush(incoming_kind) and runs_flush(existing_kind):
+	if (runs_flush(incoming_kind) and runs_flush(existing_kind)) or (incoming_kind in Kitchen.UNITS and existing_kind in Kitchen.UNITS):
 		return incoming.grow(-0.01).intersects(existing.grow(-0.01))
 	return incoming.grow(0.05).intersects(existing)
 ## Decor that hangs flat against a wall, kept as a list for the pieces that have
@@ -600,7 +602,17 @@ static func starter_layout(lot: int = 0) -> Array:
 		entries = _haven_entries()
 	for i in range(entries.size()):
 		var e: Array = entries[i]
-		a.append({"id":"item_%d" % i,"kind":e[0],"x":e[1],"z":e[2],"rotation":e[3]})
+		var record:Dictionary={"id":"item_%d" % i,"kind":e[0],"x":e[1],"z":e[2],"rotation":e[3]}
+		# Starter kitchens use the same exact joining widths as bought units.
+		# Only consecutive neighbouring units form a run; bathroom sinks and
+		# freestanding appliances keep their authored positions.
+		if i>0 and str(e[0]) in Kitchen.UNITS and str(entries[i-1][0]) in Kitchen.UNITS:
+			var previous:Array=entries[i-1]
+			var span:float=(float(ITEMS[str(e[0])].size.x)+float(ITEMS[str(previous[0])].size.x))*.5
+			if is_zero_approx(float(e[3])) and is_zero_approx(float(previous[3])) and absf(float(e[2])-float(previous[2]))<.15 and absf(float(e[1])-float(previous[1])-span)<.2:
+				record.x=float(a.back().x)+span
+				a.back().z=float(e[2]);record.z=float(e[2])
+		a.append(record)
 	return a
 
 ## Lumen House: modern two bedrooms, two bathrooms, and a pool.

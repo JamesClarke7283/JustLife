@@ -16,8 +16,8 @@ const FRIDGE_LIFE_MULTIPLIER := 12.0
 const MAX_LIFE_MINUTES := FRESH_MINUTES * FRIDGE_LIFE_MULTIPLIER
 # Authored support dimensions in tools/create_furniture.py. Keep the entire
 # ceramic footprint on the surface, with a 1 cm inset from its outer edge.
-const SURFACE_HEIGHTS := {"dining":.847,"counter":.952,"stove":.997,"coffee_table":.46}
-const SURFACE_HALF_SIZE := {"dining":Vector2(.8,.56),"counter":Vector2(.525,.39),"stove":Vector2(.51,.385),"coffee_table":Vector2(.5,.24)}
+const SURFACE_HEIGHTS := {"dining":.847,"counter":.952,"corner_counter":.952,"stove":.997,"coffee_table":.46}
+const SURFACE_HALF_SIZE := {"dining":Vector2(.8,.56),"counter":Vector2(.525,.39),"corner_counter":Vector2(.4,.4),"stove":Vector2(.51,.385),"coffee_table":Vector2(.5,.24)}
 const PLATE_HALF_SIZE := Vector2(.15,.15)
 const PLATTER_HALF_SIZE := Vector2(.25,.168)
 const SURFACE_INSET := .01

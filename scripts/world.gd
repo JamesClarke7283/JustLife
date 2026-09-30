@@ -3,6 +3,7 @@ class_name LifeWorld
 const Building=preload("res://scripts/building_state.gd")
 const RoofRules=preload("res://scripts/roof_rules.gd")
 const Variants=preload("res://scripts/catalog_variants.gd")
+const Kitchen=preload("res://scripts/kitchen_furnishings.gd")
 const LotNavigation=preload("res://scripts/lot_navigation.gd")
 const ActorMotion=preload("res://scripts/actor_motion.gd")
 const VIEW_ENVIRONMENT:int=1
@@ -26,6 +27,7 @@ const PICK_SURFACE:int=64
 
 signal object_clicked(info: Dictionary, screen_position: Vector2)
 signal ground_clicked(world_position: Vector3)
+signal wall_clicked
 signal placement_requested(kind: String, world_position: Vector3, angle: float, style: String, size: String)
 signal construction_requested(data: Dictionary)
 
@@ -77,6 +79,7 @@ var placement_angle: float = 0.0
 ## moves it while the ghost is up. Floor furnishings leave this at 0.
 var placement_hang: float = 0.0
 var placement_color: String = ""
+var placement_moving_id: String = ""
 var ghost: Node3D
 var ghost_valid: bool = false
 var placement_reach_check: Callable  # set by the app: (kind, position, angle) -> bool, the same doorway rule a click applies
@@ -314,6 +317,7 @@ func cylinder(parent: Node3D, at: Vector3, radius: float, height: float, color: 
 	return n
 
 func create_home(layout: Array = []) -> void:
+	layout=normalize_layout_rotations(layout)
 	last_layout_error=validate_home_layout(layout)
 	if not last_layout_error.is_empty():return
 	if house: house.queue_free()
@@ -362,15 +366,14 @@ func create_home(layout: Array = []) -> void:
 	# The rear entrance has a clear aisle between the bathroom fixtures.
 	wall(Vector3(-1.575,1.4,-5.04),Vector3(9.05,2.6,.16),"eae7d7",false)
 	wall(Vector3(5.125,1.4,-5.04),Vector3(1.95,2.6,.16),"eae7d7",false)
-	box(house,Vector3(3.55,2.5,-5.04),Vector3(1.2,.4,.16),"eae7d7")
-	box(house,Vector3(2.95,1.2,-5.04),Vector3(.08,2.4,.22),"b49167")
-	box(house,Vector3(4.15,1.2,-5.04),Vector3(.08,2.4,.22),"b49167")
+	# Door frames and leaves are derived from the real openings, so they follow
+	# the wall toggle and Build edits together with the rest of the enclosure.
 	box(house,Vector3(3.55,.05,-5.55),Vector3(1.3,.16,1.15),"c7bea9")
 	wall(Vector3(-6.04,1.4,0),Vector3(.16,2.6,10.1),"8faf9f",false)
 	wall(Vector3(6.04,.4,0),Vector3(.16,.6,10.1),"e6d8c5",true)
 	wall(Vector3(-3.55,.4,5.04),Vector3(5.1,.6,.16),"e6d8c5",true)
 	wall(Vector3(3.55,.4,5.04),Vector3(5.1,.6,.16),"e6d8c5",true)
-	wall(Vector3(1,.47,-3.22),Vector3(.13,.72,3.6),"e4dfce",true)
+	wall(Vector3(1,.47,-3.0625),Vector3(.13,.72,3.975),"e4dfce",true)
 	wall(Vector3(1,.47,2.7),Vector3(.13,.72,4.6),"e4dfce",true)
 	wall(Vector3(1.9,.47,-1.15),Vector3(1.8,.72,.13),"e4dfce",true)
 	wall(Vector3(5.0,.47,-1.15),Vector3(2.1,.72,.13),"e4dfce",true)
@@ -413,8 +416,22 @@ func create_home(layout: Array = []) -> void:
 	set_view_level(0)
 	update_camera()
 
+## Older pets accumulated full turns while playing. Full turns do not change an
+## object's pose and must not make its entire saved home unloadable. Work on a
+## copy so admission never edits the save, and leave invalid values for the
+## normal transform validator to reject.
+static func normalize_layout_rotations(layout:Array) -> Array:
+	var normalized:Array=layout.duplicate(true)
+	for entry:Variant in normalized:
+		if not entry is Dictionary or str(entry.get("kind",""))=="__construction":continue
+		var angle:Variant=entry.get("rotation")
+		if (angle is int or angle is float) and is_finite(float(angle)):
+			entry["rotation"]=fmod(float(angle),360.0)
+	return normalized
+
 func validate_home_layout(layout:Variant) -> String:
 	if not layout is Array or layout.size()>1024:return "Invalid home layout."
+	layout=normalize_layout_rotations(layout)
 	var canonical:Dictionary={};var ids:Dictionary={};var marker:bool=false
 	for entry:Variant in layout:
 		if not entry is Dictionary:return "Invalid layout record."
@@ -566,22 +583,27 @@ func _gather_visual_bounds(node:Node,transform:Transform3D,vertices:Array[Vector
 
 func furnishing_volume(entry:Dictionary)->AABB:
 	var kind:String=str(entry.kind)
-	var style:String=Variants.style_or_default(str(entry.get("style","")),LifeCatalog.get_item(kind))
+	var data:Dictionary=LifeCatalog.get_item(kind)
+	var hanging:bool=LifeCatalog.wall_mounted(kind) and data.has("hang")
+	var style:String=Variants.style_or_default(str(entry.get("style","")),data)
 	var cache_key:String=kind+"|"+style
 	if not _furnishing_volume_cache.has(cache_key):
-		var data:Dictionary=LifeCatalog.get_item(kind)
 		# The authored mesh is measured once at its own size; the declared box is
 		# the authored footprint and height, and the size choice scales both, so
 		# the envelope follows the size the player actually bought.
 		var box:=AABB(Vector3(-data.size.x*.5,0,-data.size.y*.5),Vector3(data.size.x,data.height,data.size.y))
+		if hanging:box.position.y=-float(data.height)*.5
 		var path:String=Variants.model_path(kind,style)
 		if ResourceLoader.exists(path):
 			var scene:Node3D=load(path).instantiate();var vertices:Array[Vector3]=[]
+			_normalize_wall_model(scene,kind)
 			_gather_visual_bounds(scene,Transform3D.IDENTITY,vertices);scene.free()
+			if hanging and not vertices.is_empty():box=AABB(vertices[0],Vector3.ZERO)
 			for point:Vector3 in vertices:box=box.expand(point)
 		_furnishing_volume_cache[cache_key]=box
 	var local:AABB=_scaled_volume(_furnishing_volume_cache[cache_key],Variants.size_scale(str(entry.get("size",""))))
-	var transform:=Transform3D(Basis(Vector3.UP,deg_to_rad(float(entry.get("rotation",0)))),Vector3(float(entry.get("x",0)),Building.level_y(int(entry.get("level",0))),float(entry.get("z",0))))
+	var lift:float=float(entry.get("hang",data.get("hang",0.0) if hanging else 0.0))
+	var transform:=Transform3D(Basis(Vector3.UP,deg_to_rad(float(entry.get("rotation",0)))),Vector3(float(entry.get("x",0)),Building.level_y(int(entry.get("level",0)))+lift,float(entry.get("z",0))))
 	return transform*local
 
 ## An authored envelope scaled by a size choice, about its own origin.
@@ -865,12 +887,16 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	var variant:Dictionary=Variants.resolve(data,entry)
 	var path:String=Variants.model_path(kind,str(variant.style))
 	var has_model:bool=ResourceLoader.exists(path)
-	if not has_model and kind not in ["memorial","bath_mat","framed_picture","garden_gate","garden_gate_double","burglar_alarm","home_phone"]:return
+	var kitchen_cabinet:bool=Kitchen.cabinet(kind)
+	if not has_model and not kitchen_cabinet and kind not in ["memorial","bath_mat","framed_picture","garden_gate","garden_gate_double","burglar_alarm","home_phone"]:return
 	var node=Node3D.new()
 	node.name=str(entry.get("id","item_%d" % Time.get_ticks_usec()))
 	furniture.add_child(node)
 	var model:Node3D=null
-	if has_model:
+	if kitchen_cabinet:
+		model=Kitchen.build(kind,variant)
+		node.add_child(model)
+	elif has_model:
 		model=load(path).instantiate()
 		node.add_child(model)
 		# A size choice scales the whole authored model uniformly, so a large
@@ -887,12 +913,14 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	if is_instance_valid(model):
 		var fitted:float=float(data.get("model_scale",1.0))
 		if not is_equal_approx(fitted,1.0):model.scale*=fitted
+		model.scale*=Kitchen.model_scale(kind)
+		_normalize_wall_model(model,kind)
 	if kind=="study_desk":
-		box(node,Vector3(0,.72,-.05),Vector3(.34,.02,.24),"2c3338")
-		box(node,Vector3(0,.84,-.16),Vector3(.32,.18,.02),"1d2124")
-	var lift:float=float(entry.get("hang",0.0))
+		box(node,Vector3(0,.72,-.05),Vector3(.34,.02,.24),"2c3338").name="LaptopKeyboard"
+		box(node,Vector3(0,.84,-.16),Vector3(.32,.18,.02),"1d2124").name="LaptopScreen"
+	var lift:float=float(entry.get("hang",data.get("hang",0.0) if LifeCatalog.wall_mounted(kind) else 0.0))
 	node.position=Vector3(float(entry.get("x",0)),Building.level_y(level)+lift,float(entry.get("z",0)))
-	node.rotation_degrees.y=float(entry.get("rotation",0))
+	node.rotation_degrees.y=fmod(float(entry.get("rotation",0)),360.0)
 	# Cars bought or placed near a garage snap into the next free bay so a
 	# four-car garage fills predictably instead of stacking on the driveway.
 	if kind in ["car", "car_electric", "electric_car"] and level == 0:
@@ -962,6 +990,16 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 		bounds.size=Vector3(float(panel.w),info.height,float(panel.d))
 		shape.shape=bounds
 		shape.position=Vector3(float(panel.x),float(info.height)/2,float(panel.z))
+		if LifeCatalog.wall_mounted(kind) and data.has("hang"):
+			# A wall model may extend below its attachment origin. Pick its real
+			# raised picture/clock, without a tall invisible box above the wall.
+			var vertices:Array[Vector3]=[]
+			_gather_visual_bounds(node,node.transform.affine_inverse(),vertices)
+			if not vertices.is_empty():
+				var visual:=AABB(vertices[0],Vector3.ZERO)
+				for point:Vector3 in vertices:visual=visual.expand(point)
+				bounds.size=visual.size.max(Vector3.ONE*.01)
+				shape.position=visual.get_center()
 		body.add_child(shape)
 	body.set_meta("item_id",info.id)
 	if kind == "car_garage":
@@ -970,6 +1008,7 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	if kind=="towel_rack":
 		info["towels"]=clampi(int(entry.get("towels",Variants.holds(data,str(variant.size)))),0,Variants.holds(data,str(variant.size)))
 	items.append(info)
+	_rebuild_supported_items()
 	if kind=="towel_rack":refresh_towel_rack(info)
 	if kind in ["car", "car_electric", "electric_car"] and level == 0:
 		# Snap after the car is registered so bay occupancy and transforms match
@@ -1157,12 +1196,18 @@ func item_colour(entry:Dictionary) -> Color:
 func variant_model_path(kind:String,style:String="") -> String:
 	return Variants.model_path(kind,style)
 
-func remove_item(id: String) -> Dictionary:
+func remove_item(id: String, keep_supported:bool=false) -> Dictionary:
 	for i in range(items.size()):
 		if items[i].id==id:
 			var data=items[i]
 			data.node.queue_free()
 			items.remove_at(i)
+			if not keep_supported:
+				for supported:Dictionary in items:
+					if str(supported.get("support_id",""))!=id:continue
+					supported.node.position.y=Building.level_y(item_level(supported))
+					for key:String in ["support_id","support_x","support_z","support_rotation","hang"]:supported.erase(key)
+			_rebuild_supported_items()
 			rebuild_navigation()
 			return data
 	return {}
@@ -1173,7 +1218,9 @@ func serialize_items() -> Array:
 		if bool(item.get("transient_food",false)) or bool(item.get("transient_puddle",false)) or bool(item.get("derived",false)):continue
 		# A pool toy on its way to the water is saved where it was picked up from.
 		var rest:Dictionary=item.get("rest",{}) if bool(item.get("carried",false)) else {}
-		var entry:Dictionary={"id":item.id,"kind":item.kind,"x":float(rest.get("x",item.node.position.x)),"z":float(rest.get("z",item.node.position.z)),"rotation":float(rest.get("rotation",item.node.rotation_degrees.y))}
+		var entry:Dictionary={"id":item.id,"kind":item.kind,"x":float(rest.get("x",item.node.position.x)),"z":float(rest.get("z",item.node.position.z)),"rotation":fmod(float(rest.get("rotation",item.node.rotation_degrees.y)),360.0)}
+		for key:String in ["support_id","support_x","support_z","support_rotation"]:
+			if item.has(key):entry[key]=item[key]
 		if str(item.kind)=="towel_rack":entry["towels"]=int(item.get("towels",0))
 		if item_level(item)!=0:entry["level"]=item_level(item)
 		# Preserve custom wall placement through ordinary saves and recovered
@@ -1195,6 +1242,7 @@ func serialize_items() -> Array:
 	return out
 
 func rebuild_navigation() -> void:
+	if is_instance_valid(construction.doors):construction.doors.sync(construction.records,items)
 	# Even a rejected rebuild can replace the compatibility grid.
 	_target_approaches.clear()
 	# Compatibility grid stays ground-only until main/food callers are migrated.
@@ -1552,6 +1600,11 @@ func begin_placement(kind:String,style:String="",size:String="",color:String="")
 		ghost=_room_pack_ghost(LifeCatalog.get_item(kind).size)
 		add_child(ghost)
 		return
+	if Kitchen.cabinet(kind):
+		ghost=Kitchen.build(kind,Variants.resolve(bought,{"style":style,"size":size,"color":color}))
+		add_child(ghost)
+		_ghost_materials(ghost)
+		return
 	var path:String=Variants.model_path(kind,style)
 	if not ResourceLoader.exists(path):path="res://assets/models/%s.glb" % kind
 	# A family whose art is styled may ship no base model at all, and a caller
@@ -1585,8 +1638,20 @@ func begin_placement(kind:String,style:String="",size:String="",color:String="")
 		return
 	var scale:float=Variants.size_scale(size)
 	if not is_equal_approx(scale,1.0):ghost.scale=Vector3.ONE*scale
+	ghost.scale*=Kitchen.model_scale(kind)
 	add_child(ghost)
+	_normalize_wall_model(ghost,kind)
 	_ghost_materials(ghost)
+
+## Older decorative GLBs contain their original mounting height in the mesh.
+## Use the same attachment origin for bought models and placement previews, so
+## the saved hang height is applied exactly once.
+func _normalize_wall_model(model:Node3D,kind:String)->void:
+	var offset:float=float({"painting":1.0,"shelf":1.4,"wall_clock":1.65,"children_picture":.36}.get(kind,0.0))
+	if is_zero_approx(offset) or model.has_meta("wall_origin_normalized"):return
+	for child:Node in model.get_children():
+		if child is Node3D:child.position.y-=offset
+	model.set_meta("wall_origin_normalized",true)
 
 ## Every surface of a placement ghost gets a material of its own, so the green
 ## and red of a valid or refused spot recolour the ghost and nothing else. The
@@ -1626,6 +1691,7 @@ func clear_placement() -> void:
 	placement_kind=""
 	placement_style=""
 	placement_size=""
+	placement_moving_id=""
 	if is_instance_valid(ghost):ghost.queue_free()
 	ghost=null
 	if construction:construction.cancel()
@@ -1652,6 +1718,7 @@ func can_place(kind:String,p:Vector3,angle:float,style:String="",size_choice:Str
 	var data:Dictionary=LifeCatalog.get_item(kind)
 	var variant:Dictionary=Variants.resolve(data,{"style":style,"size":size_choice})
 	var size:Vector2=Variants.footprint(data,str(variant.size))
+	var support:Dictionary=surface_placement(kind,p,angle)
 	var depth:float=size.y
 	if int(roundf(angle/90))%2:size=Vector2(size.y,size.x)
 	var rect=Rect2(Vector2(p.x,p.z)-size/2,size)
@@ -1665,7 +1732,10 @@ func can_place(kind:String,p:Vector3,angle:float,style:String="",size_choice:Str
 		# upper furnishing still needs real slab beneath it.
 		if not Building.footprint_supported(construction.building_state,level,rect,level==0):return false
 		if Building.blocked_rect(construction.building_state,level,rect):return false
-		if not construction.building_state.roofs.is_empty() and not RoofRules.obstruction(construction.building_state,furnishing_volume({"kind":kind,"x":p.x,"z":p.z,"rotation":angle,"level":level,"style":variant.style,"size":variant.size})).is_empty():return false
+		var volume_record:Dictionary={"kind":kind,"x":p.x,"z":p.z,"rotation":angle,"level":level,"style":variant.style,"size":variant.size}
+		if data.has("hang"):volume_record["hang"]=placement_hang if placement_kind==kind else float(data.hang)
+		volume_record.merge(support,true)
+		if not construction.building_state.roofs.is_empty() and not RoofRules.obstruction(construction.building_state,furnishing_volume(volume_record)).is_empty():return false
 	for corner in [rect.position,rect.end,Vector2(rect.position.x,rect.end.y),Vector2(rect.end.x,rect.position.y)]:
 		if not grounds(corner,level):return false
 	if LifeCatalog.wall_mounted(kind) and not wall_behind(kind,p,angle,variant.size):return false
@@ -1685,7 +1755,17 @@ func can_place(kind:String,p:Vector3,angle:float,style:String="",size_choice:Str
 	if construction.rect_blocked(rect,level,wall_slack):return false
 	for item in items:
 		if item_level(item)!=level:continue
-		if item.kind in ["meal","plate","puddle"] or bool(item.get("derived",false)):continue
+		if not placement_moving_id.is_empty() and str(item.get("support_id",""))==placement_moving_id:continue
+		if not support.is_empty() and str(item.id)==str(support.support_id):continue
+		if item.kind in ["meal","plate"]:
+			# A supported appliance must leave the dishes already on that
+			# surface visible. Food on the floor retains its own relocation flow.
+			if not support.is_empty() and item.node.visible and str(item.get("food_host",""))==str(support.support_id) and str(item.get("food_storage","")) in ["surface","table","dirty"]:
+				var half:Vector2=item.get("surface_half",Vector2(.15,.15))
+				var food_rect:Rect2=_oriented_panel(Vector2(item.node.position.x,item.node.position.z),item.node.basis,{"x":0.0,"z":0.0,"w":half.x*2,"d":half.y*2})
+				if rect.grow(.005).intersects(food_rect):return false
+			continue
+		if item.kind=="puddle" or bool(item.get("derived",false)):continue
 		if LifeCatalog.passable(str(item.kind)) and not LifeCatalog.runs_flush(str(item.kind)):continue
 		# A candidate stands free when it misses every solid band of what is
 		# already there, so a car fits in the garage's hollow interior even
@@ -1699,6 +1779,148 @@ func can_place(kind:String,p:Vector3,angle:float,style:String="",size_choice:Str
 	# caller could show a green ghost, accept the click and silently not place.
 	if placement_reach_check.is_valid() and not bool(placement_reach_check.call(kind,p,angle)):return false
 	return true
+
+## Join the side edges of modular units without the ordinary quarter-tile gap.
+## A corner cabinet also exposes perpendicular edges for the return run.
+func kitchen_snap(kind:String,p:Vector3,angle:float,reach:float=.6) -> Vector3:
+	if kind not in Kitchen.UNITS:return p
+	var level:int=point_level(p)
+	var incoming:Rect2=furnishing_rect({"kind":kind,"x":0.0,"z":0.0,"rotation":angle})
+	var best:Vector3=p
+	var distance:float=reach
+	for item:Dictionary in items:
+		if item_level(item)!=level or str(item.kind) not in Kitchen.UNITS:continue
+		var other_angle:float=item.node.rotation_degrees.y
+		var parallel:bool=absf(sin(deg_to_rad(angle-other_angle)))<.01
+		if not parallel and kind!="corner_counter" and str(item.kind)!="corner_counter":continue
+		var other:Rect2=item_panels(item,false)[0]
+		var half:Vector2=(incoming.size+other.size)*.5
+		var center:Vector2=other.get_center()
+		var across:Vector3=Basis(Vector3.UP,deg_to_rad(angle))*Vector3.RIGHT
+		var axes:Array=[Vector2.RIGHT] if absf(across.x)>.5 else [Vector2.DOWN]
+		if kind=="corner_counter" or str(item.kind)=="corner_counter":axes=[Vector2.RIGHT,Vector2.DOWN]
+		for axis:Vector2 in axes:
+			for side:float in [-1.0,1.0]:
+				var candidate:=Vector3(center.x+axis.x*half.x*side,p.y,center.y+axis.y*half.y*side)
+				var delta:float=Vector2(candidate.x-p.x,candidate.z-p.z).length()
+				if delta<distance:
+					distance=delta;best=candidate
+	return best
+
+## Move countertop appliances with their host; selling a host grounds them.
+## Local anchors also make saved order irrelevant and preserve a rotated return.
+func relocated_surface_layout(layout:Array,host:Dictionary) -> Array:
+	var result:Array=layout.duplicate(true)
+	for entry:Dictionary in result:
+		if str(entry.get("support_id",""))!=str(host.get("id","")):continue
+		var basis:=Basis(Vector3.UP,deg_to_rad(float(host.get("rotation",0))))
+		var offset:Vector3=basis*Vector3(float(entry.get("support_x",0)),0,float(entry.get("support_z",0)))
+		entry.x=float(host.x)+offset.x;entry.z=float(host.z)+offset.z
+		entry.rotation=float(host.get("rotation",0))+float(entry.get("support_rotation",0))
+		entry["level"]=int(host.get("level",0))
+	return result
+
+func _rebuild_supported_items() -> void:
+	for item:Dictionary in items:
+		var support_id:String=str(item.get("support_id",""))
+		if support_id.is_empty():continue
+		for host:Dictionary in items:
+			if str(host.id)!=support_id:continue
+			var at:Vector3=host.node.to_global(Vector3(float(item.get("support_x",0)),float(item.get("hang",0)),float(item.get("support_z",0))))
+			item.node.position=at;item.node.rotation_degrees.y=host.node.rotation_degrees.y+float(item.get("support_rotation",0))
+			item["level"]=item_level(host);item["x"]=at.x;item["z"]=at.z;item["rotation"]=item.node.rotation_degrees.y
+			assign_structure_layer(item.node,item_level(host))
+			for body:CollisionObject3D in item.node.find_children("*","CollisionObject3D",true,false):
+				body.collision_layer=PICK_GROUND if item_level(host)==0 else PICK_UPPER
+			break
+	sync_surface_decorations()
+
+## Authored tabletop objects are either working equipment or removable decor.
+## Cache their real, host-local bounds, including scaled/rotated model children.
+func _surface_props(host:Dictionary) -> Array:
+	if host.has("surface_props"):return host.surface_props
+	var groups:Array=[]
+	match str(host.kind):
+		"dining":groups=[{"prefixes":["fruit"]}]
+		"table":groups=[{"prefixes":["artbook","pages"]},{"prefixes":["ceramiccup"]}]
+		"coffee_table":groups=[{"prefixes":["coffeebook"]},{"prefixes":["coffeesaucer","teatimecup","cuphandle","cupsteam"]}]
+		"desk","study_desk":groups=[{"prefixes":["laptop","screencontent","onscreenline"],"equipment":true},{"prefixes":["penpot","pencil"]}]
+	var result:Array=[]
+	for group:Dictionary in groups:
+		var nodes:Array=[];var vertices:Array[Vector3]=[]
+		for node:Node in host.node.find_children("*","Node3D",true,false):
+			var key:String=str(node.name).to_lower().replace("_","").replace(" ","")
+			if not group.prefixes.any(func(prefix:String)->bool:return key.begins_with(prefix)):continue
+			nodes.append(node)
+			var parent:Node3D=node.get_parent()
+			_gather_visual_bounds(node,host.node.global_transform.affine_inverse()*parent.global_transform,vertices)
+		if vertices.is_empty():continue
+		var area:=Rect2(Vector2(vertices[0].x,vertices[0].z),Vector2.ZERO)
+		for point:Vector3 in vertices:area=area.expand(Vector2(point.x,point.z))
+		result.append({"nodes":nodes,"area":area,"equipment":bool(group.get("equipment",false))})
+	host["surface_props"]=result
+	return result
+
+## Keep laptop workspaces usable; a coffee maker can still use clear desk space.
+func _surface_equipment_clear(host:Dictionary,area:Rect2) -> bool:
+	for prop:Dictionary in _surface_props(host):
+		if bool(prop.equipment) and area.grow(.005).intersects(prop.area):return false
+	return true
+
+func sync_surface_decorations() -> void:
+	var dishes:Dictionary={}
+	for item:Dictionary in items:
+		if str(item.get("food_storage","")) in ["table","surface","dirty"] and is_instance_valid(item.get("node")) and item.node.visible:
+			dishes[str(item.get("food_host",""))]=true
+	for host:Dictionary in items:
+		var props:Array=_surface_props(host)
+		if props.is_empty():continue
+		var occupied:Array[Rect2]=[]
+		for item:Dictionary in items:
+			if str(item.get("support_id",""))!=str(host.id):continue
+			var local:Vector3=host.node.to_local(item.node.global_position)
+			occupied.append(_oriented_panel(Vector2(local.x,local.z),host.node.global_basis.inverse()*item.node.global_basis,{"x":0.0,"z":0.0,"w":item.size.x,"d":item.size.y}))
+		for prop:Dictionary in props:
+			if bool(prop.equipment):continue
+			var visible:bool=not (str(host.kind)=="dining" and dishes.has(str(host.id)))
+			for area:Rect2 in occupied:
+				if area.grow(.005).intersects(prop.area):visible=false;break
+			for node:Node3D in prop.nodes:node.visible=visible
+
+## Meal footprints are local to their host; supported furnishings retain their
+## own yaw. Compare both on the floor plane so rotated tables work identically.
+func surface_furnishing_clear(host:Dictionary,at:Vector3,half:Vector2) -> bool:
+	var position:Vector3=host.node.to_global(at)
+	var rect:Rect2=_oriented_panel(Vector2(position.x,position.z),host.node.basis,{"x":0.0,"z":0.0,"w":half.x*2,"d":half.y*2})
+	for item:Dictionary in items:
+		if str(item.get("support_id",""))!=str(host.id):continue
+		for panel:Rect2 in item_panels(item,false):
+			if rect.grow(.005).intersects(panel):return false
+	return true
+
+## Full footprint support chooses a worktop/table; open floor remains valid.
+## The returned height is local to the floor so upper-storey saves work too.
+func surface_placement(kind:String,p:Vector3,angle:float) -> Dictionary:
+	if not bool(LifeCatalog.get_item(kind).get("surface_placeable",false)):return {}
+	var level:int=point_level(p)
+	var size:Vector2=LifeCatalog.get_item(kind).size
+	var basis:=Basis(Vector3.UP,deg_to_rad(angle))
+	for host:Dictionary in items:
+		if item_level(host)!=level or not Kitchen.SURFACES.has(str(host.kind)):continue
+		var half:Vector2=host.size*.5
+		if str(host.kind)=="coffee_table":half=Vector2(.525,.31)
+		var supported:bool=true
+		for x:float in [-size.x*.5,size.x*.5]:
+			for z:float in [-size.y*.5,size.y*.5]:
+				var local:Vector3=host.node.to_local(p+basis*Vector3(x,0,z))
+				if absf(local.x)>half.x-.005 or absf(local.z)>half.y-.005:supported=false
+				if str(host.kind)=="coffee_table" and pow(local.x/half.x,2)+pow(local.z/half.y,2)>.99:supported=false
+		if supported:
+			var local:Vector3=host.node.to_local(p)
+			var area:Rect2=_oriented_panel(Vector2(local.x,local.z),host.node.global_basis.inverse()*basis,{"x":0.0,"z":0.0,"w":size.x,"d":size.y})
+			if not _surface_equipment_clear(host,area):continue
+			return {"support_id":str(host.id),"hang":float(Kitchen.SURFACES[str(host.kind)]),"support_x":local.x,"support_z":local.z,"support_rotation":angle-host.node.rotation_degrees.y}
+	return {}
 
 func wall_snap(kind:String,p:Vector3,reach:float=1.0,size_choice:String="") -> Dictionary:
 	if not is_instance_valid(construction) or not LifeCatalog.ITEMS.has(kind):return {}
@@ -1817,6 +2039,36 @@ func floor_point(screen:Vector2) -> Vector3:
 	if t<0:return Vector3.INF
 	return origin+direction*t
 
+## Aim a hanging preview at the mouse at its mounting height, while keeping
+## its placement/validation coordinates on the selected floor.
+func placement_point(screen:Vector2)->Vector3:
+	if bool(LifeCatalog.get_item(placement_kind).get("surface_placeable",false)):
+		var origin:Vector3=camera.project_ray_origin(screen)
+		var direction:Vector3=camera.project_ray_normal(screen)
+		var best:Vector3=floor_point(screen)
+		var nearest:float=INF
+		if absf(direction.y)>.00001:
+			for host:Dictionary in items:
+				if item_level(host)!=view_level or not Kitchen.SURFACES.has(str(host.kind)):continue
+				var height:float=host.node.position.y+float(Kitchen.SURFACES[str(host.kind)])
+				var distance:float=(height-origin.y)/direction.y
+				if distance<0.0 or distance>=nearest:continue
+				var candidate:Vector3=origin+direction*distance
+				candidate.y=Building.level_y(view_level)
+				var support:Dictionary=surface_placement(placement_kind,candidate,placement_angle)
+				if str(support.get("support_id",""))==str(host.id):best=candidate;nearest=distance
+		return best
+	if not LifeCatalog.wall_mounted(placement_kind) or placement_hang<=0.0:return floor_point(screen)
+	var origin:Vector3=camera.project_ray_origin(screen)
+	var direction:Vector3=camera.project_ray_normal(screen)
+	if absf(direction.y)<.00001:return Vector3.INF
+	var floor_y:float=Building.level_y(view_level)
+	var distance:float=(floor_y+placement_hang-origin.y)/direction.y
+	if distance<0.0:return Vector3.INF
+	var point:Vector3=origin+direction*distance
+	point.y=floor_y
+	return point
+
 func pick(screen:Vector2) -> void:
 	if not live_enabled:return
 	if build_enabled and construction and (not construction.tool.is_empty() or construction.roofs_visible):
@@ -1836,6 +2088,10 @@ func pick(screen:Vector2) -> void:
 	var surface:=PhysicsRayQueryParameters3D.create(origin,origin+camera.project_ray_normal(screen)*150,PICK_SURFACE)
 	var hit=get_world_3d().direct_space_state.intersect_ray(surface)
 	if hit.is_empty():hit=get_world_3d().direct_space_state.intersect_ray(ray)
+	var wall_hit:Dictionary=construction.pick_wall(origin,camera.project_ray_normal(screen),view_level)
+	if not wall_hit.is_empty() and (hit.is_empty() or float(wall_hit.distance)<origin.distance_to(hit.position)):
+		wall_clicked.emit()
+		return
 	if not hit.is_empty():
 		var id:String=str(hit.collider.get_meta("item_id",""))
 		for item in items:
@@ -1930,14 +2186,16 @@ func _process(delta:float) -> void:
 	if not live_enabled:return
 	refresh_actor_layers()
 	if build_enabled and construction and not construction.tool.is_empty():construction.update_preview(floor_point(get_viewport().get_mouse_position()))
-	if build_enabled and is_instance_valid(ghost):update_ghost(floor_point(get_viewport().get_mouse_position()))
+	if build_enabled and is_instance_valid(ghost):update_ghost(placement_point(get_viewport().get_mouse_position()))
 
 ## Move the placement ghost to a pointed-at floor point and judge it. Split out of
 ## `_process` so a test can point at a spot without a mouse.
 func update_ghost(pointed:Vector3) -> void:
 	if not is_instance_valid(ghost):return
+	if not pointed.is_finite():ghost_valid=false;return
 	var p:=pointed
 	p.x=snappedf(p.x,.25);p.z=snappedf(p.z,.25)
+	p=kitchen_snap(placement_kind,p,placement_angle)
 	if bool(LifeCatalog.get_item(placement_kind).get("room_pack",false)):
 		var area:Rect2=room_pack_area(placement_kind,p,placement_angle)
 		ghost.position=Vector3(area.get_center().x,Building.level_y(0),area.get_center().y)
@@ -1947,7 +2205,10 @@ func update_ghost(pointed:Vector3) -> void:
 		for n in ghost.find_children("*","MeshInstance3D",true,false):n.material_override.albedo_color=Color(.4,.85,.6,.48) if ghost_valid else Color(.9,.3,.25,.48)
 		return
 	var lift:float=0.0
+	var support:Dictionary=surface_placement(placement_kind,p,placement_angle)
+	if not support.is_empty():lift=float(support.hang)
 	if LifeCatalog.wall_mounted(placement_kind):
+		lift=maxf(placement_hang,0.0)
 		# Wall decor slides along the nearest wall and faces into the room.
 		# Pieces that declare a hang height sit up on the wall, and the
 		# wheel can still move that height while the ghost is showing. Only
@@ -1958,7 +2219,6 @@ func update_ghost(pointed:Vector3) -> void:
 		if not snap.is_empty():
 			p=window_snap(placement_kind,snap.position,float(snap.angle))
 			placement_angle=float(snap.angle)
-			lift=maxf(placement_hang,0.0)
 	ghost.position=p+Vector3(0,lift,0)
 	ghost.rotation_degrees.y=placement_angle
 	ghost_position=p
@@ -2179,6 +2439,13 @@ func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -
 		var toward:Vector3=node.global_position-at
 		at.y=node.global_position.y
 		return {"position":at,"yaw":atan2(toward.x,toward.z),"kind":"standing","mop_contact":node.global_position}
+	if str(item.kind)=="coffee_machine":
+		# The appliance can be raised onto a worktop; its user always stands
+		# on the supporting floor and faces the machine from a clear approach.
+		var at:Vector3=landmarks.get("standing_position",approach(item))
+		at.y=Building.level_y(item_level(item))
+		var toward:Vector3=node.global_position-at
+		return {"position":at,"yaw":atan2(toward.x,toward.z),"kind":"standing"}
 	if action_id==LifeOutdoorActs.ACTION_ID:
 		var water:Dictionary=outdoor_water_anchor(item,landmarks)
 		if not water.is_empty():return water
@@ -2406,6 +2673,7 @@ func flower_clump(at: Vector3, rng: RandomNumberGenerator, petal_color: String) 
 	house.add_child(plant)
 
 func create_resident_home(place:String,layout:Array) -> void:
+	layout=normalize_layout_rotations(layout)
 	last_layout_error=validate_home_layout(layout)
 	if not last_layout_error.is_empty():return
 	if house:house.queue_free()

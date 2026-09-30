@@ -10,7 +10,7 @@ extends RefCounted
 const POOL_KINDS: Array[String] = ["pool", "pool_slide", "pool_ladder", "pool_light", "pool_ring", "pool_noodle"]
 const FLOAT_KINDS: Array[String] = ["pool_ring", "pool_noodle"]
 const DRY_ACTIONS: Array[String] = [LifeWetness.DRY_OFF_ID, LifeWetness.DRY_SIT_ID]
-const CARE_ACTIONS: Array[String] = ["pet_pet", "pet_tummy_rub", "pet_tug", "pet_feed", "pet_walk", "pet_teach_trick", "pet_train_social", "pet_train_logic"]
+const CARE_ACTIONS: Array[String] = ["pet_pet", "pet_tummy_rub", "pet_play", "pet_tug", "pet_feed", "pet_walk", "pet_teach_trick", "pet_train", "pet_train_social", "pet_train_logic", "bathe_pet"]
 const CAR_ACTIONS: Array[String] = ["car_open_door", "car_get_in", "car_buckle", "car_close_door", "car_seated"]
 const SWIM_SPEED: float = .55
 const SWIM_TURN: float = .9
@@ -42,12 +42,12 @@ static func apply(actor, pose: Dictionary, action_id: String, t: float) -> Dicti
 			if kind in POOL_KINDS and str(anchor.get("kind", "")) == "swim": return _swim(actor, pose, t)
 		LifeWetness.DRY_OFF_ID: return _rub_down(actor, pose, t)
 		LifeWetness.DRY_SIT_ID: return _sit_in_towel(actor, pose, t)
-		"pet_pet": return _stroke_pet(actor, pose, ct, anchor)
+		"pet_pet", "bathe_pet": return _stroke_pet(actor, pose, ct, anchor)
 		"pet_tummy_rub": return _tummy_rub(actor, pose, ct, anchor)
 		"pet_tug": return _tug(actor, pose, ct, anchor)
 		"pet_feed": return _pour_kibble(actor, pose, ct, anchor)
 		"pet_walk": return _walk_dog(actor, pose, ct, t, anchor)
-		"pet_teach_trick", "pet_train_social", "pet_train_logic": return _signal_trick(actor, pose, ct)
+		"pet_play", "pet_teach_trick", "pet_train", "pet_train_social", "pet_train_logic": return _signal_trick(actor, pose, ct)
 		"car_open_door", "car_close_door": return _work_door(actor, pose, ct, anchor, action_id == "car_open_door")
 		"car_get_in": return _get_in(actor, pose, ct, anchor)
 		"car_buckle": return _buckle(actor, pose, ct, anchor)

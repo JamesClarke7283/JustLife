@@ -7,6 +7,7 @@ const WoodFloorShader=preload("res://assets/shaders/wood_floor.gdshader")
 ## Editable axis-aligned rooms, walls and door openings on the household lot.
 
 var world: Node3D
+var doors:Node3D
 var records: Array = []
 var floor_records: Array = []
 var wall_nodes: Dictionary = {}
@@ -49,6 +50,7 @@ var _wood_floor_materials:Dictionary={}
 
 func initialize(owner_world: Node3D) -> void:
 	world=owner_world
+	doors=preload("res://scripts/door_flow.gd").new();add_child(doors);doors.initialize(world)
 	cutaway=bool(world.cutaway)
 
 func add_wall(entry: Dictionary) -> void:
@@ -99,7 +101,7 @@ func _rebuild_wall(e:Dictionary, supports:Dictionary)->void:
 	elif not pattern.is_empty():_dress_nursery_pattern(node,e,horizontal,length,h,pattern)
 	world.box(node,Vector3(0,h+.025,0),Vector3(float(e.w)+.025,.05,float(e.d)+.025),"f5efdf")
 	world.box(node,Vector3(0,.055,0),Vector3(float(e.w)+.015,.11,float(e.d)+.015),"f5efdf")
-	if not building_state.is_empty() and not (bool(e.cut) and cutaway):
+	if not building_state.is_empty() and not cutaway:
 		var supports_upper:bool=false
 		for floor:Dictionary in building_state.floors:
 			if int(floor.level)==level+1 and floor.get("supports",[]).has(str(e.id)):supports_upper=true
@@ -344,8 +346,9 @@ func valid_record(e: Variant) -> bool:
 
 func update_cutaway(value: bool) -> void:
 	cutaway=value
-	var data=snapshot()
-	restore(data)
+	# Visibility is presentation only: retain structure IDs, floors, stairs and
+	# any active door traversal while rebuilding the visible wall faces.
+	refresh_decorations()
 
 func point_blocked(p: Vector2,level:int=0) -> bool:
 	for e in records:
@@ -896,7 +899,41 @@ func _dress_nursery_pattern(node:Node3D,entry:Dictionary,horizontal:bool,length:
 
 func _visible_wall_height(entry:Dictionary)->float:
 	var height:float=float(entry.height)
-	return minf(.65,height) if bool(entry.cut) and cutaway else height
+	return minf(.65,height) if cutaway else height
+
+## Test the displayed wall volume, including the low strip in cutaway. No
+## physical collider is needed: navigation continues to use the full wall.
+func pick_wall(origin:Vector3,direction:Vector3,level:int)->Dictionary:
+	var closest:Dictionary={}
+	var nearest:float=150.0
+	var local_origin:Vector3=global_transform.affine_inverse()*origin
+	var local_direction:Vector3=global_transform.basis.inverse()*direction
+	for entry:Dictionary in records:
+		if int(entry.get("level",0))!=level:continue
+		var wall:Node3D=wall_nodes.get(str(entry.id))
+		if not is_instance_valid(wall):continue
+		# The visible pieces already exclude window apertures. Clicking a pet
+		# through glass must not hit an imaginary solid wall across that window.
+		for mesh:Node in wall.get_children():
+			if not mesh is MeshInstance3D or mesh.mesh==null:continue
+			var box:AABB=(wall.transform*mesh.transform)*mesh.mesh.get_aabb()
+			var distance:float=_ray_box_distance(local_origin,local_direction,box,nearest)
+			if distance<nearest:
+				nearest=distance;closest={"id":str(entry.id),"distance":distance}
+	return closest
+
+func _ray_box_distance(origin:Vector3,direction:Vector3,box:AABB,limit:float)->float:
+	var near:float=0.0
+	var far:float=limit
+	for axis:int in 3:
+		if absf(direction[axis])<.00001:
+			if origin[axis]<box.position[axis] or origin[axis]>box.end[axis]:return INF
+			continue
+		var first:float=(box.position[axis]-origin[axis])/direction[axis]
+		var last:float=(box.end[axis]-origin[axis])/direction[axis]
+		near=maxf(near,minf(first,last));far=minf(far,maxf(first,last))
+		if near>far:return INF
+	return near
 
 func _decoration_bounds(node:Node3D)->AABB:
 	# Include hidden children so a cutaway toggle can restore the same artwork.
@@ -954,6 +991,8 @@ func _decoration_supported(node:Node3D)->bool:
 	return false
 
 func refresh_decorations() -> void:
+	doors.sync(records,world.items)
+	doors.set_cutaway(cutaway)
 	var supports:Dictionary=_window_supports()
 	for e:Dictionary in records:_rebuild_wall(e,supports)
 	for n in world.house.get_children():

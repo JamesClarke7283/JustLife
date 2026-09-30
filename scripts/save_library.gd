@@ -76,7 +76,12 @@ static func _validate_household(state: Dictionary) -> Dictionary:
 		if not (version is int or version is float) or not is_finite(float(version)) or float(version) != 1.0:
 			return _error("This household uses an unsupported simulator version.")
 	var household: LifeHousehold = Household.new()
+	# Journey restoration validates geometry against the saved lot. A detached
+	# library read/list/save must leave the live world's land object untouched,
+	# including when that validation rejects the household.
+	var live_land: Dictionary = LifeBuildingState.land
 	var result: Dictionary = household.restore_state(state)
+	LifeBuildingState.land = live_land
 	household.free()
 	return result
 

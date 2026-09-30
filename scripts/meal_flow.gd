@@ -362,6 +362,7 @@ func _surface_clear(host:Dictionary,at:Vector3,half:Vector2,except_id:String="")
 	if not at.is_finite() or absf(at.y-float(SURFACE_HEIGHTS[str(host.kind)]))>.003:return false
 	var extent:Vector2=LifeMeals.SURFACE_HALF_SIZE[str(host.kind)]
 	if absf(at.x)+half.x+LifeMeals.SURFACE_INSET>extent.x+.00001 or absf(at.z)+half.y+LifeMeals.SURFACE_INSET>extent.y+.00001:return false
+	if not app.world.surface_furnishing_clear(host,at,half):return false
 	for value:Dictionary in food().batches+food().portions:
 		if str(value.id)==except_id or str(value.host)!=str(host.id) or str(value.venue)!=app.current_venue or str(value.storage) in ["carried","fridge"]:continue
 		# Empty platters are no longer rendered; retained ledger records do not
@@ -429,7 +430,7 @@ func _floor_navigation_clear(at:Vector3,half:Vector2=Vector2(.16,.16)) -> bool:
 func _serving_surface(from:Vector3,except_id:String="") -> Dictionary:
 	var level:int=_floor_level(from)
 	if level<0:return {}
-	for kind:String in ["dining","counter","stove"]:
+	for kind:String in ["dining","counter","corner_counter","stove"]:
 		var candidates:Array=[]
 		for host:Dictionary in app.world.items:
 			if _host_level(host)>=0 and str(host.kind)==kind and _surface_slot(host,LifeMeals.PLATTER_HALF_SIZE,except_id).is_finite():candidates.append(host)
@@ -996,6 +997,9 @@ func sync_world(reconcile:bool=true) -> void:
 		var mask:int=(LifeWorld.VIEW_ACTOR_GROUND|LifeWorld.VIEW_ACTOR_UPPER) if level<0 else ((LifeWorld.VIEW_ACTOR_GROUND if level==0 else LifeWorld.VIEW_ACTOR_UPPER) if held else (LifeWorld.VIEW_GROUND if level==0 else LifeWorld.VIEW_UPPER))
 		app.world._assign_layers(view,mask)
 		var entry:Dictionary=item(key)
+		entry["food_host"]=str(value.host)
+		entry["food_storage"]=str(value.storage)
+		entry["surface_half"]=_footprint(value)
 		if level>=0:entry["level"]=level
 		else:entry.erase("level")
 		body.collision_layer=((LifeWorld.PICK_GROUND if level==0 else LifeWorld.PICK_UPPER)|LifeWorld.PICK_SURFACE) if level>=0 and view.visible and str(value.storage) not in ["carried","table"] else 0
@@ -1022,15 +1026,9 @@ func sync_world(reconcile:bool=true) -> void:
 	sync_due=false
 
 func _sync_table_settings() -> void:
-	# The authored fruit centerpiece belongs on an otherwise unused table.
-	# Clear it while persistent food/dishes occupy that same surface.
-	var occupied:Dictionary={}
-	for value:Dictionary in food().batches+food().portions:
-		if str(value.venue)==app.current_venue and str(value.storage) in ["table","surface","dirty"] and (value.has("batch") or int(value.remaining)>0):occupied[str(value.host)]=true
-	for table:Dictionary in app.world.items:
-		if str(table.kind)!="dining":continue
-		for decoration:Node in table.node.find_children("Fruit*","Node3D",true,false):
-			decoration.visible=not occupied.has(str(table.id))
+	# World support and meal updates share this decision so clearing the last
+	# dish cannot bring the fruit bowl back through a tabletop appliance.
+	app.world.sync_surface_decorations()
 
 
 func present_actor(person:String) -> void:

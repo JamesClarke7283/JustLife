@@ -58,6 +58,10 @@ const ROSTER: Array = [
 var passers: Array = []
 var _seeded: bool = false
 
+## Static identities/looks come from ROSTER. Save only the moving street state;
+## conversation holds are rebuilt from the household's actual action queues.
+const SAVE_FIELDS: Array[String] = ["x", "dir", "lane", "active", "trips", "passed_home", "waiting", "waited", "past", "dodge"]
+
 
 func _init() -> void:
 	passers = []
@@ -105,6 +109,48 @@ func find(id: String) -> Dictionary:
 		if str(passer.id) == id:
 			return passer
 	return {}
+
+
+func snapshot() -> Dictionary:
+	var saved: Dictionary = {}
+	for passer: Dictionary in passers:
+		# The dog on a lead is reconstructed from its walker as one party.
+		if not str(passer.get("follows", "")).is_empty(): continue
+		var row: Dictionary = {}
+		for key: String in SAVE_FIELDS:
+			row[key] = passer.get(key, 0.0)
+		saved[str(passer.id)] = row
+	return {"version": 1, "passers": saved}
+
+
+## Old saves had no street record: use the normal on-duty roster, then let the
+## controller re-resolve any saved greeting against those real people/pets.
+## Validate all rows before adopting any, so malformed optional state falls
+## back to the normal street instead of creating invalid actors or coordinates.
+func restore(value: Variant, minutes: float) -> bool:
+	_seed(minutes)
+	if not value is Dictionary or value.get("version") != 1 or not value.get("passers") is Dictionary: return false
+	var rows: Dictionary = value.passers
+	for passer: Dictionary in passers:
+		if str(passer.get("follows", "")).is_empty() and not rows.has(str(passer.id)): return false
+	for id: Variant in rows:
+		var passer: Dictionary = find(str(id))
+		if not id is String or passer.is_empty() or not str(passer.get("follows", "")).is_empty() or not rows[id] is Dictionary: return false
+		var row: Dictionary = rows[id]
+		if not _number(row.get("x"), WEST, EAST) or not _number(row.get("lane"), 7.0, 10.0) or not _number(row.get("dir"), -1, 1) or absf(float(row.dir)) != 1.0: return false
+		if not row.get("active") is bool or not row.get("waiting") is bool: return false
+		for key: String in ["trips", "passed_home"]:
+			if not _number(row.get(key), 0, 1e9) or float(row[key]) != floorf(float(row[key])): return false
+		if not _number(row.get("waited"), 0, 1e9) or not _number(row.get("past"), 0, CLEAR_AHEAD + .6) or not _number(row.get("dodge"), -1, 1): return false
+	for id: String in rows:
+		var passer: Dictionary = find(id)
+		for key: String in SAVE_FIELDS: passer[key] = rows[id][key]
+	_follow()
+	return true
+
+
+static func _number(value: Variant, low: float, high: float) -> bool:
+	return (value is int or value is float) and is_finite(float(value)) and float(value) >= low and float(value) <= high
 
 
 ## Passers on the street right now (off-duty ones are out of sight).

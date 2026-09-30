@@ -47,6 +47,11 @@ func run() -> void:
 	state = stairs.after
 	world.construction.restore(state)
 	world.add_item({"id":"upper_pet_bed","kind":"pet_bed_cat","x":-2.0,"z":3.0,"rotation":0.0,"level":1}, false)
+	check(world.items.any(func(item: Dictionary) -> bool: return str(item.id) == "upper_pet_bed" and str(item.kind) == "pet_bed_cat" and world.item_level(item) == 1 and is_instance_valid(item.get("node"))), "Fixture instantiates the imported cat bed on the upper floor")
+	if failures > 0:
+		app.household.free(); app.free(); world.queue_free()
+		await process_frame
+		quit(1); return
 	world.rebuild_navigation()
 	check(world.construction.stair_nodes.size() == 1, "Stair is present as physical scene geometry")
 	var record: Dictionary = LifePets.record_from(LifePets.candidate(1, 0), PET, 1)
@@ -91,7 +96,9 @@ func run() -> void:
 	app.household.pet_care(PET).needs.energy = 10.0
 	advance()
 	check(str(controller.state(PET).action) == "pet_go_bed", "Tired cat autonomously selects its own upstairs bed")
-	check(until_using(), "Autonomous cat rest follows the same physical staircase route")
+	var autonomous_rest: bool = until_using()
+	advance()
+	check(autonomous_rest and str(controller.state(PET).action) == "pet_go_bed" and actor.behavior == "rest" and actor.floor_level == 1, "Autonomous cat rest follows the same physical staircase route and reaches its upstairs bed")
 	app.household.pet_care(PET).needs.energy = 90.0
 	controller.command(PET, "pet_move", lower)
 	check(until_using() and actor.position.distance_to(lower) < .01, "Cat returns to ground after its autonomous upstairs rest")

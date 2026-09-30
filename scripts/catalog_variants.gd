@@ -4,9 +4,9 @@ class_name LifeCatalogVariants
 ##
 ## A catalogue entry may declare any of three independent variant axes:
 ##
-##   "styles":  an Array of style ids. Each style is its own authored model at
-##              `assets/models/<kind>_<style>.glb`, so a different style is a
-##              different silhouette rather than a recolour.
+##   "styles":  an Array of style ids. Styles use authored models at
+##              `assets/models/<kind>_<style>.glb` or a shared procedural
+##              builder (kitchen cabinets), with distinct geometry per style.
 ##   "colors":  an Array of hex strings, recoloured at runtime on the model's
 ##              `Tint` surface. The authored mesh is shared across colours.
 ##   "sizes":   an Array of size ids, each scaling the authored model uniformly

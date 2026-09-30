@@ -146,6 +146,45 @@ func segment_clear(level:int,from:Vector3,to:Vector3) -> bool:
 	if not point_clear(level,from) or not point_clear(level,to):return false
 	return _segment_bounds_clear(level,from,to)
 
+## Older ground-grid saves can put a body's centre on the lot boundary. Admit
+## only a short physical step inward from that margin, never through a solid
+## or a floor hole. Ordinary routes and segment_clear keep their strict bounds.
+func boundary_entry_step(from:Vector3,to:Vector3) -> bool:
+	if _state.is_empty() or not from.is_finite() or not to.is_finite():return false
+	if absf(from.y-Building.level_y(0))>.00001 or absf(to.y-Building.level_y(0))>.00001:return false
+	if point_clear(0,from) or from.distance_to(to)>.36:return false
+	var lot:Rect2=Building.lot()
+	var a:=Vector2(from.x,from.z);var b:=Vector2(to.x,to.z)
+	# The old centre must still be on this lot, including its exact outer edge.
+	for point:Vector2 in [a,b]:
+		if point.x<lot.position.x or point.x>lot.end.x or point.y<lot.position.y or point.y>lot.end.y:return false
+	var interior:Rect2=lot.grow(-RADIUS)
+	var from_inside:Vector2=a.clamp(interior.position,interior.end)
+	var to_inside:Vector2=b.clamp(interior.position,interior.end)
+	if a.distance_squared_to(from_inside)<=0.0 or b.distance_squared_to(to_inside)>=a.distance_squared_to(from_inside):return false
+	var low:=Vector2(minf(from.x,to.x)-RADIUS,minf(from.z,to.z)-RADIUS)
+	var high:=Vector2(maxf(from.x,to.x)+RADIUS,maxf(from.z,to.z)+RADIUS)
+	var swept:=Rect2(low,high-low)
+	if not Building._covered(swept.intersection(lot),_support_surfaces[0],_support_holes[0]):return false
+	for blocker:Rect2 in _blockers[0]:
+		if blocker.intersects(swept):return false
+	return true
+
+## A nearby full-body floor point reached by that inward step. This does not
+## move the actor or alter graph points; a caller must walk the returned prefix.
+func boundary_entry(point:Vector3) -> Vector3:
+	if not point.is_finite() or point_clear(0,point):return Vector3.INF
+	var cell:=Vector2i(roundi(point.x/CELL),roundi(point.z/CELL))
+	var best:Vector3=Vector3.INF;var distance:float=INF
+	for x:int in range(-1,2):
+		for z:int in range(-1,2):
+			var key:String=_cell_key(0,cell+Vector2i(x,z))
+			if not _floor_ids.has(key):continue
+			var candidate:Vector3=_graph.get_point_position(int(_floor_ids[key]))
+			var length:float=point.distance_to(candidate)
+			if length<distance and boundary_entry_step(point,candidate):best=candidate;distance=length
+	return best
+
 func _endpoint(value:Variant) -> Dictionary:
 	if not value is Dictionary or value.get("kind")!="floor" or not Building.number(value.get("level"),0,1,true):return {"ok":false,"error":"Route endpoint requires an explicit floor level."}
 	var point:Variant=value.get("position")
@@ -282,8 +321,44 @@ func state_snapshot() -> Dictionary:return _state.duplicate(true)
 func route_avoiding(from:Dictionary,to:Dictionary,occupied:Array[Vector3],radius:float) -> Dictionary:
 	# Per-query dynamic bodies do not change the authored graph or generation.
 	# Calls are synchronous; restore exactly the points disabled by this query.
+	var changed:PackedInt64Array=_disable_occupied_points(from.position,occupied,radius)
+	var result:Dictionary=route(from,to)
+	for id:int in changed:_graph.set_point_disabled(id,false)
+	return result
+
+func _disable_occupied_points(start:Vector3,occupied:Array[Vector3],radius:float)->PackedInt64Array:
+	if occupied.is_empty():return PackedInt64Array()
+	# Bound candidate enumeration before converting coordinates to integer cells.
+	# Broad or nonfinite inputs retain the old graph-bounded scan and predicates.
+	# The index belongs to this graph: live land can belong to another venue.
+	if not is_finite(radius):return _disable_occupied_points_full_scan(start,occupied,radius)
+	for body:Vector3 in occupied:
+		if not body.is_finite() or absf(body.x)>100000000.0 or absf(body.z)>100000000.0:
+			return _disable_occupied_points_full_scan(start,occupied,radius)
+	if radius<=0:return PackedInt64Array()
+	var span:float=ceil(radius/CELL)*2.0+5.0
+	if span*span*2.0*occupied.size()>=_floor_ids.size():return _disable_occupied_points_full_scan(start,occupied,radius)
 	var changed:PackedInt64Array=[]
-	var start:Vector3=from.position
+	for body:Vector3 in occupied:
+		# An extra cell keeps this broad phase conservative at floating boundaries;
+		# the exact original 3D distance and floor-height tests decide every node.
+		var low:=Vector2i(floori((float(body.x)-radius)/CELL)-1,floori((float(body.z)-radius)/CELL)-1)
+		var high:=Vector2i(ceili((float(body.x)+radius)/CELL)+1,ceili((float(body.z)+radius)/CELL)+1)
+		for level:int in [0,1]:
+			for x:int in range(low.x,high.x+1):
+				for z:int in range(low.y,high.y+1):
+					var key:String=_cell_key(level,Vector2i(x,z))
+					if not _floor_ids.has(key):continue
+					var id:int=_floor_ids[key]
+					if _graph.is_point_disabled(id):continue
+					var point:Vector3=_graph.get_point_position(id)
+					if absf(body.y-point.y)>.1 or point.distance_to(body)>=radius:continue
+					if point.distance_to(start)<.36 and point.distance_to(body)>=start.distance_to(body)-.00001:continue
+					_graph.set_point_disabled(id,true);changed.append(id)
+	return changed
+
+func _disable_occupied_points_full_scan(start:Vector3,occupied:Array[Vector3],radius:float)->PackedInt64Array:
+	var changed:PackedInt64Array=[]
 	for id:int in _graph.get_point_ids():
 		if str(_locations[id].kind)!="floor" or _graph.is_point_disabled(id):continue
 		var point:Vector3=_graph.get_point_position(id)
@@ -293,9 +368,7 @@ func route_avoiding(from:Dictionary,to:Dictionary,occupied:Array[Vector3],radius
 			# a disabled start would prevent even a route out of that overlap.
 			if point.distance_to(start)<.36 and point.distance_to(body)>=start.distance_to(body)-.00001:continue
 			_graph.set_point_disabled(id,true);changed.append(id);break
-	var result:Dictionary=route(from,to)
-	for id:int in changed:_graph.set_point_disabled(id,false)
-	return result
+	return changed
 
 # --- Blocked-route diagnosis --------------------------------------------------
 # Routing itself never asks who is in the way. These answer it afterwards, from

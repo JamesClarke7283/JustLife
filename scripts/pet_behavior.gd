@@ -118,7 +118,7 @@ func _interrupt_care(id: String) -> void:
 		var sim: LifeSim = member.sim
 		for index: int in range(sim.action_queue.size() - 1, -1, -1):
 			var action: Dictionary = sim.action_queue[index]
-			if str(action.get("target_id", "")) == id and str(action.get("id", "")) in LifePetCare.interaction_ids(): sim.cancel_action(index)
+			if str(action.get("target_id", "")) == id and (str(action.get("id", "")) in LifePetCare.interaction_ids() or str(action.get("id", "")) == "bathe_pet"): sim.cancel_action(index)
 
 func _clearance_spot(id: String) -> Vector3:
 	var actor: LifePetActor = app.pet_actors[id]
@@ -484,6 +484,7 @@ func _walk(id: String, actor: LifePetActor, errand: Dictionary, seconds: float) 
 				if bool(detour.get("ok", false)): errand.path = detour.points; errand.segments = detour.segments; errand.index = 0
 			if float(errand.blocked) > (BLOCKED_TIMEOUT if here >= 0 else STAIR_TIMEOUT): _give_up(id, actor, errand, here)
 			return moved
+		if app.world.construction.doors.before_pet_step(actor,next,seconds):return moved
 		if gap > .001: actor.rotation.y = atan2(point.x - actor.position.x, point.z - actor.position.z)
 		actor.position = next
 		if bool(errand.get("carrying", false)):
@@ -662,7 +663,7 @@ func _play(id: String, actor: LifePetActor, errand: Dictionary, toy: Dictionary,
 	# stays at the retrieval point and is restored when the activity ends.
 	var origin: Vector3 = errand.toy_origin
 	toy.node.position = origin + actor.basis.x * sin(elapsed * 1.8) * .12
-	toy.node.rotation.y += minutes * 1.7
+	toy.node.rotation.y = wrapf(toy.node.rotation.y + minutes * 1.7, -PI, PI)
 	needs.fun = minf(100.0, float(needs.fun) + minutes * 2.0)
 	if elapsed >= float(errand.squeak_at):
 		errand.squeak_at = elapsed + 3.2

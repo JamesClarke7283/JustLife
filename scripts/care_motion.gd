@@ -5,9 +5,9 @@ extends RefCounted
 ## pair walks on the lead. The household still owns what the care achieves;
 ## this owns only what it looks like, on one clock both bodies share.
 
-const CARE_ACTIONS: Array[String] = ["pet_pet", "pet_tummy_rub", "pet_tug", "pet_feed", "pet_walk", "pet_teach_trick", "pet_train_social", "pet_train_logic"]
+const CARE_ACTIONS: Array[String] = ["pet_pet", "pet_tummy_rub", "pet_play", "pet_tug", "pet_feed", "pet_walk", "pet_teach_trick", "pet_train", "pet_train_social", "pet_train_logic", "bathe_pet"]
 ## How far in front of the Lifelet each beat puts the animal.
-const REACH: Dictionary = {"pet_pet": .62, "pet_tummy_rub": .62, "pet_tug": 1.0, "pet_teach_trick": .85, "pet_train_social": .85, "pet_train_logic": .85, "pet_walk": .55}
+const REACH: Dictionary = {"pet_pet": .62, "pet_tummy_rub": .62, "pet_play": .85, "pet_tug": 1.0, "pet_teach_trick": .85, "pet_train": .85, "pet_train_social": .85, "pet_train_logic": .85, "pet_walk": .55, "bathe_pet": .62}
 const WALK_CLIP: float = .08
 const WALK_LAPS: int = 2
 const PET_STEP: float = 1.1
@@ -15,13 +15,51 @@ const PET_STEP: float = 1.1
 var app: Node
 ## member id -> {pet, action, time, origin, path, length}
 var sessions: Dictionary = {}
+## Exact queued instructions waiting for a pet to leave furniture or reach a
+## stair landing. Keep these transient: a canceled instruction must not return.
+var exit_waits: Dictionary = {}
 
 
 func _init(owner_app: Node = null) -> void:
 	app = owner_app
 
 
+func prepare(member_id: String, action: Dictionary) -> bool:
+	exit_waits.erase(member_id)
+	if str(action.get("id", "")) not in CARE_ACTIONS: return true
+	var pet_id: String = str(action.get("target_id", ""))
+	if not app.pet_actors.has(pet_id): return true
+	# A pet can start its own errand while this instruction waits behind another
+	# Lifelet activity. Check again when it reaches the front of the queue.
+	if not app._pet_errand(pet_id).is_empty():
+		app.pet_behavior().command(pet_id, "pet_stop_playing")
+		if not app._pet_errand(pet_id).is_empty():
+			exit_waits[member_id] = {"pet": pet_id, "action": action}
+			return false
+	return true
+
+
+func resume_waiters() -> void:
+	for member_id: String in exit_waits.keys():
+		var waiting: Dictionary = exit_waits[member_id]
+		var member: LifeSim = app.household.member_sim(member_id)
+		if member == null or not is_same(member.get_current_action(), waiting.action):
+			exit_waits.erase(member_id)
+			continue
+		if not app._pet_errand(str(waiting.pet)).is_empty(): continue
+		exit_waits.erase(member_id)
+		app._member_action_started(member_id, waiting.action)
+
+
 func holds(pet_id: String) -> bool:
+	# A care request owns the animal during the approach too. Waiting until
+	# the first active pose lets autonomy move it away from the queued target.
+	for member: Dictionary in app.household.members:
+		var current: Dictionary = member.sim.get_current_action()
+		if str(current.get("target_id", "")) == pet_id and str(current.get("id", "")) in CARE_ACTIONS:
+			var waiting: Dictionary = exit_waits.get(str(member.id), {})
+			if is_same(waiting.get("action", {}), current): continue
+			return true
 	for session: Dictionary in sessions.values():
 		if str(session.pet) == pet_id: return true
 	return false
@@ -45,7 +83,7 @@ func anchor(member_id: String, action: Dictionary, action_id: String, delta: flo
 	var toward: Vector3 = pet.global_position - at
 	var details: Dictionary = {"kind": "standing", "care_time": float(session.time), "care_forward": pet.global_basis.z.normalized()}
 	match action_id:
-		"pet_pet": details["care_target"] = pet.back_point()
+		"pet_pet", "bathe_pet": details["care_target"] = pet.back_point()
 		"pet_tummy_rub": details["care_target"] = pet.belly_point()
 		"pet_tug": details["care_target"] = pet.mouth_point()
 		"pet_feed":
@@ -95,9 +133,9 @@ func present_pets(delta: float) -> Dictionary:
 		var facing: Vector3 = -dir
 		var action_id: String = str(session.action)
 		match action_id:
-			"pet_pet", "pet_tummy_rub":
+			"pet_pet", "pet_tummy_rub", "bathe_pet":
 				goal = person + dir * float(REACH[action_id]); facing = Vector3(-dir.z, 0, dir.x)
-			"pet_tug", "pet_teach_trick", "pet_train_social", "pet_train_logic":
+			"pet_play", "pet_tug", "pet_teach_trick", "pet_train", "pet_train_social", "pet_train_logic":
 				goal = person + dir * float(REACH[action_id])
 			"pet_feed":
 				# The far side of the bowl from the Lifelet, as close as clear

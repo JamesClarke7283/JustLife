@@ -201,7 +201,7 @@ func tick_bell(delta:float)->void:
 			var route:PackedVector3Array=app.traversal._floor_route(actor.position,exit,id)
 			if route.size()>1:
 				var next:Vector3=actor.position.move_toward(route[1],LifePedestrianPace.distance("indoor",delta,speed))
-				if app.traversal._step_clear(id,actor.position,next):
+				if app.traversal._step_clear(id,actor.position,next) and not app.world.construction.doors.before_step(actor,id,next,delta*float(speed)):
 					var direction:Vector3=route[1]-actor.position
 					actor.rotation.y=lerp_angle(actor.rotation.y,atan2(direction.x,direction.z),minf(delta*6,1))
 					actor.position=next;moving=true
@@ -213,7 +213,7 @@ func tick_bell(delta:float)->void:
 			var route:PackedVector3Array=app.traversal._floor_route(actor.position,doorstep,id)
 			if route.size()>1:
 				var next:Vector3=actor.position.move_toward(route[1],LifePedestrianPace.distance("indoor",delta,speed))
-				if app.traversal._step_clear(id,actor.position,next):
+				if app.traversal._step_clear(id,actor.position,next) and not app.world.construction.doors.before_step(actor,id,next,delta*float(speed)):
 					actor.position=next;moving=true
 		# Face the door while waiting to be answered.
 		var toward:Vector3=_door()-actor.position

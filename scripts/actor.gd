@@ -135,6 +135,7 @@ var _blink_elapsed: float = -1.0
 var _smile: float = 0.0
 var _activity_anchor: Dictionary = {}
 var meal_presentation: Dictionary = {}
+var door_presentation: Dictionary = {}
 ## The controller's account of a swim in progress: `stage` ("pickup", "carry",
 ## "enter"), the `toy` being handled, `t` seconds into the stage and the world
 ## points the pose reaches for. Visual only, like `meal_presentation`.
@@ -1597,6 +1598,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		return
 	if not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation and not _reconstructing_meal and not _reconstructing_rest:_update_voice(delta, speed_factor, moving, action_id)
 	if is_instance_valid(_mop) and action_id!="mop_puddle":_mop.visible=false
+	if bool(door_presentation.get("walking",false)):moving=true
 	var animation_delta: float = delta * clampf(speed_factor, 0.0, 3.0)
 	# Pause freezes the entire presentation, including props and transition clocks.
 	if animation_delta <= 0.0 and not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation and not _reconstructing_meal and not _reconstructing_rest:
@@ -2078,6 +2080,14 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		_oven_leg_pose(pose)
 	if anchored and action_id in ["plant_wee","mop_puddle"]:_sanitation_leg_pose(pose)
 	if anchored and action_id=="mop_puddle":_mopping_pose(pose)
+	if door_presentation.has("target"):
+		var side:String=str(door_presentation.side)
+		var relaxed_arm:=Quaternion.from_euler(pose["Arm_"+side])
+		var relaxed_forearm:=Quaternion.from_euler(pose["Forearm_"+side])
+		_reach_hand(pose,side,_model.to_local(door_presentation.target),Vector3(.6 if side=="R" else -.6,-.7,-.1))
+		pose["Arm_"+side]=relaxed_arm.slerp(Quaternion.from_euler(pose["Arm_"+side]),float(door_presentation.weight)).get_euler()
+		pose["Forearm_"+side]=relaxed_forearm.slerp(Quaternion.from_euler(pose["Forearm_"+side]),float(door_presentation.weight)).get_euler()
+		blend=1.0
 	for joint_name: String in _joints:
 		var joint: Node3D = _joints[joint_name]
 		var goal_rotation: Vector3 = _rest_rotations[joint_name] + pose[joint_name]
