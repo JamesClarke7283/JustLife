@@ -630,8 +630,9 @@ func set_activity_anchor(world_position: Vector3,world_yaw: float,anchor_kind: S
 
 	if details.get("desk_surface_y") is float or details.get("desk_surface_y") is int:
 		if is_finite(float(details.desk_surface_y)): _activity_anchor["desk_surface_y"] = float(details.desk_surface_y)
-	for key: String in ["desk_front_edge","desk_forward","attention_target","plate_position","mop_contact","swim_from","swim_to","care_target","care_forward","care_collar"]:
+	for key: String in ["desk_front_edge","desk_forward","attention_target","tv_target","plate_position","mop_contact","swim_from","swim_to","care_target","care_forward","care_collar"]:
 		if details.get(key) is Vector3 and details[key].is_finite(): _activity_anchor[key] = details[key]
+	if details.get("tv_water") is bool:_activity_anchor["tv_water"]=details.tv_water
 	if is_instance_valid(details.get("oven")):_activity_anchor["oven"]=details.oven
 	# Facts for ActorMotion: which garden piece, and the controller's clock
 	# and phase for a pet-care or car beat.
@@ -1577,6 +1578,26 @@ func reconstruct_rest_pose(action_id:String)->void:
 	_smile=0.0
 	for entry:Dictionary in _smile_shapes:entry.mesh.set_blend_shape_value(int(entry.index),0.0)
 
+func reconstruct_door_pose()->void:
+	if _model==null or not door_presentation.has("target"):return
+	_reconstructing_rest=true
+	animate(0.0,0.0,false,"")
+	_reconstructing_rest=false
+
+func reconstruct_tv_pose(action_id:String)->void:
+	if _model==null or not _activity_anchor.has("tv_target") or str(_activity_anchor.get("action",""))!=action_id:return
+	_reconstructing_rest=true
+	animate(0.0,0.0,false,action_id)
+	_reconstructing_rest=false
+
+func reconstruct_guest_pose(action_id:String,elapsed_seconds:float)->void:
+	if _model==null or _activity_anchor.is_empty():return
+	_motion_action=action_id
+	_action_time=maxf(0.0,elapsed_seconds)
+	_reconstructing_rest=true
+	animate(0.0,0.0,false,action_id)
+	_reconstructing_rest=false
+
 func reconstruct_sanitation_pose(action_id:String)->void:
 	if action_id not in ["plant_wee","mop_puddle"]:return
 	_reconstructing_sanitation=true
@@ -1594,6 +1615,7 @@ func _can_react_to_accident(moving:bool,action_id:String) -> bool:
 
 
 func animate(delta: float, speed_factor: float, moving: bool, action_id: String) -> void:
+	if action_id=="go_on_date":action_id="flirt"
 	if _model == null or (delta <= 0.0 and not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation and not _reconstructing_meal and not _reconstructing_rest):
 		return
 	if not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation and not _reconstructing_meal and not _reconstructing_rest:_update_voice(delta, speed_factor, moving, action_id)
@@ -1633,7 +1655,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 	# directly makes live and paused reconstruction agree without frame lag.
 	var blend: float = 1.0 if _reconstructing_cooking or _reconstructing_sanitation or _reconstructing_meal or _reconstructing_rest or (not moving and action_id=="cook" and _has_oven()) else 1.0 - exp(-animation_delta * 8.0)
 	var anchored: bool = not moving and not action_id.is_empty() and not _activity_anchor.is_empty()
-	anchored = anchored and (str(_activity_anchor.get("action","")) in ["",action_id])
+	anchored = anchored and (str(_activity_anchor.get("action","")) in ["",action_id] or (action_id=="flirt" and str(_activity_anchor.get("action",""))=="go_on_date"))
 	var anchor_kind: String = str(_activity_anchor.get("kind","")) if anchored else ""
 	var pose: Dictionary = {}
 	for joint_name: String in JOINT_NAMES:
@@ -2012,6 +2034,13 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 	if anchored and str(_activity_anchor.get("outdoor_kind",""))=="outdoor_swing":
 		shaped=ActorMotion.garden_swing(self,pose)
 		lean=shaped.lean
+	if anchored and bool(_activity_anchor.get("tv_water",false)):
+		_seated_pose(pose)
+		pose["UpperArm_L"]=Vector3(-.2,0,.3)
+		pose["UpperArm_R"]=Vector3(-.2,0,-.3)
+		pose["Forearm_L"]=Vector3(-.45,0,0)
+		pose["Forearm_R"]=Vector3(-.45,0,0)
+		lean=Vector3(-.12,0,0);shaped["seated"]=true
 	if bool(meal_presentation.get("carrying",false)):
 		# Props keep their authored metre scale across ages. Solve the hands from
 		# the actual held transform so smaller Lifelets reach the same ceramic.
@@ -2023,6 +2052,9 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		if water_shape.has("lean"): lean = water_shape.lean
 		offset.y -= float(water_shape.get("drop", 0.0))
 		offset += global_basis.inverse() * (water_shape.get("shift", Vector3.ZERO) as Vector3)
+	if anchored and _activity_anchor.has("tv_target"):
+		var direction:Vector3=_model.to_local(_activity_anchor.tv_target)-_model.to_local(_joints.Head.global_position)
+		pose["Head"]=Vector3(clampf(-atan2(direction.y,Vector2(direction.x,direction.z).length()),-.3,.3),clampf(atan2(direction.x,direction.z),-.75,.75),0)
 	if anchored and _activity_anchor.has("attention_target") and action_id in ["homework","help_homework"]:
 		var attention_weight:float=_coaching_attention_weight() if action_id=="homework" else .85
 		var direction:Vector3=_model.to_local(_activity_anchor.attention_target)-_model.to_local(_joints.Head.global_position)
@@ -2081,6 +2113,10 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 	visual.position = offset if _reconstructing_rest else visual.position.lerp(offset, body_blend)
 	visual.rotation = _angle_lerp(visual.rotation, lean, body_blend)
 	_update_visual_followers(anchored,action_id)
+	# Car and fridge handles move in world space. Solve after the body has
+	# turned, including the first frozen pose restored from a saved activity.
+	var care_reach:bool=anchored and action_id in ["car_open_door","car_close_door"] and _activity_anchor.get("care_target") is Vector3 and _activity_anchor.care_target.is_finite()
+	if care_reach:_reach_hand(pose,"R",_model.to_local(_activity_anchor.care_target),Vector3(.7,-.6,-.1))
 	if not moving and action_id=="cook" and _has_oven():
 		_oven_cooking_pose(pose)
 		_oven_leg_pose(pose)
@@ -2098,6 +2134,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		var joint: Node3D = _joints[joint_name]
 		var goal_rotation: Vector3 = _rest_rotations[joint_name] + pose[joint_name]
 		var joint_blend:float=1.0 if (action_id=="cook" and _has_oven() and joint_name!="Head") or (anchored and action_id=="plant_wee" and (joint_name.begins_with("Leg_") or joint_name.begins_with("Shin_"))) or (anchored and action_id=="mop_puddle" and joint_name!="Head") else blend
+		if care_reach and joint_name in ["Arm_R","Forearm_R"]:joint_blend=1.0
 		joint.quaternion = joint.quaternion.slerp(Quaternion.from_euler(goal_rotation),joint_blend)
 	for entry: Dictionary in _rig_bones:
 		var skeleton: Skeleton3D = entry.skeleton
@@ -2105,12 +2142,13 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		var rest: Quaternion = entry.rest
 		var target_rotation: Quaternion = rest.inverse() * Quaternion.from_euler(pose[entry.name]) * rest
 		var joint_blend:float=1.0 if (action_id=="cook" and _has_oven() and entry.name!="Head") or (anchored and action_id=="plant_wee" and (str(entry.name).begins_with("Leg_") or str(entry.name).begins_with("Shin_"))) or (anchored and action_id=="mop_puddle" and entry.name!="Head") else blend
+		if care_reach and str(entry.name) in ["Arm_R","Forearm_R"]:joint_blend=1.0
 		skeleton.set_bone_pose_rotation(bone_index,skeleton.get_bone_pose_rotation(bone_index).slerp(target_rotation,joint_blend))
 	for rest:Dictionary in _leg_rest.values():
 		var shoe:Node3D=rest.shoe
 		if not moving and ((action_id=="cook" and _has_oven()) or (anchored and action_id in ["plant_wee","mop_puddle"])):shoe.global_basis=Basis(Vector3.UP,float(_activity_anchor.yaw))*Basis(rest.shoe_basis)
 		else:shoe.basis=Basis.IDENTITY
-	var seated: bool = not moving and ((action_id in ["relax", "watch", "toilet", "work", "study", "job", "school", "homework", "play_games", "homework_wait", "eat_meal", "bath", "play_piano", "play_chess", "study_hard", "deep_read", "host_a_chat", "dry_sit"] and anchor_kind != "standing") or (action_id in ["sleep", "nap"] and anchor_kind == "seat") or bool(shaped.get("seated", false)))
+	var seated: bool = not moving and ((action_id in ["relax", "watch", "watch_together", "toilet", "work", "study", "job", "school", "homework", "play_games", "homework_wait", "eat_meal", "bath", "play_piano", "play_chess", "study_hard", "deep_read", "host_a_chat", "dry_sit"] and anchor_kind != "standing") or (action_id in ["sleep", "nap"] and anchor_kind == "seat") or bool(shaped.get("seated", false)))
 	_sit_amount = lerpf(_sit_amount, 1.0 if seated else 0.0, blend)
 	for entry: Dictionary in _sit_shapes:
 		entry.mesh.set_blend_shape_value(int(entry.index), _sit_amount)

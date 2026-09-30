@@ -244,6 +244,47 @@ func before_step(actor:LifeActor,id:String,to:Vector3,time:float)->bool:
 			if part>=1.0:state.phase="leave";door.owner="";actor.door_presentation={}
 	return true
 
+## A host can keep an already opened door clear while an invited guest passes.
+func hold_open(key:String,host_id:String)->void:
+	if not doors.has(key):return
+	var door:Dictionary=doors[key]
+	if float(door.progress)>=.98:
+		door.owner=host_id;door.idle=0.0
+
+func restore_hold(key:String,host_id:String,progress:float,direction:float,close_clock:float=-1.0)->void:
+	if not doors.has(key):return
+	var door:Dictionary=doors[key]
+	door.direction=direction;_open(door,progress)
+	if progress>=.98 or close_clock>=0:door.owner=host_id
+	if close_clock>=0 and world.actors.has(host_id):
+		var actor:LifeActor=world.actors[host_id]
+		passages[host_id]={"door":key,"actor":actor,"phase":"close","clock":close_clock,"direction":direction,"touched":true}
+		var part:float=clampf((close_clock-.20)/SWING_TIME,0.0,1.0)
+		_present(actor,door,smoothstep(0.0,.16,close_clock)*(1.0-smoothstep(0.0,.25,part)))
+		actor.reconstruct_door_pose()
+
+func release_hold(key:String,host_id:String)->void:
+	if doors.has(key) and str(doors[key].owner)==host_id:doors[key].owner=""
+
+## Explicit hospitality close uses the same real handle and leaf sequence.
+func close_by(actor:LifeActor,host_id:String,key:String,time:float)->bool:
+	if not doors.has(key):return true
+	var door:Dictionary=doors[key]
+	if float(door.progress)<=.001:cancel(host_id);return true
+	if _occupied(door,actor):return false
+	# Walking up to the latch can itself create a normal crossing passage. The
+	# host has now reached the explicit closing stance, so that earlier pass or
+	# completed doorway must yield to this close; keep only a matching live close.
+	if passages.has(host_id) and (str(passages[host_id].door)!=key or str(passages[host_id].phase)!="close"):
+		cancel(host_id)
+	if not passages.has(host_id):
+		door.owner=host_id
+		passages[host_id]={"door":key,"actor":actor,"phase":"close","clock":0.0,"direction":float(door.direction),"touched":true}
+	before_step(actor,host_id,actor.global_position,time)
+	var finished:bool=float(door.progress)<=.001
+	if finished:cancel(host_id)
+	return finished
+
 ## Retire abandoned/cancelled presentations and gently close empty doorways.
 ## This also covers a route which finishes just beyond a threshold.
 func tick(time:float)->void:

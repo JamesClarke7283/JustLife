@@ -525,34 +525,40 @@ func _give_up(id:String,route:Dictionary,actor:LifeActor,response:Dictionary,err
 func snapshot()->Dictionary:
 	var people:Dictionary={}
 	for member:Dictionary in app.household.members:
-		var id:String=str(member.id);var actor:LifeActor=app.world.actors[id]
-		var motion:Dictionary={}
-		if routes.has(id) and not bool(routes[id].get("make_way",false)):
-			var route:Dictionary=routes[id];var leg:Dictionary={}
-			for index:int in range(int(route.cursor),route.legs.size()):
-				if str(route.legs[index].kind)=="stair":leg=route.legs[index];break
-			var action:Dictionary=member.sim.get_current_action()
-			var state:Dictionary=app.motion_states.get(id,app._empty_motion())
-			var intent:Dictionary={"kind":"idle"}
-			if not action.is_empty():
-				intent.kind="action"
-				for key:String in ["id","target_id","meal_source","meal_stage","meal_plate"]:intent[key]=str(action.get(key,""))
-				if action.has("commute"):
-					intent.kind="commute";intent["destination"]=LifeJourneyState.packed(route.destination)
-			elif bool(state.walk):intent={"kind":"walk","destination":LifeJourneyState.packed(state.destination)}
-			var phase:String=str(route.phase)
-			if phase=="waiting" and int(route.ticket)==0:phase="to_wait"
-			motion={"phase":phase,"identity":int(route.identity),"ticket":int(route.ticket),"safety":bool(route.safety),"custody":str(route.get("custody","")),"destination":LifeJourneyState.packed(route.destination),"stair_id":str(leg.get("stair_id","")),"direction":int(leg.get("direction",0)),"distance":float(route.distance),"wait":LifeJourneyState.packed(route.wait) if Vector3(route.wait).is_finite() else [],"clear":LifeJourneyState.packed(route.clear) if Vector3(route.clear).is_finite() else [],"intent":intent}
-			if route.has("courtesy"):
-				motion.courtesy=route.courtesy.duplicate(true);motion.courtesy.anchor=LifeJourneyState.packed(route.courtesy.anchor)
-		people[id]={"position":LifeJourneyState.packed(actor.position),"yaw":actor.rotation.y,"motion":motion}
+		var id:String=str(member.id)
+		people[id]=snapshot_person(id,member.sim.get_current_action(),app.motion_states.get(id,app._empty_motion()))
 	return {"version":LifeJourneyState.VERSION,"next_identity":next_identity,"next_ticket":next_ticket,"members":people}
 
-func restore(data:Dictionary)->Dictionary:
+func snapshot_person(id:String,action:Dictionary,state:Dictionary={})->Dictionary:
+	var actor:LifeActor=app.world.actors[id]
+	var motion:Dictionary={}
+	if routes.has(id) and not bool(routes[id].get("make_way",false)):
+		var route:Dictionary=routes[id];var leg:Dictionary={}
+		for index:int in range(int(route.cursor),route.legs.size()):
+			if str(route.legs[index].kind)=="stair":leg=route.legs[index];break
+		var intent:Dictionary={"kind":"idle"}
+		if not action.is_empty():
+			intent.kind="action"
+			for key:String in ["id","target_id","meal_source","meal_stage","meal_plate"]:intent[key]=str(action.get(key,""))
+			if action.has("commute"):
+				intent.kind="commute";intent["destination"]=LifeJourneyState.packed(route.destination)
+		elif bool(state.get("walk",false)):intent={"kind":"walk","destination":LifeJourneyState.packed(state.destination)}
+		var phase:String=str(route.phase)
+		if phase=="waiting" and int(route.ticket)==0:phase="to_wait"
+		motion={"phase":phase,"identity":int(route.identity),"ticket":int(route.ticket),"safety":bool(route.safety),"custody":str(route.get("custody","")),"destination":LifeJourneyState.packed(route.destination),"stair_id":str(leg.get("stair_id","")),"direction":int(leg.get("direction",0)),"distance":float(route.distance),"wait":LifeJourneyState.packed(route.wait) if Vector3(route.wait).is_finite() else [],"clear":LifeJourneyState.packed(route.clear) if Vector3(route.clear).is_finite() else [],"intent":intent}
+		if route.has("courtesy"):
+			motion.courtesy=route.courtesy.duplicate(true);motion.courtesy.anchor=LifeJourneyState.packed(route.courtesy.anchor)
+	return {"position":LifeJourneyState.packed(actor.position),"yaw":actor.rotation.y,"motion":motion}
+
+func restore(data:Dictionary,preserve_existing:bool=false)->Dictionary:
 	# The detached household validator has already checked the complete layout,
 	# profiles, saved facts, exit reservations and FIFO identities. Install all
 	# actor positions before deriving any body-aware runtime path.
-	reset()
+	# Rebuilding floor legs calls request(), but those temporary routes must not
+	# consume identities when a guest is restored after the household.
+	var restored_identity:int=maxi(next_identity,int(data.next_identity)) if preserve_existing else int(data.next_identity)
+	var restored_ticket:int=maxi(next_ticket,int(data.next_ticket)) if preserve_existing else int(data.next_ticket)
+	if not preserve_existing:reset()
 	for id:String in data.members:
 		var record:Dictionary=data.members[id];var actor:LifeActor=app.world.actors[id]
 		actor.position=LifeJourneyState.vector(record.position);actor.rotation.y=float(record.yaw)
@@ -591,6 +597,7 @@ func restore(data:Dictionary)->Dictionary:
 			elif str(saved.phase)=="waiting":_lock(stair_id).queue.append({"id":id,"ticket":int(saved.ticket)})
 		var prepared:bool=str(saved.phase)!="route" or (not stair_id.is_empty() and wait.is_finite())
 		routes[id]={"identity":int(saved.identity),"generation":app.world.lot_navigation.generation,"destination":destination,"legs":legs,"cursor":0,"phase":str(saved.phase),"points":points,"point":0,"prepared":prepared,"wait":wait,"ticket":int(saved.ticket),"distance":float(saved.distance),"safety":bool(saved.safety),"custody":str(saved.custody),"stair_id":stair_id,"exit":exit,"clear":clear,"clear_points":clear_points,"error":""}
+		if app.household.member_sim(id)==null:continue
 		var motion:Dictionary=app.motion_states[id]
 		motion.traversal=routes[id];motion.path=PackedVector3Array([actor.position,destination]);motion.index=0
 		motion.walk=str(saved.intent.kind)=="walk"
@@ -599,7 +606,8 @@ func restore(data:Dictionary)->Dictionary:
 	for id:String in data.members:
 		if data.members[id].motion.has("courtesy"):courtesy.restore(self,id,data.members[id].motion.courtesy)
 	for lock:Dictionary in stairs.values():lock.queue.sort_custom(func(a:Dictionary,b:Dictionary)->bool:return int(a.ticket)<int(b.ticket))
-	next_identity=int(data.next_identity);next_ticket=int(data.next_ticket)
+	next_identity=restored_identity
+	next_ticket=restored_ticket
 	return {"ok":true}
 
 func validate_current_floor_courtesy()->Dictionary:
@@ -608,7 +616,10 @@ func validate_current_floor_courtesy()->Dictionary:
 func reconstruct()->Dictionary:
 	# Called after held props have their exact saved ownership/presentation.
 	# This paints a zero-time pose; no step, reservation, food or clock advances.
-	for id:String in app.household.journeys.members:
+	var people:Array=app.household.journeys.get("members",{}).keys()
+	for id:String in routes:
+		if not people.has(id):people.append(id)
+	for id:String in people:
 		var actor:LifeActor=app.world.actors[id]
 		if routes.has(id) and str(routes[id].phase)=="transit":
 			var route:Dictionary=routes[id]
@@ -689,6 +700,14 @@ func _floor_only(route:Dictionary)->bool:
 		if str(leg.kind)!="floor":return false
 	return int(route.ticket)==0 and str(route.stair_id).is_empty() and not bool(route.safety)
 
+func _aside_blocks_doorway(anchor:Vector3)->bool:
+	# A yielding Lifelet may stop here indefinitely. Keep that standing body
+	# out of every doorway so a cleared route does not leave its door held open.
+	for door:Dictionary in app.world.construction.doors.doors.values():
+		var local:Vector3=door.root.to_local(anchor)
+		if absf(local.y)<.25 and absf(local.x)<float(door.width)*.5+BODY_GAP*.5 and absf(local.z)<ROUTE_CLEARANCE:return true
+	return false
+
 func _aside_anchor(id:String,start:Vector3,corridor:PackedVector3Array,away_from:Vector3)->Vector3:
 	# The nearest free cell clear of the other body's corridor, preferring cells
 	# that lead away from the refused step so the yielder backs off rather than
@@ -699,6 +718,7 @@ func _aside_anchor(id:String,start:Vector3,corridor:PackedVector3Array,away_from
 			var anchor:Vector3=start+Vector3(direction.x,0,direction.y)*distance
 			anchor.x=snappedf(anchor.x,.25);anchor.z=snappedf(anchor.z,.25);anchor.y=start.y
 			if anchor.distance_to(start)<.2 or not _free(id,anchor) or not _sweep_clear(id,start,anchor):continue
+			if _aside_blocks_doorway(anchor):continue
 			if _corridor_distance(anchor,corridor)<ROUTE_CLEARANCE:continue
 			var score:float=distance-(anchor.distance_to(away_from) if away_from.is_finite() else 0.0)*.5
 			if score<best_score:best_score=score;best=anchor

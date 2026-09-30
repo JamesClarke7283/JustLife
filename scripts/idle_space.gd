@@ -70,6 +70,7 @@ func _clear_route(id:String,origin:Vector3,min_length:float=0.0) -> PackedVector
 	candidates.sort_custom(func(a:Vector3,b:Vector3)->bool:return a.distance_squared_to(origin)<b.distance_squared_to(origin))
 	for destination:Vector3 in candidates:
 		if not app._wait_position_clear(destination):continue
+		if app.traversal._aside_blocks_doorway(destination):continue
 		var reserved:bool=false
 		for other_id:String in app.motion_states:
 			if other_id==id:continue

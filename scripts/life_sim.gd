@@ -8,6 +8,7 @@ signal action_finished(action: Dictionary)
 var meal_service: Node
 ## The swim, pool-toy and towel flows, which need the world (towels, racks, puddles).
 var stroller_service: Node
+var tv_service: Node
 var water_service: Node
 var sanitation_service: Node
 var household_service: Node
@@ -192,7 +193,7 @@ var story_events: Array = []
 var story_history: Array = []
 var _story_generated_day: int = 1
 const STORY_KINDS: Array[String] = ["neighbor_invitation", "career_opportunity", "hobby_exhibition", "garden_exchange", "learning_circle", "community_picnic", "block_party", "flea_market"]
-const SOCIAL_ACTIONS: Array[String] = ["friendly", "joke", "deep_talk", "hug", "share_interests", "sympathize", "gossip", "flirt", "argue", "ask_partner", "commit", "break_up", "playful_prank", "bold_introduction", "comfort_loss", "share_memories"]
+const SOCIAL_ACTIONS: Array[String] = ["friendly", "joke", "deep_talk", "hug", "share_interests", "sympathize", "gossip", "flirt", "argue", "ask_partner", "go_on_date", "commit", "break_up", "playful_prank", "bold_introduction", "comfort_loss", "share_memories"]
 # Spending satisfaction: a perk is bought once and changes a multiplier at the
 # same call sites the traits already use, while a potion acts on the spot.
 const REWARDS: Dictionary = {
@@ -236,7 +237,7 @@ const TRIP_MINUTES: float = 15.0
 const SPIRIT_BLOCKED: Array[String] = [
 	"career_day", "school_day", "job", "work", "birthday",
 	"cook", "snack", "eat_meal", "store_meal",
-	"flirt", "ask_partner", "commit", "break_up",
+	"flirt", "ask_partner", "go_on_date", "commit", "break_up",
 ]
 const PASSING_CAUSES: Dictionary = {
 	"old_age": "a long life, well lived",
@@ -250,10 +251,11 @@ var starvation_minutes: float = 0.0
 var exhaustion_minutes: float = 0.0
 var deferred_passing_minutes: float = 0.0
 var pending_passing_cause: String = ""
-const RELATIONSHIP_ACTIONS: Array[String] = ["ask_partner", "commit", "break_up"]
-const SOCIAL_STAGES: Array[String] = ["met", "friends", "close_friends", "spark", "partners", "committed", "separated"]
+const RELATIONSHIP_ACTIONS: Array[String] = ["ask_partner", "go_on_date", "commit", "break_up"]
+const SOCIAL_STAGES: Array[String] = ["met", "friends", "close_friends", "spark", "partners", "committed", "separated", "date", "married"]
 var social_history: Array = []
 var romantic_partner: String = ""
+var resident_aliases:Dictionary = {}
 var _social_member_id: String = "player"
 var _promotion_notice_day: int = -1
 var _leisure_history: Array[String] = []  # the last few leisure choices, so autonomy varies its pastimes
@@ -316,6 +318,7 @@ func new_household(profile: Dictionary) -> void:
 	for relationship: Dictionary in relationships.values():
 		_normalize_relationship(relationship, false)
 	romantic_partner = ""
+	resident_aliases.clear()
 	social_history.clear()
 	_recent_social_events.clear()
 	_social_partners.clear()
@@ -476,8 +479,9 @@ func _build_actions() -> void:
 	_define("gossip", "Share a bit of gossip", 20.0, {"social": 16.0, "fun": 8.0}, 0, "charisma", 10.0, "Trade the neighborhood's small stories. Fun, but the same story twice lands flat.")
 	_define("flirt", "Flirt", 25.0, {"social": 26.0, "fun": 10.0}, 0, "charisma", 20.0, "Express interest. Friendship helps your advances land well.")
 	_define("argue", "Argue", 20.0, {"social": 8.0, "fun": -12.0}, 0, "charisma", 8.0, "Vent your frustration, at a cost to the relationship.")
-	_define("ask_partner", "Ask to become partners", 35.0, {"social": 15.0, "fun": 8.0}, 0, "charisma", 12.0, "Choose a relationship together. Both adults need 45 friendship and 35 romance, and must be available.")
-	_define("commit", "Make a commitment", 45.0, {"social": 20.0, "fun": 10.0}, 0, "charisma", 16.0, "Affirm your shared future with your current partner, with 65 friendship and 65 romance.")
+	_define("ask_partner", "Would you like to be my partner?", 35.0, {"social": 15.0, "fun": 8.0}, 0, "charisma", 12.0, "After three successful flirts, ask your friend to become your partner.")
+	_define("go_on_date", "Spend a date together", 90.0, {"social": 36.0, "fun": 30.0}, 0, "charisma", 16.0, "Set aside time for a dedicated date with your partner at home or while meeting off-lot. Finish two dates to unlock marriage.")
+	_define("commit", "Would you like to move in and marry me?", 45.0, {"social": 20.0, "fun": 10.0}, 0, "charisma", 16.0, "After two completed dates, ask your partner to marry and share your home.")
 	_define("break_up", "End the relationship", 25.0, {"social": 5.0, "fun": -8.0}, 0, "", 0.0, "End your partnership honestly. Friendship falls by 12 and romance by 35; both become available again.")
 	_define("comfort_loss", "Comfort over loss", 25.0, {"social": 32.0, "fun": 8.0}, 0, "charisma", 20.0, "Console a grieving friend or family member. Warm words make the sorrow easier to bear.")
 	_define("share_memories", "Share memories", 30.0, {"social": 28.0, "fun": 12.0}, 0, "charisma", 16.0, "Talk about happy times spent together, keeping their spirit alive in the home.")
@@ -1111,6 +1115,10 @@ func complete_away_return() -> bool:
 
 
 func queue_action(id: String, target_id: String = "", target_position: Vector3 = Vector3.ZERO, recipe: String = "garden_skillet") -> bool:
+	if id=="watch_together":
+		if is_instance_valid(tv_service):return tv_service.request(self,target_id,true)
+		_emit_notice("Choose Watch TV Together at a television with a companion and a free seat.")
+		return false
 	if id == "drive_to_work":
 		var reason: String = str(get_action_availability(id, target_id).reason)
 		if not reason.is_empty(): _emit_notice(reason); return false
@@ -1278,6 +1286,7 @@ func begin_current_action() -> void:
 	if is_instance_valid(meal_service) and not meal_service.before_begin(self,action):return
 	if is_instance_valid(water_service) and not water_service.before_begin(self,action):return
 	if is_instance_valid(stroller_service) and not stroller_service.before_begin(self,action):return
+	if is_instance_valid(tv_service) and not tv_service.before_begin(self,action):return
 	var cost: int = int(action["cost"])
 	if str(action.id) == "birthday" and str(action.get("birthday_from_stage","")) != str(character.age_stage):
 		_emit_notice("This birthday has already arrived. Choose a new celebration for the next stage.")
@@ -1649,6 +1658,7 @@ func _step(game_minutes: float) -> void:
 	_reconsider_active_autonomy()
 	if not action_queue.is_empty() and str(action_queue[0]["phase"]) == "active" and str(action_queue[0].id) != "help_homework" and not (str(action_queue[0].id) == LifeBabyPlan.ACTION_ID and not bool(action_queue[0].get("cooperation_primary",false))):
 		var action: Dictionary = action_queue[0]
+		if is_instance_valid(tv_service) and LifeTVGroup.owns(action):tv_service.effects(action)
 		var actual_step: float = minf(game_minutes, float(action["duration"]) - float(action["elapsed"]))
 		# A leash walk earns completion only after the pair has physically returned.
 		if str(action.id) == "pet_walk" and is_instance_valid(household_service) and not household_service.pet_walk_ready(self):
@@ -2132,6 +2142,7 @@ func _maybe_credit_companion(action_id: String, at: Vector3) -> void:
 
 
 func _normalize_relationship(person: Dictionary, legacy: bool) -> void:
+	LifeRelationshipProgress.normalize(person)
 	person["life_stage"] = str(person.get("life_stage", "adult"))
 	person["bond"] = str(person.get("bond", "none"))
 	person["family_role"] = str(person.get("family_role", "none"))
@@ -2322,13 +2333,14 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 					reason = "End your current partnership before starting another."
 				elif not str(_social_partners.get(target, "")).is_empty():
 					reason = "%s is already in a partnership." % person.name
-				elif mutual_friendship < 45.0 or mutual_romance < 35.0:
-					reason = "Both Lifelets need at least 45 friendship and 35 romance before becoming partners."
+				else:
+					reason=LifeRelationshipProgress.partner_reason(person)
+					if reason.is_empty() and mutual_friendship<35.0:reason="Both Lifelets must be friends before becoming partners."
+			elif id == LifeRelationshipProgress.DATE:
+				reason=LifeRelationshipProgress.date_reason(self,target)
 			elif id == "commit":
-				if romantic_partner != target or str(person.get("bond", "none")) != "partners":
-					reason = "Make a commitment with your current partner."
-				elif mutual_friendship < 65.0 or mutual_romance < 65.0:
-					reason = "Both Lifelets need at least 65 friendship and 65 romance before making a commitment."
+				reason=LifeRelationshipProgress.proposal_reason(self,target)
+				if reason.is_empty() and is_instance_valid(cooperation_owner):reason=cooperation_owner.marriage_error(_social_member_id,target)
 			elif id == "break_up" and romantic_partner != target:
 				reason = "You are not currently partners."
 	return {"available":reason.is_empty(), "reason":reason}
@@ -2536,6 +2548,8 @@ func _social_detail(stage: String, name: String) -> Dictionary:
 		"spark": return {"label":"A mutual spark", "detail":"Your connection with %s is becoming romantic." % name}
 		"partners": return {"label":"Choosing each other", "detail":"You and %s agreed to become partners." % name}
 		"committed": return {"label":"A shared future", "detail":"You and %s made a commitment to each other." % name}
+		"date": return {"label":"A date together", "detail":"You and %s set aside time for a date." % name}
+		"married": return {"label":"Just married", "detail":"You and %s married and made a home together." % name}
 		_: return {"label":"Going separate ways", "detail":"You and %s ended your partnership." % name}
 
 
@@ -2574,13 +2588,18 @@ func _apply_relationship_action(id: String, target: String) -> bool:
 			person.bond = "partners"
 			add_moodlet("Choosing each other", "Happy", "A relationship you both want to grow.", 240, 3)
 			_record_social_event(target, "partners")
+		"go_on_date":
+			LifeRelationshipProgress.complete_date(person)
+			person.friendship=minf(100.0,float(person.friendship)+8.0)
+			person.romance=minf(100.0,float(person.romance)+12.0)
+			_record_social_event(target,"date")
 		"commit":
-			person.bond = "committed"
-			add_moodlet("A shared future", "Confident", "You have affirmed your commitment to each other.", 360, 3)
-			_record_social_event(target, "committed")
+			# The world controller validates and commits the move-in transaction.
+			pass
 		"break_up":
 			romantic_partner = ""
 			person.bond = "separated"
+			LifeRelationshipProgress.separate(person)
 			person.friendship = maxf(-100.0, float(person.friendship) - 12.0)
 			person.romance = maxf(0.0, float(person.romance) - 35.0)
 			add_moodlet("A difficult conversation", "Tense", "An honest ending takes time to process.", 240, 2)
@@ -2658,6 +2677,7 @@ func _apply_social(action: Dictionary) -> bool:
 				change=5.0
 		"flirt":
 			if float(person["friendship"]) >= 30.0:
+				LifeRelationshipProgress.successful_flirt(person)
 				person["romance"] = minf(100.0, float(person["romance"]) + 16.0 * _perk_multiplier("romance"))
 				change = 5.0
 				_emit_notice("There is a spark between you and %s." % person["name"])
@@ -2718,6 +2738,8 @@ func _apply_social(action: Dictionary) -> bool:
 func _update_relationship_status(person: Dictionary) -> void:
 	if LifeFamilyGraph.is_family(str(person.get("family_role", "none"))):
 		person["status"] = LifeFamilyGraph.label(str(person.family_role))
+	elif bool(person.get("married",false)):
+		person["status"] = "Spouse"
 	elif str(person.get("bond", "none")) == "committed":
 		person["status"] = "Committed partner"
 	elif str(person.get("bond", "none")) == "partners":
@@ -3830,6 +3852,7 @@ func _reconsider_active_autonomy() -> void:
 	if action_queue.is_empty():_choose_autonomous_action()
 
 func _choose_autonomous_action() -> void:
+	if is_instance_valid(cooperation_owner) and not cooperation_owner.date_host_for(_social_member_id).is_empty():return
 	if not autonomy or not action_queue.is_empty():return
 	_idle_minutes = 0.0
 	var choice: Dictionary = _autonomous_choice()
@@ -4107,7 +4130,13 @@ func _offer_daily_story() -> void:
 	# whole-cycle count (integer division by the kind period) shifts the table
 	# one slot per eight-day cycle, so kind and host pairings drift instead of
 	# locking one-to-one.
-	var neighbor: String = LifeResidentCatalogue.IDS[(((day - 2) * 3) + (day - 2) / 8) % LifeResidentCatalogue.IDS.size()]
+	var neighbors:Array[String]=[]
+	for candidate:String in LifeResidentCatalogue.IDS:
+		# A moved-in neighbor retains their identity in old story tickets, but
+		# a Lifelet must never offer a story about socializing with themselves.
+		if relationships.has(str(resident_aliases.get(candidate,candidate))):neighbors.append(candidate)
+	if neighbors.is_empty():return
+	var neighbor: String = neighbors[(((day - 2) * 3) + (day - 2) / 8) % neighbors.size()]
 	var track: Dictionary = LifeCareers.job(str(career.get("track", "")))
 	var story_skill: String = str(track.get("skill", ""))
 	if not SKILL_NAMES.has(story_skill): story_skill = "charisma"
@@ -4126,7 +4155,7 @@ func _story_choice(id: String, label: String, changes: Dictionary = {}, requirem
 
 func _story_event(ticket: Dictionary) -> Dictionary:
 	var context: Dictionary = ticket.context
-	var neighbor: String = str(context.neighbor)
+	var neighbor: String = str(resident_aliases.get(str(context.neighbor),str(context.neighbor)))
 	var neighbor_name: String = str(relationships[neighbor].name)
 	var skill_name: String = str(context.skill)
 	var result: Dictionary = {"id":ticket.id, "kind":ticket.kind, "day":ticket.day, "title":"", "description":"", "choices":[]}
@@ -4310,7 +4339,7 @@ func get_mood() -> Dictionary:
 
 
 func get_state() -> Dictionary:
-	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "second_wind": second_wind, "wetness": wetness, "towel": towel.duplicate(true), "auto_swimwear": auto_swimwear, "bladder_grace":bladder_grace, "starvation_minutes":starvation_minutes, "exhaustion_minutes":exhaustion_minutes, "deferred_passing_minutes":deferred_passing_minutes, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "degree": degree, "criminal_record": criminal_record.duplicate(true), "wants": wants.duplicate(true), "whims": whims.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "last_bill_day": last_bill_day, "pending_bill":pending_bill.duplicate(true), "bills_paid_total":bills_paid_total, "bills_late":bills_late, "utilities_cut":utilities_cut, "insurance_policy_id":insurance_policy_id, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "passing_contacts":passing_contacts.duplicate(true), "last_passing_any":maxf(last_passing_any,-1.0), "routine_memory_days":routine_memory_days.duplicate(true)}
+	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "second_wind": second_wind, "wetness": wetness, "towel": towel.duplicate(true), "auto_swimwear": auto_swimwear, "bladder_grace":bladder_grace, "starvation_minutes":starvation_minutes, "exhaustion_minutes":exhaustion_minutes, "deferred_passing_minutes":deferred_passing_minutes, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "degree": degree, "criminal_record": criminal_record.duplicate(true), "wants": wants.duplicate(true), "whims": whims.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "last_bill_day": last_bill_day, "pending_bill":pending_bill.duplicate(true), "bills_paid_total":bills_paid_total, "bills_late":bills_late, "utilities_cut":utilities_cut, "insurance_policy_id":insurance_policy_id, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "resident_aliases":resident_aliases.duplicate(true), "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "passing_contacts":passing_contacts.duplicate(true), "last_passing_any":maxf(last_passing_any,-1.0), "routine_memory_days":routine_memory_days.duplicate(true)}
 
 
 func save_game(world_data: Array = []) -> bool:
@@ -4407,6 +4436,7 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 	for relationship: Dictionary in relationships.values():
 		_normalize_relationship(relationship, true)
 	romantic_partner = str(state.get("romantic_partner", ""))
+	resident_aliases=state.get("resident_aliases",{}).duplicate(true)
 	social_history = state.get("social_history", []).duplicate(true)
 	for entry: Dictionary in social_history:
 		entry.day = int(entry.day)
@@ -4527,6 +4557,7 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 		for key: String in ["cooperation_id","cooperation_role","meal_source","meal_stage","meal_plate","meal_seat","seat_slot"]:
 			if stored.has(key): action[key] = str(stored[key])
 		if stored.has("stroller"): action["stroller"] = stored.stroller.duplicate(true)
+		if stored.has("tv"): action["tv"] = stored.tv.duplicate(true)
 		if stored.has("commute"): action["commute"] = stored.commute.duplicate(true)
 		if stored.has("swim_lane"): action["swim_lane"] = int(stored.swim_lane)
 		if stored.has("toy_stage") and str(stored.toy_stage) in ["fetch", "pickup", "carry", "enter", "swim"]: action["toy_stage"] = str(stored.toy_stage)
@@ -4770,11 +4801,17 @@ func _validate_state(state: Dictionary) -> String:
 			return "Save contains an invalid skill."
 	# Legacy saves predate the larger roster: synthesise any catalogue
 	# neighbour they lack so the expanded neighborhood joins mid-story.
+	var aliases:Variant=state.get("resident_aliases",{})
+	if not aliases is Dictionary:return "Save contains invalid resident identities."
+	for retired:Variant in aliases:
+		if not retired is String or retired not in LifeResidentCatalogue.IDS or not aliases[retired] is String or not (str(aliases[retired])=="player" or str(aliases[retired]).begins_with("housemate_")):return "Save contains invalid resident identities."
+		if state.relationships.has(retired):return "A moved-in resident has duplicate relationships."
 	for resident_id:String in LifeResidentCatalogue.IDS:
+		if aliases.has(resident_id):continue
 		if not state["relationships"].has(resident_id):
 			state["relationships"][resident_id] = {"name": str(LifeResidentCatalogue.PEOPLE[resident_id].name), "friendship": 8.0, "romance": 0.0, "status": "Acquaintance"}
 	for required_id:String in ["maya","leo"]:
-		if not state["relationships"].has(required_id):return "Save is missing a relationship."
+		if not aliases.has(required_id) and not state["relationships"].has(required_id):return "Save is missing a relationship."
 	for person_id: String in state["relationships"]:
 		var person: Variant = state["relationships"].get(person_id)
 		if not person is Dictionary or not person.get("name") is String or not person.get("status") is String or not _number_in_range(person.get("friendship"), -100.0, 100.0) or not _number_in_range(person.get("romance"), 0.0, 100.0):
@@ -4873,6 +4910,9 @@ func _validate_state(state: Dictionary) -> String:
 		if not action is Dictionary or not _actions.has(str(action.get("id", ""))):
 			return "Save contains an invalid action."
 		var action_id: String = str(action.id)
+		if action.has("tv"):
+			var tv_error:String=LifeTVGroup.save_error(action)
+			if not tv_error.is_empty():return tv_error
 		if action.has("stroller"):
 			var stroller_error:String=LifeStrollerFlow.save_error(action)
 			if not stroller_error.is_empty():return stroller_error
@@ -4994,6 +5034,8 @@ func _validate_social_state(state: Dictionary) -> String:
 		var relationship: Dictionary = state.relationships[target]
 		if str(relationship.get("life_stage", "adult")) not in ["adult", "minor", "unknown"] or str(relationship.get("bond", "none")) not in ["none", "partners", "committed", "separated"]:
 			return "Save contains an invalid relationship stage."
+		var progress_error:String=LifeRelationshipProgress.validate(relationship)
+		if not progress_error.is_empty():return progress_error
 		var bond: String = str(relationship.get("bond", "none"))
 		var family_role: String = str(relationship.get("family_role", "none"))
 		if family_role not in LifeFamilyGraph.ROLES:
@@ -5004,12 +5046,12 @@ func _validate_social_state(state: Dictionary) -> String:
 			return "Save contains an inconsistent partnership."
 		if bond in ["partners", "committed"] and (str(state.character.get("life_stage", "adult")) != "adult" or str(relationship.get("life_stage", "adult")) != "adult"):
 			return "Save contains a partnership involving a non-adult Lifelet."
-		if not relationship.get("milestones", []) is Array or relationship.get("milestones", []).size() > 7:
+		if not relationship.get("milestones", []) is Array or relationship.get("milestones", []).size() > SOCIAL_STAGES.size():
 			return "Save contains invalid relationship milestones."
 		for stage: Variant in relationship.get("milestones", []):
 			if not stage is String or str(stage) not in SOCIAL_STAGES:
 				return "Save contains an invalid relationship milestone."
-			if LifeFamilyGraph.is_family(family_role) and str(stage) in ["spark","partners","committed","separated"]:
+			if LifeFamilyGraph.is_family(family_role) and str(stage) in ["spark","partners","committed","separated","date","married"]:
 				return "Save contains a romantic milestone between family members."
 	if not state.get("social_history", []) is Array or state.get("social_history", []).size() > MAX_PROGRESS_HISTORY:
 		return "Save contains invalid social history."
@@ -5021,7 +5063,7 @@ func _validate_social_state(state: Dictionary) -> String:
 				return "Save contains an invalid social memory."
 		if str(entry.stage) not in SOCIAL_STAGES or not _number_in_range(entry.get("day"), 1, float(state.day)) or not _number_in_range(entry.get("minutes"), 0, 1440):
 			return "Save contains an invalid social memory date."
-		if state.relationships.has(str(entry.target_id)) and LifeFamilyGraph.is_family(str(state.relationships[str(entry.target_id)].get("family_role", "none"))) and str(entry.stage) in ["spark", "partners", "committed", "separated"]:
+		if state.relationships.has(str(entry.target_id)) and LifeFamilyGraph.is_family(str(state.relationships[str(entry.target_id)].get("family_role", "none"))) and str(entry.stage) in ["spark", "partners", "committed", "separated", "date", "married"]:
 			return "Save contains an invalid romantic history between family members."
 	for action: Variant in state.get("action_queue", []):
 		if not action is Dictionary or str(action.get("id", "")) not in RELATIONSHIP_ACTIONS + ["flirt"]:

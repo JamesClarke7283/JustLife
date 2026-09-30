@@ -41,6 +41,7 @@ func activity_for(person:String)->Dictionary:
 	if is_instance_valid(sim):return sim.get_current_action()
 	var visit:LifeHomeVisit=_home_visit()
 	if visit!=null and visit.owns(person) and visit.meal.owns_place():return visit.meal.activity()
+	if visit!=null and visit.owns(person) and visit.activity.active():return visit.activity.current_action()
 	return {}
 
 func activity_records()->Array:
@@ -49,10 +50,12 @@ func activity_records()->Array:
 		if not member.sim.is_away():result.append({"id":str(member.id),"action":member.sim.get_current_action()})
 	var visit:LifeHomeVisit=_home_visit()
 	if visit!=null and visit.meal.owns_place():result.append({"id":str(visit.state.guest),"action":visit.meal.activity()})
+	elif visit!=null and visit.active() and visit.activity.owns_place():result.append({"id":str(visit.state.guest),"action":visit.activity.current_action()})
 	return result
 
-func guest_blocks(action:Dictionary)->bool:
+func guest_blocks(action:Dictionary,person:String="")->bool:
 	var visit:LifeHomeVisit=_home_visit()
+	if visit!=null and visit.active() and visit.activity.blocks(action,person):return true
 	if visit==null or not visit.meal.owns_place():return false
 	var held:Array[String]=app._activity_resources(visit.meal.activity())
 	for resource:String in app._activity_resources(action):
@@ -756,6 +759,9 @@ func finished(sim:LifeSim,action:Dictionary) -> void:
 	var person:String=member_id(sim)
 	if action.id=="cook":
 		var batch:Dictionary=food().create_batch(str(action.get("recipe","garden_skillet")),person,clampi(int(sim.skills.cooking.level)/3+1,1,3),app.current_venue,now())
+		var visit:LifeHomeVisit=_home_visit()
+		if not batch.is_empty() and visit!=null and visit.active() and str(visit.state.phase)=="inside":
+			batch.guest_extra=1;batch.initial=int(batch.initial)+1;batch.remaining=int(batch.remaining)+1
 		if not batch.is_empty():_prepend(sim,"serve_meal",str(batch.id),{"meal_source":str(batch.id)})
 	elif action.id=="serve_meal":
 		var target:Dictionary=item(str(action.target_id))
@@ -766,6 +772,8 @@ func finished(sim:LifeSim,action:Dictionary) -> void:
 		if slot.is_finite():batch.offset=[slot.x,slot.y,slot.z]
 		else:_settle_food(batch,actor(person).position)
 		if not batch.is_empty():sim._emit_notice("Dinner is ready: %d servings of %s." % [int(batch.remaining),str(LifeMeals.RECIPES[str(batch.recipe)].label).to_lower()])
+		var visit:LifeHomeVisit=_home_visit()
+		if not batch.is_empty() and int(batch.get("guest_extra",0))==1 and visit!=null and visit.active() and str(visit.state.phase)=="inside":visit.activity.offer_meal(str(batch.id))
 		if float(sim.needs.hunger)<75:_prepend(sim,"eat_meal",str(action.meal_source),{})
 	elif action.id=="eat_meal":
 		var plate:Dictionary=food().portion(str(action.get("meal_plate","")))
@@ -860,7 +868,7 @@ func call_to_meal(target:String) -> int:
 		if not is_instance_valid(actor(str(member.id))) or not actor(str(member.id)).visible:continue
 		if member.sim.queue_action("eat_meal",target,Vector3.ZERO):count+=1
 	var visit:LifeHomeVisit=_home_visit()
-	if visit!=null and visit.meal.offer(target):count+=1
+	if visit!=null and visit.activity.offer_meal(target,true):count+=1
 	return count
 
 ## Every household Lifelet who could be asked whether they want food. The player

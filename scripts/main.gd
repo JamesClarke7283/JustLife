@@ -229,6 +229,8 @@ var _truck_seen_day:int=-1
 var _truck_parked:bool=false
 var meal_flow:LifeMealFlow
 var stroller_flow:LifeStrollerFlow
+var relationship_flow:LifeRelationshipFlow
+var tv_group:LifeTVGroup
 var water_flow:LifeWaterFlow
 var household_flow:LifeHouseholdFlow
 var idle_space:RefCounted
@@ -256,6 +258,8 @@ func setup_services() -> void:
 	meal_flow=LifeMealFlow.new();meal_flow.app=self;add_child(meal_flow)
 	water_flow=LifeWaterFlow.new();water_flow.app=self;add_child(water_flow)
 	stroller_flow=LifeStrollerFlow.new();stroller_flow.app=self;add_child(stroller_flow)
+	relationship_flow=LifeRelationshipFlow.new();relationship_flow.app=self;add_child(relationship_flow)
+	tv_group=LifeTVGroup.new();tv_group.app=self;add_child(tv_group)
 	household_flow=LifeHouseholdFlow.new(self);add_child(household_flow)
 	sanitation_flow=LifeSanitationFlow.new();sanitation_flow.app=self;add_child(sanitation_flow)
 	# The weekly food truck owns its own schedule, wallet charge and delivery
@@ -1721,6 +1725,7 @@ func remove_creator_member() -> void:
 
 func start_household() -> void:
 	if is_instance_valid(stroller_flow):stroller_flow.reset()
+	if is_instance_valid(tv_group):tv_group.reset()
 	if is_instance_valid(safety):safety.free()
 	safety=null
 	household_flow.safety_data={}
@@ -1754,6 +1759,7 @@ func start_household() -> void:
 
 func setup_live(layout:Array) -> void:
 	if is_instance_valid(stroller_flow):stroller_flow.reset()
+	if is_instance_valid(tv_group):tv_group.reset()
 	_set_studio_render_quality(false)
 	close_overlay(false)
 	pending_move.clear()
@@ -4491,6 +4497,7 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 	# older tummy-rub-only list, so a click on a dog opens the same interaction
 	# panel every other object uses.
 	var actions:Array=household.pet_actions(str(item.id),bound_member_id) if str(item.kind)=="pet" else sim.get_actions_for(str(item.kind),str(item.id))
+	if is_instance_valid(tv_group):tv_group.menu(item,actions)
 	if str(item.kind)=="litter_tray":
 		var has_cat:bool=false
 		for pet:Dictionary in household.pets.get("pets",[]):
@@ -4544,6 +4551,8 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 			actions.insert(mini(1,actions.size()),{"id":LifeOutdoorActs.JOIN_ACTION,"label":"Ask to Join…","cost":0,"duration":int(LifeOutdoorActs.acts(str(item.kind)).get("duration",40)),"available":join_reason.is_empty(),"unavailable_reason":join_reason,"description":"Invite another household Lifelet to join you outdoors."})
 		actions.insert(mini(2,actions.size()),{"id":LifeOutdoorActs.CALL_FRIEND_ACTION,"label":"Call Friend Over…","cost":0,"duration":0,"available":true,"description":"Invite someone from your contacts list to come over."})
 	if residents.home_visit.active() and residents.home_visit.owns(str(item.id)) and str(residents.home_visit.state.phase)=="inside":
+		actions.insert(0,{"id":"guest_join","label":"Come Join Me","cost":0,"duration":0,"available":true,"description":"Ask your visitor to join your current activity or sit beside you."})
+		actions.insert(1,{"id":"guest_activity","label":"Suggest an activity…","cost":0,"duration":0,"available":true,"description":"Choose something for your visitor to do, or see how they are feeling."})
 		var staying:bool=bool(residents.home_visit.state.get("stay_over",false))
 		actions.insert(0,{"id":LifeOutdoorActs.STAY_OVER_ACTION,"label":"Ask to Stay Over","cost":0,"duration":0,"available":not staying,"unavailable_reason":"They are already staying over." if staying else "","description":"Override their leave timer and ask them to stay the night."})
 	if str(item.kind)=="floor_lamp" and not _find_item(str(item.id)).is_empty():
@@ -4597,6 +4606,10 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 			elif str(a.id)==LifeOutdoorActs.CALL_FRIEND_ACTION:show_call_friend_over()
 			elif str(a.id)==LifeOutdoorActs.STAY_OVER_ACTION:
 				residents.home_visit.ask_to_stay_over();close_overlay()
+			elif str(a.id)=="guest_join":
+				var joined:bool=residents.home_visit.activity.come_join(bound_member_id)
+				close_overlay();show_notice("Your visitor is coming to join you." if joined else "Choose an activity with a free place for your visitor first.")
+			elif str(a.id)=="guest_activity":show_guest_activities()
 			elif str(a.id)=="open_garage_door":
 				var was_open:bool=false
 				var garage:Dictionary=_find_item(str(item.id))
@@ -4689,6 +4702,9 @@ func show_homework_helpers(item:Dictionary) -> void:
 ## Who may join a shared dance at this music player. Each row is a real choice:
 ## the selected household members walk to the record player and dance to one
 ## shared clock. A member who cannot join says why instead of being hidden.
+func show_guest_activities() -> void:
+	if residents.home_visit.active():residents.home_visit.activity.show_choices()
+
 func show_dance_partners(item:Dictionary) -> void:
 	_begin_pause_overlay()
 	var partners:Array=household.dance_partners(str(item.id),bound_member_id)
@@ -5598,6 +5614,7 @@ func _refresh_member_targets(replan:bool=true) -> void:
 	sim.meal_service=meal_flow
 	sim.water_service=water_flow
 	sim.stroller_service=stroller_flow
+	sim.tv_service=tv_group
 	sim.sanitation_service=sanitation_flow
 	sim.household_service=household_flow
 	sim.social_witness=Callable(self,"_members_can_see_each_other")
@@ -5729,11 +5746,15 @@ func _cancel_all_cooperative_actions() -> void:
 	for member:Dictionary in household.members:household.cancel_cooperative_action(str(member.id))
 
 func queue_interaction(item:Dictionary,id:String) -> void:
+	if residents.home_visit.active() and residents.home_visit.activity.holds_member(bound_member_id):residents.home_visit.activity.cancel("")
+	if id==LifeRelationshipProgress.DATE and is_instance_valid(relationship_flow):
+		relationship_flow.start_date(bound_member_id,str(item.id));return
+	if is_instance_valid(tv_group) and tv_group.dispatch(item,id):return
 	if str(item.get("kind",""))=="passer":passing_chat.queue(item,id);return
 	if id=="hug" and str(item.get("kind",""))=="neighbor":
 		var refusal:String=embrace.refusal(str(item.id))
 		if not refusal.is_empty():show_notice(refusal);return
-	if LifeResidents.PEOPLE.has(str(item.id)) and not residents.home_visit.social_allowed(str(item.id)):
+	if LifeResidents.PEOPLE.has(str(item.id)) and not residents.home_visit.prepare_social(str(item.id)):
 		show_notice("Your guest is walking or heading home. Wait until they are ready to talk.");return
 	if id=="friendly" and residents.home_visit.owns(str(item.id)) and str(residents.home_visit.state.phase)=="waiting":
 		residents.home_visit.welcome(bound_member_id);refresh_hud();return
@@ -5855,6 +5876,7 @@ func _bind_member(id:String) -> void:
 	sim.meal_service=meal_flow
 	sim.water_service=water_flow
 	sim.stroller_service=stroller_flow
+	sim.tv_service=tv_group
 	sim.sanitation_service=sanitation_flow
 	sim.household_service=household_flow
 	sim.social_witness=Callable(self,"_members_can_see_each_other")
@@ -6038,6 +6060,7 @@ func _on_pregnancy_began(mother_id: String) -> void:
 func _member_action_finished(id:String,action:Dictionary) -> void:
 	if loading_game:return
 	residents.home_visit.action_finished(id,action)
+	if is_instance_valid(relationship_flow):relationship_flow.finished(id,action)
 	water_flow.finished(id,action)
 	if LifeStrollerFlow.owns(action):stroller_flow.cleanup(id,action)
 	var prior:String=bound_member_id
@@ -6128,6 +6151,7 @@ func on_action_started(action:Dictionary) -> void:
 	if not care_motion().prepare(bound_member_id,action):
 		pending_action=action
 		return
+	if residents.home_visit.prepare_host_action(bound_member_id,action):return
 	var resident_id:String=str(action.get("target_id",""))
 	if str(action.get("id","")) in LifeSim.SOCIAL_ACTIONS and LifeResidents.PEOPLE.has(resident_id) and not residents.present(resident_id):
 		show_notice(str(LifeResidents.PEOPLE[resident_id].name)+" has gone home. Catch them on their next walk, or arrange a visit.")
@@ -7155,12 +7179,16 @@ func load_game(slot_id:String="") -> void:
 		_restore_journeys()
 	else:
 		stroller_flow.restore()
+		tv_group.restore()
 		loading_game=false
 		_refresh_sim_targets(true,false)
 		_restore_resource_waits()
 	loading_game=false
+	residents.home_visit.activity.restore_journey()
 	meal_flow.sync_oven_presentations()
 	residents.home_visit.meal.present(true)
+	residents.home_visit.activity.present(true)
+	residents.home_visit.present()
 	meal_flow.sync_world(false)
 	_reconstruct_paused_cooking()
 	_reconstruct_paused_rest()
@@ -7238,8 +7266,12 @@ func _legacy_visit_error_on_saved_land(data:Dictionary,found:Variant) -> String:
 	candidate.residents.attach("home")
 	candidate.meal_flow=LifeMealFlow.new();candidate.meal_flow.app=candidate;candidate.add_child(candidate.meal_flow)
 	candidate.meal_flow.sync_world(false)
-	var error:String=candidate.residents.home_visit.physical_error()
-	if error.is_empty():candidate.residents.home_visit.meal.present(true)
+	var guest_route:Dictionary=candidate.residents.home_visit.activity.restore_journey()
+	var error:String=candidate.residents.home_visit.physical_error() if bool(guest_route.ok) else str(guest_route.error)
+	if error.is_empty():
+		candidate.residents.home_visit.meal.present(true)
+		candidate.residents.home_visit.activity.present(true)
+	candidate.residents.home_visit.present()
 	viewport.free();candidate.free()
 	return error
 
@@ -7283,6 +7315,7 @@ func _prepare_loaded_world(data:Dictionary) -> Dictionary:
 	candidate.meal_flow=LifeMealFlow.new();candidate.meal_flow.app=candidate;candidate.add_child(candidate.meal_flow)
 	candidate.water_flow=LifeWaterFlow.new();candidate.water_flow.app=candidate;candidate.add_child(candidate.water_flow)
 	candidate.stroller_flow=LifeStrollerFlow.new();candidate.stroller_flow.app=candidate;candidate.add_child(candidate.stroller_flow)
+	candidate.tv_group=LifeTVGroup.new();candidate.tv_group.app=candidate;candidate.add_child(candidate.tv_group)
 	candidate.sanitation_flow=LifeSanitationFlow.new();candidate.sanitation_flow.app=candidate;candidate.add_child(candidate.sanitation_flow)
 	for member:Dictionary in candidate.household.members:
 		var id:String=str(member.id)
@@ -7305,9 +7338,13 @@ func _prepare_loaded_world(data:Dictionary) -> Dictionary:
 	candidate._sync_food_truck()
 	var restored:Dictionary=candidate._restore_journeys()
 	if not bool(restored.ok):viewport.free();candidate.free();return restored
+	var guest_route:Dictionary=candidate.residents.home_visit.activity.restore_journey()
+	if not bool(guest_route.ok):viewport.free();candidate.free();return guest_route
 	var guest_error:String=candidate.residents.home_visit.physical_error()
 	if not guest_error.is_empty():viewport.free();candidate.free();return {"ok":false,"error":guest_error}
 	candidate.residents.home_visit.meal.present(true)
+	candidate.residents.home_visit.activity.present(true)
+	candidate.residents.home_visit.present()
 	candidate.meal_flow.sync_world(false)
 	candidate._reconstruct_paused_cooking()
 	candidate._reconstruct_paused_rest()
@@ -7339,6 +7376,8 @@ func _adopt_loaded_world(prepared:Dictionary,slot_id:String,title:String="") -> 
 	sanitation_flow=candidate.sanitation_flow;sanitation_flow.app=self;sanitation_flow.reparent(self,false)
 	household_flow=candidate.household_flow;household_flow.app=self;household_flow.reparent(self,false)
 	water_flow.reset()
+	tv_group.reset();tv_group.queue_free()
+	tv_group=candidate.tv_group;tv_group.app=self;tv_group.reparent(self,false)
 	stroller_flow.queue_free()
 	stroller_flow=candidate.stroller_flow;stroller_flow.app=self;stroller_flow.reparent(self,false)
 	motion_states=candidate.motion_states
@@ -7369,6 +7408,8 @@ func _adopt_loaded_world(prepared:Dictionary,slot_id:String,title:String="") -> 
 	show_notice("Welcome back, %s." % sim.character.name)
 
 func _restore_journeys() -> Dictionary:
+	var tv_error:String=tv_group.restore()
+	if not tv_error.is_empty():return {"ok":false,"error":tv_error}
 	var stroller_error:String=stroller_flow.restore()
 	if not stroller_error.is_empty():return {"ok":false,"error":stroller_error}
 	var restored:Dictionary=traversal.restore(household.journeys)
@@ -7399,6 +7440,7 @@ func _restore_journeys() -> Dictionary:
 		member.sim.meal_service=meal_flow
 		member.sim.water_service=water_flow
 		member.sim.stroller_service=stroller_flow
+		member.sim.tv_service=tv_group
 		member.sim.sanitation_service=sanitation_flow
 		member.sim.household_service=household_flow
 		if str(current.get("phase","")) in ["approach","active"] and str(current.get("id","")) in ["plant_wee","mop_puddle"]:
@@ -7454,6 +7496,7 @@ func _reconstruct_paused_cooking() -> void:
 
 func _reconstruct_paused_rest() -> void:
 	if household.speed>0:return
+	if is_instance_valid(tv_group):tv_group.reconstruct()
 	var prior:String=bound_member_id
 	for member:Dictionary in household.members:
 		var current:Dictionary=member.sim.get_current_action()
@@ -7643,6 +7686,7 @@ func _process(delta:float) -> void:
 		meal_flow.sync_world(household.speed>0)
 		_sync_delivery_van()
 		_store_motion()
+		if is_instance_valid(relationship_flow):relationship_flow.tick()
 		if household.speed>0:_reconcile_social_routes()
 		var selected_id:String=household.selected_id()
 		var autonomy_values:Dictionary={}
@@ -7674,6 +7718,7 @@ func _process(delta:float) -> void:
 			var action:Dictionary=sim.get_current_action()
 			var action_id:String="" if action.is_empty() or action.phase!="active" else action.id
 			if LifeBabyPlan.is_beat(action_id):action_id="sleep"
+			if action_id.is_empty() and is_instance_valid(relationship_flow) and relationship_flow.companion(bound_member_id):action_id="friendly"
 			if not str(action.get("cooperation_id","")).is_empty() and action_id.is_empty():
 				var shared:Dictionary=household.cooperative_presentation(bound_member_id)
 				if bool(shared.get("ready",false)) and str(shared.get("role",""))=="learner":action_id="homework_wait"
@@ -7701,6 +7746,7 @@ func _process(delta:float) -> void:
 		_update_selection_marker(delta)
 		if away_targets_changed:_refresh_sim_targets(false)
 		residents.tick(delta)
+		tv_group.tick(delta)
 		embrace.tick(delta)
 		_tick_resident_contacts()
 		traversal.courtesy.consider(traversal)
@@ -7727,6 +7773,7 @@ func _process(delta:float) -> void:
 			world.update_camera()
 
 func _advance_movement(delta:float) -> bool:
+	if residents.home_visit.owns_host_action(bound_member_id,sim.get_current_action()):return residents.home_visit.advance_host(bound_member_id,delta)
 	if is_instance_valid(stroller_flow) and stroller_flow.holds(sim):return false
 	if not is_instance_valid(player) or sim.speed<=0:return false
 	# A housemate being hugged stays where they are for the embrace.
@@ -7739,6 +7786,7 @@ func _advance_movement(delta:float) -> bool:
 			elif walk_only:_set_route(walk_destination)
 			else:_clear_motion()
 		return moved
+	if residents.home_visit.holds_social_approach(sim.get_current_action()):return false
 	var pet_walk_action:Dictionary=sim.get_current_action()
 	if str(pet_walk_action.get("id",""))=="pet_walk" and str(pet_walk_action.get("phase",""))=="active":
 		return care_motion().advance_walk(bound_member_id,pet_walk_action,delta)
@@ -8226,10 +8274,15 @@ func _has_placement_tool() -> bool:
 	return not world.placement_kind.is_empty() or (is_instance_valid(world.construction) and not world.construction.tool.is_empty())
 
 func _update_activity_facing(delta:float,action:Dictionary,action_id:String) -> void:
+	if is_instance_valid(relationship_flow) and relationship_flow.present_companion(bound_member_id):return
 	if LifeStrollerFlow.owns(action) or stroller_flow.passenger(sim):
 		player.clear_activity_anchor();return
 	if player.has_method("clear_activity_anchor"):player.clear_activity_anchor()
 	if action_id.is_empty():return
+	if LifeTVGroup.owns(action):
+		var tv_anchor:Dictionary=tv_group.anchor(action,player)
+		if not tv_anchor.is_empty():player.set_activity_anchor(tv_anchor.position,tv_anchor.yaw,tv_anchor.kind,action_id,tv_anchor)
+		return
 	if action_id=="clean_litter_tray":
 		var tray:Dictionary=_find_item(str(action.target_id))
 		if not tray.is_empty():
@@ -8299,7 +8352,15 @@ func _social_point_clear(point:Vector3,target:LifeActor,tolerance:float=0.0)->bo
 	if absf(point.y-target.position.y)>.1:return false
 	# The compatibility grid admits boundary centres with half a body off-lot.
 	# Conversations must leave a full-body position ordinary routes can leave.
-	if not world.lot_navigation.point_clear(world.point_level(point),point):return false
+	var level:int=world.point_level(point)
+	if not world.lot_navigation.point_clear(level,point):return false
+	# A conversation must not park its speaker on an entry/exit landing.
+	# Keep these cells routeable; only standing social endpoints are excluded.
+	var body_footprint:=Rect2(Vector2(point.x,point.z)-Vector2(.30,.30),Vector2(.60,.60))
+	for stair:Dictionary in world.construction.building_state.get("stairs",[]):
+		var lower:int=int(stair.lower)
+		if level not in [lower,lower+1]:continue
+		if body_footprint.intersects(LifeBuildingState.landing_rect(stair,level==lower+1)):return false
 	var distance:float=point.distance_to(target.position)
 	if distance<maxf(0.0,LifeTraversal.ROUTE_CLEARANCE-tolerance) or distance>1.6:return false
 	if not world.sight_line_clear(point,target.position):return false
@@ -8352,6 +8413,7 @@ func _social_destination(action:Dictionary,preserve:bool=true)->Vector3:
 
 func _reconcile_social_action()->void:
 	var action:Dictionary=sim.get_current_action()
+	if residents.home_visit.owns_host_action(bound_member_id,action) or residents.home_visit.holds_social_approach(action):return
 	if action.is_empty() or str(action.id) not in LifeSim.SOCIAL_ACTIONS or str(action.phase) not in ["approach","active"] or traversal.busy(bound_member_id):return
 	var destination:Vector3=_social_destination(action)
 	if not destination.is_finite():
@@ -8410,6 +8472,7 @@ func _reconcile_social_routes()->void:
 
 
 func _resolve_activity_target(action:Dictionary,keep_committed_endpoint:bool=false) -> void:
+	if is_instance_valid(tv_group) and tv_group.resolve(action):return
 	if str(action.id) in ["school_day","career_day","morning_run"]:
 		action.target_position=world.lot_exit_position(_member_index(bound_member_id));return
 	if str(action.id) in CareMotion.CARE_ACTIONS and pet_actors.has(str(action.target_id)):
@@ -8465,6 +8528,9 @@ func _assign_seat_slot(action:Dictionary,item:Dictionary) -> void:
 		return
 	var slots:Array[String]=world.seat_slots(item)
 	var taken:Array=[]
+	if residents.home_visit.active():
+		var visiting:Dictionary=residents.home_visit.activity.current_action()
+		if str(visiting.get("target_id",""))==str(item.id) and visiting.has("seat_slot"):taken.append(str(visiting.seat_slot))
 	if shared_bed and current_venue=="home":
 		for owner:String in household.bed_assignments:
 			var reserved:String=household.assigned_bed_side(owner,str(item.id))
@@ -8516,6 +8582,8 @@ func _activity_available(action:Dictionary) -> bool:
 
 func _activity_available_for_member(action:Dictionary,member_id:String) -> bool:
 	if action.is_empty():return false
+	if residents.home_visit.active() and residents.home_visit.activity.holds_member(member_id):return false
+	if is_instance_valid(tv_group) and tv_group.blocks(action,member_id):return false
 	var requested_bed:String=str(action.get("target_id",""))
 	var reserved_sides:Array[String]=[]
 	for owner:String in household.bed_assignments if current_venue=="home" and str(_find_item(requested_bed).get("kind",""))=="bed" else {}:
@@ -8528,8 +8596,8 @@ func _activity_available_for_member(action:Dictionary,member_id:String) -> bool:
 	if reserved_sides.size()>=2:return false
 	if not residents.home_visit.welcome_start_allowed(action):return false
 	if str(action.get("id","")) in LifeSim.SOCIAL_ACTIONS and LifeResidents.PEOPLE.has(str(action.get("target_id",""))):
-		if not residents.present(str(action.target_id)) or not residents.home_visit.social_allowed(str(action.target_id),action):return false
-	if meal_flow.standing_place_blocks(member_id,action) or meal_flow.guest_blocks(action):return false
+		if not residents.present(str(action.target_id)) or not residents.home_visit.conversation_start_allowed(str(action.target_id),action):return false
+	if meal_flow.standing_place_blocks(member_id,action) or meal_flow.guest_blocks(action,member_id):return false
 	var wanted:Array[String]=_activity_resources(action)
 	var session_id:String=str(action.get("cooperation_id",""))
 	# Read the requesting member without rebinding the movement controller
@@ -8586,6 +8654,8 @@ func _activity_resources(action:Dictionary) -> Array[String]:
 	var item:Dictionary=_find_item(target_id)
 	var resources:Array[String]=[]
 	if item.is_empty():resources.append(target_id)
+	elif str(item.kind) in LifeTVGroup.WATER and str(action.get("id",""))=="enjoy_outdoors":
+		resources.append(target_id+":water:"+str(int(action.get("swim_lane",0))))
 	else:
 		for resource_id:String in world.activity_resource_ids(item,str(action.get("seat_slot",""))):
 			resources.append(resource_id)
@@ -8607,8 +8677,9 @@ func show_relationships() -> void:
 	rect(scroll,Vector2(486,254),Vector2(470,415),overlay)
 	var column=VBoxContainer.new();column.add_theme_constant_override("separation",10);scroll.add_child(column)
 	for id:String in sim.relationship_order():
+		if household.resident_members.has(id):continue
 		var rel:Dictionary=sim.relationships[id]
-		var row=Control.new();row.custom_minimum_size=Vector2(450,126 if LifeResidents.PEOPLE.has(id) else 83);column.add_child(row)
+		var row=Control.new();row.custom_minimum_size=Vector2(450,168 if LifeResidents.PEOPLE.has(id) and str(sim.romantic_partner)==id else (126 if LifeResidents.PEOPLE.has(id) else 83));column.add_child(row)
 		button(rel.name,Vector2.ZERO,Vector2(444,38),func():focus_neighbor(id),false,row)
 		text_label("%s · Friendship %d · Romance %d" % [rel.status,rel.friendship,rel.romance],Vector2(8,44),Vector2(438,30),13,P.MUTED,false,row)
 		if LifeResidents.PEOPLE.has(id):
@@ -8616,6 +8687,9 @@ func show_relationships() -> void:
 			visit.name="VisitResident_"+id;visit.disabled=not residents.can_visit(id)
 			var invite=button("Invite over",Vector2(224,83),Vector2(212,34),func():invite_neighbor(id),false,row)
 			invite.name="InviteResident_"+id;invite.disabled=not residents.home_visit.requirement(id).is_empty();invite.tooltip_text=residents.home_visit.requirement(id)
+			if str(sim.romantic_partner)==id:
+				var date:Button=button("Invite for a home date",Vector2(8,125),Vector2(428,34),func():relationship_flow.invite_date(id),false,row)
+				date.name="InviteDate_"+id;date.disabled=invite.disabled
 			visit.tooltip_text="Reach 20 friendship to arrange a visit." if visit.disabled else str(str(LifeNeighborhood.info(LifeResidents.PEOPLE[id].home).get("tag","")))
 	button("Family tree",Vector2(486,699),Vector2(222,43),show_family_tree,false,overlay)
 	button("Back to life",Vector2(724,699),Vector2(230,43),close_overlay,true,overlay)
@@ -9751,7 +9825,7 @@ func _refresh_guest_status()->void:
 	var visit:Dictionary=residents.home_visit.state
 	var phase:String=str(visit.phase)
 	var label:String={"arriving":"Walking over","waiting":"At your door","entering":"Coming inside","inside":"Visiting your home","leaving":"Heading home"}.get(phase,"")
-	var welcoming:bool=phase=="waiting" and not visit.greeting.is_empty() and str(residents.home_visit._welcome_action.get("phase",""))=="active"
+	var welcoming:bool=phase in ["waiting","entering"] and not visit.greeting.is_empty() and str(residents.home_visit._welcome_action.get("phase",""))=="active"
 	if welcoming:label="Being welcomed"
 	if residents.home_visit.meal.active():label=residents.home_visit.meal.label()
 	guest_status_text.text=str(LifeResidents.PEOPLE[str(visit.guest)].name)+" · "+label

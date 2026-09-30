@@ -120,6 +120,8 @@ func command(id: String, action: String, ground: Vector3 = Vector3.INF) -> Dicti
 ## beat. Cancel that beat as well as its pose so it cannot reclaim the dog.
 func _interrupt_care(id: String) -> void:
 	app.pending_pet_care.erase(id)
+	var visit: LifeHomeVisit=app.residents.home_visit
+	if visit.active() and (visit.activity.holds_pet(id) or str(visit.activity.data.get("pending_pet",{}).get("target",""))==id):visit.activity.cancel("")
 	var care: RefCounted = app.care_motion()
 	for member_id: String in care.sessions.keys():
 		if str(care.sessions[member_id].pet) == id: care._release(member_id)
@@ -214,7 +216,7 @@ func tick(delta: float, speed: float) -> bool:
 	for id: String in app.pet_actors.keys():
 		var actor: LifePetActor = app.pet_actors.get(id)
 		if not is_instance_valid(actor) or app.pet_arrivals.has(id): continue
-		if app.care_motion().holds(id):
+		if app.care_motion().holds(id) or (app.residents.home_visit.active() and app.residents.home_visit.activity.holds_pet(id)):
 			actor.clear_behavior()
 			actor.stop_squeak()
 			continue

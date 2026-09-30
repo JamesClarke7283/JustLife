@@ -20,6 +20,7 @@ func activity()->Dictionary:
 func owns_place()->bool:return active() and not str(state.plate).is_empty() and str(state.phase) in ["to_place","eating","release"]
 func offer(source:String)->bool:
 	if not visit.active() or str(visit.state.phase)!="inside" or active() or not app.residents._speaker(person()).is_empty():return false
+	if visit.activity.active():return false
 	var batch:Dictionary=app.household.meals.batch(source)
 	if batch.is_empty() or str(batch.venue)!="home" or str(batch.storage)!="surface" or not str(batch.owner).is_empty() or int(batch.remaining)<=0 or visit._now()>=float(batch.expires):return false
 	var entry:Dictionary=flow().item(source)
@@ -27,6 +28,7 @@ func offer(source:String)->bool:
 	var target:Vector3=visit.meal.pickup_place(entry)
 	var route:PackedVector3Array=visit._route(body().position,target,person(),true)
 	if route.is_empty():return false
+	visit.activity.release_route()
 	var token:int=int(visit.state.next_meal);visit.state.next_meal=token+1
 	visit.state.meal={"token":token,"source":source,"plate":"","phase":"pickup","target":target,"seat":"","standing":false,"last_at":visit._now(),"retry_at":0.0,"reason":""}
 	visit.state.route={"points":route,"point":0}
@@ -164,6 +166,8 @@ func consume_until(end:float)->void:
 		# Freshness is checked at the eligible interval's start. Time after its
 		# expiration or the visit deadline is never included in this amount.
 		app.household.meals.eat(str(serving.id),person(),taken,start)
+		var batch:Dictionary=app.household.meals.batch(str(serving.batch))
+		if not batch.is_empty():visit.activity.feed_from_meal(float(LifeMeals.RECIPES[str(batch.recipe)].nutrition)*taken/LifeMeals.EATING_MINUTES)
 		flow().record_company(person(),serving,taken)
 	state.last_at=maxf(start,end)
 func tick(delta:float)->void:

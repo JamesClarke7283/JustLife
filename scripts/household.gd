@@ -48,6 +48,9 @@ var adoptions: Dictionary = LifeAdoption.fresh()
 var pets: Dictionary = LifePets.fresh()
 ## Each adult keeps a chosen half even when somebody else goes to bed first.
 var bed_assignments: Dictionary = {}
+## Catalogue identities retired when their resident joins this household.
+var resident_members: Dictionary = {}
+var date_invitation: Dictionary = {}
 ## The household's post box. Letters and bills are filed here when the household
 ## owns a post box; without one, bills arrive by notice exactly as before.
 var mail: Dictionary = LifeMail.fresh()
@@ -94,6 +97,8 @@ func new_household(profiles: Array) -> void:
 	adoptions=LifeAdoption.fresh()
 	pets=LifePets.fresh()
 	bed_assignments.clear()
+	resident_members.clear()
+	date_invitation.clear()
 	mail=LifeMail.fresh()
 	pregnancy=LifeBabyPlan.fresh()
 	birth_homecoming=LifeBirthHomecoming.fresh()
@@ -123,6 +128,8 @@ func add_member(profile: Dictionary) -> String:
 	var member_profile: Dictionary = profile.duplicate(true)
 	member_profile["wants_and_fears"] = true
 	sim.new_household(member_profile)
+	sim.resident_aliases=resident_members.duplicate(true)
+	for retired:String in resident_members:sim.relationships.erase(retired)
 	sim.day=day;sim.minutes=minutes;sim.funds=funds;sim.speed=speed
 	sim.household_bills_enabled=members.is_empty()
 	sim.set_home_value_provider(home_value_provider)
@@ -214,6 +221,16 @@ func select(index: int) -> void:
 	adopt_selected_changes()
 	selected_index=index
 	selection_changed.emit(selected_id())
+
+func marriage_error(host_id:String,target_id:String)->String:
+	return LifeMarriage.reason(self,host_id,target_id)
+
+func date_host_for(member_id:String)->String:
+	for member:Dictionary in members:
+		if str(member.id)==member_id:continue
+		var action:Dictionary=member.sim.get_current_action()
+		if str(action.get("id",""))==LifeRelationshipProgress.DATE and str(action.get("target_id",""))==member_id and str(action.get("phase","")) in ["approach","active"]:return str(member.id)
+	return ""
 
 func member_sim(id: String) -> LifeSim:
 	for member in members:
@@ -456,6 +473,8 @@ func get_state(world_data: Array = []) -> Dictionary:
 	for member in members:states.append({"id":member.id,"state":member.sim.get_state()})
 	var result:Dictionary={"household_version":2 if not journeys.is_empty() else 1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":world_data.duplicate(true),"family_graph":family_graph.duplicate(true),"adoptions":adoptions.duplicate(true),"pets":pets.duplicate(true),"mail":mail.duplicate(true),"pregnancy":pregnancy.duplicate(true),"birth_homecoming":birth_homecoming.duplicate(true),"birth_serial":birth_serial,"baby_supplies":baby_supplies.duplicate(true),"memorials":memorials.duplicate(true),"heirlooms":heirlooms.duplicate(true),"cooperation_version":1,"cooperation_serial":cooperation_serial,"cooperations":cooperations.duplicate(true),"meals":meals.get_state(),"groceries":groceries.duplicate(true),"business":business.duplicate(true),"sanitation":sanitation.get_state(),"extras":extras_provider.call() if extras_provider.is_valid() else {}}
 	result.bed_assignments=bed_assignments.duplicate(true)
+	result.resident_members=resident_members.duplicate(true)
+	result.date_invitation=date_invitation.duplicate(true)
 	if not journeys.is_empty():result.journeys=journeys.duplicate(true)
 	if physical_snapshot_provider.is_valid():
 		var physical:Dictionary=physical_snapshot_provider.call()
@@ -629,12 +648,14 @@ func _family_links_keeping_partners() -> Array:
 
 func _commit_family(links: Array) -> Dictionary:
 	var by_id:Dictionary={}
+	var prior_relationships:Dictionary={}
 	var profiles:Dictionary={}
 	var states:Array=[]
 	for member:Dictionary in members:
 		var id:String=str(member.id)
 		var snapshot:Dictionary=member.sim.get_state()
 		by_id[id]=snapshot
+		prior_relationships[id]=snapshot.relationships.duplicate(true)
 		profiles[id]=snapshot.character
 		states.append({"id":id,"state":snapshot})
 	var built:Dictionary=LifeFamilyGraph.create(profiles,links)
@@ -650,6 +671,7 @@ func _commit_family(links: Array) -> Dictionary:
 			var related:bool=LifeFamilyGraph.is_family(role)
 			relationship.family_role=role
 			relationship.bond="none"
+			LifeRelationshipProgress.separate(relationship)
 			relationship.friendship=55.0 if related else 18.0
 			relationship.romance=0.0
 			relationship.milestones=["met","friends"] if related else []
@@ -670,7 +692,11 @@ func _commit_family(links: Array) -> Dictionary:
 			relationship.romance=50.0
 			relationship.milestones=["met","friends","spark"]
 			relationship.status="Partner"
-	var candidate:Dictionary={"household_version":1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":[],"family_graph":graph}
+			var prior:Dictionary=prior_relationships[str(pair[0])][str(pair[1])]
+			if str(prior.get("bond","none")) in ["partners","committed"]:
+				for key:String in ["bond","friendship","romance","milestones","status","successful_flirts","completed_dates","married"]:
+					if prior.has(key):relationship[key]=prior[key]
+	var candidate:Dictionary={"household_version":1,"selected_index":selected_index,"funds":funds,"day":day,"minutes":minutes,"speed":speed,"members":states,"world":[],"family_graph":graph,"resident_members":resident_members.duplicate(true)}
 	var validator:LifeHousehold=LifeHousehold.new()
 	var validation:Dictionary=validator.restore_state(candidate)
 	validator.free()
@@ -719,6 +745,8 @@ func restore_state(data: Dictionary) -> Dictionary:
 	if data.get("household_version")==2:
 		for key:String in ["selected_index","funds","day","minutes","speed","world"]:
 			if not data.has(key):return {"ok":false,"error":"The physical household save is missing "+key+"."}
+	var alias_error:String=LifeMarriage.validate_aliases(data)
+	if not alias_error.is_empty():return {"ok":false,"error":alias_error}
 	var identity_error:String=_validate_member_identity(data)
 	if not identity_error.is_empty():return {"ok":false,"error":identity_error}
 	var bed_error:String=_validate_bed_assignments(data)
@@ -845,6 +873,9 @@ func restore_state(data: Dictionary) -> Dictionary:
 		return {"ok":false,"error":heirloom_error}
 	restoring=true
 	bed_assignments=data.get("bed_assignments",{}).duplicate(true)
+	resident_members=data.get("resident_members",{}).duplicate(true)
+	date_invitation=data.get("date_invitation",{}).duplicate(true)
+	if not date_invitation.is_empty():date_invitation.visit_serial=int(date_invitation.visit_serial)
 	journeys=data.get("journeys",{}).duplicate(true)
 	if not journeys.is_empty():
 		for index:int in candidates.size():
@@ -1000,6 +1031,8 @@ func _validate_member_identity(data:Dictionary) -> String:
 				return "The saved household contains a missing reciprocal relationship."
 			if str(peer_relations[expected_ids[index]].get("bond","none"))!=str(relations[partner_id].get("bond","none")):
 				return "The saved household contains mismatched partnership stages."
+			for key:String in ["married","completed_dates","successful_flirts"]:
+				if peer_relations[expected_ids[index]].get(key,false if key=="married" else 0)!=relations[partner_id].get(key,false if key=="married" else 0):return "The saved partners disagree about their relationship progress."
 		elif partner_id in LifeResidentCatalogue.IDS:
 			if neighbor_partners.has(partner_id):return "A neighbor cannot have two household partners."
 			neighbor_partners[partner_id]=expected_ids[index]
@@ -2428,6 +2461,8 @@ func commit_baby(profile: Dictionary, spawn: Vector3, destination: Vector3, worl
 	var baby_profile:Dictionary=profile.duplicate(true)
 	baby_profile["wants_and_fears"]=true
 	baby.new_household(baby_profile)
+	baby.resident_aliases=resident_members.duplicate(true)
+	for retired:String in resident_members:baby.relationships.erase(retired)
 	LifeBabyPlan.seed_infant(baby.character,day)
 	baby.day=day;baby.minutes=minutes;baby.funds=funds;baby.speed=speed
 	baby.education=LifeEducation.fresh("baby",day)
@@ -2798,6 +2833,8 @@ func commit_adoption(request:Dictionary,spawn:Vector3,destination:Vector3,world_
 	var child_profile:Dictionary=LifeAdoption.candidate(int(request.serial),int(request.choice)).duplicate(true)
 	child_profile["wants_and_fears"]=true
 	child.new_household(child_profile)
+	child.resident_aliases=resident_members.duplicate(true)
+	for retired:String in resident_members:child.relationships.erase(retired)
 	child.day=day;child.minutes=minutes;child.funds=funds-LifeAdoption.FEE;child.speed=speed
 	child.education=LifeEducation.fresh("child",day);child.education.first_class_day=day+1
 	child.career.schedule=LifeCareerSchedule.fresh(day)

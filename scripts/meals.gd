@@ -234,7 +234,8 @@ static func validate(data: Variant, member_ids: Array, now: float,guest:Dictiona
 		if not value.get("id") is String or not str(value.id).begins_with("meal_") or not str(value.id).trim_prefix("meal_").is_valid_int() or int(str(value.id).trim_prefix("meal_"))>int(data.serial) or ids.has(value.id):return "The save contains duplicate or invalid food identities."
 		ids[value.id]=true;batch_ids[value.id]=value;claimed[value.id]=0
 		if not RECIPES.has(str(value.get("recipe",""))) or str(value.get("chef","")) not in member_ids or not _number(value.get("quality"),1,3,true):return "The saved meal recipe or cook is invalid."
-		var total: int=int(RECIPES[str(value.recipe)].servings)
+		if not _number(value.get("guest_extra",0),0,1,true):return "The guest's extra serving count is invalid."
+		var total: int=int(RECIPES[str(value.recipe)].servings)+int(value.get("guest_extra",0))
 		if value.get("initial")!=total or not _number(value.get("remaining"),0,total,true) or not _number(value.get("served"),0,total,true) or not _number(value.get("discarded"),0,total,true) or int(value.remaining)+int(value.served)+int(value.discarded)!=total:return "The meal's serving counts do not add up."
 		if not _number(value.get("created"),0,now) or not _number(value.get("expires"),float(value.created),now+MAX_LIFE_MINUTES) or not _position(value.get("position")) or not _offset(value.get("offset",[0,0,0])):return "The saved meal freshness or position is invalid."
 		if str(value.get("storage","")) not in ["surface","fridge","carried"] or not value.get("venue") is String or not value.get("host") is String or not value.get("owner") is String:return "The saved meal location is invalid."

@@ -125,8 +125,14 @@ func _run()->void:
 	check(not app.residents.home_visit.state.greeting.is_empty(),"Welcome queues an identified ordinary friendly action")
 	var action:Dictionary=app.sim.action_queue[-1]
 	check(str(action.id)=="friendly" and float(action.duration)==25 and action.has("home_visit_token"),"Greeting keeps ordinary duration and records its visit token")
+	check(_until("entering"),"Host reaches the doorway and admits the guest before greeting")
+	if _phase()!="entering":await _finish();return
+	app.household.set_speed(0);check(app.save_game("","Guest entering"),"Partial indoor arrival can be saved")
+	var entering_slot:String=app.active_save_id;expected=app.residents.snapshot();_load(entering_slot);await process_frame
+	check(_same_snapshot(app.residents.snapshot(),expected),"Entering load preserves exact route cursor")
+	app.household.set_speed(1)
 	var started:bool=false
-	for step:int in 300:
+	for step:int in 600:
 		if str(app.sim.get_current_action().get("phase",""))=="active":started=true;break
 		_step()
 	check(started,"Welcome reaches an actual paid conversation")
@@ -139,14 +145,8 @@ func _run()->void:
 			var speaker:LifeSim=app.household.member_sim(id)
 			finished_welcome={"action":done.duplicate(true),"clock":(speaker.day-1)*1440.0+speaker.minutes})
 	app.household.set_speed(1)
-	check(_until("entering"),"Actual completed friendly admits the guest at its member event time")
-	if _phase()!="entering":await _finish();return
-	check(not finished_welcome.is_empty() and float(finished_welcome.action.elapsed)==25 and float(app.residents.home_visit.state.admitted_at)==float(finished_welcome.clock),"Paid completion keeps exact event clock despite frame overshoot")
-	app.household.set_speed(0);check(app.save_game("","Guest entering"),"Partial indoor arrival can be saved")
-	var entering_slot:String=app.active_save_id;expected=app.residents.snapshot();_load(entering_slot);await process_frame
-	check(_same_snapshot(app.residents.snapshot(),expected),"Entering load preserves exact route cursor")
-	app.household.set_speed(1)
-	check(_until("inside"),"Actual walking and accepted friendly completion admit the guest")
+	check(_until("inside"),"Actual walking, host door close and accepted hallway greeting admit the guest")
+	check(not finished_welcome.is_empty() and float(finished_welcome.action.elapsed)==25 and float(app.residents.home_visit.state.phase_at)==float(finished_welcome.clock),"Paid hallway completion keeps exact event clock despite frame overshoot")
 	events.append({"phase":_phase(),"notice":app.notice_label.text,"visit":app.residents.home_visit.snapshot(),"queue":str(app.sim.action_queue)})
 	if _phase()!="inside":await _finish();return
 	check(app.world.serialize_items()==loaded_layout,"Admission retains the exact immediately restored layout")

@@ -12,13 +12,15 @@ import tempfile
 import time
 
 TESTS = ('test_home_visit.gd', 'test_home_visit_fresh.gd', 'test_home_visit_controls.gd',
-         'test_home_visit_departure_fresh.gd', 'test_home_visit_custody.gd', 'test_home_visit_render.gd')
+         'test_home_visit_departure_fresh.gd', 'test_home_visit_custody.gd', 'test_home_visit_render.gd',
+         'test_visitor_entrance.gd')
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument('--capture', action='store_true')
+    parser.add_argument('--timeout', type=int, default=600, help='Maximum seconds for each isolated engine phase')
     args = parser.parse_args()
     if not sys.platform.startswith('linux'):
         parser.error('Linux XDG isolation is required; this runner never uses player data folders.')
@@ -57,6 +59,7 @@ def main():
         ('controls', 'test_home_visit_controls.gd', []),
         ('departure_fresh', 'test_home_visit_departure_fresh.gd', []),
         ('cooking', 'test_home_visit_custody.gd', []),
+        ('entrance', 'test_visitor_entrance.gd', []),
         ('canonical', 'test_home_visit.gd', ['--', '--canonical-fixture']),
         ('canonical_fresh', 'test_home_visit_fresh.gd', ['--', '--greeting-only']),
     ]:
@@ -78,11 +81,11 @@ def main():
         error = ''
         try:
             with (evidence / 'run.log').open('w') as log:
-                result = subprocess.run(command, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=240)
+                result = subprocess.run(command, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=args.timeout)
             code = result.returncode
         except subprocess.TimeoutExpired:
             code = 124
-            error = 'Owned subprocess timed out after 240 seconds; subprocess.run killed and reaped it.'
+            error = f'Owned subprocess timed out after {args.timeout} seconds; subprocess.run killed and reaped it.'
         except OSError as exc:
             code = 127
             error = str(exc)

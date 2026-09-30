@@ -25,7 +25,7 @@ const NOODLE_CENTRE: float = .60
 const NOODLE_AXIS_HEIGHT: float = .086
 
 static func handles(action_id: String) -> bool:
-	return action_id == "clean_litter_tray" or action_id == LifeOutdoorActs.ACTION_ID or action_id in CARE_ACTIONS or action_id in CAR_ACTIONS or action_id in DRY_ACTIONS
+	return action_id == "play_garden_game" or action_id == "clean_litter_tray" or action_id == LifeOutdoorActs.ACTION_ID or action_id in CARE_ACTIONS or action_id in CAR_ACTIONS or action_id in DRY_ACTIONS
 
 ## Shape `pose` for this activity. Returns what the caller folds into the body:
 ## `lean` (Vector3), `drop` (metres the hips sink), `seated` (sit blend) and
@@ -34,6 +34,16 @@ static func apply(actor, pose: Dictionary, action_id: String, t: float) -> Dicti
 	var anchor: Dictionary = actor._activity_anchor
 	var ct: float = float(anchor.get("care_time", actor._action_time))
 	match action_id:
+		"play_garden_game":
+			# A planted underarm play-and-recover gesture, shared by both players.
+			# Their controller keeps them on separate reachable sides of the game.
+			var turn: float = .5-.5*cos(t*1.8)
+			pose["Arm_R"]=Vector3(.32-.95*turn,0,-.14)
+			pose["Forearm_R"]=Vector3(-.65+.40*turn,0,0)
+			pose["Arm_L"]=Vector3(-.18,0,.12)
+			pose["Forearm_L"]=Vector3(-.45,0,0)
+			pose["Head"]=Vector3(.10,.10*sin(t*.9),0)
+			return {"lean":Vector3(.04*turn,0,0)}
 		"clean_litter_tray":
 			var amount:float=smoothstep(0.0,.6,t)
 			var drop:float=_kneel(actor,pose,amount)

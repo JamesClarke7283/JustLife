@@ -277,7 +277,7 @@ func _court_children() -> void:
 		# both sides can be asked. Switching at 30 left the friendship stuck
 		# under the partnership line.
 		var action_id: String = "friendly"
-		if friendship >= 45.0 and romance >= 35.0:
+		if friendship >= 45.0 and bool(sim.get_action_availability("ask_partner",resident).available):
 			action_id = "ask_partner"
 		elif friendship >= 45.0:
 			action_id = "flirt"

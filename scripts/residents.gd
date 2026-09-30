@@ -123,6 +123,7 @@ func attach(place:String) -> void:
  active_place=place
  if not locations.has(place):locations[place]={}
  for id:String in PEOPLE:
+  if moved_in(id):continue
   if not locations[place].has(id):locations[place][id]=_default_state(id,place)
   var state:Dictionary=locations[place][id]
   # Old saves kept Tom inside his shower. Re-seat a host whose stored
@@ -137,10 +138,14 @@ func attach(place:String) -> void:
   actor.rotation.y=float(state.rotation)
   app.world.set_actor_away(id,str(state.phase)=="home",str(state.phase)=="home")
 
+func moved_in(id:String)->bool:
+ return app.household!=null and app.household.resident_members.has(id)
+
 func present(id:String) -> bool:
- return PEOPLE.has(id) and is_instance_valid(app.world.actors.get(id)) and app.world.actors[id].visible and not bool(app.world.actors[id].get_meta("away",false))
+ return not moved_in(id) and PEOPLE.has(id) and is_instance_valid(app.world.actors.get(id)) and app.world.actors[id].visible and not bool(app.world.actors[id].get_meta("away",false))
 
 func can_visit(id:String) -> bool:
+ if moved_in(id):return false
  for member:Dictionary in app.household.members:
   if float(member.sim.relationships.get(id,{}).get("friendship",0))>=20:return true
  return false
@@ -152,7 +157,7 @@ func prepare_social(action:Dictionary) -> void:
   # The old .8 offset snapped to .75 and made a home guest an unreachable target.
   var spacing:float=1.0 if home_visit.owns(id) and not app.world.construction.building_state.is_empty() else .8
   var at:Vector3=app.world.actors[id].position+Vector3(0,0,spacing)
-  if not app.world.construction.building_state.is_empty():action.target_position=app.world.nearest_clear_point(at,0)
+  if not app.world.construction.building_state.is_empty():action.target_position=app.world.nearest_clear_point(at,app.world.point_level(app.world.actors[id].position))
   else:
    var cell:Vector2i=app.world.nearest_free(at)
    action.target_position=Vector3(cell.x*.25,.16,cell.y*.25)
@@ -319,6 +324,7 @@ func tick(delta:float) -> void:
  if active_place.is_empty() or not locations.has(active_place):return
  var speed:float=float(app.sim.speed)
  for id:String in PEOPLE:
+  if moved_in(id):continue
   var actor:LifeActor=app.world.actors.get(id)
   if not is_instance_valid(actor):continue
   var state:Dictionary=locations[active_place][id]
@@ -431,19 +437,26 @@ func snapshot() -> Dictionary:
 func restore(value:Variant) -> void:
  reset()
  if not value is Dictionary or not _integer(value.get("version"),1,1) or not value.get("locations") is Dictionary:return
+ var saved_visit:Dictionary={}
+ if value.get("home_visit") is Dictionary and value.home_visit.get("visit") is Dictionary:saved_visit=value.home_visit.visit
  for raw_place:Variant in value.locations:
   if not raw_place is String:continue
   var place:String=raw_place
   if not LifeNeighborhood.has(place) or not value.locations[place] is Dictionary:continue
   var accepted:Dictionary={}
   for id:String in PEOPLE:
+   if moved_in(id):continue
    var record:Variant=value.locations[place].get(id)
    if not record is Dictionary or not record.get("position") is Array or record.position.size()!=3:continue
    var valid:bool=true
    for number:Variant in record.position:
     if not (number is float or number is int) or not is_finite(float(number)):valid=false
-   # The z bound covers every catalogue lane (tom walks at z=10.4).
-   if not valid or absf(float(record.position[0]))>9 or absf(float(record.position[2]))>12 or absf(float(record.position[1])-.16)>.001:continue
+   # Home-visit validation has already checked this exact guest position
+   # against the lot and any owned stair journey. Ordinary passers still use
+   # the sidewalk bounds; an upstairs guest must not fall back to that lane.
+   var visiting:bool=place=="home" and str(saved_visit.get("guest",""))==id and LifeJourneyState.vector_valid(saved_visit.get("position")) and record.position==saved_visit.position
+   if not valid:continue
+   if not visiting and (absf(float(record.position[0]))>9 or absf(float(record.position[2]))>12 or absf(float(record.position[1])-.16)>.001):continue
    if str(record.get("phase","")) not in ["home","walking","visiting"]:continue
    if not (record.get("wait") is float or record.get("wait") is int) or not is_finite(float(record.wait)) or float(record.wait)<0:continue
    if not (record.get("rotation") is float or record.get("rotation") is int) or not is_finite(float(record.rotation)):continue

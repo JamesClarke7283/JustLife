@@ -20,7 +20,7 @@ func check(condition: bool, message: String) -> void:
 func advance(sim: LifeSim, duration: float) -> void:
 	var remaining: float = duration
 	while remaining > .0001:
-		var step: float = minf(remaining, 120.0)
+		var step: float = minf(remaining, 30.0)
 		sim.tick(step / LifeSim.GAME_MINUTES_PER_SECOND)
 		remaining -= step
 
@@ -52,7 +52,7 @@ func _test_gates_and_milestones() -> void:
 	var partner_option: Dictionary = {}
 	for option: Dictionary in options:
 		if option.id == "ask_partner": partner_option = option
-	check(not partner_option.available and partner_option.unavailable_reason.contains("45 friendship"), "Target-aware menus must explain the real friendship and romance requirement.")
+	check(not partner_option.available and partner_option.unavailable_reason.contains("three successful flirts"), "Target-aware menus must explain the three-successful-flirt requirement.")
 	complete(sim, "friendly", "maya")
 	complete(sim, "friendly", "maya")
 	check(sim.relationships.maya.status == "Friend", "Completed conversations must reach a genuine friendship milestone.")
@@ -67,6 +67,7 @@ func _test_gates_and_milestones() -> void:
 	check(friend_count == 1, "A milestone must not repeat on every later conversation.")
 	sim.relationships.leo.friendship = 90.0
 	sim.relationships.leo.romance = 90.0
+	sim.relationships.leo.successful_flirts = 3
 	sim.relationships.leo.life_stage = "minor"
 	before = sim.relationships.duplicate(true)
 	check(not sim.queue_action("flirt", "leo") and not sim.queue_action("ask_partner", "leo") and sim.relationships == before, "Non-adult targets must block romantic actions without consequences.")
@@ -75,7 +76,7 @@ func _test_gates_and_milestones() -> void:
 	check(not sim.get_action_availability("ask_partner", "leo").available, "The initiating Lifelet must also be explicitly adult.")
 	sim.character.life_stage = "adult"
 	check(sim.queue_action("ask_partner", "leo"), "An eligible relationship may enter the approach phase.")
-	sim.relationships.leo.romance = 10.0
+	sim.relationships.leo.successful_flirts = 0
 	before = sim.relationships.duplicate(true)
 	sim.begin_current_action()
 	check(sim.action_queue.is_empty() and sim.relationships == before, "Arrival must recheck eligibility instead of accepting a stale queued invitation.")
@@ -88,19 +89,22 @@ func _test_partnership_persistence() -> void:
 	sim.wants.clear()
 	sim.relationships.maya.friendship = 70.0
 	sim.relationships.maya.romance = 70.0
+	sim.relationships.maya.successful_flirts = 3
 	var money: int = sim.funds
 	var satisfaction: int = sim.satisfaction
 	complete(sim, "ask_partner", "maya")
 	check(sim.romantic_partner == "maya" and sim.relationships.maya.bond == "partners" and sim.relationships.maya.status == "Partner", "An accepted invitation must establish an explicit partnership.")
 	check(sim.funds == money and sim.satisfaction == satisfaction, "Relationship milestones must not grant unearned currency or satisfaction.")
 	check(not sim.queue_action("ask_partner", "leo"), "A Lifelet must end an existing partnership before beginning another.")
-	complete(sim, "commit", "maya")
-	check(sim.relationships.maya.bond == "committed" and sim.social_history[0].stage == "committed", "A high-trust partnership must support an explicit commitment and memory.")
-	check(not sim.queue_action("commit", "maya"), "An existing commitment must not repeat as a fresh milestone.")
+	check(not sim.get_action_availability("commit","maya").available,"Marriage remains locked until two completed dates.")
+	complete(sim, "go_on_date", "maya")
+	complete(sim, "go_on_date", "maya")
+	check(sim.relationships.maya.completed_dates == 2 and sim.social_history[0].stage == "date", "Completed dates have explicit progress and memories.")
+	check(sim.get_action_availability("commit","maya").available, "Two completed dates unlock the proposal.")
 	var parser: JSON = JSON.new()
 	parser.parse(JSON.stringify(sim.get_state()))
 	var loaded: LifeSim = Simulation.new()
-	check(loaded.restore_state(parser.data).ok and loaded.romantic_partner == "maya" and loaded.relationships.maya.status == "Committed partner", "Partnership and commitment must survive a JSON round-trip.")
+	check(loaded.restore_state(parser.data).ok and loaded.romantic_partner == "maya" and loaded.relationships.maya.status == "Partner", "Partnership and completed dates must survive a JSON round-trip.")
 	check(loaded.social_history == sim.social_history, "Staged social history must survive the same round-trip.")
 	var old_friendship: float = float(loaded.relationships.maya.friendship)
 	var old_romance: float = float(loaded.relationships.maya.romance)
@@ -126,20 +130,25 @@ func _test_household_reciprocity() -> void:
 	var second: LifeSim = home.member_sim("housemate_1")
 	first.relationships.housemate_1.friendship = 75.0
 	first.relationships.housemate_1.romance = 75.0
+	first.relationships.housemate_1.successful_flirts = 3
 	home.adopt_selected_changes()
 	check(not first.get_action_availability("ask_partner", "housemate_1").available, "The receiving housemate must also meet friendship and romance gates.")
 	second.relationships.player.friendship = 75.0
 	second.relationships.player.romance = 75.0
+	second.relationships.player.successful_flirts = 3
 	home.adopt_selected_changes()
 	check(first.queue_action("ask_partner", "housemate_1"), "Housemates with a developed relationship may choose partnership.")
 	home.begin_action("player")
 	home.tick(35.0 / LifeSim.GAME_MINUTES_PER_SECOND)
 	check(first.romantic_partner == "housemate_1" and second.romantic_partner == "player", "Accepted housemate partnerships must be reciprocal.")
 	check(first.relationships.housemate_1.bond == second.relationships.player.bond and second.social_history[0].target_id == "player", "Both Lifelets must share the relationship stage and receive their own history entry.")
-	check(first.queue_action("commit", "housemate_1"), "An eligible household couple may commit.")
-	home.begin_action("player")
-	home.tick(45.0 / LifeSim.GAME_MINUTES_PER_SECOND)
-	check(second.relationships.player.status == "Committed partner", "Commitment must update the receiving household member.")
+	for i:int in 2:
+		check(first.queue_action("go_on_date","housemate_1"),"A partnered household couple may date.")
+		home.begin_action("player")
+		home.tick(45.0/LifeSim.GAME_MINUTES_PER_SECOND)
+		home.tick(45.0/LifeSim.GAME_MINUTES_PER_SECOND)
+	var marriage:Dictionary=LifeMarriage.complete(home,"player","housemate_1",Vector3(0,.16,0),0,[])
+	check(bool(marriage.ok) and second.relationships.player.status == "Spouse", "Marriage updates both household members after two dates.")
 	var state: Dictionary = home.get_state()
 	var loaded: LifeHousehold = Household.new()
 	root.add_child(loaded)
@@ -158,12 +167,14 @@ func _test_household_reciprocity() -> void:
 	# testing a state the game never holds.
 	first.relationships.maya.friendship = 80.0
 	first.relationships.maya.romance = 80.0
+	first.relationships.maya.successful_flirts = 3
 	home._sync_social_context()
 	check(first.queue_action("ask_partner", "maya"), "A now-single adult may form a new eligible partnership.")
 	home.begin_action("player")
 	home.tick(35.0 / LifeSim.GAME_MINUTES_PER_SECOND)
 	second.relationships.maya.friendship = 80.0
 	second.relationships.maya.romance = 80.0
+	second.relationships.maya.successful_flirts = 3
 	check(not second.get_action_availability("ask_partner", "maya").available and not second.queue_action("ask_partner", "maya"), "A neighbor already partnered with one member must be unavailable to another.")
 	home.queue_free()
 	loaded.queue_free()

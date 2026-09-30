@@ -1,5 +1,18 @@
 extends "res://tests/test_home_visit.gd"
 var slots:Dictionary={}
+func _snapshot_differences(before:Variant,after:Variant,path:String="resident")->Array:
+	var differences:Array=[]
+	if before is Dictionary and after is Dictionary:
+		for key:Variant in before:
+			if not after.has(key):differences.append({"path":path+"."+str(key),"missing":true})
+			else:differences.append_array(_snapshot_differences(before[key],after[key],path+"."+str(key)))
+		for key:Variant in after:
+			if not before.has(key):differences.append({"path":path+"."+str(key),"added":true})
+	elif before is Array and after is Array and before.size()==after.size():
+		for index:int in before.size():differences.append_array(_snapshot_differences(before[index],after[index],path+"["+str(index)+"]"))
+	elif before!=after or typeof(before)!=typeof(after):
+		differences.append({"path":path,"before":before,"after":after,"before_type":typeof(before),"after_type":typeof(after)})
+	return differences
 func _first(kind:String)->Dictionary:
 	for item:Dictionary in app.world.items:
 		if str(item.kind)==kind:return item
@@ -34,7 +47,11 @@ func _run()->void:
 	app.household.set_speed(0);check(app.save_game("","Goodbye during Welcome"),"Goodbye during paid Welcome can be saved")
 	var departure_slot:String=app.active_save_id
 	var expected:Dictionary=app.residents.snapshot();_load(departure_slot);await process_frame
-	check(app.residents.snapshot()==expected and _phase()=="leaving","Paid-Welcome goodbye restores its exact departure identity")
+	if app.residents.snapshot()!=expected:
+		var differences:Array=_snapshot_differences(expected,app.residents.snapshot())
+		events.append({"departure_differences":differences,"departure_before":expected,"departure_after":app.residents.snapshot()})
+		print("DEPARTURE_DIFF ",JSON.stringify(differences,"",true,true))
+	check(_same_snapshot(app.residents.snapshot(),expected) and _phase()=="leaving","Paid-Welcome goodbye restores its exact departure identity")
 	app.household.set_speed(1)
 	check(_until("absent"),"Retained Welcome finishes before one physical departure")
 	check(app.sim.relationships.maya.friendship==friendship+12,"Goodbye grants only the existing real friendly completion")
@@ -85,6 +102,7 @@ func _run()->void:
 	_reject(raw,"Inconsistent waiting phase clock")
 	await _load_phase("inside")
 	var created:float=app.residents.home_visit.state.phase_at
+	app.household.set_speed(8)
 	check(_until("leaving",9000),"An admitted guest begins departure after a bounded stay")
 	check(app.residents.home_visit._now()>=created+LifeHomeVisit.STAY_MINUTES,"The stay deadline is measured from actual indoor arrival")
 	check(_until("absent"),"Stay expiry walks to the sidewalk before absence")
