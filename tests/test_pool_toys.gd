@@ -230,6 +230,10 @@ func _housemate(pool: Dictionary, toy: Dictionary) -> void:
 	check(not entry.is_empty() and bool(entry.available), "A housemate is offered 'Use pool toy…' too.")
 	app.show_interactions({"id": other, "kind": "neighbor", "label": "Ada Vale"}, Vector2(600, 400))
 	await frames(2)
+	# A person's choices sit on a wheel; the pool toy is one of its fun ones.
+	check(app.overlay.find_child("InteractionWheel", true, false) != null, "Clicking a Lifelet opens an interaction wheel.")
+	app.overlay.find_child("WheelCategory_fun", true, false).pressed.emit()
+	await frames(2)
 	var listed: bool = false
 	for node: Node in app.overlay.find_children("*", "Button", true, false):
 		if (node as Button).text == "Use pool toy…": listed = true

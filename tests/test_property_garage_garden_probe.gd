@@ -137,7 +137,10 @@ func _run() -> void:
 			"departure": {}, "blocked": false, "meal": {}, "next_meal": 1, "auto_welcome": false,
 		}
 		var before: float = app.residents.home_visit.stay_deadline()
-		check(app.residents.home_visit.ask_to_stay_over(), "Ask to Stay Over succeeds for an inside guest.")
+		check(not app.residents.home_visit.ask_to_stay_over(), "A guest the household barely knows declines to stay the night.")
+		for member: Dictionary in app.household.members:
+			if member.sim.relationships.has(guest_id): member.sim.relationships[guest_id].friendship = 45.0
+		check(app.residents.home_visit.ask_to_stay_over(), "Ask to Stay Over succeeds for an inside guest who is a friend.")
 		check(app.residents.home_visit.stay_deadline() > before, "Stay Over lengthens the leave deadline.")
 
 	# Buy medium through the real move path's payment + layout apply.

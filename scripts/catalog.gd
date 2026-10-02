@@ -150,11 +150,19 @@ const ITEMS = {
 	"post_box": {"label":"Garden post box", "category":"Garden", "price":45, "size":Vector2(.45,.45), "height":1.15, "color":"4a6b5c", "tint":true},
 	# A fence is sold by the square metre of panel face, so a taller or longer
 	# run costs proportionally more from the one rate rather than a second table.
+	# `free_length` lets the player set any run from half a metre to a whole lot
+	# edge, and any height, in quarter- and tenth-metre steps; the three named
+	# sizes stay as quick picks and for saves written before the run was free.
 	"fence": {"label":"Garden fence", "category":"Garden", "rate_per_square_metre":10, "size":Vector2(2.0,.12), "height":1.2, "color":"c9c3a8", "tint":true,
 		"styles":["01","02","03","04","05","06","07","08","09","10"],
-		"sizes":["small","medium","large"]},
-	"garden_gate": {"label":"Garden gate", "category":"Garden", "price":40, "size":Vector2(1.0,.12), "height":1.2, "color":"c9c3a8"},
-	"garden_gate_double": {"label":"Wide double gate", "category":"Garden", "price":70, "size":Vector2(2.0,.12), "height":1.2, "color":"c9c3a8"},
+		"sizes":["small","medium","large"],
+		"free_length":{"length":[0.5,30.0,0.25], "height":[0.6,2.4,0.1]}},
+	# Gates are tintable like fences, and the leaves swing open for anyone or any
+	# vehicle that comes through (see `scripts/gate_flow.gd`). The driveway gate
+	# is wide enough for a car with room to spare on either side.
+	"garden_gate": {"label":"Garden gate", "category":"Garden", "price":40, "size":Vector2(1.0,.12), "height":1.2, "color":"c9c3a8", "tint":true},
+	"garden_gate_double": {"label":"Wide double gate", "category":"Garden", "price":70, "size":Vector2(2.0,.12), "height":1.2, "color":"c9c3a8", "tint":true},
+	"garden_gate_drive": {"label":"Driveway gate", "category":"Garden", "price":90, "size":Vector2(3.0,.12), "height":1.2, "color":"c9c3a8", "tint":true},
 	"garden_light": {"label":"Garden path light", "category":"Garden", "price":35, "size":Vector2(.22,.22), "height":.9, "color":"4a4f55", "tint":true,
 		"styles":["01","02","03","04","05","06","07","08","09","10"]},
 	"garden_light_wall": {"label":"Garden wall light", "category":"Garden", "price":30, "size":Vector2(.22,.30), "height":.42, "color":"4a4f55", "tint":true,
@@ -356,11 +364,17 @@ const INSTRUMENTS: Array[String] = ["guitar", "violin"]
 
 # Floor coverings and wall decor, the telephone and the alarm keypad included: they
 # hang above the furniture and never block routes, walls or other furnishings.
-const PASSABLE: Array[String] = ["rug", "child_rug", "bath_mat", "painting", "framed_picture", "children_picture", "wall_clock", "shelf", "home_phone", "burglar_alarm", "yoga_mat", "beach_towel", "room_light", "memorial", "curtains", "house_door", "house_window", "pet_toy_cat", "pet_toy_dog", "garden_gate", "garden_gate_double"]
+const PASSABLE: Array[String] = ["rug", "child_rug", "bath_mat", "painting", "framed_picture", "children_picture", "wall_clock", "shelf", "home_phone", "burglar_alarm", "yoga_mat", "beach_towel", "room_light", "memorial", "curtains", "house_door", "house_window", "pet_toy_cat", "pet_toy_dog", "garden_gate", "garden_gate_double", "garden_gate_drive"]
 
 ## Fence runs and gates share one edge. Their footprints may touch; a gap is
 ## only the overlap of the panels themselves.
-const FLUSH: Array[String] = ["fence", "garden_gate", "garden_gate_double"]
+const FLUSH: Array[String] = ["fence", "garden_gate", "garden_gate_double", "garden_gate_drive"]
+
+## The kinds that are gates: two posts and hinged leaves that swing for travellers.
+const GATES: Array[String] = ["garden_gate", "garden_gate_double", "garden_gate_drive"]
+
+static func is_gate(kind: String) -> bool:
+	return kind in GATES
 
 static func runs_flush(kind: String) -> bool:
 	return kind in FLUSH
@@ -478,7 +492,7 @@ static func local_panels(kind: String, size: String = "", style: String = "", so
 	var hull: Dictionary = hulls.get(LifeCatalogVariants.style_or_default(style, data), {})
 	if not hull.is_empty():
 		return [{"x":float(hull.x) * scale, "z":float(hull.z) * scale, "w":float(hull.w) * scale, "d":float(hull.d) * scale}]
-	var span: Vector2 = (data.size as Vector2) * scale
+	var span: Vector2 = LifeCatalogVariants.footprint(data, size)
 	return [{"x":0.0, "z":0.0, "w":span.x, "d":span.y}]
 
 ## Whether a kind is bought in a colour of the player's own choosing.

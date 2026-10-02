@@ -2,8 +2,16 @@ extends RefCounted
 ## A work commute owns the body from the walk to the car until the back-door
 ## return. Its small phase record lives on the ordinary saved work action.
 const Entry = preload("res://scripts/car_entry.gd")
+const GateFlow = preload("res://scripts/gate_flow.gd")
 const DRIVE_SECONDS: float = 4.0
 const DRIVE_DISTANCE: float = 22.0
+## A walk to the car, or home from it, that has made no progress in this many
+## game seconds is given up on rather than left standing in the road.
+const WALK_LIMIT: float = 90.0
+const BACK_LIMIT: float = 90.0
+## Standing still this long, with somewhere to be, is a stall: the walk is planned
+## again, then made for the front door, and last of all simply finished.
+const STALL_LIMIT: float = 8.0
 const PHASES: Array[String] = ["walk", "board", "depart", "away", "return", "exit", "back"]
 var app: Node
 var views: Dictionary = {}
@@ -100,6 +108,9 @@ func tick(delta: float) -> void:
 	var visible_body: bool = phase in ["walk", "board", "exit", "back"]
 	app.world.set_actor_away(id, not visible_body, app.sim.is_away())
 	car.visible = phase != "away"
+	# A car on the move holds any gate in its way open; a parked one never does.
+	if phase in ["depart", "return"]: car.add_to_group(GateFlow.DRIVING_GROUP)
+	else: car.remove_from_group(GateFlow.DRIVING_GROUP)
 	# Rebuild even paused snapshots at their actual saved position.
 	var sign: float = float(state.get("drive_sign", 1.0))
 	if phase == "depart":
@@ -115,12 +126,28 @@ func tick(delta: float) -> void:
 	match phase:
 		"walk":
 			var destination: Vector3 = rig.stand_point("front"); destination.y = .16
-			if _walk(destination, delta):
+			# Where the door will be may be inside a neighbouring car or a wall:
+			# walk to the nearest free spot beside it, found once and kept.
+			var kept_walk: Variant = state.get("walk_to", null)
+			if kept_walk is Array and (kept_walk as Array).size() == 3:
+				destination = Vector3(float(kept_walk[0]), float(kept_walk[1]), float(kept_walk[2]))
+			elif not app.world.lot_navigation.point_clear(0, destination):
+				var near: Vector3 = app.world.nearest_clear_point(destination, 0, 8)
+				if near.is_finite(): destination = near
+				state["walk_to"] = [destination.x, destination.y, destination.z]
+			else:
+				state["walk_to"] = [destination.x, destination.y, destination.z]
+			var walk_from: Vector3 = app.player.position
+			var arrived: bool = _walk(destination, delta)
+			if not arrived and (_stalled(state, walk_from, step) or float(state.time) > WALK_LIMIT):
+				app._clear_motion(); app.sim.cancel_action(); app.show_notice("The way to the car is blocked. Clear a path to it and try again."); return
+			if arrived:
 				app._clear_motion()
 				var direction: float = drive_direction(app.world, home, str(state.vehicle))
 				if is_zero_approx(direction):
 					app.sim.cancel_action(); app.show_notice("Clear the driveway so the car can reach the road."); return
 				state["drive_sign"] = direction
+				state.erase("walk_to"); state.erase("stall_at"); state["stall"] = 0.0
 				_phase(state, "board")
 		"board":
 			# Reconstruct the beat from saved time; each stage must finish before
@@ -148,25 +175,144 @@ func tick(delta: float) -> void:
 			car.global_transform = home
 			if rig.tick_exit(float(state.time), app.player, delta):
 				app._clear_motion()
+				# Beside the car may be a neighbouring car, a fence or a wall:
+				# step to the nearest free spot so the walk home has a start.
+				_land_clear()
 				state["back_side"] = app.player.position.x
 				state["back_start_z"] = app.player.position.z
 				_phase(state, "back")
 		"back":
 			car.global_transform = home
-			var points: PackedVector3Array = back_route(app.world, Vector3(float(state.get("back_side", app.player.position.x)), .16, float(state.get("back_start_z", app.player.position.z))))
+			var points: PackedVector3Array = _back_points(state)
 			var leg: int = int(state.leg)
-			if points.is_empty():
-				if time == 0.0: app.show_notice("Clear a path through the back entrance to come home.")
-				app.player.animate(delta, float(app.sim.speed), false, "")
-				return
-			if leg < points.size() and _walk(points[leg], delta):
-				app._clear_motion(); state.leg = leg + 1
+			if (float(state.time) > BACK_LIMIT or int(state.get("recovery", 0)) >= 3) and leg < points.size():
+				# Walled in by furniture or a fence: put them at the nearest free
+				# spot to the end of the route and let them be home.
+				var last: Vector3 = points[points.size() - 1]
+				var free: Vector3 = app.world.nearest_clear_point(Vector3(last.x, .16, last.z), 0, 16)
+				app.player.global_position = free if free.is_finite() else app.world.lot_return_position(app._member_index(id))
+				state.leg = points.size()
+				leg = points.size()
+			if leg < points.size():
+				var walk_from: Vector3 = app.player.position
+				if _walk(points[leg], delta):
+					app._clear_motion(); state.leg = leg + 1; state["stall"] = 0.0; state.erase("stall_at")
+				elif _stalled(state, walk_from, step):
+					_recover(state)
 			if int(state.leg) >= points.size():
 				app._clear_motion(); app.away_phases[id] = ""
 				app.player.remove_meta("commute_inside")
 				_release(id)
 				app.world.set_actor_away(id, false, false)
 				app.sim.complete_away_return()
+
+## Whether the body has made no real headway for too long while it had somewhere
+## to go. Headway is measured against an anchor spot, not frame to frame, so how
+## fast the screen refreshes cannot make a walker look stalled.
+func _stalled(state: Dictionary, _before: Vector3, step: float) -> bool:
+	var anchor: Variant = state.get("stall_at", null)
+	var here: Vector3 = app.player.position
+	if not (anchor is Array and (anchor as Array).size() == 3) or here.distance_to(Vector3(float(anchor[0]), float(anchor[1]), float(anchor[2]))) > .25:
+		state["stall_at"] = [here.x, here.y, here.z]
+		state["stall"] = 0.0
+		return false
+	state["stall"] = float(state.get("stall", 0.0)) + step
+	return float(state.stall) > STALL_LIMIT
+
+## Plan the walk home again from wherever they are standing: first the rear
+## entrance from here, then the front door, then give up and put them home.
+func _recover(state: Dictionary) -> void:
+	state["stall"] = 0.0
+	state.erase("stall_at")
+	state["recovery"] = int(state.get("recovery", 0)) + 1
+	state.erase("back_route")
+	state.leg = 0
+	app._clear_motion()
+	_land_clear()
+	state["back_side"] = app.player.position.x
+	state["back_start_z"] = app.player.position.z
+
+## The points of the walk home, planned once and kept on the saved commute so a
+## paused save walks the same way.
+func _back_points(state: Dictionary) -> PackedVector3Array:
+	var kept: Variant = state.get("back_route", null)
+	if kept is Array and (kept as Array).size() > 0:
+		var again := PackedVector3Array()
+		var sound: bool = (kept as Array).size() <= 4
+		for point: Variant in kept:
+			if not point is Array or (point as Array).size() != 3: sound = false; break
+			again.append(Vector3(float(point[0]), float(point[1]), float(point[2])))
+		if sound: return again
+	var from := Vector3(float(state.get("back_side", app.player.position.x)), .16, float(state.get("back_start_z", app.player.position.z)))
+	var route := PackedVector3Array()
+	state.leg = 0 # a route planned now is walked from its first point
+	if int(state.get("recovery", 0)) < 2: route = plan_back(app.world, from)
+	# No usable rear entrance: come in by the front door instead of standing
+	# beside the car for good.
+	if route.is_empty(): route = front_route(from)
+	var packed: Array = []
+	for point: Vector3 in route: packed.append([point.x, point.y, point.z])
+	state["back_route"] = packed
+	return route
+
+## The rear route with every waypoint made real: a point that is inside a piece
+## of furniture is moved to the nearest free spot, and each leg must be walkable
+## from the last. A route whose last point cannot be reached is no route.
+static func plan_back(world: LifeWorld, from: Vector3) -> PackedVector3Array:
+	var raw: PackedVector3Array = back_route(world, from)
+	var out := PackedVector3Array()
+	var cursor: Vector3 = from
+	for index: int in range(raw.size()):
+		var last: bool = index == raw.size() - 1
+		var at: Vector3 = raw[index]
+		if not world.lot_navigation.point_clear(0, at): at = world.nearest_clear_point(at, 0, 8)
+		if not at.is_finite():
+			if last: return PackedVector3Array()
+			continue
+		if at.distance_to(cursor) < .09:
+			if last: out.append(at)
+			continue
+		if bool(world.route_to(cursor, at).ok):
+			out.append(at); cursor = at
+		elif last:
+			return PackedVector3Array()
+	return out
+
+## Move a body that has just got out of the car to the nearest free spot, when
+## where the door put it is blocked.
+func _land_clear() -> void:
+	var at: Vector3 = app.player.global_position
+	var flat := Vector3(at.x, .16, at.z)
+	if app.world.lot_navigation.point_clear(0, flat): return
+	var clear: Vector3 = app.world.nearest_clear_point(flat, 0, 12)
+	if clear.is_finite(): app.player.global_position = clear
+
+## Home by the front door, from wherever the car stopped: the doorstep, then a
+## free spot just inside that can really be walked to. Without any exterior door
+## it is the usual standing place on the lot.
+func front_route(from: Vector3 = Vector3.INF) -> PackedVector3Array:
+	if not from.is_finite(): from = Vector3(app.player.position.x, .16, app.player.position.z)
+	var door: Dictionary = app.residents.home_visit.front_door()
+	var route := PackedVector3Array()
+	if door.is_empty():
+		route.append(app.world.lot_return_position(app._member_index(app.bound_member_id)))
+		return route
+	var centre := Vector3(door.position.x, .16, door.position.z)
+	var outward: Vector3 = door.outward
+	var side := Vector3(outward.z, 0, -outward.x)
+	var outside: Vector3 = app.world.nearest_clear_point(centre + outward * 1.4, 0, 8)
+	if not outside.is_finite() or not bool(app.world.route_to(from, outside).ok):
+		route.append(app.world.lot_return_position(app._member_index(app.bound_member_id)))
+		return route
+	route.append(outside)
+	for depth: float in [1.2, 1.6, 2.0, 2.4]:
+		for offset: float in [0.0, .5, -.5, 1.0, -1.0]:
+			var wish: Vector3 = centre - outward * depth + side * offset
+			var inside: Vector3 = app.world.nearest_clear_point(wish, 0, 2)
+			if inside.is_finite() and inside.distance_to(wish) <= .3 and bool(app.world.route_to(outside, inside).ok):
+				route.append(inside)
+				return route
+	return route
 
 func _walk(destination: Vector3, delta: float) -> bool:
 	app.sim.get_current_action().commute["destination"] = [destination.x, destination.y, destination.z]
@@ -255,6 +401,15 @@ static func save_error(value: Variant, action: Dictionary = {}, away: Dictionary
 	if value.has("back_side") and not LifeBuildingState.number(value.back_side, -10000, 10000): return "Invalid saved back entrance route."
 	if value.has("back_start_z") and not LifeBuildingState.number(value.back_start_z, -10000, 10000): return "Invalid saved back entrance route."
 	if value.has("destination") and not LifeJourneyState.vector_valid(value.destination): return "Invalid saved commute walking destination."
+	if value.has("back_route"):
+		var route: Variant = value.back_route
+		if not route is Array or (route as Array).size() > 4: return "Invalid saved walk home."
+		for point: Variant in route:
+			if not LifeJourneyState.vector_valid(point): return "Invalid saved walk home."
+	if value.has("walk_to") and not LifeJourneyState.vector_valid(value.walk_to): return "Invalid saved walk to the car."
+	if value.has("stall_at") and not LifeJourneyState.vector_valid(value.stall_at): return "Invalid saved walk progress."
+	if value.has("recovery") and not LifeBuildingState.number(value.recovery, 0, 3, true): return "Invalid saved walk recovery."
+	if value.has("stall") and not LifeBuildingState.number(value.stall, 0, 1000): return "Invalid saved walk progress."
 	return ""
 
 ## Cabin choreography is a supported vehicle pose, not ordinary floor walking.

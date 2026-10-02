@@ -31,6 +31,14 @@ const SIZE_SCALES: Dictionary = {
 
 const SIZES: Array[String] = ["small", "medium", "large"]
 
+## A family that declares `free_length` may also be bought at a length and height
+## of the player's choosing. The choice rides the ordinary size id as
+## `L<centimetres>H<centimetres>` (`L350H140` is a 3.5 m run, 1.4 m tall), so
+## every record, save and price lookup that already carries a size id carries it
+## too. The three named sizes stay valid; they scale the whole panel uniformly.
+const CUSTOM_PREFIX: String = "L"
+const CUSTOM_HEIGHT_MARK: String = "H"
+
 ## The authored mesh name a colour variant recolours. Every colour-variant model
 ## authors exactly one such surface; see the art contract in
 ## `tools/create_outdoor_water.py` and its siblings.
@@ -77,6 +85,80 @@ static func colors(data: Dictionary) -> Array:
 
 static func sizes(data: Dictionary) -> Array:
 	return _listed(data, "sizes")
+
+
+## Whether this family can be bought at any length and height within its limits.
+static func resizable(data: Dictionary) -> bool:
+	return data.get("free_length") is Dictionary
+
+
+## The limits a resizable family states: `length` and `height` are each
+## `[smallest, largest, step]` in metres.
+static func limits(data: Dictionary) -> Dictionary:
+	var stated: Variant = data.get("free_length", {})
+	var out: Dictionary = {"length": Vector3(0.5, 20.0, 0.25), "height": Vector3(0.6, 2.4, 0.1)}
+	if not stated is Dictionary: return out
+	for axis: String in ["length", "height"]:
+		var triple: Variant = (stated as Dictionary).get(axis, null)
+		if triple is Array and (triple as Array).size() == 3:
+			out[axis] = Vector3(float(triple[0]), float(triple[1]), float(triple[2]))
+	return out
+
+
+## The id of a free-length size. Both dimensions are snapped to the family's step
+## and held inside its limits, so two ways of asking for one run name it alike.
+static func custom_id(data: Dictionary, length: float, height: float) -> String:
+	var bounds: Dictionary = limits(data)
+	var long: Vector3 = bounds.length
+	var tall: Vector3 = bounds.height
+	var clean_length: float = clampf(snappedf(length, long.z), long.x, long.y)
+	var clean_height: float = clampf(snappedf(height, tall.z), tall.x, tall.y)
+	return "%s%d%s%d" % [CUSTOM_PREFIX, roundi(clean_length * 100.0), CUSTOM_HEIGHT_MARK, roundi(clean_height * 100.0)]
+
+
+## The length and height a size id names for a resizable family, in metres.
+## `Vector2.ZERO` means the id is not a free-length one (a named size, an empty
+## id, a family that cannot be resized, or a value outside the limits), so a
+## caller that gets it falls back to the named-size rules.
+static func custom_dims(data: Dictionary, size: String) -> Vector2:
+	if not resizable(data) or not size.begins_with(CUSTOM_PREFIX) or not size.contains(CUSTOM_HEIGHT_MARK): return Vector2.ZERO
+	var halves: PackedStringArray = size.substr(1).split(CUSTOM_HEIGHT_MARK)
+	if halves.size() != 2 or not halves[0].is_valid_int() or not halves[1].is_valid_int(): return Vector2.ZERO
+	var length: float = float(halves[0].to_int()) / 100.0
+	var height: float = float(halves[1].to_int()) / 100.0
+	var bounds: Dictionary = limits(data)
+	var long: Vector3 = bounds.length
+	var tall: Vector3 = bounds.height
+	if length < long.x - 0.001 or length > long.y + 0.001 or height < tall.x - 0.001 or height > tall.y + 0.001: return Vector2.ZERO
+	return Vector2(length, height)
+
+
+## The length and height a size id gives, whether it is a free-length id or a
+## named size. This is what the resize controls start from.
+static func dims(data: Dictionary, size: String) -> Vector2:
+	var custom: Vector2 = custom_dims(data, size)
+	if custom != Vector2.ZERO: return custom
+	return Vector2(footprint(data, size).x, height(data, size))
+
+
+## How much the size stretches the authored volume on each axis: its length as
+## well as its height for a free-length run, the uniform scale otherwise. This is
+## what an envelope check measures, where `model_scale` is what a mesh is given.
+static func volume_scale(data: Dictionary, size: String) -> Vector3:
+	var custom: Vector2 = custom_dims(data, size)
+	if custom == Vector2.ZERO: return Vector3.ONE * size_scale(size)
+	var authored: Vector2 = data.get("size", Vector2.ONE) as Vector2
+	return Vector3(custom.x / maxf(0.01, authored.x), custom.y / maxf(0.01, float(data.get("height", 1.0))), 1.0)
+
+
+## The scale a model needs to fill the size, per axis. A named size scales the
+## authored mesh uniformly; a free-length one scales its height and thickness
+## by the height ratio only, because the run is tiled to its length elsewhere.
+static func model_scale(data: Dictionary, size: String) -> Vector3:
+	var custom: Vector2 = custom_dims(data, size)
+	if custom == Vector2.ZERO: return Vector3.ONE * size_scale(size)
+	var tall: float = custom.y / maxf(0.01, float(data.get("height", 1.0)))
+	return Vector3(1.0, tall, 1.0)
 
 
 ## Whether this entry offers the player a choice at all. A variant kind is one
@@ -126,6 +208,14 @@ static func price(data: Dictionary, size: String) -> int:
 	var per_size: Dictionary = data.get("size_prices", {})
 	if per_size.has(size): return int(per_size[size])
 	return int(data.get("price", 0))
+
+
+## What changing a placed run from one size to another costs the household: the
+## full price of what is added, and, for what is taken away, the sale rate of
+## seven tenths that selling a furnishing pays. A negative number is a refund.
+static func resize_cost(data: Dictionary, from_size: String, to_size: String) -> int:
+	var difference: int = price(data, to_size) - price(data, from_size)
+	return difference if difference >= 0 else -int(float(-difference) * .7)
 
 
 ## The square metres of face one size presents: its width times its height. A
@@ -179,6 +269,7 @@ static func style_or_default(style: String, data: Dictionary) -> String:
 static func size_or_default(size: String, data: Dictionary) -> String:
 	var offered: Array = sizes(data)
 	if offered.is_empty(): return ""
+	if custom_dims(data, size) != Vector2.ZERO: return size
 	return size if offered.has(size) else str(offered.front())
 
 
@@ -219,10 +310,15 @@ static func resolve(data: Dictionary, value: Dictionary) -> Dictionary:
 ## Callers that place, support, draw or thumbnail the object read this, so a
 ## size choice is one fact rather than a scale applied in each caller.
 static func footprint(data: Dictionary, size: String) -> Vector2:
-	return (data.get("size", Vector2.ONE) as Vector2) * size_scale(size)
+	var custom: Vector2 = custom_dims(data, size)
+	var authored: Vector2 = data.get("size", Vector2.ONE) as Vector2
+	if custom != Vector2.ZERO: return Vector2(custom.x, authored.y)
+	return authored * size_scale(size)
 
 
 static func height(data: Dictionary, size: String) -> float:
+	var custom: Vector2 = custom_dims(data, size)
+	if custom != Vector2.ZERO: return custom.y
 	return float(data.get("height", 1.0)) * size_scale(size)
 
 
@@ -236,7 +332,18 @@ static func style_label(style: String, data: Dictionary = {}) -> String:
 
 
 static func size_label(size: String) -> String:
+	if size.begins_with(CUSTOM_PREFIX) and size.contains(CUSTOM_HEIGHT_MARK):
+		var halves: PackedStringArray = size.substr(1).split(CUSTOM_HEIGHT_MARK)
+		if halves.size() == 2 and halves[0].is_valid_int() and halves[1].is_valid_int():
+			return "%s m × %s m" % [metres(float(halves[0].to_int()) / 100.0), metres(float(halves[1].to_int()) / 100.0)]
 	return "One size" if size.is_empty() else size.capitalize()
+
+
+## A length in metres without a trailing zero: 3.5, 4, 0.25.
+static func metres(value: float) -> String:
+	var text: String = "%.2f" % value
+	while text.contains(".") and (text.ends_with("0") or text.ends_with(".")): text = text.left(text.length() - 1)
+	return text
 
 ## Use the stored variant on live objects (whose `size` is a Vector2 footprint),
 ## or the saved size on detached records. Bundle refunds survive save and move.

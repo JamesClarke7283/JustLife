@@ -550,6 +550,21 @@ func stay_deadline() -> float:
 
 
 ## Ask the current guest to stay overnight. Overrides the ordinary leave timer.
+## The closest friend the guest has in the household has to be a proper friend, or
+## a partner, before they will stay the night.
+const STAY_OVER_FRIENDSHIP:float=40.0
+
+func stay_over_refusal() -> String:
+	if not active() or app == null or not is_instance_valid(app.household): return ""
+	var guest: String = str(state.guest)
+	var best: float = -100.0
+	for member: Dictionary in app.household.members:
+		var relation: Dictionary = member.sim.relationships.get(guest, {})
+		if str(relation.get("bond", "none")) in ["partners", "committed"]: return ""
+		best = maxf(best, float(relation.get("friendship", 0.0)))
+	if best >= STAY_OVER_FRIENDSHIP: return ""
+	return "Thanks, but I'd better head home tonight. Let's get to know each other a little better first."
+
 func ask_to_stay_over() -> bool:
 	if not active() or str(state.phase) != "inside":
 		if app != null: app.show_notice("Welcome your guest inside before asking them to stay.")
@@ -557,10 +572,15 @@ func ask_to_stay_over() -> bool:
 	if bool(state.get("stay_over", false)):
 		if app != null: app.show_notice("They are already staying over.")
 		return false
-	state["stay_over"] = true
-	activity.seek_bed()
 	var guest: String = str(state.guest)
 	var name: String = str(LifeResidents.PEOPLE.get(guest, {}).get("name", "Your guest")).split(" ")[0]
+	var refusal: String = stay_over_refusal()
+	if not refusal.is_empty():
+		# Asking is always allowed; an acquaintance simply says no thank you.
+		if app != null: app.show_notice("%s says: %s" % [name, refusal])
+		return false
+	state["stay_over"] = true
+	activity.seek_bed()
 	if app != null: app.show_notice("%s is delighted to stay over." % name)
 	if app != null and app.has_method("_refresh_guest_status"): app._refresh_guest_status()
 	return true
@@ -649,7 +669,7 @@ func tick(delta:float)->void:
 						return
 					if app.household.speed>1:
 						app.household.set_speed(1);app.show_notice(str(LifeResidents.PEOPLE[id].name)+" is here. Slowing down so you can welcome them.")
-					else:app.show_notice("Your guest is here. Choose Welcome in to invite them inside.")
+					else:app.show_notice("Your guest is here. Choose Welcome them in to invite them inside.")
 				elif phase=="entering":
 						if state.get("entrance",{}).is_empty():_complete_entry(now)
 						else:

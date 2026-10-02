@@ -3218,7 +3218,7 @@ func draw_household_bar() -> void:
 		career_labels["title"]=text_label(str(school.school),Vector2(989,778),Vector2(235,28),19,P.INK,true)
 		career_labels["details"]=text_label("",Vector2(990,814),Vector2(234,27),12,P.MUTED)
 		career_labels["work"]=button("Go to school",Vector2(1241,779),Vector2(149,37),_go_to_school,true)
-		career_labels["homework"]=button("Homework",Vector2(1241,824),Vector2(149,32),func():queue_nearest("desk","homework"))
+		career_labels["homework"]=button("Homework",Vector2(1241,824),Vector2(149,32),func():queue_homework_desk())
 		button("School record →",Vector2(989,848),Vector2(230,24),show_school_record)
 	else:
 		career_labels["title"]=text_label(sim.career.title,Vector2(989,778),Vector2(235,28),19,P.INK,true)
@@ -3533,11 +3533,13 @@ func model_thumbnail(kind:String,p:Vector2,s:Vector2,portrait:bool=false,parent:
 	if portrait:
 		model=LifeActor.new();root.add_child(model);model.configure(sim.character if appearance.is_empty() else appearance)
 	else:
-		model=packed.instantiate()
+		if Variants.custom_dims(data,size)!=Vector2.ZERO and packed is PackedScene:model=world._build_fence_run(packed,data,size)
+		else:model=packed.instantiate()
 		if model==null:return
 		root.add_child(model)
-		var model_scale:float=Variants.size_scale(size)
-		if not is_equal_approx(model_scale,1.0):model.scale=Vector3.ONE*model_scale
+		if Variants.custom_dims(data,size)==Vector2.ZERO:
+			var model_scale:float=Variants.size_scale(size)
+			if not is_equal_approx(model_scale,1.0):model.scale=Vector3.ONE*model_scale
 		model.scale*=Kitchen.model_scale(kind)
 		if not variant_color.is_empty():_tint_preview(model,data,variant_color)
 	var cam=Camera3D.new();root.add_child(cam)
@@ -3557,6 +3559,8 @@ func model_thumbnail(kind:String,p:Vector2,s:Vector2,portrait:bool=false,parent:
 		# incline. The footprint and height come from the variant, so a size
 		# choice frames itself too.
 		var framed:Vector2=Variants.footprint(data,size)
+		# A long run is framed by its first few panels, not its whole length.
+		if Variants.resizable(data):framed.x=minf(framed.x,6.0)
 		var framed_height:float=Variants.height(data,size)
 		var span:float=maxf(maxf(framed.x,framed.y),framed_height)
 		var focus:Vector3=Vector3(0,framed_height*.44,0)
@@ -3573,9 +3577,10 @@ func model_thumbnail(kind:String,p:Vector2,s:Vector2,portrait:bool=false,parent:
 ## disk. One place decides that, so every caller of a model — the thumbnail, the
 ## ghost and the placed body — agrees about what exists.
 func _variant_model(kind:String,style:String,data:Dictionary) -> Resource:
-	if Kitchen.cabinet(kind) or kind in ["bath_mat","burglar_alarm","home_phone"]:
+	if Kitchen.cabinet(kind) or kind in ["bath_mat","burglar_alarm","home_phone"] or LifeCatalog.is_gate(kind):
 		var root:Node3D=Kitchen.build(kind,Variants.resolve(data,{"style":style})) if Kitchen.cabinet(kind) else Node3D.new()
-		if kind=="burglar_alarm":world._build_burglar_alarm(root)
+		if LifeCatalog.is_gate(kind):world._build_garden_gate(root,float(data.size.x)>1.5,str(data.get("color","c9c3a8")),float(data.size.x))
+		elif kind=="burglar_alarm":world._build_burglar_alarm(root)
 		elif kind=="home_phone":world._build_home_phone(root)
 		elif kind=="bath_mat":world._build_bath_mat(root,Variants.resolve(data,{"style":style}))
 		for child:Node in root.find_children("*","",true,false):child.owner=root
@@ -4064,6 +4069,10 @@ func on_placement(kind:String,p:Vector3,angle:float,style:String="",size:String=
 	if not world.can_place(kind,p,angle,variant.style,variant.size):
 		show_notice("Hang this against a wall." if LifeCatalog.wall_mounted(kind) and not world.wall_behind(kind,p,angle,variant.size) else "That space needs a little more room.");return
 	var moving:bool=not pending_move.is_empty() and str(pending_move.entry.kind)==kind
+	# A run that is only being moved keeps its size, or moving it would be a way
+	# to lengthen it for nothing; resizing is its own, priced, transaction.
+	if moving and Variants.resizable(data) and str(variant.size)!=Variants.size_or_default(str(pending_move.entry.get("size","")),data):
+		show_notice("Place it as it is, then use Resize… to change its size.");return
 	if not pending_move.is_empty() and not moving:cancel_placement()
 	# A delivery was already paid for at the truck's counter, so its placement
 	# charges nothing; the flag is consumed here and nowhere else, so the order
@@ -4498,6 +4507,9 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 	# panel every other object uses.
 	var actions:Array=household.pet_actions(str(item.id),bound_member_id) if str(item.kind)=="pet" else sim.get_actions_for(str(item.kind),str(item.id))
 	if is_instance_valid(tv_group):tv_group.menu(item,actions)
+	if str(item.kind)=="neighbor":
+		for entry:Dictionary in actions:
+			if str(entry.id) in ["ask_partner","commit"]:entry["label"]=proposal_question(str(entry.id),str(item.id))
 	if str(item.kind)=="litter_tray":
 		var has_cat:bool=false
 		for pet:Dictionary in household.pets.get("pets",[]):
@@ -4550,11 +4562,13 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 				join_reason="Nobody else on the lot is free to join right now."
 			actions.insert(mini(1,actions.size()),{"id":LifeOutdoorActs.JOIN_ACTION,"label":"Ask to Join…","cost":0,"duration":int(LifeOutdoorActs.acts(str(item.kind)).get("duration",40)),"available":join_reason.is_empty(),"unavailable_reason":join_reason,"description":"Invite another household Lifelet to join you outdoors."})
 		actions.insert(mini(2,actions.size()),{"id":LifeOutdoorActs.CALL_FRIEND_ACTION,"label":"Call Friend Over…","cost":0,"duration":0,"available":true,"description":"Invite someone from your contacts list to come over."})
-	if residents.home_visit.active() and residents.home_visit.owns(str(item.id)) and str(residents.home_visit.state.phase)=="inside":
-		actions.insert(0,{"id":"guest_join","label":"Come Join Me","cost":0,"duration":0,"available":true,"description":"Ask your visitor to join your current activity or sit beside you."})
-		actions.insert(1,{"id":"guest_activity","label":"Suggest an activity…","cost":0,"duration":0,"available":true,"description":"Choose something for your visitor to do, or see how they are feeling."})
+	if residents.home_visit.active() and residents.home_visit.owns(str(item.id)):
+		var inside:bool=str(residents.home_visit.state.phase)=="inside"
+		var not_yet:String="" if inside else "Welcome them in first, and wait until they are inside."
+		actions.insert(0,{"id":"guest_join","label":"Come Join Me","cost":0,"duration":0,"available":inside,"unavailable_reason":not_yet,"description":"Ask your visitor to join your current activity or sit beside you."})
+		actions.insert(1,{"id":"guest_activity","label":"Suggest an activity…","cost":0,"duration":0,"available":inside,"unavailable_reason":not_yet,"description":"Choose something for your visitor to do, or see how they are feeling."})
 		var staying:bool=bool(residents.home_visit.state.get("stay_over",false))
-		actions.insert(0,{"id":LifeOutdoorActs.STAY_OVER_ACTION,"label":"Ask to Stay Over","cost":0,"duration":0,"available":not staying,"unavailable_reason":"They are already staying over." if staying else "","description":"Override their leave timer and ask them to stay the night."})
+		actions.insert(0,{"id":LifeOutdoorActs.STAY_OVER_ACTION,"label":"Ask to Stay Over","cost":0,"duration":0,"available":inside and not staying,"unavailable_reason":not_yet if not inside else ("They are already staying over." if staying else ""),"description":"Override their leave timer and ask them to stay the night."})
 	if str(item.kind)=="floor_lamp" and not _find_item(str(item.id)).is_empty():
 		var lamp:Dictionary=_find_item(str(item.id))
 		actions.append({"id":"switch_light","label":"Switch off" if world.item_lit(lamp) else "Switch on","cost":0,"duration":0,"available":true,"description":"A warm pool of light for evenings in."})
@@ -4565,6 +4579,11 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 	var control_index:int=-1
 	for i in range(household.members.size()):
 		if household.members[i].id==str(item.id) and i!=household.selected_index:control_index=i
+	# A person is chosen from a wheel: social, fun and romantic rings round their
+	# name. Everything else keeps the plain list.
+	if str(item.kind)=="neighbor":
+		show_interaction_wheel(item,actions,screen,control_index)
+		return
 	var start_y:float=134 if control_index>=0 else 85
 	var h:float=clampf(start_y+actions.size()*54+13,150,604)
 	var pos=Vector2(clampf(screen.x-156,300,1064),clampf(screen.y-70,99,maxf(99,700-h)))
@@ -4586,51 +4605,143 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 		b.disabled=not bool(a.available)
 		b.pressed.connect(func():
 			play_click()
-			if str(a.id)=="use_litter_tray":_use_litter_tray(str(item.id))
-			elif str(a.id)=="cook":meal_flow.show_recipes(str(item.id))
-			elif str(a.id)=="assign_bed_sides":show_bed_assignments(str(item.id))
-			elif str(a.id)=="choose_leftovers":meal_flow.show_leftovers(str(item.id))
-			elif str(a.id)=="switch_light":switch_lamp(item);close_overlay()
-			elif str(a.id)=="call_to_meal":
-				var joined:int=meal_flow.call_to_meal(str(item.id));close_overlay();show_notice("%d Lifelets are coming to eat." % joined)
-			elif str(a.id)=="ask_who_wants_food":show_food_offers(str(item.id))
-			elif str(a.id)=="change_in_wardrobe" or str(a.id)=="change_in_mirror":show_wardrobe_panel(str(item.id))
-			elif str(a.id)=="do_makeup":show_wardrobe_panel(str(item.id),"makeup")
-			elif str(a.id)=="change_jewelry":show_wardrobe_panel(str(item.id),"jewelry")
-			elif str(a.id)=="read_post":show_post_box()
-			elif str(a.id)=="order_groceries":show_grocery_order()
-			elif str(a.id)=="supported_homework":show_homework_helpers(item)
-			elif str(a.id)==LifeDancePlan.ACTION_ID:show_dance_partners(item)
-			elif str(a.id)==LifeOutdoorActs.JOIN_ACTION:show_outdoor_join_partners(item)
-			elif str(a.id)==LifeOutdoorActs.POOL_TOY_ACTION:show_pool_toys(str(item.id))
-			elif str(a.id)==LifeOutdoorActs.CALL_FRIEND_ACTION:show_call_friend_over()
-			elif str(a.id)==LifeOutdoorActs.STAY_OVER_ACTION:
-				residents.home_visit.ask_to_stay_over();close_overlay()
-			elif str(a.id)=="guest_join":
-				var joined:bool=residents.home_visit.activity.come_join(bound_member_id)
-				close_overlay();show_notice("Your visitor is coming to join you." if joined else "Choose an activity with a free place for your visitor first.")
-			elif str(a.id)=="guest_activity":show_guest_activities()
-			elif str(a.id)=="open_garage_door":
-				var was_open:bool=false
-				var garage:Dictionary=_find_item(str(item.id))
-				if not garage.is_empty() and is_instance_valid(garage.get("node")):
-					was_open=bool(garage.node.get_meta("garage_door_open",false))
-				if world.toggle_garage_door(str(item.id)):
-					show_notice("Garage door closes." if was_open else "Garage door opens.")
-				close_overlay()
-			elif str(a.id)=="drive_car":
-				# Pick who is coming first (adults, children, babies, pets), then
-				# the destination. The trip walks to this household car when one
-				# is owned, otherwise the shared Juniper kerb stand.
-				residents.preferred_vehicle_id=str(item.id)
-				close_overlay();show_drive_party()
-			elif str(a.id)==LifeBabyPlan.ACTION_ID:try_for_baby(item);close_overlay()
-			elif str(a.id)=="stop_try_for_baby":
-				household.cancel_cooperative_action(bound_member_id)
-				_end_cover_beat();close_overlay()
-			else:queue_interaction(item,a.id);close_overlay())
+			_run_interaction(item,a))
 		column.add_child(b)
 	if actions.is_empty():paragraph("A little detail that makes this place home.",pos+Vector2(18,80),Vector2(304,55),13,P.MUTED,overlay)
+
+## The ring a person's interactions belong to.
+const WHEEL_CATEGORIES:Array=[["social","Social"],["fun","Fun"],["romantic","Romantic"]]
+
+func wheel_category(id:String) -> String:
+	if id in ["flirt","ask_partner","go_on_date","commit","break_up","invite_home_date","hug","make_baby"] or id==LifeBabyPlan.ACTION_ID:return "romantic"
+	if id in ["joke","playful_prank","bold_introduction","guest_join","guest_activity","play_with_pet_toy"] or id==LifeOutdoorActs.POOL_TOY_ACTION:return "fun"
+	return "social"
+
+## Where the n-th of `count` entries sits round an ellipse, starting at the top
+## and going clockwise.
+func wheel_points(count:int,centre:Vector2,radius:Vector2) -> Array[Vector2]:
+	var points:Array[Vector2]=[]
+	for index:int in range(count):
+		var angle:float=-PI*.5+TAU*float(index)/float(maxi(1,count))
+		points.append(centre+Vector2(cos(angle)*radius.x,sin(angle)*radius.y))
+	return points
+
+## Open the wheel for a person. With no ring chosen the three rings stand round
+## their name; choosing one spreads its actions out, each greyed with its reason
+## when it is not yet open, so the way from friend to partner to spouse can be seen.
+func show_interaction_wheel(item:Dictionary,actions:Array,screen:Vector2,control_index:int,ring:String="") -> void:
+	close_overlay();overlay_open=true;dismiss_layer()
+	var size:=Vector2(760,560)
+	var pos:=Vector2(clampf(screen.x-size.x*.5,24,1416-size.x),clampf(screen.y-size.y*.5,16,maxf(16,704-size.y)))
+	var centre:=pos+size*.5
+	var backing=card(pos,size,Color(P.WHITE.r,P.WHITE.g,P.WHITE.b,.985),44,overlay)
+	backing.name="InteractionWheel"
+	var hub=card(centre-Vector2(86,86),Vector2(172,172),P.PALE,86,overlay)
+	hub.name="WheelHub"
+	var title=text_label(str(item.label),centre-Vector2(74,44),Vector2(148,34),22,P.INK,true,overlay)
+	title.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	title.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS;title.size=Vector2(148,34)
+	if control_index>=0:
+		var control=button("Control",centre-Vector2(55,-4),Vector2(110,32),func():select_household_member(control_index),true,overlay)
+		control.name="WheelControl"
+		control.tooltip_text="Control this Lifelet"
+	if ring.is_empty():
+		small_caps("What would you like to do?",centre+Vector2(-120,-size.y*.5+26),Vector2(240,21),overlay).horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+		var rings:Array=[]
+		for entry:Array in WHEEL_CATEGORIES:
+			var open_count:int=0
+			var total:int=0
+			for a:Dictionary in actions:
+				if wheel_category(str(a.id))!=str(entry[0]):continue
+				total+=1
+				if bool(a.available):open_count+=1
+			if total>0:rings.append([str(entry[0]),str(entry[1]),open_count,total])
+		var points:Array[Vector2]=wheel_points(rings.size(),centre,Vector2(215,140))
+		for index:int in range(rings.size()):
+			var entry:Array=rings[index]
+			var ring_id:String=str(entry[0])
+			var chosen=button("%s\n%d of %d open" % [entry[1],entry[2],entry[3]],points[index]-Vector2(88,40),Vector2(176,80),func():show_interaction_wheel(item,actions,screen,control_index,ring_id),false,overlay)
+			chosen.name="WheelCategory_"+ring_id
+			chosen.tooltip_text="Open the %s ring." % str(entry[1]).to_lower()
+			chosen.add_theme_font_size_override("font_size",18)
+	else:
+		small_caps(ring.capitalize(),centre+Vector2(-120,-size.y*.5+26),Vector2(240,21),overlay).horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+		var members:Array=actions.filter(func(a:Dictionary)->bool:return wheel_category(str(a.id))==ring)
+		var crowded:bool=members.size()>8
+		var spots:Array[Vector2]=wheel_points(members.size(),centre,Vector2(290,200) if crowded else (Vector2(262,196) if members.size()>6 else Vector2(240,172)))
+		# What the pointer rests on is explained under the hub, so a locked entry
+		# can say what unlocks it without crowding its own button.
+		var hint=paragraph("Point at a choice to read more.",centre+Vector2(-106,98),Vector2(212,48),12,P.MUTED,overlay)
+		hint.name="WheelHint"
+		hint.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+		for index:int in range(members.size()):
+			var a:Dictionary=members[index]
+			var text:String=str(a.label)
+			if int(a.cost)>0:text+="   ℒ%d" % a.cost
+			var width:float=160.0 if crowded else 184.0
+			var b=button(text,spots[index]-Vector2(width*.5,29),Vector2(width,58),func():
+				play_click()
+				_run_interaction(item,a),false,overlay)
+			b.name="WheelAction_"+str(a.id)
+			b.add_theme_font_size_override("font_size",13)
+			b.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+			b.clip_text=true
+			b.custom_minimum_size=Vector2(width,58)
+			b.size=Vector2(width,58)
+			b.disabled=not bool(a.available)
+			var why:String=str(a.get("unavailable_reason","")) if not bool(a.available) else str(a.description)+"  ·  %d min" % int(a.duration)
+			b.tooltip_text=why
+			b.mouse_entered.connect(func():if is_instance_valid(hint):hint.text=("Locked · " if not bool(a.available) else "")+why)
+			b.mouse_exited.connect(func():if is_instance_valid(hint):hint.text="Point at a choice to read more.")
+		button("Back",centre+Vector2(-50,56),Vector2(100,30),func():show_interaction_wheel(item,actions,screen,control_index),false,overlay).name="WheelBack"
+	button("✕",pos+Vector2(size.x-54,12),Vector2(40,34),func():close_overlay(),false,overlay).name="WheelClose"
+
+## Carry out one entry of an interaction menu or wheel. Shared by the list a
+## furnishing opens and the wheel a person opens, so the two never drift apart.
+func _run_interaction(item:Dictionary,a:Dictionary) -> void:
+	if str(a.id)=="use_litter_tray":_use_litter_tray(str(item.id))
+	elif str(a.id)=="cook":meal_flow.show_recipes(str(item.id))
+	elif str(a.id)=="assign_bed_sides":show_bed_assignments(str(item.id))
+	elif str(a.id)=="choose_leftovers":meal_flow.show_leftovers(str(item.id))
+	elif str(a.id)=="switch_light":switch_lamp(item);close_overlay()
+	elif str(a.id)=="call_to_meal":
+		var joined:int=meal_flow.call_to_meal(str(item.id));close_overlay();show_notice("%d Lifelets are coming to eat." % joined)
+	elif str(a.id)=="ask_who_wants_food":show_food_offers(str(item.id))
+	elif str(a.id)=="change_in_wardrobe" or str(a.id)=="change_in_mirror":show_wardrobe_panel(str(item.id))
+	elif str(a.id)=="do_makeup":show_wardrobe_panel(str(item.id),"makeup")
+	elif str(a.id)=="change_jewelry":show_wardrobe_panel(str(item.id),"jewelry")
+	elif str(a.id)=="read_post":show_post_box()
+	elif str(a.id)=="order_groceries":show_grocery_order()
+	elif str(a.id)=="supported_homework":show_homework_helpers(item)
+	elif str(a.id)==LifeDancePlan.ACTION_ID:show_dance_partners(item)
+	elif str(a.id)==LifeOutdoorActs.JOIN_ACTION:show_outdoor_join_partners(item)
+	elif str(a.id)==LifeOutdoorActs.POOL_TOY_ACTION:show_pool_toys(str(item.id))
+	elif str(a.id)==LifeOutdoorActs.CALL_FRIEND_ACTION:show_call_friend_over()
+	elif str(a.id)==LifeOutdoorActs.STAY_OVER_ACTION:
+		residents.home_visit.ask_to_stay_over();close_overlay()
+	elif str(a.id)=="guest_join":
+		var joined:bool=residents.home_visit.activity.come_join(bound_member_id)
+		close_overlay();show_notice("Your visitor is coming to join you." if joined else "Choose an activity with a free place for your visitor first.")
+	elif str(a.id)=="guest_activity":show_guest_activities()
+	elif str(a.id)=="open_garage_door":
+		var was_open:bool=false
+		var garage:Dictionary=_find_item(str(item.id))
+		if not garage.is_empty() and is_instance_valid(garage.get("node")):
+			was_open=bool(garage.node.get_meta("garage_door_open",false))
+		if world.toggle_garage_door(str(item.id)):
+			show_notice("Garage door closes." if was_open else "Garage door opens.")
+		close_overlay()
+	elif str(a.id)=="drive_car":
+		# Pick who is coming first (adults, children, babies, pets), then
+		# the destination. The trip walks to this household car when one
+		# is owned, otherwise the shared Juniper kerb stand.
+		residents.preferred_vehicle_id=str(item.id)
+		close_overlay();show_drive_party()
+	elif str(a.id)==LifeBabyPlan.ACTION_ID:try_for_baby(item);close_overlay()
+	elif str(a.id)=="stop_try_for_baby":
+		household.cancel_cooperative_action(bound_member_id)
+		_end_cover_beat();close_overlay()
+	else:queue_interaction(item,a.id);close_overlay()
 
 func show_bed_assignments(bed_id:String) -> void:
 	close_overlay();overlay_open=true;dismiss_layer()
@@ -5278,7 +5389,8 @@ func show_build_object(item:Dictionary,screen:Vector2) -> void:
 	overlay_open=true;dismiss_layer()
 	var data:Dictionary=LifeCatalog.get_item(str(item.kind))
 	var colors:Array=Variants.colors(data)
-	var rows:int=3+(1 if colors.size()>1 else 0)
+	var resizable:bool=Variants.resizable(data)
+	var rows:int=3+(1 if colors.size()>1 else 0)+(1 if resizable else 0)
 	var p=Vector2(clampf(screen.x-140,300,1100),clampf(screen.y-70,99,440))
 	card(p,Vector2(290,70.0+float(rows)*51.0),P.WHITE,17,overlay)
 	text_label(item.label,p+Vector2(18,14),Vector2(261,38),22,P.INK,true,overlay)
@@ -5289,6 +5401,11 @@ func show_build_object(item:Dictionary,screen:Vector2) -> void:
 	y+=51.0
 	if colors.size()>1:
 		button("Change colour…",p+Vector2(16,y),Vector2(258,40),func():show_placed_colour_picker(item),false,overlay).tooltip_text="Repaint this furnishing. Curtains, rugs and tinted decor update on the mesh you already placed."
+		y+=51.0
+	if resizable:
+		var resize=button("Resize…",p+Vector2(16,y),Vector2(258,40),func():show_fence_resize(str(item.get("id","")),{}),false,overlay)
+		resize.name="ResizeFurnishing"
+		resize.tooltip_text="Make this run longer, shorter or taller. You pay for added panel and are refunded seven tenths of what you take away."
 		y+=51.0
 	var store=button("Put in storage",p+Vector2(16,y),Vector2(258,40),func():store_item(item);close_overlay(),false,overlay)
 	store.tooltip_text="File this furnishing away in the household storage unit ("+str(household_flow.storage_count())+"/%d used)." % LifeHouseholdFlow.MAX_STORAGE
@@ -5339,6 +5456,145 @@ func _recolour_placed_item(item_id:String,color:String) -> void:
 	world._apply_variant_colour(existing.node,data,next)
 	show_notice("A fresh colour for your %s." % str(data.label).to_lower())
 	show_placed_colour_picker(existing)
+
+## Length and height steppers for a free-length fence, shared by the buy picker and
+## the resize panel. `change` receives the new value and redraws its panel.
+func _dimension_stepper(label:String,at:Vector2,value:float,bounds:Vector3,change:Callable,parent:Node,tag:String) -> void:
+	text_label(label,at+Vector2(0,6),Vector2(86,30),17,P.INK,true,parent)
+	var less=button("−",at+Vector2(92,0),Vector2(46,40),func():change.call(maxf(bounds.x,snappedf(value-bounds.z,bounds.z))),false,parent)
+	less.name="%sLess" % tag
+	less.disabled=value<=bounds.x+.001
+	less.tooltip_text="Shorter by %s m" % Variants.metres(bounds.z)
+	var shown=text_label("%s m" % Variants.metres(value),at+Vector2(144,6),Vector2(90,30),18,P.TEAL,true,parent)
+	shown.name="%sValue" % tag
+	shown.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	var more=button("+",at+Vector2(240,0),Vector2(46,40),func():change.call(minf(bounds.y,snappedf(value+bounds.z,bounds.z))),false,parent)
+	more.name="%sMore" % tag
+	more.disabled=value>=bounds.y-.001
+	more.tooltip_text="Longer by %s m" % Variants.metres(bounds.z)
+
+## Resize a placed fence. `working` carries the panel's choice between redraws:
+## `length`, `height` and `anchor`, which names the end that stays where it is
+## (`left`, `centre` or `right`, as the camera sees the fence).
+func show_fence_resize(item_id:String,working:Dictionary) -> void:
+	var existing:Dictionary=_find_item(item_id)
+	if existing.is_empty() or mode!="build":return
+	var data:Dictionary=LifeCatalog.get_item(str(existing.kind))
+	if not Variants.resizable(data):return
+	var current:Dictionary=Variants.resolve(data,existing.get("variant",existing))
+	var now:Vector2=Variants.dims(data,str(current.size))
+	if working.is_empty():working={"length":now.x,"height":now.y,"anchor":"left"}
+	var limits:Dictionary=Variants.limits(data)
+	var next_size:String=Variants.custom_id(data,float(working.length),float(working.height))
+	var cost:int=Variants.resize_cost(data,str(current.size),next_size)
+	close_overlay();overlay_open=true;dismiss_layer()
+	var p:=Vector2(420,150)
+	card(p,Vector2(560,470),P.WHITE,20,overlay)
+	small_caps("Resize fence",p+Vector2(28,22),Vector2(500,22),overlay)
+	text_label(str(existing.get("label",data.label)),p+Vector2(26,52),Vector2(500,36),26,P.INK,true,overlay)
+	paragraph("Set the length and height you need. Panels are sold by the square metre: you pay for what you add and are refunded seven tenths of what you take away, as when you sell.",p+Vector2(28,96),Vector2(504,58),15,P.MUTED,overlay)
+	_dimension_stepper("Length",p+Vector2(28,172),float(working.length),limits.length,func(value:float):
+		var held:Dictionary=working.duplicate();held["length"]=value;show_fence_resize(item_id,held),overlay,"FenceLength")
+	_dimension_stepper("Height",p+Vector2(28,222),float(working.height),limits.height,func(value:float):
+		var held:Dictionary=working.duplicate();held["height"]=value;show_fence_resize(item_id,held),overlay,"FenceHeight")
+	small_caps("Keep this end fixed",p+Vector2(30,276),Vector2(300,22),overlay)
+	var x:float=28.0
+	for choice:Array in [["left","Left end"],["centre","Middle"],["right","Right end"]]:
+		var anchor:String=str(choice[0])
+		var option=button(str(choice[1]),p+Vector2(x,304),Vector2(164,40),func():
+			var held:Dictionary=working.duplicate();held["anchor"]=anchor;show_fence_resize(item_id,held),str(working.anchor)==anchor,overlay)
+		option.name="FenceAnchor_"+anchor
+		x+=172.0
+	var change:String="No change"
+	if cost>0:change="Costs ℒ%d more" % cost
+	elif cost<0:change="Refunds ℒ%d" % -cost
+	var summary=text_label("%s m × %s m  →  %s m × %s m   ·   %s" % [Variants.metres(now.x),Variants.metres(now.y),Variants.metres(float(working.length)),Variants.metres(float(working.height)),change],p+Vector2(28,360),Vector2(504,30),17,P.TEAL,false,overlay)
+	summary.name="FenceResizeSummary"
+	var apply=button("Resize it",p+Vector2(28,406),Vector2(250,48),func():
+		if resize_fence(item_id,float(working.length),float(working.height),str(working.anchor)):close_overlay();draw_live(),true,overlay)
+	apply.name="FenceResizeApply"
+	apply.disabled=next_size==str(current.size)
+	button("Back",p+Vector2(294,406),Vector2(238,48),func():show_build_object(existing,Vector2(850,380)),false,overlay)
+
+## Which way the fence's own +x end points across the screen, so the resize panel
+## can say left and right the way the player sees the run.
+func _fence_left_sign(item:Dictionary) -> float:
+	if not is_instance_valid(item.get("node")) or not is_instance_valid(world.camera):return 1.0
+	var node:Node3D=item.node
+	var axis:Vector3=node.global_transform.basis*Vector3.RIGHT
+	var near:Vector2=world.camera.unproject_position(node.global_position)
+	var far:Vector2=world.camera.unproject_position(node.global_position+axis)
+	return 1.0 if far.x<near.x else -1.0
+
+## Change a placed fence's length and height in one transaction. The run keeps
+## the end `anchor` names (`left`/`right` as the camera sees it, `start`/`end` for
+## its own -x/+x ends, or `centre`), is checked against everything else on the
+## lot, and the household pays the difference in panel area or is refunded it.
+func resize_fence(item_id:String,length:float,height:float,anchor:String="centre") -> bool:
+	if mode!="build":return false
+	var existing:Dictionary=_find_item(item_id)
+	if existing.is_empty() or bool(existing.get("transient_food",false)) or not LifeCatalog.ITEMS.has(str(existing.get("kind",""))):return false
+	var data:Dictionary=LifeCatalog.get_item(str(existing.kind))
+	if not Variants.resizable(data):return false
+	cancel_placement()
+	var current:Dictionary=Variants.resolve(data,existing.get("variant",existing))
+	var next_size:String=Variants.custom_id(data,length,height)
+	if next_size==str(current.size):show_notice("The run is already that size.");return false
+	var cost:int=Variants.resize_cost(data,str(current.size),next_size)
+	if cost>0 and sim.funds<cost:show_notice("You need ℒ%d to make it that big." % cost);return false
+	var snapshot:Dictionary=_build_snapshot(cost)
+	var original:Dictionary={}
+	for entry:Dictionary in snapshot.layout:
+		if entry.has("id") and str(entry.id)==item_id:original=entry.duplicate(true)
+	if original.is_empty():return false
+	var before:Vector2=Variants.dims(data,str(current.size))
+	var after:Vector2=Variants.dims(data,next_size)
+	# The end that stays fixed, as a sign along the fence's own +x axis.
+	var fixed:float=0.0
+	match anchor:
+		"start":fixed=-1.0
+		"end":fixed=1.0
+		"left":fixed=_fence_left_sign(existing)
+		"right":fixed=-_fence_left_sign(existing)
+	var axis:Vector3=Basis(Vector3.UP,deg_to_rad(float(original.get("rotation",0))))*Vector3.RIGHT
+	var shift:Vector3=-axis*fixed*(after.x-before.x)*.5
+	var entry:Dictionary=original.duplicate(true)
+	entry["x"]=float(original.x)+shift.x
+	entry["z"]=float(original.z)+shift.z
+	entry["size"]=next_size
+	var proposed:Array=world.serialize_items().filter(func(record:Dictionary)->bool:return str(record.get("id",""))!=item_id)
+	proposed.append(entry)
+	var problem:String=build_transactions.furnishing_error(proposed)
+	if not problem.is_empty():show_notice(problem);return false
+	var protection:Dictionary=build_protection_context()
+	# Lift the old run out so it does not collide with its own longer self, then
+	# check the new one against everything else exactly as a placement would.
+	world.remove_item(item_id,true)
+	world.placement_moving_id=item_id
+	var run_level:int=int(original.get("level",0))
+	var fits:bool=world.can_place(str(original.kind),Vector3(float(entry.x),LifeBuildingState.level_y(run_level),float(entry.z)),float(original.get("rotation",0)),str(original.get("style","")),next_size)
+	world.placement_moving_id=""
+	if not fits:
+		world.add_item(original)
+		build_transactions.furnishing_rebuilt(protection)
+		_refresh_sim_targets()
+		show_notice("That size would run into something. Try a shorter run, or keep a different end fixed.")
+		return false
+	_cancel_all_cooperative_actions()
+	world.add_item(entry)
+	if _find_item(item_id).is_empty():
+		world.add_item(original)
+		build_transactions.furnishing_rebuilt(protection)
+		_refresh_sim_targets()
+		return false
+	build_undo.append(snapshot)
+	household.set_funds(sim.funds-cost)
+	build_transactions.furnishing_rebuilt(protection)
+	_refresh_sim_targets()
+	refresh_hud()
+	play_click()
+	show_notice("Fence resized to %s m × %s m. %s" % [Variants.metres(after.x),Variants.metres(after.y),("−ℒ%d" % cost) if cost>0 else (("+ℒ%d" % -cost) if cost<0 else "")])
+	return true
 
 func store_item(item:Dictionary) -> void:
 	if mode!="build":return
@@ -5432,10 +5688,12 @@ func pick_furnishing(kind:String,working:Dictionary={}) -> void:
 	if data.is_empty():return
 	if working.is_empty():working=Variants.resolve(data,{})
 	close_overlay();overlay_open=true;dismiss_layer()
-	var p:=Vector2(400,110)
+	var resizable:bool=Variants.resizable(data)
+	var p:=Vector2(400,52 if resizable else 110)
 	var panel_width:float=640.0
+	var panel_height:float=760.0 if resizable else 680.0
 	var shade=ColorRect.new();shade.color=Color(.08,.17,.15,.28);rect(shade,Vector2(interface_local_x(0.0),0),interface_size(),overlay)
-	card(p,Vector2(panel_width,680),P.WHITE,24,overlay)
+	card(p,Vector2(panel_width,panel_height),P.WHITE,24,overlay)
 	small_caps("Choose your %s" % str(data.label).to_lower(),p+Vector2(30,22),Vector2(panel_width-60,24),overlay)
 	text_label(str(data.label),p+Vector2(28,48),Vector2(panel_width-56,44),30,P.INK,true,overlay)
 	# The preview redraws with the panel, so the player always sees the object
@@ -5486,6 +5744,18 @@ func pick_furnishing(kind:String,working:Dictionary={}) -> void:
 			option.custom_minimum_size=Vector2(178,40)
 			compact_button(option)
 		y+=68
+	if resizable:
+		# A run of any length and height, beside the three quick sizes. Every press
+		# redraws the panel from the choice it now describes, like the swatches.
+		small_caps("Length and height",p+Vector2(30,y),Vector2(260,22),overlay)
+		y+=28
+		var limits:Dictionary=Variants.limits(data)
+		var chosen_dims:Vector2=Variants.dims(data,str(working.size))
+		_dimension_stepper("Length",p+Vector2(28,y),chosen_dims.x,limits.length,func(value:float):
+			var held:Dictionary=working.duplicate(true);held["size"]=Variants.custom_id(data,value,chosen_dims.y);pick_furnishing(kind,held),overlay,"VariantLength")
+		_dimension_stepper("Height",p+Vector2(326,y),chosen_dims.y,limits.height,func(value:float):
+			var held:Dictionary=working.duplicate(true);held["size"]=Variants.custom_id(data,chosen_dims.x,value);pick_furnishing(kind,held),overlay,"VariantHeight")
+		y+=56
 	var colors:Array=Variants.colors(data)
 	if colors.size()>1:
 		small_caps("Colour",p+Vector2(30,y),Vector2(200,22),overlay)
@@ -5497,7 +5767,7 @@ func pick_furnishing(kind:String,working:Dictionary={}) -> void:
 		var gap:float=8.0
 		var colour_rows:int=ceili(float(colors.size())/float(per_row))
 		var colour_block:float=float(colour_rows)*(swatch+gap)
-		var colour_limit:float=maxf(swatch,p.y+680.0-y-118.0)
+		var colour_limit:float=maxf(swatch,p.y+panel_height-y-118.0)
 		var colour_parent:Node=overlay
 		if colour_block>colour_limit+1.0:
 			var colour_scroll:=ScrollContainer.new()
@@ -5530,6 +5800,7 @@ func pick_furnishing(kind:String,working:Dictionary={}) -> void:
 	var price:int=Variants.price(data,str(working.size))
 	var holds:int=Variants.seats(data,str(working.size),str(working.style))
 	var detail:String="ℒ%d" % price
+	if resizable:detail="%s m × %s m  ·  ℒ%d" % [Variants.metres(Variants.dims(data,str(working.size)).x),Variants.metres(Variants.dims(data,str(working.size)).y),price]
 	if holds>0:detail+="  ·  holds %d" % holds
 	text_label(detail,p+Vector2(28,y+4),Vector2(panel_width-56,30),20,P.TEAL,false,overlay)
 	button("Place it · ℒ%d" % price,p+Vector2(28,y+42),Vector2(280,48),func():close_overlay();begin_purchase_variant(kind,working),true,overlay).name="VariantConfirm"
@@ -5606,7 +5877,11 @@ func home_value() -> int:
 		var kind:String=str(item.get("kind",""))
 		if kind.is_empty() or not LifeCatalog.ITEMS.has(kind):continue
 		if bool(item.get("transient_food",false)) or bool(item.get("transient_puddle",false)) or bool(item.get("derived",false)):continue
-		value+=Variants.price(LifeCatalog.get_item(kind),str(item.get("size","")))
+		# A live furnishing carries its choice under `variant` (its own `size` is the
+		# footprint); a saved record carries the id itself. Either prices the run it is.
+		var size_id:String=str(item.get("size","")) if item.get("size") is String else ""
+		if item.get("variant") is Dictionary:size_id=str(item.variant.get("size",size_id))
+		value+=Variants.price(LifeCatalog.get_item(kind),size_id)
 	return value
 
 func _refresh_member_targets(replan:bool=true) -> void:
@@ -5825,6 +6100,16 @@ func _queue_pet_beat(action_id:String,pet_id:String,destination:Vector3,pet_name
 			action["pet_name"]=pet_name
 			action["target_kind"]="pet"
 	refresh_hud()
+
+## Homework goes to the first desk-like furnishing the home has, in the order a
+## household would reach for one: a desk, a computer, the child's own desk, a
+## bookshelf.
+func queue_homework_desk() -> void:
+	for kind:String in ["desk","computer","child_desk","bookshelf"]:
+		if kind=="child_desk" and str(sim.character.age_stage)!="child":continue
+		for item in world.items:
+			if item.kind==kind:queue_interaction(item,"homework");return
+	show_notice("Add a desk in Build & buy first.")
 
 func queue_nearest(kind:String,id:String) -> void:
 	for item in world.items:
@@ -6232,9 +6517,43 @@ func _cancel_blocked_action(generation:int,action:Dictionary,member_id:String=""
 	_store_motion()
 	_bind_member(prior)
 
+## What the Lifelet says as an action ends: the proposal's own question for a
+## partner or marriage proposal, otherwise a line for the activity.
+func finish_line(action:Dictionary) -> String:
+	if str(action.get("id","")) in ["ask_partner","commit"] and bool(action.get("social_accepted",false)):
+		return proposal_question(str(action.id),str(action.get("target_id","")))
+	var lines:Dictionary={"arrive_home":"This feels like a new beginning.","school_day":"Learned something new today.","career_day":"Home after a busy day.","cook":"Ready to serve.","serve_meal":"Come and get it!","eat_meal":"That was lovely.","store_meal":"Something for later.","clean_plate":"All clean.","read":"One more chapter…","paint":"Made something lovely.","friendly":"Good to talk with you!","joke":"Ha!","deep_talk":"I understand.","hug":"That hug was just right.","wave_to_passer":"Nice to see a friendly face.","greet_passer":"Lovely to meet you.","passing_chat":"That was a nice chat.","compliment_passer_dog":"Such a sweet dog.","greet_passing_pet":"Good dog!","pet_passing_pet":"What a good dog.","share_interests":"We have so much in common!","water":"Looking greener.","work":"All done!","homework":"Ready for tomorrow.","help_homework":"We worked it out.","talk_to_myself":"Yes — I can do this.","take_pet_toy":"Ready to play.","put_pet_toy":"Tucked away.","play_with_pet_toy":"That was fun!"}
+	return str(lines.get(action.id,"That feels better."))
+
+## The gender a Lifelet or neighbour presents, for the words a proposal uses.
+func gender_of_person(id:String) -> String:
+	var member:LifeSim=household.member_sim(id) if is_instance_valid(household) else null
+	if member!=null:return LifeBabyPlan.gender_of(member.character)
+	var person:Dictionary=LifeResidentCatalogue.PEOPLE.get(id,{})
+	if not person.is_empty():return LifeBabyPlan.gender_of(person)
+	if is_instance_valid(world) and world.actors.has(id):
+		var actor:LifeActor=world.actors[id]
+		if actor.get("profile") is Dictionary:return LifeBabyPlan.gender_of(actor.profile)
+	return ""
+
+## The question asked of someone, in the words that fit who they are:
+## girlfriend, boyfriend or partner; husband or wife.
+func proposal_question(action_id:String,target_id:String) -> String:
+	var gender:String=gender_of_person(target_id)
+	if action_id=="commit":
+		return "Would you like to move in with me and become my %s?" % ("husband" if gender=="male" else ("wife" if gender=="female" else "spouse"))
+	return "Would you like to be my %s?" % ("boyfriend" if gender=="male" else ("girlfriend" if gender=="female" else "partner"))
+
+## The other Lifelet answers a proposal the moment it is accepted.
+func _answer_proposal(action:Dictionary) -> void:
+	if str(action.get("id","")) not in ["ask_partner","commit"] or not bool(action.get("social_accepted",false)):return
+	var other:LifeActor=world.actors.get(str(action.get("target_id","")))
+	if is_instance_valid(other):other.speech("Yes! I'd love to." if str(action.id)=="ask_partner" else "Yes! Let's make a home together.")
+
 func on_action_finished(action:Dictionary) -> void:
 	if is_instance_valid(player):
-		player.speech({"arrive_home":"This feels like a new beginning.","school_day":"Learned something new today.","career_day":"Home after a busy day.","cook":"Ready to serve.","serve_meal":"Come and get it!","eat_meal":"That was lovely.","store_meal":"Something for later.","clean_plate":"All clean.","read":"One more chapter…","paint":"Made something lovely.","friendly":"Good to talk with you!","joke":"Ha!","deep_talk":"I understand.","hug":"That hug was just right.","wave_to_passer":"Nice to see a friendly face.","greet_passer":"Lovely to meet you.","passing_chat":"That was a nice chat.","compliment_passer_dog":"Such a sweet dog.","greet_passing_pet":"Good dog!","pet_passing_pet":"What a good dog.","share_interests":"We have so much in common!","water":"Looking greener.","work":"All done!","homework":"Ready for tomorrow.","help_homework":"We worked it out.","talk_to_myself":"Yes — I can do this.","take_pet_toy":"Ready to play.","put_pet_toy":"Tucked away.","play_with_pet_toy":"That was fun!"}.get(action.id,"That feels better."))
+		player.speech(finish_line(action))
+		_answer_proposal(action)
 	var action_id:String=str(action.get("id",""))
 	if action_id=="take_pet_toy":
 		_lifelet_take_pet_toy(str(action.get("target_id","")))
@@ -7656,6 +7975,15 @@ func _exit_tree() -> void:
 			audio.stream=null
 	LifeLog.shutdown()
 
+## The people whose approach swings a garden gate: the household and a guest who
+## is visiting, not whoever happens to walk past on the street.
+func _gate_walkers() -> Array:
+	var ids:Array=[]
+	if is_instance_valid(household):
+		for member:Dictionary in household.members:ids.append(str(member.id))
+	if is_instance_valid(residents) and is_instance_valid(residents.home_visit) and residents.home_visit.active():ids.append(str(residents.home_visit.state.get("guest","")))
+	return ids
+
 func _process(delta:float) -> void:
 	elapsed+=delta
 	if is_instance_valid(notice_card):
@@ -7676,7 +8004,10 @@ func _process(delta:float) -> void:
 	if mode=="creator":
 		if is_instance_valid(preview):preview.animate(delta,1,false,"")
 		return
-	if mode=="travel":residents.tick_trip(delta);return
+	if mode=="travel":
+		residents.tick_trip(delta)
+		if is_instance_valid(world):world.gate_flow.tick(delta,_gate_walkers())
+		return
 	if mode not in ["live","build"]:return
 	if mode=="live":
 		work_commute.cleanup()
@@ -7704,6 +8035,7 @@ func _process(delta:float) -> void:
 		idle_space.update(delta)
 		world.daylight(household.minutes)
 		world.construction.doors.tick(delta*float(household.speed))
+		world.gate_flow.tick(delta*float(household.speed),_gate_walkers())
 		world.begin_activity_frame(household.speed<=0,delta,float(household.speed))
 		var away_targets_changed:bool=false
 		for member:Dictionary in household.members:
@@ -8237,6 +8569,19 @@ func _unhandled_input(event:InputEvent) -> void:
 				KEY_E:world.camera_angle+=PI/8;world.update_camera()
 				KEY_R:
 					if mode=="build":world.placement_angle+=90
+				KEY_BRACKETLEFT,KEY_BRACKETRIGHT:
+					# A free-length fence being placed is made shorter or longer a
+					# step at a time; Shift changes its height instead.
+					if mode=="build" and not world.placement_kind.is_empty() and not pending_move.is_empty() and Variants.resizable(LifeCatalog.get_item(world.placement_kind)):
+						show_notice("Place it as it is, then use Resize… to change its size.")
+						get_viewport().set_input_as_handled()
+					elif mode=="build" and not world.placement_kind.is_empty():
+						var steps:int=1 if event.keycode==KEY_BRACKETRIGHT else -1
+						if world.resize_placement(0 if event.shift_pressed else steps,steps if event.shift_pressed else 0):
+							var data:Dictionary=LifeCatalog.get_item(world.placement_kind)
+							var dims:Vector2=Variants.dims(data,world.placement_size)
+							show_notice("%s m × %s m · ℒ%d" % [Variants.metres(dims.x),Variants.metres(dims.y),Variants.price(data,world.placement_size)])
+							get_viewport().set_input_as_handled()
 				KEY_F5:save_game()
 				KEY_F9:menus.show_picker("load")
 	if overlay_open:return
@@ -8321,7 +8666,7 @@ func _update_activity_facing(delta:float,action:Dictionary,action_id:String) -> 
 			return
 		var landmarks:Dictionary=player.get_body_landmarks() if player.has_method("get_body_landmarks") else {}
 		if action_id=="cook":landmarks.merge({"recipe":str(action.get("recipe","")),"cooking_position":action.target_position})
-		if action_id=="mop_puddle":landmarks["standing_position"]=action.target_position
+		if action_id=="mop_puddle" or str(item.get("kind",""))=="child_desk":landmarks["standing_position"]=action.target_position
 		if action.has("seat_slot"):landmarks["seat_slot"]=str(action.seat_slot)
 		if action.has("swim_lane"):landmarks["swim_lane"]=int(action.swim_lane)
 		var anchor:Dictionary=world.activity_anchor(item,action_id,landmarks)
@@ -9818,7 +10163,7 @@ func _refresh_guest_status()->void:
 		guest_status_card.name="GuestStatus"
 		guest_status_text=text_label("",Vector2(14,10),Vector2(346,54),15,P.INK,true,guest_status_card)
 		guest_status_text.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-		guest_welcome_button=button("Welcome in",Vector2(14,76),Vector2(166,36),func():residents.home_visit.welcome(household.selected_id()),true,guest_status_card)
+		guest_welcome_button=button("Welcome them in",Vector2(14,76),Vector2(166,36),func():residents.home_visit.welcome(household.selected_id()),true,guest_status_card)
 		guest_welcome_button.name="WelcomeGuest"
 		var goodbye=button("Say goodbye",Vector2(192,76),Vector2(168,36),func():residents.home_visit.goodbye(),false,guest_status_card)
 		goodbye.name="GoodbyeGuest"
@@ -9846,7 +10191,7 @@ func _refresh_guest_status()->void:
 		guest_status_card.get_node("StayOverGuest").visible=false
 	guest_welcome_button.visible=phase=="waiting"
 	guest_welcome_button.disabled=phase!="waiting" or not visit.greeting.is_empty()
-	guest_welcome_button.text="Welcoming" if welcoming else ("Welcome queued" if not visit.greeting.is_empty() else "Welcome in")
+	guest_welcome_button.text="Welcoming" if welcoming else ("Welcome queued" if not visit.greeting.is_empty() else "Welcome them in")
 	var goodbye_button:Button=guest_status_card.get_node("GoodbyeGuest")
 	goodbye_button.position.x=192 if phase=="waiting" else 14
 	goodbye_button.size.x=168 if phase=="waiting" else 346

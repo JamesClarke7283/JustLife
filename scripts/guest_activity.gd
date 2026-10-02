@@ -111,7 +111,25 @@ func departure_tick(delta: float) -> bool:
 	_move(delta)
 	return true
 
+## A visitor who goes into the water changes into swimwear for it, and back into
+## what they came in afterwards. The clothes they arrived in are kept on the
+## visit record, so a paused save restores the same swimmer.
+func _swim_dress(on: bool) -> void:
+	var actor: LifeActor = body()
+	if not is_instance_valid(actor): return
+	if on:
+		var kept: Dictionary = data.get("look_before", LifeCharacterIdentity.wardrobe_fields(actor.profile))
+		if str(actor.profile.get("outfit_category", "")) == "swim" and data.has("look_before"): return
+		data["look_before"] = kept
+		var look: Dictionary = actor.profile.duplicate(true)
+		LifeCharacterIdentity.apply_category(look, "swim")
+		actor.apply_wardrobe(look)
+	elif data.has("look_before"):
+		actor.apply_wardrobe(data.look_before)
+		data.erase("look_before")
+
 func _release() -> void:
+	_swim_dress(false)
 	var current: Dictionary = current_action()
 	if str(current.get("id",""))=="snack":
 		var fridge: Dictionary=app._find_item(str(current.target_id))
@@ -292,9 +310,15 @@ func _bed_slot_free(bed: String, slot: String) -> bool:
 		if str(member.id)!=str(data.get("sleep_host",app.household.selected_id())):return false
 	return true
 
-func _choose_kind(id: String, kinds: Array) -> bool:
+## Try the furnishings of these kinds nearest first, or, when `spread` is set,
+## starting one further along each time so a visitor tries the pool, the hot tub
+## and the swing in turn rather than always the nearest.
+func _choose_kind(id: String, kinds: Array, spread: bool = false) -> bool:
 	var candidates: Array = app.world.items.filter(func(item: Dictionary): return str(item.kind) in kinds)
 	candidates.sort_custom(func(a: Dictionary,b: Dictionary): return body().position.distance_squared_to(a.node.position)<body().position.distance_squared_to(b.node.position))
+	if spread and candidates.size()>1:
+		var turn: int=(int(data.get("pick",0))/AUTONOMY_CATEGORIES.size())%candidates.size()
+		candidates=candidates.slice(turn)+candidates.slice(0,turn)
 	for item: Dictionary in candidates:
 		if request(id,str(item.id),false): return true
 	return false
@@ -323,17 +347,63 @@ func _choose() -> void:
 	var host: LifeSim=app.household.selected()
 	var host_action: Dictionary=host.get_current_action()
 	if str(host_action.get("id","")) in ["relax","enjoy_outdoors","play_garden_game"] and come_join(app.household.selected_id(),false):return
-	var choice: int = int(data.serial)%4
-	if choice==0:
-		for pet: Dictionary in app.household.pets.get("pets",[]):
-			if request("pet_play" if float(data.needs.fun)<55.0 else "pet_pet",str(pet.id),false): return
-	if choice==1:
-		for member: Dictionary in app.household.members:
-			var action: String = "play_with_baby" if str(member.sim.character.age_stage)=="baby" else "joke"
-			if request(action,str(member.id),false): return
-	if choice==2 and _choose_kind("enjoy_outdoors",["pool","hot_tub","outdoor_swing"]): return
-	if choice==3 and _choose_kind("relax",["sofa","armchair","loveseat","bench","garden_table"]): return
+	# Comfortable and idle, the visitor picks from everything the house offers.
+	# The order turns with each choice so they do not repeat themselves, and
+	# comes forward for the thing they are short of: fun brings the pets, the
+	# garden and the lawn games up, company brings the household up. A choice
+	# that cannot be carried out simply hands over to the next, never to a bare walk.
+	data.pick=int(data.get("pick",0))+1
+	for category: String in _autonomy_order():
+		if _try_category(category): return
 	_roam()
+
+const AUTONOMY_CATEGORIES: Array[String] = ["pets", "household", "outdoors", "games", "seats", "drink"]
+const GAME_KINDS: Array[String] = ["game_trampoline", "game_hopscotch", "game_hoop", "game_croquet", "game_ring_toss", "game_mini_golf", "game_table_tennis", "game_badminton", "game_football_goal", "game_basketball", "game_giant_chess", "game_checkers"]
+
+## The categories in the order this visitor tries them now.
+func _autonomy_order() -> Array[String]:
+	var turn: int = int(data.get("pick",0))%AUTONOMY_CATEGORIES.size()
+	var ordered: Array[String] = []
+	ordered.append_array(AUTONOMY_CATEGORIES.slice(turn))
+	ordered.append_array(AUTONOMY_CATEGORIES.slice(0,turn))
+	var wants_fun: bool = float(data.needs.fun)<55.0
+	var wants_company: bool = float(data.needs.social)<55.0
+	var urgent: Array[String] = []
+	var rest: Array[String] = []
+	for category: String in ordered:
+		if (wants_fun and category in ["pets","outdoors","games"]) or (wants_company and category=="household"): urgent.append(category)
+		else: rest.append(category)
+	return urgent+rest
+
+func _try_category(category: String) -> bool:
+	match category:
+		"pets":
+			for pet: Dictionary in app.household.pets.get("pets",[]):
+				if request("pet_play" if float(data.needs.fun)<55.0 else "pet_pet",str(pet.id),false): return true
+		"household":
+			# Everyone in the home gets a visit: a small child is played with, an
+			# older one, a teenager or an adult is joked with and hugged.
+			var members: Array = app.household.members
+			var first: int = (int(data.get("pick",0))/AUTONOMY_CATEGORIES.size())%maxi(1,members.size())
+			for offset: int in members.size():
+				var member: Dictionary = members[(first+offset)%members.size()]
+				var stage: String = str(member.sim.character.age_stage)
+				var options: Array[String] = []
+				if stage=="baby": options.append("play_with_baby")
+				elif stage=="child": options.append_array(["joke","hug"])
+				else: options.append_array(["joke","friendly"])
+				for action: String in options:
+					if request(action,str(member.id),false): return true
+		"outdoors": return _choose_kind("enjoy_outdoors",["pool","hot_tub","outdoor_swing"],true)
+		"games": return _choose_kind("play_garden_game",GAME_KINDS,true)
+		"seats": return _choose_kind("relax",["sofa","armchair","loveseat","bench","garden_table"],true)
+		"drink":
+			# A cold drink from the fridge is a snack that is mostly a drink.
+			if LifeGroceries.can_cook(app.household.groceries) and _choose_kind("snack",["fridge"]):
+				if active() and str(current_action().get("id",""))=="snack":
+					data.current.label="Grab a drink";data.current.flavour="drink"
+				return true
+	return false
 
 func _roam() -> bool:
 	var points: Array[Vector3]=[]
@@ -388,6 +458,7 @@ func tick(delta: float) -> bool:
 		if str(current.id)=="snack" and not bool(app.household.take_meal_for(null,"snack").ok): cancel("");return false
 		current.phase="active";current.paid=true;current.last_at=now()
 		if current.has("tv"): current.tv.ready=true
+		if str(current.id)=="enjoy_outdoors" and LifeWetness.is_water_kind(str(current.get("target_kind",""))): _swim_dress(true)
 		present();return true
 	var elapsed: float=minf(maxf(0.0,now()-float(current.get("last_at",now()))),float(current.duration)-float(current.elapsed))
 	var effect_minutes: float=elapsed
@@ -414,6 +485,8 @@ func _move(delta: float) -> bool:
 func present(reconstruct: bool = false) -> void:
 	if not active() or not is_instance_valid(body()): return
 	var current: Dictionary=current_action()
+	# A saved swimmer comes back in swimwear: the actor is rebuilt from the profile.
+	if str(current.get("phase",""))=="active" and str(current.get("id",""))=="enjoy_outdoors" and LifeWetness.is_water_kind(str(current.get("target_kind",""))) and str(body().profile.get("outfit_category",""))!="swim": _swim_dress(true)
 	if str(current.phase)!="active": body().clear_activity_anchor();return
 	var anchor: Dictionary={}
 	if current.has("tv") and app.get("tv_group")!=null:
@@ -591,6 +664,7 @@ static func validate(visit_state: Dictionary, at: float) -> String:
 		if not LifeBuildingState.number(saved.get(key),0,at+180.0):return "Save contains an invalid visitor clock."
 	for key: String in ["serial","completed"]:
 		if not LifeBuildingState.number(saved.get(key),0,10000000,true):return "Save contains invalid visitor activity counts."
+	if saved.has("pick") and not LifeBuildingState.number(saved.pick,0,100000000,true):return "Save contains invalid visitor activity counts."
 	if not saved.get("current") is Dictionary or not saved.get("bed_requested") is bool or not saved.get("pending_meal") is String:return "Save contains invalid visitor activity state."
 	for key: String in ["managed_route","cancel_pending","returning"]:
 		if saved.has(key) and not saved[key] is bool:return "Save contains invalid visitor movement state."

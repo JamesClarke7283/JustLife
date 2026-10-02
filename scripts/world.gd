@@ -7,6 +7,7 @@ const Kitchen=preload("res://scripts/kitchen_furnishings.gd")
 const LotNavigation=preload("res://scripts/lot_navigation.gd")
 const ActorMotion=preload("res://scripts/actor_motion.gd")
 const GardenSwing=preload("res://scripts/garden_swing.gd")
+const GateFlow=preload("res://scripts/gate_flow.gd")
 const WindowGeometry=preload("res://scripts/window_geometry.gd")
 const VIEW_ENVIRONMENT:int=1
 const VIEW_GROUND:int=2
@@ -56,6 +57,7 @@ var ground_node: Node3D
 var walls: Array[Node3D] = []
 var items: Array[Dictionary] = []
 var _furnishing_volume_cache:Dictionary={}
+var gate_flow=GateFlow.new(self)
 var actors: Dictionary = {}
 var _target_approaches:Dictionary={}
 var _target_navigation_id:int=0
@@ -224,19 +226,54 @@ func ensure_memorial(member_id: String) -> bool:
 	add_item({"id":"memorial_%s" % member_id,"kind":"memorial","x":offset.x,"z":offset.z,"rotation":0.0,"for":member_id})
 	return true
 
-func _build_garden_gate(parent: Node3D, wide: bool) -> void:
-	var span: float = 2.0 if wide else 1.0
+## A gate is two posts and one or two leaves hung on hinge nodes, so the gate
+## flow can swing them. The leaves are the `Tint` surfaces, which is how a
+## player's colour choice reaches them; the posts and latch keep their finish.
+func _build_garden_gate(parent: Node3D, wide: bool, colour: String = "c9c3a8", span: float = 0.0) -> void:
+	if span <= 0.0:span = 2.0 if wide else 1.0
 	var post := "6b5344"
-	var leaf := "c9c3a8"
-	box(parent, Vector3(-span * .5, .6, 0), Vector3(.08, 1.2, .08), post)
-	box(parent, Vector3(span * .5, .6, 0), Vector3(.08, 1.2, .08), post)
+	var leaf := colour if not colour.is_empty() else "c9c3a8"
+	box(parent, Vector3(-span * .5, .6, 0), Vector3(.08, 1.2, .08), post).name = "GatePost_L"
+	box(parent, Vector3(span * .5, .6, 0), Vector3(.08, 1.2, .08), post).name = "GatePost_R"
 	if wide:
-		box(parent, Vector3(-span * .25, .58, 0), Vector3(span * .5 - .06, 1.05, .04), leaf)
-		box(parent, Vector3(span * .25, .58, 0), Vector3(span * .5 - .06, 1.05, .04), leaf)
-		box(parent, Vector3(0, .7, .03), Vector3(.04, .16, .04), post)
+		var width: float = span * .5 - .06
+		for side: String in ["L", "R"]:
+			var sign: float = -1.0 if side == "L" else 1.0
+			var hinge := Node3D.new()
+			hinge.name = "GateHinge_" + side
+			hinge.position = Vector3(sign * (span * .5 - .04), 0, 0)
+			parent.add_child(hinge)
+			# The leaf stands beside its hinge, toward the middle of the gate.
+			box(hinge, Vector3(-sign * (width * .5 + .02), .58, 0), Vector3(width, 1.05, .04), leaf).name = "TintLeaf_" + side
+		# The catch is on the leaf that swings, at the centre of the closed gate.
+		var catch_hinge: Node3D = parent.get_node("GateHinge_L") as Node3D
+		box(catch_hinge, Vector3(span * .5 - .04, .7, .03), Vector3(.04, .16, .04), post).name = "GateLatch"
 	else:
-		box(parent, Vector3(0, .58, 0), Vector3(span - .1, 1.05, .04), leaf)
-		box(parent, Vector3(span * .28, .62, .03), Vector3(.04, .08, .04), "c8a562")
+		var hinge := Node3D.new()
+		hinge.name = "GateHinge_L"
+		hinge.position = Vector3(-span * .5 + .04, 0, 0)
+		parent.add_child(hinge)
+		box(hinge, Vector3((span - .1) * .5 + .02, .58, 0), Vector3(span - .1, 1.05, .04), leaf).name = "TintLeaf_L"
+		box(hinge, Vector3(span * .78 - .04, .62, .03), Vector3(.04, .08, .04), "c8a562").name = "GateLatch"
+
+## Fence panels laid end to end to fill a chosen length. The count is the nearest
+## whole number of authored panels and each is stretched a little to share the
+## run equally, so no panel is ever cut or stretched far from its design.
+func _build_fence_run(scene: PackedScene, data: Dictionary, size: String) -> Node3D:
+	var dims: Vector2 = Variants.custom_dims(data, size)
+	var run := Node3D.new()
+	run.name = "FenceRun"
+	var module: float = maxf(.1, float(data.size.x))
+	var count: int = maxi(1, roundi(dims.x / module))
+	var each: float = dims.x / float(count)
+	var tall: float = dims.y / maxf(.01, float(data.height))
+	for index: int in range(count):
+		var panel: Node3D = scene.instantiate()
+		panel.name = "FencePanel_%d" % index
+		panel.scale = Vector3(each / module, tall, 1.0)
+		panel.position = Vector3(-dims.x * .5 + each * (float(index) + .5), 0, 0)
+		run.add_child(panel)
+	return run
 
 
 func _build_bath_mat(parent: Node3D, variant: Dictionary) -> void:
@@ -611,7 +648,7 @@ func furnishing_volume(entry:Dictionary)->AABB:
 			if hanging and not vertices.is_empty():box=AABB(vertices[0],Vector3.ZERO)
 			for point:Vector3 in vertices:box=box.expand(point)
 		_furnishing_volume_cache[cache_key]=box
-	var local:AABB=_scaled_volume(_furnishing_volume_cache[cache_key],Variants.size_scale(str(entry.get("size",""))))
+	var local:AABB=_scaled_volume(_furnishing_volume_cache[cache_key],Variants.volume_scale(data,str(entry.get("size",""))))
 	var lift:float=float(entry.get("hang",data.get("hang",0.0) if hanging else 0.0))
 	var transform:=Transform3D(Basis(Vector3.UP,deg_to_rad(float(entry.get("rotation",0)))),Vector3(float(entry.get("x",0)),Building.level_y(int(entry.get("level",0)))+lift,float(entry.get("z",0))))
 	return transform*local
@@ -621,11 +658,11 @@ func furnishing_volume(entry:Dictionary)->AABB:
 ## Godot 4 removed `AABB * float`, so the envelope is rebuilt from its two
 ## corners instead: the origin scales with the box, because the authored model is
 ## centred on its own footprint and a larger table grows outward from the middle.
-static func _scaled_volume(box:AABB,scale:float) -> AABB:
-	if is_equal_approx(scale,1.0):
+static func _scaled_volume(box:AABB,scale:Variant) -> AABB:
+	var factor:Vector3=scale if scale is Vector3 else Vector3.ONE*float(scale)
+	if factor.is_equal_approx(Vector3.ONE):
 		return box
-	var scaled:=AABB(box.position*scale,box.size*scale)
-	return scaled
+	return AABB(box.position*factor,box.size*factor)
 
 func set_starter_floor_visible(value:bool) -> void:
 	for node:Node3D in starter_floor_nodes:
@@ -958,7 +995,7 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	var path:String=Variants.model_path(kind,str(variant.style))
 	var has_model:bool=ResourceLoader.exists(path)
 	var kitchen_cabinet:bool=Kitchen.cabinet(kind)
-	if not has_model and not kitchen_cabinet and kind not in ["memorial","bath_mat","framed_picture","garden_gate","garden_gate_double","burglar_alarm","home_phone"]:return
+	if not has_model and not kitchen_cabinet and kind not in ["memorial","bath_mat","framed_picture","garden_gate","garden_gate_double","garden_gate_drive","burglar_alarm","home_phone"]:return
 	var node=Node3D.new()
 	node.name=str(entry.get("id","item_%d" % Time.get_ticks_usec()))
 	furniture.add_child(node)
@@ -967,18 +1004,25 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 		model=Kitchen.build(kind,variant)
 		node.add_child(model)
 	elif has_model:
-		model=load(path).instantiate()
-		node.add_child(model)
-		# A size choice scales the whole authored model uniformly, so a large
-		# table is the same object made bigger rather than a stretched one.
-		var scale:float=Variants.size_scale(str(variant.size))
-		if not is_equal_approx(scale,1.0):model.scale=Vector3.ONE*scale
+		if Variants.custom_dims(data,str(variant.size))!=Vector2.ZERO:
+			# A run of any length is whole panels laid end to end.
+			model=_build_fence_run(load(path),data,str(variant.size))
+			node.add_child(model)
+		else:
+			model=load(path).instantiate()
+			node.add_child(model)
+			# A size choice scales the whole authored model uniformly, so a large
+			# table is the same object made bigger rather than a stretched one.
+			var scale:float=Variants.size_scale(str(variant.size))
+			if not is_equal_approx(scale,1.0):model.scale=Vector3.ONE*scale
 	else:
 		if kind=="home_phone":_build_home_phone(node)
 		elif kind=="burglar_alarm":_build_burglar_alarm(node)
 		elif kind=="bath_mat":_build_bath_mat(node,variant)
 		elif kind=="framed_picture":_build_framed_picture(node,variant)
-		elif kind=="garden_gate" or kind=="garden_gate_double":_build_garden_gate(node,kind=="garden_gate_double")
+		elif LifeCatalog.is_gate(kind):
+			_build_garden_gate(node,float(data.size.x)>1.5,str(variant.color),float(data.size.x))
+			model=node # the recolour finds the leaves' Tint surfaces beneath it
 		else:_build_memorial(node)
 	if is_instance_valid(model):
 		var fitted:float=float(data.get("model_scale",1.0))
@@ -1690,6 +1734,25 @@ func set_build(enabled:bool) -> void:
 	if grid:grid.visible=enabled
 	if not enabled:clear_placement()
 
+## Make the fence being placed one step longer or shorter, or taller or lower.
+## Returns whether the size changed. The ghost is rebuilt at the new size and the
+## turn, wall height and any move in progress are kept.
+func resize_placement(length_steps:int,height_steps:int) -> bool:
+	var data:Dictionary=LifeCatalog.get_item(placement_kind)
+	if not Variants.resizable(data):return false
+	var dims:Vector2=Variants.dims(data,placement_size)
+	var limits:Dictionary=Variants.limits(data)
+	var next:String=Variants.custom_id(data,dims.x+float(length_steps)*limits.length.z,dims.y+float(height_steps)*limits.height.z)
+	if next==Variants.custom_id(data,dims.x,dims.y):return false
+	var angle:float=placement_angle
+	var moving:String=placement_moving_id
+	var hang:float=placement_hang
+	begin_placement(placement_kind,placement_style,next,placement_color)
+	placement_angle=angle
+	placement_moving_id=moving
+	placement_hang=hang
+	return true
+
 func begin_placement(kind:String,style:String="",size:String="",color:String="") -> void:
 	if construction:construction.cancel()
 	clear_placement()
@@ -1721,7 +1784,7 @@ func begin_placement(kind:String,style:String="",size:String="",color:String="")
 	if not ResourceLoader.exists(path):
 		for candidate:String in Variants.model_paths(kind,LifeCatalog.get_item(kind)):
 			if ResourceLoader.exists(candidate):path=candidate;break
-	if not ResourceLoader.exists(path) and kind in ["bath_mat","framed_picture","garden_gate","garden_gate_double","burglar_alarm","home_phone"]:
+	if not ResourceLoader.exists(path) and kind in ["bath_mat","framed_picture","garden_gate","garden_gate_double","garden_gate_drive","burglar_alarm","home_phone"]:
 		ghost=Node3D.new()
 		add_child(ghost)
 		var preview:Dictionary=Variants.resolve(LifeCatalog.get_item(kind),{"style":style,"size":size,"color":color})
@@ -1729,7 +1792,7 @@ func begin_placement(kind:String,style:String="",size:String="",color:String="")
 		elif kind=="burglar_alarm":_build_burglar_alarm(ghost)
 		elif kind=="bath_mat":_build_bath_mat(ghost,preview)
 		elif kind=="framed_picture":_build_framed_picture(ghost,preview)
-		else:_build_garden_gate(ghost,kind=="garden_gate_double")
+		else:_build_garden_gate(ghost,float(bought.size.x)>1.5,str(preview.color),float(bought.size.x))
 		_ghost_materials(ghost)
 		return
 	if not ResourceLoader.exists(path):
@@ -1739,7 +1802,10 @@ func begin_placement(kind:String,style:String="",size:String="",color:String="")
 	if resource==null:
 		clear_placement()
 		return
-	ghost=resource.instantiate()
+	if Variants.custom_dims(bought,size)!=Vector2.ZERO and resource is PackedScene:
+		ghost=_build_fence_run(resource,bought,size)
+	else:
+		ghost=resource.instantiate()
 	if ghost==null:
 		clear_placement()
 		return
@@ -1747,8 +1813,9 @@ func begin_placement(kind:String,style:String="",size:String="",color:String="")
 		var pane:Node3D=ghost
 		ghost=Node3D.new();ghost.add_child(pane)
 		pane.position=Vector3(0,1.62,-.045)
-	var scale:float=Variants.size_scale(size)
-	if not is_equal_approx(scale,1.0):ghost.scale=Vector3.ONE*scale
+	if Variants.custom_dims(bought,size)==Vector2.ZERO:
+		var scale:float=Variants.size_scale(size)
+		if not is_equal_approx(scale,1.0):ghost.scale=Vector3.ONE*scale
 	ghost.scale*=Kitchen.model_scale(kind)
 	add_child(ghost)
 	_normalize_wall_model(ghost,kind)
@@ -2587,8 +2654,45 @@ func outdoor_water_anchor(item:Dictionary,landmarks:Dictionary={}) -> Dictionary
 	# A ring is sat in: its anchor is the hips, so the body tips about them.
 	return {"position":from,"yaw":atan2(to.x-from.x,to.z-from.z),"kind":"seat" if kind=="pool_ring" else "swim","outdoor_kind":kind,"swim_from":from,"swim_to":to,"swim_span":half_width,"swim_lane_offset":lane_z}
 
+## Where a toddler or child stands to use their own desk: the clear spot the
+## household walked to, closed up to an arm's length from the desk when that spot
+## is free, facing the desk, with their hands on its top.
+func child_desk_anchor(item:Dictionary,landmarks:Dictionary={}) -> Dictionary:
+	var node:Node3D=item.node
+	var level:int=item_level(item)
+	var floor_y:float=Building.level_y(level)
+	var centre:Vector3=node.global_position
+	var at:Vector3=landmarks.get("standing_position",approach(item))
+	if not at.is_finite():at=node.to_global(Vector3(0,0,float(item.size.y)*.5+.36))
+	at.y=floor_y
+	var flat:Vector3=Vector3(centre.x-at.x,0,centre.z-at.z)
+	# A child's arms are short, so stand at whichever side of the desk is within a
+	# short free walk of where the household arrived and nearest the desk top:
+	# a body's width from the edge, or closer along the way in when none is free.
+	var best:Vector3=at
+	var best_gap:float=flat.length()
+	for side:Vector3 in [Vector3(0,0,1),Vector3(0,0,-1),Vector3(1,0,0),Vector3(-1,0,0)]:
+		var edge:float=(float(item.size.y) if not is_zero_approx(side.z) else float(item.size.x))*.5
+		var candidate:Vector3=node.global_position+node.global_basis*(side*(edge+.30))
+		candidate.y=floor_y
+		if candidate.distance_to(at)>1.2 or not lot_navigation.point_clear(level,candidate) or not lot_navigation.segment_clear(level,at,candidate):continue
+		var gap:float=Vector2(centre.x-candidate.x,centre.z-candidate.z).length()
+		if gap<best_gap:best=candidate;best_gap=gap
+	at=best
+	flat=Vector3(centre.x-at.x,0,centre.z-at.z)
+	for stand:float in [.52,.62,.74]:
+		if flat.length()<=stand:break
+		var closer:Vector3=at+flat.normalized()*(flat.length()-stand)
+		if lot_navigation.point_clear(level,closer):at=closer;break
+	var toward:Vector3=Vector3(centre.x-at.x,0,centre.z-at.z)
+	var top:Vector3=centre-toward.normalized()*.07
+	top.y=floor_y+float(item.height)+.02
+	return {"position":at,"yaw":atan2(toward.x,toward.z),"kind":"standing","hand_center":top,"hand_spread":.10,"desk_surface_y":top.y}
+
 func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -> Dictionary:
 	var node:Node3D=item.node
+	if str(item.kind)=="child_desk" and action_id in ["child_desk_study","child_draw","child_colour","homework"]:
+		return child_desk_anchor(item,landmarks)
 	var local:Vector3=Vector3(0,0,float(item.size.y)*.5+.36)
 	var yaw:float=node.rotation.y+PI
 	var kind:String="standing"

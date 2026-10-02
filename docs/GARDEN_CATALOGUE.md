@@ -55,6 +55,9 @@ Three shapes, tried in this order by `Variants.price(data, size)`:
    (`footprint.x × height`). This is how a **fence** is sold: `ℒ10` per square
    metre, so a 2 m × 1.2 m panel is `ℒ24` and a large one `ℒ96`, from one rate
    rather than a second price table to keep in step.
+   A family that also declares `free_length` (the fence) takes any length and
+   height inside its limits, so a 4 m × 1.2 m run is `ℒ48` and a 6 m one `ℒ72`:
+   the price rises as the run is extended and falls as it is shortened.
 2. **`size_prices`** — a stated price per size, which every sized family uses
    because the objective prices them apart (a small pool `ℒ400`, medium `ℒ600`,
    large `ℒ800`).
@@ -64,6 +67,35 @@ Sale value is seven tenths of the price of the size the object actually is
 (`main.sale_value`), so a large furnishing sells for more than the small one it
 was bought alongside. Home value, and therefore the household bill, reads the
 same number.
+
+### Free-length runs
+
+A family with `free_length: {length: [min, max, step], height: [min, max, step]}`
+accepts a size id of the form `L<cm>H<cm>` (`L350H140` is 3.5 m long and 1.4 m
+tall) wherever a named size is accepted: the picker, the placement ghost, the
+record, the save and every price lookup. `Variants.custom_id` snaps and clamps
+the two numbers, `custom_dims` reads them back (an id outside the limits, or on a
+family that cannot be resized, reads as no custom size), and `footprint`,
+`height`, `price`, `volume_scale` and `size_label` all follow it. The model is a
+row of whole authored panels, the nearest count, each stretched a little to share
+the length (`LifeWorld._build_fence_run`). A placed run is changed through
+`main.resize_fence(id, length, height, anchor)`: the end `anchor` names stays put,
+the new run must pass `can_place` against everything else on the lot, and the
+purse pays the full price of the panel added or is refunded seven tenths of the
+panel taken away (`Variants.resize_cost`, the same rate selling pays) as one
+undoable change. A run that is only being moved or taken out of storage keeps its
+size: `on_placement` refuses a changed size there, and the bracket keys do nothing.
+
+### Gates
+
+Gates are built from two posts and one or two leaves hung on `GateHinge` nodes.
+`LifeGateFlow` (`scripts/gate_flow.gd`) swings them: a driven car (a node in the
+`driving_vehicle` group, which the work commute and the household trip put it in
+only while it moves), or a household Lifelet or visitor, within reach of a gate
+opens it away from that side, and it closes on its own `0.9` seconds after the
+last of them has gone. Time is the game's own step, so a paused game holds a gate
+where it was. The leaves are the gate's `Tint` surfaces, so a gate is coloured
+and repainted exactly like a fence.
 
 ### Seats
 
@@ -80,7 +112,10 @@ only ever offering its two end places.
 | Family | Kind | Styles | Colours | Sizes |
 | --- | --- | --- | --- | --- |
 | Post box | `post_box` | — | 10 | — |
-| Fence | `fence` | 10 | 10 | 3, at `ℒ10/m²` |
+| Fence | `fence` | 10 | 10 | 3 quick sizes, or any length 0.5–30 m and height 0.6–2.4 m, at `ℒ10/m²` |
+| Garden gate | `garden_gate` | — | 10 | — (`ℒ40`, 1 m, swings open) |
+| Wide double gate | `garden_gate_double` | — | 10 | — (`ℒ70`, 2 m, two leaves) |
+| Driveway gate | `garden_gate_drive` | — | 10 | — (`ℒ90`, 3 m, wide enough for a car) |
 | Path light | `garden_light` | 10 | 10 | — |
 | Wall light | `garden_light_wall` | 10 | 10 | — |
 | Garden table & chairs with parasol | `garden_table` | — | 10 | 3 (`ℒ50`/`ℒ70`/`ℒ90`; seats 4/8/10) |

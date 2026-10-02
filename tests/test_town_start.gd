@@ -54,9 +54,11 @@ func _initialize() -> void:
 		"Child NPCs play at the park, and children and pets walk past homes.")
 	var adult: LifeSim = three.members[0].sim
 	adult.autonomy = false
+	# Work is entered between 09:00 and 12:00, so the adult is at the door at ten.
+	adult.minutes = 600.0
 	adult.register_targets([
 		{"id": "car", "kind": "car", "position": Vector3(2, .16, 2)},
-		{"id": "exit", "kind": "lot_exit", "position": Vector3(0, .16, 8)},
+		{"id": "lot_exit", "kind": "lot_exit", "position": Vector3(0, .16, 8)},
 		{"id": "cot", "kind": "cot", "position": Vector3(3, .16, 1)},
 	])
 	var drive: Dictionary = adult._commute_choice("career_day", [])
@@ -83,7 +85,7 @@ func _initialize() -> void:
 	check(not child.get_action_availability("sleep", "cot").available, "A child cannot sleep in the cot.")
 	check(not adult.get_action_availability("sleep", "cot").available, "An adult cannot sleep in the cot.")
 	var desk_labels: Array = _labels(child, "desk")
-	check(desk_labels.has("Do Homework") and desk_labels.has("Read a Book") and desk_labels.has("Skill Up"),
+	check(desk_labels.has("Do Homework") and desk_labels.has("Read a Book") and desk_labels.has("Study Logic"),
 		"After school the desk offers homework, reading and skill building (%s)." % str(desk_labels))
 	var home := LifeHousehold.new()
 	home.new_household([{"name": "Parent", "age_stage": "adult"}, {"name": "Pip", "age_stage": "baby"}])

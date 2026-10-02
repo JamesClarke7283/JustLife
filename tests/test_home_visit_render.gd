@@ -24,7 +24,7 @@ func _run()->void:
 	root.size=Vector2i(960,600);await _frames(8);await _capture("04_welcome_960")
 	root.size=Vector2i(1440,900);await _frames(8)
 	var welcome:Button=app.ui.find_child("WelcomeGuest",true,false)
-	check(is_instance_valid(welcome) and not welcome.disabled,"Public Welcome in control is enabled")
+	check(is_instance_valid(welcome) and not welcome.disabled,"Public Welcome them in control is enabled")
 	welcome.pressed.emit()
 	for index:int in 400:
 		if str(app.sim.get_current_action().get("phase",""))=="active":break

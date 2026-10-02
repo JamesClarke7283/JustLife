@@ -213,7 +213,10 @@ const EMOTION_ACTIONS: Dictionary = {"paint_masterpiece":"Inspired", "study_hard
 const AGE_GATED_ACTIONS: Array[String] = ["jog", "play_toys", "morning_run", LifeGardenGames.ACTION_ID]
 ## Built once from the skill roster: the computer's mastery actions, one per skill.
 const COMPUTER_MASTERY_ACTIONS: Array[String] = ["computer_cooking", "computer_creativity", "computer_charisma", "computer_logic", "computer_gardening", "computer_parenting", "computer_fitness", "computer_music"]
-const LEISURE_ACTIONS: Array[String] = ["paint", "read", "watch", "relax", "play_piano", "play_chess", "dance", "play_games", "practice_speech", "stretch", "warm_up", "jog", "play_toys", "play_dollhouse", "child_desk_study", "sketch_for_fun", "deep_read", "experiment_recipe", "morning_run", "push_through", LifeGardenGames.ACTION_ID, LifeOutdoorActs.ACTION_ID]
+## What a toddler or child can do at their own desk. Homework is added for a
+## schoolchild; the rest are play and practice.
+const CHILD_DESK_ACTIONS: Array[String] = ["child_desk_study", "child_draw", "child_colour"]
+const LEISURE_ACTIONS: Array[String] = ["paint", "read", "watch", "relax", "play_piano", "play_chess", "dance", "play_games", "practice_speech", "stretch", "warm_up", "jog", "play_toys", "play_dollhouse", "child_desk_study", "child_draw", "child_colour", "sketch_for_fun", "deep_read", "experiment_recipe", "morning_run", "push_through", LifeGardenGames.ACTION_ID, LifeOutdoorActs.ACTION_ID]
 ## Outdoor pieces a child can use alone. A push from an older Lifelet is extra,
 ## not a requirement for the swing, slide, frame or sand pit.
 const CHILD_SOLO_OUTDOOR: Array[String] = ["kids_slide", "kids_swing", "climbing_frame", "sand_pit"]
@@ -542,6 +545,8 @@ func _build_actions() -> void:
 	_define("use_potty", "Potty training", 24.0, {"hygiene": 8.0}, 0, "parenting", 12.0, "Help a toddler practise on the potty.")
 	_define("play_dollhouse", "Play with the dollhouse", 28.0, {"fun": 18.0, "social": 8.0}, 0, "parenting", 10.0, "A toddler play session at the dollhouse.")
 	_define("child_desk_study", "Sit at the child desk", 30.0, {"fun": 6.0}, 0, "logic", 14.0, "A toddler or child settles at their own desk.")
+	_define("child_draw", "Draw a picture", 30.0, {"fun": 22.0, "social": 2.0}, 0, "creativity", 12.0, "Draw at the child desk. Fun rises and creativity grows.")
+	_define("child_colour", "Colour in", 25.0, {"fun": 18.0}, 0, "creativity", 10.0, "Colour a picture in at the child desk. Fun rises and creativity grows.")
 	_define("deep_clean", "Deep clean", 45.0, {"hygiene": 6.0, "fun": 10.0}, 0, "", 0.0, "Scrub the surfaces until the room sparkles. Slow, but oddly satisfying.")
 	_define("remember_life", "Remember a life", 20.0, {"social": 12.0, "fun": 6.0}, 0, "", 0.0, "Stand with the stone and remember who they were.")
 	# The computer is where a subject is truly mastered. A skill book stops at
@@ -637,7 +642,13 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"rocking_chair": ids = ["cuddle_baby", "relax"] if _has_baby() else ["relax"]
 		"potty": ids = ["use_potty"] if _may_use_potty() else []
 		"dollhouse": ids = ["play_dollhouse"] if _may_play_dollhouse() else []
-		"child_desk": ids = ["child_desk_study"] if _may_use_child_desk() else []
+		"child_desk":
+			# For anyone else the desk still answers, with one greyed entry that says
+			# whose desk it is, rather than an empty panel that looks broken.
+			ids = CHILD_DESK_ACTIONS.duplicate() if _may_use_child_desk() else ["child_desk_study"]
+			# A schoolchild also does their homework here. It is always listed:
+			# when it is not the time, its own reason says why.
+			if str(character.age_stage) == "child": ids.push_front("homework"); ids.append("read")
 		"train_set": ids = ["play_toys"] if _may_play_toys() else []
 
 	if kind == "cot" and _has_baby() and str(character.age_stage) in ["teen", "young_adult", "adult", "elder"]:
@@ -660,11 +671,17 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		elif kind == "bookshelf": ids = ["read","homework","study","study_book","buy_book","deep_read"]
 	if kind in ["car", "car_electric", "electric_car"] and str(character.life_stage) == "adult" and not ids.has("drive_to_work"):
 		ids.append("drive_to_work")
-	if str(character.age_stage) == "child" and kind in ["desk", "child_desk", "dining", "table", "coffee_table"]:
+	if str(character.age_stage) == "child" and kind in ["desk", "dining", "table", "coffee_table"]:
 		var study: Array = ["child_desk_study", "read"]
 		if minutes >= 900.0 or int(education.get("last_attendance_day", 0)) == day:
 			study.push_front("homework")
-		ids = study
+		# A child at the study desk keeps its online classes and skill study and
+		# gains the children's choices; elsewhere the table offers only those.
+		if kind == "desk":
+			for extra: String in study:
+				if not ids.has(extra): ids.append(extra)
+		else:
+			ids = study
 	if LifeWetness.is_soft_seat(kind) and (wetness > 0.0 or not towel.is_empty()) and not ids.has(LifeWetness.DRY_SIT_ID):
 		ids.append(LifeWetness.DRY_SIT_ID)
 	var result: Array = []
@@ -692,7 +709,8 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		elif str(character.age_stage) == "child" and str(data.id) == "read":
 			data["label"] = "Read a Book"
 		elif str(character.age_stage) == "child" and str(data.id) == "child_desk_study":
-			data["label"] = "Skill Up"
+			data["label"] = "Study Logic"
+			data["description"] = "Practise logic puzzles and counting games. Logic grows and Fun rises a little."
 		# Kitchen stock pays for snacks and recipes; do not show a purse price.
 		if is_instance_valid(grocery_service) and id in ["cook", "snack"]:
 			data["cost"] = 0
@@ -983,7 +1001,7 @@ func make_child_play() -> bool:
 	if str(character.age_stage) != "child": return false
 	var choice: Dictionary = _autonomy_need_choice("fun")
 	var id: String = str(choice.get("id", ""))
-	if id not in ["play_toys", "play_dollhouse", "child_desk_study", LifeOutdoorActs.ACTION_ID, LifeGardenGames.ACTION_ID]:
+	if id not in ["play_toys", "play_dollhouse", "child_desk_study", "child_draw", "child_colour", LifeOutdoorActs.ACTION_ID, LifeGardenGames.ACTION_ID]:
 		return false
 	return queue_action(id, str(choice.get("target_id", "")), choice.get("position", Vector3.ZERO))
 
@@ -1224,7 +1242,7 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 		else:
 			definition["changes"] = {"fun": 26.0, "social": 18.0}
 			definition["xp"] = 6.0
-	if id == "clean_litter_tray" or id in SOCIAL_ACTIONS or id in LifePassingPolicy.ALL or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or COMPUTER_MASTERY_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "snack", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "bin_meal", "jog", "play_toys", "play_dollhouse", "child_desk_study", "play_rattle", "play_baby_mat", "use_potty", "sleep", "nap", "put_in_fridge", LifeGardenGames.ACTION_ID, LifeOutdoorActs.ACTION_ID, LifeOutdoorActs.PUSH_ID, LifeWetness.DRY_OFF_ID, LifeWetness.DRY_SIT_ID]:
+	if id == "clean_litter_tray" or id in SOCIAL_ACTIONS or id in LifePassingPolicy.ALL or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or COMPUTER_MASTERY_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "snack", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "bin_meal", "jog", "play_toys", "play_dollhouse", "child_desk_study", "child_draw", "child_colour", "play_rattle", "play_baby_mat", "use_potty", "sleep", "nap", "put_in_fridge", LifeGardenGames.ACTION_ID, LifeOutdoorActs.ACTION_ID, LifeOutdoorActs.PUSH_ID, LifeWetness.DRY_OFF_ID, LifeWetness.DRY_SIT_ID]:
 		var availability: Dictionary = get_action_availability(id, target_id)
 		if not bool(availability.available):
 			_emit_notice(str(availability.reason))
@@ -2291,8 +2309,10 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 		reason = "The toy chest is for children."
 	elif id == "play_dollhouse" and not _may_play_dollhouse():
 		reason = "The dollhouse is for a toddler or a child."
-	elif id == "child_desk_study" and not _may_use_child_desk():
+	elif id in CHILD_DESK_ACTIONS and not _may_use_child_desk():
 		reason = "That desk is for a toddler or a child."
+	elif id in ["child_draw", "child_colour"] and not _may_play_toys():
+		reason = "Drawing and colouring at the child desk are for a toddler or a child."
 	elif id == "play_rattle" and not _may_play_rattle():
 		reason = "A sitting baby shakes the rattle."
 	elif id == "play_baby_mat" and not _may_play_mat():
@@ -3569,12 +3589,13 @@ func _baby_play_candidates() -> Array[String]:
 		play.append("play_toys")
 		play.append("play_dollhouse")
 		play.append("child_desk_study")
+		play.append("child_draw")
 	return play
 
 func _child_play_candidates(existing: Array[String]) -> Array[String]:
 	# Toys, the dollhouse, the desk, the slide and garden games come first.
 	# Adult-only work (the stove, the treadmill, a paid shift) stays off the list.
-	var play: Array[String] = ["play_toys", "play_dollhouse", "child_desk_study", LifeOutdoorActs.ACTION_ID, LifeGardenGames.ACTION_ID]
+	var play: Array[String] = ["play_toys", "play_dollhouse", "child_desk_study", "child_draw", "child_colour", LifeOutdoorActs.ACTION_ID, LifeGardenGames.ACTION_ID]
 	var merged: Array[String] = []
 	for id: String in play:
 		if not merged.has(id): merged.append(id)
@@ -5194,7 +5215,7 @@ func _school_availability(id: String, target_id: String, ignore_queue: bool = fa
 		return "Online classes and homework are for children and teens."
 	var kind: String = _education_target_kind(target_id)
 	if not target_id.is_empty() and not _school_target_allowed(id,kind):
-		return "Choose a desk or computer for online classes." if id == "school" else "Choose a desk, computer, or bookshelf for homework."
+		return "Choose a desk or computer for online classes." if id == "school" else "Choose a desk, child desk, computer, or bookshelf for homework."
 	if not ignore_queue:
 		for queued: Dictionary in action_queue:
 			if id == "school" and str(queued.id) == "school_day" and bool(queued.get("autonomous",false)) and not is_away(): continue
@@ -5218,7 +5239,7 @@ func _school_action_error(action: Dictionary) -> String:
 
 
 func _school_target_allowed(id: String, kind: String) -> bool:
-	return kind in ["desk","computer"] or (id == "homework" and kind == "bookshelf")
+	return kind in ["desk","computer"] or (id == "homework" and (kind == "bookshelf" or (kind == "child_desk" and str(character.age_stage) == "child")))
 
 
 func _apply_education_result(result: Dictionary) -> void:

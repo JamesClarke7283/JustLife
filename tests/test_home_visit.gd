@@ -8,7 +8,12 @@ var decoded_layout:Array=[]
 var loaded_layout:Array=[]
 var finished_welcome:Dictionary={}
 func _initialize()->void:
-	if OS.get_environment("JUSTLIFE_DATA_DIR").is_empty() or OS.get_environment("XDG_DATA_HOME").is_empty() or ProjectSettings.has_setting("autoload/MCPRuntimeServer"):quit(2);return
+	if OS.get_environment("JUSTLIFE_DATA_DIR").is_empty() or OS.get_environment("XDG_DATA_HOME").is_empty() or ProjectSettings.has_setting("autoload/MCPRuntimeServer"):
+		# Say why, rather than exiting silently: this suite needs private data
+		# folders and a project copy without the editor plugin's autoload, which
+		# `python3 tests/run_home_visits.py` prepares.
+		print("HOME_VISIT refused to run: set JUSTLIFE_DATA_DIR and XDG_DATA_HOME to private folders and use a project copy without the MCPRuntimeServer autoload (tests/run_home_visits.py builds one).")
+		quit(2);return
 	_run.call_deferred()
 func check(ok:bool,message:String)->void:
 	checks+=1;print("CHECK ","PASS " if ok else "FAIL ",message)
@@ -111,7 +116,7 @@ func _run()->void:
 	check(app.household.speed==1,"Fast arrival slows to1 exactly when the guest starts waiting")
 	app.refresh_hud()
 	var welcome:Button=app.ui.find_child("WelcomeGuest",true,false)
-	check(is_instance_valid(welcome) and not welcome.disabled,"Persistent Live HUD offers Welcome in")
+	check(is_instance_valid(welcome) and not welcome.disabled,"Persistent Live HUD offers Welcome them in")
 	var before:Dictionary=_facts();app.set_build_mode(true)
 	check(_facts()==before,"Build refusal leaves queues, clocks, selection and guest unchanged")
 	app.travel_to("park")

@@ -1450,6 +1450,24 @@ func _desk_lean() -> float:
 	return best
 
 
+## Hands on a child's desk top for drawing, colouring or a logic puzzle. The
+## anchor carries the desk top's centre, so the hands go where the desk really is.
+func _child_desk_pose(pose: Dictionary, t: float, action_id: String) -> void:
+	var center: Vector3 = Vector3(0, _hip_height + .30, .34 * _proportion)
+	var side: Vector3 = Vector3(.10, 0, 0)
+	if _activity_anchor.has("hand_center"):
+		center = _model.to_local(_activity_anchor.hand_center)
+		side = _model.global_basis.inverse() * (Basis(Vector3.UP, float(_activity_anchor.yaw)) * Vector3(float(_activity_anchor.get("hand_spread", .10)), 0, 0))
+	var working: Vector3 = Vector3.ZERO
+	var steady: Vector3 = Vector3.ZERO
+	match action_id:
+		"child_draw": working = Vector3(sin(t * 3.1) * .07, 0, cos(t * 2.3) * .05)
+		"child_colour": working = Vector3(sin(t * 5.3) * .05, 0, cos(t * 1.7) * .03)
+		_: steady = Vector3(0, sin(t * 1.1) * .01, 0); working = Vector3(sin(t * 1.4) * .03, 0, 0)
+	_reach_hand(pose, "L", center - side + steady, _typing_elbow("L", _model.global_basis))
+	_reach_hand(pose, "R", center + side * .4 + working, _typing_elbow("R", _model.global_basis))
+
+
 func _typing_pose(pose: Dictionary, t: float, anchor_kind: String) -> void:
 	var center: Vector3 = Vector3(0,_hip_height+.285,.29 if _model_age == "child" else .36)
 	if anchor_kind == "standing": center.y = _authored_height*.66
@@ -1818,6 +1836,14 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 				pose["Forearm_R"] = Vector3(-1.05 + sin(t * 0.8) * 0.06, 0, -0.06)
 				pose["Head"] = Vector3(0.27, sin(t * 0.55) * 0.025, 0)
 				_book.visible = true
+			"child_desk_study", "child_draw", "child_colour":
+				# A small body leaning over its own desk: both hands on the top,
+				# one steadying the page while the other works.
+				_child_desk_pose(pose, t, action_id)
+				pose["Head"] = Vector3(0.34 + sin(t * 0.9) * 0.05, sin(t * 0.6) * 0.06, 0)
+				lean.x = 0.10
+				if action_id == "child_desk_study": _book.visible = true
+				else: _brush.visible = true
 			"paint", "paint_masterpiece", "sketch_for_fun":
 				pose["Arm_R"] = Vector3(-0.80 + sin(t * 2.1) * 0.20, 0.08 * cos(t * 1.5), -0.13)
 				pose["Forearm_R"] = Vector3(-0.68 + sin(t * 2.1 + 1.0) * 0.22, 0, 0)

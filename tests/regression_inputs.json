@@ -803,6 +803,8 @@
     "scripts/garden_games.gd.uid",
     "scripts/garden_swing.gd",
     "scripts/garden_swing.gd.uid",
+    "scripts/gate_flow.gd",
+    "scripts/gate_flow.gd.uid",
     "scripts/groceries.gd",
     "scripts/groceries.gd.uid",
     "scripts/guest_activity.gd",

@@ -24,7 +24,10 @@ static func reason(household:Node,host_id:String,target_id:String)->String:
 static func married_name(incoming:String,host:String)->String:
 	var host_words:PackedStringArray=host.strip_edges().split(" ",false)
 	var words:PackedStringArray=incoming.strip_edges().split(" ",false)
-	var surname:String=host_words[-1] if not host_words.is_empty() else "Life"
+	# Only a host with a surname of their own has one to give: a single name leaves
+	# the incoming spouse's name as it was, rather than lending them a first name.
+	if host_words.size()<2:return incoming.strip_edges()
+	var surname:String=host_words[-1]
 	if words.size()>1:words.remove_at(words.size()-1)
 	return (" ".join(words)+" "+surname).strip_edges()
 

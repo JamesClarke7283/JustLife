@@ -34,7 +34,12 @@ func _reject(raw:Dictionary,label:String)->void:
 	check(app.load_epoch==epoch and _facts()==before,label+" is refused without live mutation")
 func _run()->void:
 	app=MainScene.instantiate();root.add_child(app);app.set_process(false);app.set_sound(false)
-	slots=JSON.parse_string(FileAccess.get_file_as_string("user://home_visit_slots.json"))
+	var recorded:Variant=JSON.parse_string(FileAccess.get_file_as_string("user://home_visit_slots.json"))
+	if not recorded is Dictionary:
+		# test_home_visit.gd writes the slots this suite loads; run it first.
+		print("HOME_VISIT_CONTROLS needs the saves test_home_visit.gd writes: run test_home_visit.gd first with the same data folders.")
+		quit(2);return
+	slots=recorded
 	await _load_phase("waiting")
 	var friendship:float=app.sim.relationships.maya.friendship
 	app.residents.home_visit.welcome(app.household.selected_id())

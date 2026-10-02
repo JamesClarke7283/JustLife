@@ -3,6 +3,7 @@ class_name LifeResidents
 ## Stable residents own homes; only actors physically present can be approached.
 const Building=preload("res://scripts/building_state.gd")
 const CarEntry=preload("res://scripts/car_entry.gd")
+const GateFlow=preload("res://scripts/gate_flow.gd")
 const Variants=preload("res://scripts/catalog_variants.gd")
 const PEOPLE=LifeResidentCatalogue.PEOPLE
 ## Catalogue kinds a household can park on the lot and then drive.
@@ -763,6 +764,7 @@ func _unregister_venue_car_pick() -> void:
 ## again without walking to a missing body.
 func _park_venue_car() -> void:
  if not is_instance_valid(car):return
+ car.remove_from_group(GateFlow.DRIVING_GROUP)
  venue_car=car
  car=null
  venue_car.position=Vector3(0,0,10.25)
@@ -855,6 +857,7 @@ func tick_trip(delta:float) -> void:
    _trip_caption("Driving across Juniper Bay · 15 minutes")
  elif phase=="departure":
   if is_instance_valid(car):
+   car.add_to_group(GateFlow.DRIVING_GROUP)
    var from_data:Array=trip.get("drive_from",[car.global_position.x,car.global_position.y,car.global_position.z])
    var from:=Vector3(float(from_data[0]),float(from_data[1]),float(from_data[2]))
    var t:float=_drive_ease(float(trip.time)/DEPARTURE_SECONDS)
@@ -878,6 +881,7 @@ func tick_trip(delta:float) -> void:
   if float(trip.time)>=DEPARTURE_SECONDS:_arrive()
  elif phase=="arrival":
   if is_instance_valid(car):
+   car.add_to_group(GateFlow.DRIVING_GROUP)
    var t:float=_drive_ease(float(trip.time)/ARRIVAL_SECONDS)
    # Arrival always faces the shared kerb (+X). Ease from off-lot into the park.
    var park:=Vector3(0,0,10.25)
