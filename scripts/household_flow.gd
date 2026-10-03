@@ -204,6 +204,11 @@ static func _stored_record_valid(entry: Variant) -> bool:
 		return false
 	if entry.has("paint") and not LifeCatalog._shade(str(entry.get("paint",""))):
 		return false
+	# A gathering table's festive cloth and a party platter's servings ride along.
+	if entry.has("cloth") and not LifeCatalog._shade(str(entry.get("cloth",""))):
+		return false
+	if entry.has("servings") and not LifeBuildingState.number(entry.get("servings"), 0, 64, true):
+		return false
 	return true
 
 static func _stored_record(entry: Dictionary) -> Dictionary:
@@ -223,6 +228,10 @@ static func _stored_record(entry: Dictionary) -> Dictionary:
 		record["refund_value"] = LifeCatalogVariants.resale_value(entry)
 	if entry.get("towels") is int or entry.get("towels") is float:
 		record["towels"] = clampi(int(entry.get("towels")), 0, 64)
+	if entry.has("cloth"):
+		record["cloth"] = str(entry.get("cloth", ""))
+	if entry.get("servings") is int or entry.get("servings") is float:
+		record["servings"] = clampi(int(entry.get("servings")), 0, 64)
 	return record
 
 

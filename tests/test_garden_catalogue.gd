@@ -104,10 +104,10 @@ func _art_exists() -> void:
 	var missing: Array[String] = []
 	var checked: int = 0
 	for kind: String in LifeCatalog.ITEMS:
-		# A memorial, and the toys play leaves on the floor, are built from code
-		# rather than authored art, which the catalogue entry and the world both know.
-		if kind == "memorial" or kind == "kids_toy": continue
 		var data: Dictionary = LifeCatalog.ITEMS[kind]
+		# Kinds the world draws from code (the catalogue's own PROCEDURAL list), kitchen
+		# cabinets and room packs have no authored model to look for.
+		if _built_from_code(kind, data): continue
 		for path: String in LifeCatalogVariants.model_paths(kind, data):
 			checked += 1
 			if not ResourceLoader.exists(path): missing.append(path)
@@ -120,6 +120,10 @@ func _art_exists() -> void:
 		var data: Dictionary = LifeCatalog.ITEMS[kind]
 		if LifeCatalogVariants.colors(data).size() <= 1: continue
 		tinted.append(kind)
+		# A code-made kind is built the way the world builds it, and its Tint surfaces counted.
+		if _built_from_code(kind, data):
+			if _built_tint_count(kind, data) == 0: no_tint.append(kind)
+			continue
 		var path: String = LifeCatalogVariants.model_path(kind, LifeCatalogVariants.style_or_default("", data))
 		if not ResourceLoader.exists(path):
 			no_tint.append(kind)
@@ -133,6 +137,26 @@ func _art_exists() -> void:
 	check(tinted.size() >= 40, "Most of the new catalogue offers colours (%d kinds)." % tinted.size())
 	check(no_tint.is_empty(), "Every colour-variant model authors the surface its colour paints (%d missing: %s)."
 		% [no_tint.size(), ", ".join(PackedStringArray(no_tint.slice(0, 6)))])
+
+
+## Whether the world draws this kind from code instead of loading authored art.
+func _built_from_code(kind: String, data: Dictionary) -> bool:
+	return LifeCatalog.procedural(kind) or LifeKitchenFurnishings.cabinet(kind) or bool(data.get("room_pack", false))
+
+
+## How many Tint surfaces a code-made kind has when built in its first style.
+func _built_tint_count(kind: String, data: Dictionary) -> int:
+	if bool(data.get("room_pack", false)): return 1 # a room pack is a room, not a model
+	var variant: Dictionary = LifeCatalogVariants.resolve(data, {"style": LifeCatalogVariants.style_or_default("", data)})
+	var holder := Node3D.new()
+	var made: Node3D = LifeKitchenFurnishings.build(kind, variant) if LifeKitchenFurnishings.cabinet(kind) else null
+	if made != null: holder.add_child(made)
+	else: app.world.build_procedural(holder, kind, variant, data)
+	var count: int = 0
+	for node: Node in holder.find_children("*", "MeshInstance3D", true, false):
+		if LifeCatalogVariants.is_tint(node.name): count += 1
+	holder.free()
+	return count
 
 
 ## The three price shapes and the per-size seat count.

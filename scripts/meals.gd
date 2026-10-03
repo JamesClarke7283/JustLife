@@ -108,6 +108,31 @@ func create_batch(recipe: String, chef: String, quality: int, venue: String, now
 	batches.append(result)
 	return result
 
+## The most skilled recipe a visiting friend brings to a party, so any friend can bring one.
+const POTLUCK_MAX_SKILL := 4
+
+## The dish a friend brings on a given day. The same friend brings the same dish on the
+## same day and other days bring other dishes; the recipes are sorted first, so the pick
+## never depends on the order of the recipe table.
+static func potluck_recipe(guest: String, day: int) -> String:
+	var options: Array = []
+	for recipe: String in RECIPES:
+		if int(RECIPES[recipe].skill)<=POTLUCK_MAX_SKILL:options.append(recipe)
+	options.sort()
+	return str(options[posmod(hash("%s:%d" % [guest,day]),options.size())])
+
+## A dish already set out on a surface, for a dish a friend brought along. A household
+## member stays the named cook, because every saved dish must have one, and `brought_by`
+## names the friend whose dish it is. Returns {} when it cannot be set out.
+func place_batch(recipe: String, chef: String, quality: int, venue: String, now: float, host: String, position: Vector3, offset: Vector3, brought_by: String="") -> Dictionary:
+	if not RECIPES.has(recipe) or batches.size()>=MAX_BATCHES or host.is_empty() or not position.is_finite() or not offset.is_finite():return {}
+	if not brought_by.is_empty() and not LifeResidentCatalogue.PEOPLE.has(brought_by):return {}
+	var definition: Dictionary=RECIPES[recipe]
+	var result: Dictionary={"id":_id("meal_"),"recipe":recipe,"chef":chef,"quality":clampi(quality,1,3),"initial":int(definition.servings),"remaining":int(definition.servings),"served":0,"discarded":0,"created":now,"expires":now+FRESH_MINUTES,"venue":venue,"storage":"surface","owner":"","host":host,"position":[position.x,position.y,position.z],"offset":[offset.x,offset.y,offset.z]}
+	if not brought_by.is_empty():result["brought_by"]=brought_by
+	batches.append(result)
+	return result
+
 func set_batch_location(id: String, storage: String, host: String, position: Vector3, now: float, owner: String="") -> bool:
 	var value: Dictionary=batch(id)
 	if value.is_empty() or storage not in ["surface","fridge","carried"] or not position.is_finite():return false
@@ -235,6 +260,8 @@ static func validate(data: Variant, member_ids: Array, now: float,guest:Dictiona
 		ids[value.id]=true;batch_ids[value.id]=value;claimed[value.id]=0
 		if not RECIPES.has(str(value.get("recipe",""))) or str(value.get("chef","")) not in member_ids or not _number(value.get("quality"),1,3,true):return "The saved meal recipe or cook is invalid."
 		if not _number(value.get("guest_extra",0),0,1,true):return "The guest's extra serving count is invalid."
+		# A dish a friend brought names that friend; the cook above stays a household member.
+		if value.has("brought_by") and (not value.brought_by is String or not LifeResidentCatalogue.PEOPLE.has(str(value.brought_by))):return "The saved dish names an unknown friend."
 		var total: int=int(RECIPES[str(value.recipe)].servings)+int(value.get("guest_extra",0))
 		if value.get("initial")!=total or not _number(value.get("remaining"),0,total,true) or not _number(value.get("served"),0,total,true) or not _number(value.get("discarded"),0,total,true) or int(value.remaining)+int(value.served)+int(value.discarded)!=total:return "The meal's serving counts do not add up."
 		if not _number(value.get("created"),0,now) or not _number(value.get("expires"),float(value.created),now+MAX_LIFE_MINUTES) or not _position(value.get("position")) or not _offset(value.get("offset",[0,0,0])):return "The saved meal freshness or position is invalid."
