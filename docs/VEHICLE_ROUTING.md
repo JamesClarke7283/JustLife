@@ -78,8 +78,8 @@ at 30 fps).
 A scene is plain data made once from the world (`scene_from_world`): level-0 walls,
 solid furnishings (including other parked cars and a car garage's walls), fences, the
 posts of every gate, the mailbox, a far-kerb limit, extra obstacles (the food truck),
-the delivery van and the school bus (street obstacles: tried with, then without, since
-they move), and planting (trees as their trunks, bushes, hedges; flower beds are driven
+the delivery van, the school bus and the driving instructor's car while it is on the lot
+(street obstacles: tried with, then without, since they move), and planting (trees as their trunks, bushes, hedges; flower beds are driven
 over). The lot's back and side hedge lines are closed rectangles, so no route leaves
 through a hedge; planting the car was already parked in is driven out of.
 

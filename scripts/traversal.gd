@@ -540,7 +540,7 @@ func snapshot_person(id:String,action:Dictionary,state:Dictionary={})->Dictionar
 		if not action.is_empty():
 			intent.kind="action"
 			for key:String in ["id","target_id","meal_source","meal_stage","meal_plate"]:intent[key]=str(action.get(key,""))
-			if action.has("commute"):
+			if action.has("commute") or action.has("lesson"):
 				intent.kind="commute";intent["destination"]=LifeJourneyState.packed(route.destination)
 		elif bool(state.get("walk",false)):intent={"kind":"walk","destination":LifeJourneyState.packed(state.destination)}
 		var phase:String=str(route.phase)

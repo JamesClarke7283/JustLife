@@ -22,6 +22,7 @@ class_name LifeVehiclePlanner
 
 const Path = preload("res://scripts/vehicle_path.gd")
 const Road = preload("res://scripts/road.gd")
+const LessonCar = preload("res://scripts/lesson_car.gd")
 const BODY_HALF_WIDTH: float = .91
 const BODY_HALF_LENGTH: float = 2.10
 ## The slack kept around the body when sweeping it, on every side.
@@ -133,6 +134,8 @@ static func scene_from_world(world: Node3D, ignore_id: String = "", present_ids:
 	if LifeSchoolBus.active != null and LifeSchoolBus.active.phase != "gone":
 		var bus: Vector3 = LifeSchoolBus.active.position
 		street.append(Rect2(Vector2(bus.x - 3.45, bus.z - 1.1), Vector2(6.9, 2.2)))
+	# The driving instructor's car, while it is on the lot: a household car waits for it.
+	if is_instance_valid(LessonCar.active) and LessonCar.active.visible: street.append(oriented_box_rect(LessonCar.active.position, LessonCar.active.rotation.y, BODY_HALF_WIDTH, BODY_HALF_LENGTH))
 	return make_scene(LifeBuildingState.lot(), solid, gates, street, soft)
 
 

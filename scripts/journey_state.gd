@@ -107,7 +107,7 @@ static func _intent_error(intent:Variant,member:Dictionary,safety:bool)->String:
 		for key:String in ["id","target_id","meal_source","meal_stage","meal_plate"]:
 			if not intent.get(key,"") is String or str(intent.get(key,""))!=str(action.get(key,"")):return "A saved journey does not match the current action."
 		if intent.kind == "commute":
-			var commute: Dictionary = action.get("commute", {})
+			var commute: Dictionary = action.get("commute", action.get("lesson", {}))
 			if str(commute.get("phase", "")) not in ["walk", "back"] or not vector_valid(commute.get("destination")) or not vector_valid(intent.get("destination")) or vector(commute.destination).distance_to(vector(intent.destination)) > .00001: return "The saved commute walk disagrees with its destination."
 		elif str(action.get("phase",""))!="approach":return "An active action cannot also be traveling to its target."
 	elif not queue.is_empty():return "An idle or walking journey conflicts with its action queue."
@@ -166,7 +166,7 @@ static func validate(data:Variant,household:Dictionary)->Dictionary:
 				var queue: Array = people[id].state.action_queue
 				var action: Dictionary = queue[0] if not queue.is_empty() else {}
 				var vehicle: Dictionary = checked.items.get(str(action.get("commute", {}).get("vehicle", "")), {})
-				if not preload("res://scripts/work_commute.gd").cabin_position_matches(action, at, vehicle): return {"ok":false,"error":"A stationary Lifelet is outside supported clear floor."}
+				if not preload("res://scripts/work_commute.gd").cabin_position_matches(action, at, vehicle) and not preload("res://scripts/driving_lesson.gd").cabin_position_matches(action, at): return {"ok":false,"error":"A stationary Lifelet is outside supported clear floor."}
 			continue
 		if motion.get("phase") not in PHASES or not number(motion.get("identity"),1,float(data.next_identity)-1,true) or identities.has(motion.identity) or not number(motion.get("ticket"),0,float(data.next_ticket)-1,true) or not motion.get("safety") is bool or not motion.get("custody") is String:return {"ok":false,"error":"Invalid saved journey identity or phase."}
 		identities[motion.identity]=id
