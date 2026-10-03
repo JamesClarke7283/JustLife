@@ -86,6 +86,11 @@ var _birthday_cake: Node3D
 var _cake_center: Node3D
 var _cake_flames: Array[Node3D] = []
 var _birthday_weight: float = 0.0
+## What the household says about the birthday ritual this Lifelet is in: `role`
+## ("celebrant" or "singer"), `elapsed` (game minutes into it), `held_cake` and
+## `cake_point`. The controller sets it every frame and clears it afterwards. With
+## nothing set the poses fall back on the animation's own seconds.
+var celebration_presentation: Dictionary = {}
 var _cooking_bowl: Node3D
 var _cooking_spoon: Node3D
 var _bowl_center: Node3D
@@ -287,6 +292,7 @@ func configure(new_profile: Dictionary) -> void:
 	_seasoning_weight = 0.0
 	_seasoning_grains.clear()
 	_birthday_weight = 0.0
+	celebration_presentation = {}
 	_cake_flames.clear()
 	_snack_weight = 0.0
 	_motion_action = ""
@@ -1343,6 +1349,8 @@ func _update_grips(delta: float, moving: bool, action_id: String) -> void:
 				if str(_activity_anchor.get("kind","")) == "standing": targets = {"L":.20,"R":.20}
 			"birthday":
 				if _action_time < 3.85: targets = {"L":.30,"R":.30}
+			"blow_candles":
+				if _holds_ritual_cake(): targets = {"L":.30,"R":.30}
 	if bool(meal_presentation.get("carrying",false)):
 		var hold:float=.38 if bool(meal_presentation.get("platter",false)) else .20
 		targets={"L":hold,"R":hold}
@@ -1499,6 +1507,56 @@ func _orient_held_prop(prop: Node3D, model_basis: Basis) -> void:
 	prop.basis = parent_basis.inverse()*model_basis
 
 
+## How far into the birthday ritual this Lifelet is, in game minutes: the
+## household's clock when it names one, otherwise the animation's own seconds
+## (a game minute is a second at Normal speed).
+func _ritual_time() -> float:
+	return float(celebration_presentation.get("elapsed", _action_time))
+
+## Whether this Lifelet holds the birthday cake in their hands: the birthday person
+## when there is no table for it, until the cheer.
+func _holds_ritual_cake() -> bool:
+	return bool(celebration_presentation.get("held_cake", false)) and LifeBirthdayRitual.phase_at(_ritual_time()) != "cheer"
+
+## The poses of the birthday ritual. Everyone stands with their hands together and
+## sways to the tune; in the hush the birthday person draws a breath and leans to
+## the candles, blows as the flames go out, and then everyone claps. Returns the
+## lean of the body.
+func _ritual_pose(pose: Dictionary, t: float, action_id: String) -> Vector3:
+	var lean: Vector3 = Vector3.ZERO
+	var at: float = _ritual_time()
+	var phase: String = LifeBirthdayRitual.phase_at(at)
+	var celebrant: bool = action_id == LifeBirthdayRitual.CELEBRANT_ACTION
+	if phase == "cheer":
+		var clap: float = .5 + .5 * sin((at - LifeBirthdayRitual.CHEER_START) * 8.0)
+		var hands: Vector3 = Vector3(0, _hip_height + .39 * _proportion, .28 * _proportion)
+		_reach_hand(pose,"L",hands + Vector3(-(.020 + .085 * clap) * _proportion,0,0),Vector3(-.7,-.6,-.1))
+		_reach_hand(pose,"R",hands + Vector3((.020 + .085 * clap) * _proportion,0,0),Vector3(.7,-.6,-.1))
+		pose["Head"] = Vector3(-.025 + sin(t * 2.0) * .025,0,.035 * sin(t * 1.2))
+		return lean
+	if celebrant and _holds_ritual_cake():
+		var cake_scale: float = clampf(_proportion,.8,1.0)
+		var tray: Vector3 = Vector3(0,_hip_height + .30 * _proportion,.36 * _proportion)
+		_reach_hand(pose,"L",tray + Vector3(-.12 * cake_scale,0,0),Vector3(-.7,-.8,-.1))
+		_reach_hand(pose,"R",tray + Vector3(.12 * cake_scale,0,0),Vector3(.7,-.8,-.1))
+	else:
+		var clasp: Vector3 = Vector3(0,_hip_height + .37 * _proportion,.26 * _proportion)
+		_reach_hand(pose,"L",clasp + Vector3(-.05 * _proportion,0,0),Vector3(-.7,-.6,-.1))
+		_reach_hand(pose,"R",clasp + Vector3(.05 * _proportion,0,0),Vector3(.7,-.6,-.1))
+	if celebrant:
+		# A breath in during the hush, the blow as the flames go out, then straighten.
+		var draw: float = smoothstep(LifeBirthdayRitual.SING_END - 1.0,LifeBirthdayRitual.BLOW_AT,at)
+		var settle: float = 1.0 - smoothstep(LifeBirthdayRitual.CHEER_START - .3,LifeBirthdayRitual.CHEER_START,at)
+		var blow: float = draw * settle
+		pose["Head"] = Vector3(.10 + .15 * blow,.03 * sin(t * .9),0)
+		lean.x = .02 + .05 * blow
+	else:
+		var still: float = 1.0 if phase == "sing" else .3
+		pose["Head"] = Vector3(.06 + .04 * sin(t * 4.4) * still,.08 * sin(t * 1.1),0)
+		lean.z = sin(t * 2.2) * .05 * still
+	return lean
+
+
 func _update_held_props(delta: float, moving: bool, action_id: String) -> void:
 	var blend: float = 1.0 if _reconstructing_stair or not stair_presentation.is_empty() or _reconstructing_cooking or _reconstructing_sanitation or _reconstructing_meal or _reconstructing_rest or (not moving and action_id=="cook" and _has_oven()) else 1.0-exp(-delta*12.0)
 	if is_instance_valid(_meal_fork):
@@ -1507,12 +1565,13 @@ func _update_held_props(delta: float, moving: bool, action_id: String) -> void:
 			var grip:Vector3=_model.to_local(_meal_fork.global_position)
 			var direction:Vector3=(_meal_tip-grip).normalized()
 			_orient_held_prop(_meal_fork,Basis(Quaternion(Vector3.FORWARD,direction)).scaled(Vector3.ONE*_proportion))
-	var show_cake: bool = not moving and action_id == "birthday" and _action_time < 3.85
+	var holds_ritual_cake: bool = not moving and action_id == "blow_candles" and _holds_ritual_cake()
+	var show_cake: bool = (not moving and action_id == "birthday" and _action_time < 3.85) or holds_ritual_cake
 	_birthday_weight = lerpf(_birthday_weight,1.0 if show_cake else 0.0,blend)
 	_birthday_cake.visible = _birthday_weight > .015
 	var cake_scale: float = clampf(_proportion,.8,1.0)
 	_orient_held_prop(_birthday_cake,Basis.IDENTITY.scaled(Vector3.ONE*maxf(.001,_birthday_weight)*cake_scale))
-	for flame: Node3D in _cake_flames: flame.visible = action_id == "birthday" and _action_time < 3.12
+	for flame: Node3D in _cake_flames: flame.visible = (action_id == "birthday" and _action_time < 3.12) or (holds_ritual_cake and LifeBirthdayRitual.candles_lit(_ritual_time()))
 	_cook_weight = lerpf(_cook_weight,1.0 if not moving and action_id == "cook" else 0.0,blend)
 	_snack_weight = lerpf(_snack_weight,1.0 if not moving and action_id == "snack" else 0.0,blend)
 	var bake:bool=_presented_cooking_recipe=="harvest_bake"
@@ -1750,6 +1809,8 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 					_reach_hand(pose,"L",hands+Vector3(-(.020+.085*clap)*_proportion,0,0),Vector3(-.7,-.6,-.1))
 					_reach_hand(pose,"R",hands+Vector3((.020+.085*clap)*_proportion,0,0),Vector3(.7,-.6,-.1))
 					pose["Head"] = Vector3(-.025+sin(t*2.0)*.025,0,.035*sin(t*1.2))
+			"sing_birthday", "blow_candles":
+				lean = _ritual_pose(pose, t, action_id)
 			"sleep", "nap":
 				if anchor_kind == "seat":
 					_seated_pose(pose)
@@ -2594,6 +2655,9 @@ func _update_expression(delta: float,action_id: String,blend: float) -> void:
 		target_smile = 0.55 if action_id in ["joke","playful_prank"] else 0.34
 	elif action_id == "birthday":
 		target_smile = .12 if _action_time > 1.7 and _action_time < 3.2 else .55
+	elif action_id in ["sing_birthday", "blow_candles"]:
+		# Singing is a smile that comes and goes; the cheer is the widest.
+		target_smile = .6 if LifeBirthdayRitual.phase_at(_ritual_time()) == "cheer" else .35 + .25 * (.5 + .5 * sin(_time * 3.0))
 	elif action_id in ["argue","sleep","nap","break_up","plant_wee"] or _accident_visible:
 		target_smile = 0.0
 	if _voice != null and _voice.playing and action_id!="plant_wee" and not _accident_visible:
@@ -2618,7 +2682,7 @@ func _update_voice(delta: float, speed_factor: float, moving: bool, action_id: S
 		if _speech_remaining > 0.0:
 			_play_voice(_pending_voice)
 		_pending_voice = ""
-	var categories: Dictionary = {"friendly": "greeting", "joke": "happy", "deep_talk": "thoughtful", "flirt": "happy", "argue": "argument", "ask_partner":"thoughtful", "commit":"happy", "break_up":"thoughtful","birthday":"happy","help_homework":"thoughtful","playful_prank":"happy","bold_introduction":"greeting","host_a_chat":"thoughtful","wave_to_passer":"greeting","greet_passer":"greeting","passing_chat":"thoughtful","compliment_passer_dog":"happy","greet_passing_pet":"happy"}
+	var categories: Dictionary = {"friendly": "greeting", "joke": "happy", "deep_talk": "thoughtful", "flirt": "happy", "argue": "argument", "ask_partner":"thoughtful", "commit":"happy", "break_up":"thoughtful","birthday":"happy","sing_birthday":"happy","blow_candles":"happy","help_homework":"thoughtful","playful_prank":"happy","bold_introduction":"greeting","host_a_chat":"thoughtful","wave_to_passer":"greeting","greet_passer":"greeting","passing_chat":"thoughtful","compliment_passer_dog":"happy","greet_passing_pet":"happy"}
 	if moving or not categories.has(action_id):
 		_last_voice_action = ""
 		return

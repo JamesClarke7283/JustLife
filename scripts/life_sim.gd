@@ -467,6 +467,11 @@ func _build_actions() -> void:
 	# dance's own, so every dancer gains exactly what dancing alone would give;
 	# the household binds up to five Lifelets to one shared clock.
 	_define("dance_together", "Dance together", 35.0, {"fun": 40.0, "energy": -8.0, "hygiene": -6.0}, 0, "fitness", 12.0, "Share one record with the household. Everyone dances, and everyone hears the same song.")
+	# The birthday ritual: the family gathers round the cake and sings (the tune and
+	# a few bubbles, no words), the birthday person blows out the candles. It is a
+	# shared session the household starts, never something chosen from a menu.
+	_define("sing_birthday", "Sing happy birthday", LifeBirthdayRitual.DURATION, {"fun": 20.0, "social": 30.0}, 0, "", 0.0, "Gather round the cake and sing for the birthday person.")
+	_define("blow_candles", "Blow out the candles", LifeBirthdayRitual.DURATION, {"fun": 30.0, "social": 30.0}, 0, "", 0.0, "Make a wish and blow out the candles while the family sings.")
 
 	_define("read_post", "Read the post", 10.0, {"fun": 4.0}, 0, "", 0.0, "Open the post box and read what has arrived. A bill can be settled straight from its letter.")
 	# Every outdoor furnishing shares this one action; the placed object supplies
@@ -1263,6 +1268,9 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 		return false
 	if id == LifeDancePlan.ACTION_ID:
 		_emit_notice("Choose Dance together at the music player to invite the household.")
+		return false
+	if id in [LifeBirthdayRitual.SINGER_ACTION, LifeBirthdayRitual.CELEBRANT_ACTION]:
+		_emit_notice("The family gathers round the cake on its own when a birthday comes round.")
 		return false
 	if id == LifeBabyPlan.ACTION_ID:
 		_emit_notice("Choose Make Baby on a double bed to invite your partner.")
@@ -2279,6 +2287,34 @@ func _apply_dance_result(action: Dictionary) -> void:
 	_maybe_credit_companion("dance",action.get("target_position"))
 	_activity_memory("dance")
 	_record_chapter_activity("dance",0)
+
+## What the birthday ritual leaves behind, applied once for each person. The needs
+## were applied minute by minute while the family sang. The birthday person has the
+## best mood when at least two people sang to them; a singer gets a smaller one.
+func _apply_birthday_result(role: String, singers: int, celebrant_first_name: String) -> void:
+	var mood: Dictionary = LifeBirthdayRitual.moodlet(role, singers)
+	add_moodlet(str(mood.label), str(mood.emotion), str(mood.description), float(mood.duration), int(mood.strength))
+	if role == LifeBirthdayRitual.ROLE_CELEBRANT:
+		remember("Blew out the candles", "Blew out the candles while %d %s sang." % [singers, "person" if singers == 1 else "people"] if singers > 0 else "Made a wish and blew out the candles.")
+	else:
+		remember("A birthday song", "Sang happy birthday to %s." % celebrant_first_name)
+
+## Game minutes until this Lifelet has to set off for school or work today: 0 when it
+## is already time (or running late), and INF when there is nothing to leave for.
+## The ritual keeps clear of it, so a birthday never makes anyone late.
+func minutes_until_departure() -> float:
+	if is_away() or is_spirit() or not LifeCareerSchedule.workday(day, career): return INF
+	if str(character.get("age_stage", "")) in LifeEducation.SCHOOL_STAGES:
+		if int(education.last_attendance_day) == day or day < int(education.first_class_day) or minutes > 720.0: return INF
+		# A pupil sent home early has today's school put off, so there is nothing to leave for.
+		if float(autonomy_state.deferred.get("school_day", -1.0)) > _autonomy_now(): return INF
+		return maxf(0.0, LifeSchoolBus.ARRIVE_MINUTE - minutes)
+	if str(character.get("life_stage", "")) == "adult" and not is_retired() and not is_imprisoned() and LifeCareers.has(str(career.get("track", ""))) and int(career.worked_day) != day:
+		if day < int(career.get("schedule", LifeCareerSchedule.fresh(day)).first_day) or float(autonomy_state.deferred.get("career_day", -1.0)) > _autonomy_now(): return INF
+		var pattern: Dictionary = _career_pattern()
+		if minutes > float(pattern.close): return INF
+		return maxf(0.0, float(pattern.open) - minutes)
+	return INF
 
 func _maybe_credit_host(action_id: String) -> void:
 	# Doing a leisure activity at a resident's home warms the friendship with
@@ -5209,6 +5245,12 @@ func _validate_state(state: Dictionary) -> String:
 				# token and their own standing spot, and one owns the clock.
 				if not str(action.cooperation_id).begins_with(LifeDancePlan.TOKEN_PREFIX) or str(action.get("cooperation_role","")) != LifeDancePlan.ROLE or not action.get("cooperation_primary") is bool or str(action.get("target_kind","")) != "stereo":
 					return "Save contains an invalid shared dance action."
+			elif action_id in [LifeBirthdayRitual.SINGER_ACTION, LifeBirthdayRitual.CELEBRANT_ACTION]:
+				# The birthday gathering: everyone carries the same token and their
+				# own spot round the cake, and the birthday person owns the clock.
+				var celebrant: bool = action_id == LifeBirthdayRitual.CELEBRANT_ACTION
+				if not str(action.cooperation_id).begins_with(LifeBirthdayRitual.TOKEN_PREFIX) or str(action.get("cooperation_role","")) != (LifeBirthdayRitual.ROLE_CELEBRANT if celebrant else LifeBirthdayRitual.ROLE_SINGER) or action.get("cooperation_primary") != celebrant or str(action.get("target_kind","")) != LifeBirthdayRitual.TARGET_KIND:
+					return "Save contains an invalid birthday gathering action."
 			elif str(action.get("cooperation_role","")) != ("helper" if action_id == "help_homework" else "learner") or action_id not in ["homework","help_homework"]:
 				return "Save contains an invalid cooperative action."
 			if action_id == "help_homework" and str(profile.get("life_stage","adult")) != "adult": return "Save contains a non-adult homework helper."

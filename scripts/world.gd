@@ -2265,6 +2265,10 @@ func _surface_equipment_clear(host:Dictionary,area:Rect2) -> bool:
 		if bool(prop.equipment) and area.grow(.005).intersects(prop.area):return false
 	return true
 
+## The node a birthday cake stands in on a table, and how far its plate reaches from its centre.
+const BIRTHDAY_CAKE_NODE:String="BirthdayCake"
+const BIRTHDAY_CAKE_HALF:float=.2375
+
 func sync_surface_decorations() -> void:
 	var dishes:Dictionary={}
 	for item:Dictionary in items:
@@ -2278,6 +2282,9 @@ func sync_surface_decorations() -> void:
 			if str(item.get("support_id",""))!=str(host.id):continue
 			var local:Vector3=host.node.to_local(item.node.global_position)
 			occupied.append(_oriented_panel(Vector2(local.x,local.z),host.node.global_basis.inverse()*item.node.global_basis,{"x":0.0,"z":0.0,"w":item.size.x,"d":item.size.y}))
+		# A birthday cake standing on the table takes the place of its ornaments.
+		var cake:Node3D=host.node.get_node_or_null(BIRTHDAY_CAKE_NODE) as Node3D
+		if cake!=null and not cake.is_queued_for_deletion():occupied.append(Rect2(Vector2(cake.position.x,cake.position.z)-Vector2.ONE*BIRTHDAY_CAKE_HALF,Vector2.ONE*BIRTHDAY_CAKE_HALF*2.0))
 		for prop:Dictionary in props:
 			if bool(prop.equipment):continue
 			var visible:bool=not (str(host.kind)=="dining" and dishes.has(str(host.id)))
