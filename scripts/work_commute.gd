@@ -291,8 +291,10 @@ func _land_clear() -> void:
 
 ## Home by the front door, from wherever the car stopped: the doorstep, then a
 ## free spot just inside that can really be walked to. Without any exterior door
-## it is the usual standing place on the lot.
-func front_route(from: Vector3 = Vector3.INF) -> PackedVector3Array:
+## it is the usual standing place on the lot. A spot within 0.8 m of any point in
+## `exclude` is passed over, so several people coming in together get different
+## places just inside.
+func front_route(from: Vector3 = Vector3.INF, exclude: Array = []) -> PackedVector3Array:
 	if not from.is_finite(): from = Vector3(app.player.position.x, .16, app.player.position.z)
 	var door: Dictionary = app.residents.home_visit.front_door()
 	var route := PackedVector3Array()
@@ -311,6 +313,7 @@ func front_route(from: Vector3 = Vector3.INF) -> PackedVector3Array:
 		for offset: float in [0.0, .5, -.5, 1.0, -1.0]:
 			var wish: Vector3 = centre - outward * depth + side * offset
 			var inside: Vector3 = app.world.nearest_clear_point(wish, 0, 2)
+			if inside.is_finite() and exclude.any(func(spot: Vector3) -> bool: return spot.distance_to(inside) < .8): continue
 			if inside.is_finite() and inside.distance_to(wish) <= .3 and bool(app.world.route_to(outside, inside).ok):
 				route.append(inside)
 				return route
