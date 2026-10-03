@@ -53,6 +53,18 @@ func run()->void:
 	check(bool(traversal.restore(newer,true).ok) and traversal.next_identity==40 and traversal.next_ticket==50,"Newer saved guest counters are adopted without a reconstruction increment")
 	check(bool(traversal.request("next",Vector3(-4,.16,0)).ok) and int(traversal.routes.next.identity)==40 and traversal.next_identity==41,"A real request follows the adopted guest counter")
 	check(bool(traversal.restore(saved).ok) and traversal.routes.size()==1 and traversal.next_identity==int(saved.next_identity) and traversal.next_ticket==int(saved.next_ticket),"Ordinary replacement restore retains its authoritative counters")
+	# Two visitors restored one after the other (several party guests on managed routes)
+	# end on the highest counters of the pair, in either order.
+	traversal.reset()
+	check(bool(traversal.request("guest",Vector3(0,.16,3)).ok) and bool(traversal.request("next",Vector3(3,.16,0)).ok),"Two visitor floor journeys are created")
+	var first_visitor:Dictionary=traversal.snapshot_person("guest",action)
+	var second_visitor:Dictionary=traversal.snapshot_person("next",action)
+	var first_save:Dictionary=JSON.parse_string(JSON.stringify({"version":LifeJourneyState.VERSION,"next_identity":12,"next_ticket":3,"members":{"guest":first_visitor}}))
+	var second_save:Dictionary=JSON.parse_string(JSON.stringify({"version":LifeJourneyState.VERSION,"next_identity":15,"next_ticket":9,"members":{"next":second_visitor}}))
+	for order:Array in [[first_save,second_save],[second_save,first_save]]:
+		traversal.reset()
+		for part:Dictionary in order:check(bool(traversal.restore(part,true).ok),"A visitor journey restores beside another")
+		check(traversal.next_identity==15 and traversal.next_ticket==9 and traversal.routes.has("guest") and traversal.routes.has("next"),"Two restored visitors keep the highest counters and both journeys")
 	for actor:LifeActor in app.world.actors.values():actor.free()
 	app.free()
 	print("TRAVERSAL_RESTORE_COUNTERS checks=%d failures=%d"%[checks,failures.size()])

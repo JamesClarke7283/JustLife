@@ -856,6 +856,8 @@ func restore_state(data: Dictionary) -> Dictionary:
 	var guest:Dictionary={}
 	var saved_visit:Variant=LifeHomeVisit.saved_visit(data)
 	if saved_visit!=null and not saved_visit.value.visit.is_empty():guest=saved_visit.value.visit
+	# Party guests may own plates too, each bound to their own visit and meal.
+	var party_guests:Array=LifeHomeVisit.saved_party_guests(data)
 	# The kitchen is validated before it is adopted, so a corrupt delivery
 	# cannot strand a household with food that never arrives.
 	var business_error: String = LifeBusiness.validate_owned(data.get("business"))
@@ -867,8 +869,8 @@ func restore_state(data: Dictionary) -> Dictionary:
 		for c in candidates: c.sim.free()
 		return {"ok":false,"error":grocery_error}
 	var meal_data: Variant = data.get("meals",LifeMeals.new().get_state())
-	var meal_error: String = LifeMeals.validate(meal_data,ids,(lead.day-1)*1440.0+lead.minutes,guest)
-	if meal_error.is_empty():meal_error=LifeMeals.validate_actions(meal_data,data.members,journey_result.get("custody",{}),str(journey_result.get("venue","")),guest)
+	var meal_error: String = LifeMeals.validate(meal_data,ids,(lead.day-1)*1440.0+lead.minutes,guest,party_guests)
+	if meal_error.is_empty():meal_error=LifeMeals.validate_actions(meal_data,data.members,journey_result.get("custody",{}),str(journey_result.get("venue","")),guest,party_guests)
 	if meal_error.is_empty():meal_error=LifeMeals.validate_layout(meal_data,data)
 	if not meal_error.is_empty():
 		for c in candidates:c.sim.free()
