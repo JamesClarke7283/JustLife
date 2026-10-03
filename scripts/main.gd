@@ -3700,7 +3700,7 @@ func freeze_viewport(viewport_id:int) -> void:
 
 func set_build_mode(value:bool) -> void:
 	if value and is_instance_valid(safety) and is_instance_valid(safety.crime) and safety.unresolved():show_notice("Resolve the burglary report with the police before changing the home.");return
-	if value and residents.home_visit.active():show_notice("Say goodbye and wait for your guest to leave before building.");return
+	if value and residents.any_visit_active():show_notice("Say goodbye and wait for your guest to leave before building.");return
 	if value and current_venue!="home":show_notice("Travel home to change your own house.");return
 	if mode not in ["live","build"] or value==(mode=="build"):return
 	close_overlay()
@@ -4696,12 +4696,13 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 				join_reason="Nobody else on the lot is free to join right now."
 			actions.insert(mini(1,actions.size()),{"id":LifeOutdoorActs.JOIN_ACTION,"label":"Ask to Join…","cost":0,"duration":int(LifeOutdoorActs.acts(str(item.kind)).get("duration",40)),"available":join_reason.is_empty(),"unavailable_reason":join_reason,"description":"Invite another household Lifelet to join you outdoors."})
 		actions.insert(mini(2,actions.size()),{"id":LifeOutdoorActs.CALL_FRIEND_ACTION,"label":"Call Friend Over…","cost":0,"duration":0,"available":true,"description":"Invite someone from your contacts list to come over."})
-	if residents.home_visit.active() and residents.home_visit.owns(str(item.id)):
-		var inside:bool=str(residents.home_visit.state.phase)=="inside"
+	var guest_visit:LifeHomeVisit=residents.visit_for(str(item.id))
+	if guest_visit.active() and guest_visit.owns(str(item.id)):
+		var inside:bool=str(guest_visit.state.phase)=="inside"
 		var not_yet:String="" if inside else "Welcome them in first, and wait until they are inside."
 		actions.insert(0,{"id":"guest_join","label":"Come Join Me","cost":0,"duration":0,"available":inside,"unavailable_reason":not_yet,"description":"Ask your visitor to join your current activity or sit beside you."})
 		actions.insert(1,{"id":"guest_activity","label":"Suggest an activity…","cost":0,"duration":0,"available":inside,"unavailable_reason":not_yet,"description":"Choose something for your visitor to do, or see how they are feeling."})
-		var staying:bool=bool(residents.home_visit.state.get("stay_over",false))
+		var staying:bool=bool(guest_visit.state.get("stay_over",false))
 		actions.insert(0,{"id":LifeOutdoorActs.STAY_OVER_ACTION,"label":"Ask to Stay Over","cost":0,"duration":0,"available":inside and not staying,"unavailable_reason":not_yet if not inside else ("They are already staying over." if staying else ""),"description":"Override their leave timer and ask them to stay the night."})
 	if str(item.kind)=="floor_lamp" and not _find_item(str(item.id)).is_empty():
 		var lamp:Dictionary=_find_item(str(item.id))
@@ -4855,11 +4856,11 @@ func _run_interaction(item:Dictionary,a:Dictionary) -> void:
 	elif str(a.id)=="clean_home":ChoreUI.show_panel(self,str(item.id))
 	elif str(a.id)==LifeOutdoorActs.CALL_FRIEND_ACTION:show_call_friend_over()
 	elif str(a.id)==LifeOutdoorActs.STAY_OVER_ACTION:
-		residents.home_visit.ask_to_stay_over();close_overlay()
+		residents.visit_for(str(item.id)).ask_to_stay_over();close_overlay()
 	elif str(a.id)=="guest_join":
-		var joined:bool=residents.home_visit.activity.come_join(bound_member_id)
+		var joined:bool=residents.visit_for(str(item.id)).activity.come_join(bound_member_id)
 		close_overlay();show_notice("Your visitor is coming to join you." if joined else "Choose an activity with a free place for your visitor first.")
-	elif str(a.id)=="guest_activity":show_guest_activities()
+	elif str(a.id)=="guest_activity":show_guest_activities(str(item.id))
 	elif str(a.id)=="open_garage_door":
 		var was_open:bool=false
 		var garage:Dictionary=_find_item(str(item.id))
@@ -4951,8 +4952,9 @@ func show_homework_helpers(item:Dictionary) -> void:
 ## Who may join a shared dance at this music player. Each row is a real choice:
 ## the selected household members walk to the record player and dance to one
 ## shared clock. A member who cannot join says why instead of being hidden.
-func show_guest_activities() -> void:
-	if residents.home_visit.active():residents.home_visit.activity.show_choices()
+func show_guest_activities(guest_id:String="") -> void:
+	var visit:LifeHomeVisit=residents.visit_for(guest_id)
+	if visit.active():visit.activity.show_choices()
 
 func show_dance_partners(item:Dictionary) -> void:
 	_begin_pause_overlay()
@@ -6173,7 +6175,7 @@ func cancel_current_action(index:int=0) -> void:
 		for member:Dictionary in household.members:
 			if member.sim.get_current_action().is_empty():motion_states[member.id]=_empty_motion()
 	else:sim.cancel_action(index)
-	residents.home_visit.reconcile()
+	residents.reconcile_visits()
 	meal_flow.sync_oven_presentations()
 	_reconstruct_paused_cooking()
 	refresh_hud()
@@ -6182,7 +6184,7 @@ func _cancel_all_cooperative_actions() -> void:
 	for member:Dictionary in household.members:household.cancel_cooperative_action(str(member.id))
 
 func queue_interaction(item:Dictionary,id:String) -> void:
-	if residents.home_visit.active() and residents.home_visit.activity.holds_member(bound_member_id):residents.home_visit.activity.cancel("")
+	residents.release_guests_holding(bound_member_id)
 	if id==LifeRelationshipProgress.DATE and is_instance_valid(relationship_flow):
 		relationship_flow.start_date(bound_member_id,str(item.id));return
 	if is_instance_valid(tv_group) and tv_group.dispatch(item,id):return
@@ -6190,10 +6192,10 @@ func queue_interaction(item:Dictionary,id:String) -> void:
 	if id=="hug" and str(item.get("kind",""))=="neighbor":
 		var refusal:String=embrace.refusal(str(item.id))
 		if not refusal.is_empty():show_notice(refusal);return
-	if LifeResidents.PEOPLE.has(str(item.id)) and not residents.home_visit.prepare_social(str(item.id)):
+	if LifeResidents.PEOPLE.has(str(item.id)) and not residents.visit_for(str(item.id)).prepare_social(str(item.id)):
 		show_notice("Your guest is walking or heading home. Wait until they are ready to talk.");return
-	if id=="friendly" and residents.home_visit.owns(str(item.id)) and str(residents.home_visit.state.phase)=="waiting":
-		residents.home_visit.welcome(bound_member_id);refresh_hud();return
+	if id=="friendly" and residents.visit_for(str(item.id)).owns(str(item.id)) and str(residents.visit_for(str(item.id)).state.phase)=="waiting":
+		residents.visit_for(str(item.id)).welcome(bound_member_id);refresh_hud();return
 	if sim.is_away():show_notice("This Lifelet will be available after coming home.");return
 	if str(item.id)==bound_member_id:return
 	if LifeResidents.PEOPLE.has(str(item.id)) and not residents.present(str(item.id)):show_notice("This neighbor has gone home. Catch them on their next walk, or visit their home.");return
@@ -6530,7 +6532,7 @@ func _on_pregnancy_began(mother_id: String) -> void:
 
 func _member_action_finished(id:String,action:Dictionary) -> void:
 	if loading_game:return
-	residents.home_visit.action_finished(id,action)
+	residents.action_finished(id,action)
 	if is_instance_valid(relationship_flow):relationship_flow.finished(id,action)
 	water_flow.finished(id,action)
 	toy_flow.finished(id,action)
@@ -6625,7 +6627,7 @@ func on_action_started(action:Dictionary) -> void:
 	if not care_motion().prepare(bound_member_id,action):
 		pending_action=action
 		return
-	if residents.home_visit.prepare_host_action(bound_member_id,action):return
+	if residents.prepare_host_action(bound_member_id,action):return
 	var resident_id:String=str(action.get("target_id",""))
 	if str(action.get("id","")) in LifeSim.SOCIAL_ACTIONS and LifeResidents.PEOPLE.has(resident_id) and not residents.present(resident_id):
 		show_notice(str(LifeResidents.PEOPLE[resident_id].name)+" has gone home. Catch them on their next walk, or arrange a visit.")
@@ -7638,7 +7640,7 @@ func _restore_properties(value:Variant,home_land:Variant=null) -> void:
 
 ## Open the property panel from the house menu.
 func _property_panel_available() -> bool:
-	return mode=="live" and current_venue=="home" and not residents.home_visit.active()
+	return mode=="live" and current_venue=="home" and not residents.any_visit_active()
 
 
 func _saved_number(value:Variant,fallback:float,minimum:float,maximum:float) -> float:
@@ -7727,11 +7729,9 @@ func load_game(slot_id:String="") -> void:
 		_refresh_sim_targets(true,false)
 		_restore_resource_waits()
 	loading_game=false
-	residents.home_visit.activity.restore_journey()
+	residents.restore_guest_journeys()
 	meal_flow.sync_oven_presentations()
-	residents.home_visit.meal.present(true)
-	residents.home_visit.activity.present(true)
-	residents.home_visit.present()
+	residents.present_guests()
 	meal_flow.sync_world(false)
 	_reconstruct_paused_cooking()
 	_reconstruct_paused_rest()
@@ -7811,12 +7811,9 @@ func _legacy_visit_error_on_saved_land(data:Dictionary,found:Variant) -> String:
 	candidate.residents.attach("home")
 	candidate.meal_flow=LifeMealFlow.new();candidate.meal_flow.app=candidate;candidate.add_child(candidate.meal_flow)
 	candidate.meal_flow.sync_world(false)
-	var guest_route:Dictionary=candidate.residents.home_visit.activity.restore_journey()
-	var error:String=candidate.residents.home_visit.physical_error() if bool(guest_route.ok) else str(guest_route.error)
-	if error.is_empty():
-		candidate.residents.home_visit.meal.present(true)
-		candidate.residents.home_visit.activity.present(true)
-	candidate.residents.home_visit.present()
+	var guest_route:Dictionary=candidate.residents.restore_guest_journeys()
+	var error:String=candidate.residents.guests_physical_error() if bool(guest_route.ok) else str(guest_route.error)
+	candidate.residents.present_guests(error.is_empty())
 	viewport.free();candidate.free()
 	return error
 
@@ -7885,13 +7882,11 @@ func _prepare_loaded_world(data:Dictionary) -> Dictionary:
 	candidate._sync_food_truck()
 	var restored:Dictionary=candidate._restore_journeys()
 	if not bool(restored.ok):viewport.free();candidate.free();return restored
-	var guest_route:Dictionary=candidate.residents.home_visit.activity.restore_journey()
+	var guest_route:Dictionary=candidate.residents.restore_guest_journeys()
 	if not bool(guest_route.ok):viewport.free();candidate.free();return guest_route
-	var guest_error:String=candidate.residents.home_visit.physical_error()
+	var guest_error:String=candidate.residents.guests_physical_error()
 	if not guest_error.is_empty():viewport.free();candidate.free();return {"ok":false,"error":guest_error}
-	candidate.residents.home_visit.meal.present(true)
-	candidate.residents.home_visit.activity.present(true)
-	candidate.residents.home_visit.present()
+	candidate.residents.present_guests()
 	candidate.meal_flow.sync_world(false)
 	candidate._reconstruct_paused_cooking()
 	candidate._reconstruct_paused_rest()
@@ -8224,7 +8219,7 @@ func _gate_walkers() -> Array:
 	var ids:Array=[]
 	if is_instance_valid(household):
 		for member:Dictionary in household.members:ids.append(str(member.id))
-	if is_instance_valid(residents) and is_instance_valid(residents.home_visit) and residents.home_visit.active():ids.append(str(residents.home_visit.state.get("guest","")))
+	if is_instance_valid(residents) and is_instance_valid(residents.home_visit):ids.append_array(residents.guest_ids())
 	return ids
 
 func _process(delta:float) -> void:
@@ -8374,14 +8369,14 @@ func _advance_movement(delta:float) -> bool:
 			elif walk_only:_set_route(walk_destination)
 			else:_clear_motion()
 		return moved
-	if residents.home_visit.holds_social_approach(sim.get_current_action()):return false
+	if residents.holds_social_approach(sim.get_current_action()):return false
 	var pet_walk_action:Dictionary=sim.get_current_action()
 	if str(pet_walk_action.get("id",""))=="pet_walk" and str(pet_walk_action.get("phase",""))=="active":
 		return care_motion().advance_walk(bound_member_id,pet_walk_action,delta)
 	var current_social:Dictionary=sim.get_current_action()
 	var guest_id:String=str(current_social.get("target_id",""))
 	if str(current_social.get("id","")) in LifeSim.SOCIAL_ACTIONS and LifeResidents.PEOPLE.has(guest_id):
-		if not residents.present(guest_id) or (residents.home_visit.owns(guest_id) and str(residents.home_visit.state.phase)=="leaving" and not residents.home_visit.social_allowed(guest_id,current_social)):
+		if not residents.present(guest_id) or (residents.visit_for(guest_id).owns(guest_id) and str(residents.visit_for(guest_id).state.phase)=="leaving" and not residents.visit_for(guest_id).social_allowed(guest_id,current_social)):
 			cancel_current_action();show_notice("This neighbor is heading home. Catch up another time.");return false
 	var current_arrival:Dictionary=sim.get_current_action()
 	if str(current_arrival.get("id",""))=="arrive_home":return adoption_flow.advance_arrival(delta,current_arrival)
@@ -8939,7 +8934,7 @@ func _update_activity_facing(delta:float,action:Dictionary,action_id:String) -> 
 			player.rotation.y=lerp_angle(player.rotation.y,anchor.yaw,minf(delta*6,1))
 		return
 	if world.actors.has(str(action.target_id)):
-		if sim.speed<=0 and residents.home_visit.owns(str(action.target_id)):return
+		if sim.speed<=0 and residents.visit_for(str(action.target_id)).owns(str(action.target_id)):return
 		var direction:Vector3=world.actors[str(action.target_id)].position-player.position
 		player.rotation.y=lerp_angle(player.rotation.y,atan2(direction.x,direction.z),minf(delta*6,1))
 
@@ -9020,7 +9015,7 @@ func _social_destination(action:Dictionary,preserve:bool=true)->Vector3:
 
 func _reconcile_social_action()->void:
 	var action:Dictionary=sim.get_current_action()
-	if residents.home_visit.owns_host_action(bound_member_id,action) or residents.home_visit.holds_social_approach(action):return
+	if residents.home_visit.owns_host_action(bound_member_id,action) or residents.holds_social_approach(action):return
 	if action.is_empty() or str(action.id) not in LifeSim.SOCIAL_ACTIONS or str(action.phase) not in ["approach","active"] or traversal.busy(bound_member_id):return
 	var destination:Vector3=_social_destination(action)
 	if not destination.is_finite():
@@ -9157,8 +9152,9 @@ func _assign_seat_slot(action:Dictionary,item:Dictionary) -> void:
 		return
 	var slots:Array[String]=world.seat_slots(item)
 	var taken:Array=[]
-	if residents.home_visit.active():
-		var visiting:Dictionary=residents.home_visit.activity.current_action()
+	for guest_visit:LifeHomeVisit in residents.visits():
+		if not guest_visit.active():continue
+		var visiting:Dictionary=guest_visit.activity.current_action()
 		if str(visiting.get("target_id",""))==str(item.id) and visiting.has("seat_slot"):taken.append(str(visiting.seat_slot))
 	if shared_bed and current_venue=="home":
 		for owner:String in household.bed_assignments:
@@ -9211,7 +9207,7 @@ func _activity_available(action:Dictionary) -> bool:
 
 func _activity_available_for_member(action:Dictionary,member_id:String) -> bool:
 	if action.is_empty():return false
-	if residents.home_visit.active() and residents.home_visit.activity.holds_member(member_id):return false
+	if residents.guest_holds_member(member_id):return false
 	if is_instance_valid(tv_group) and tv_group.blocks(action,member_id):return false
 	var requested_bed:String=str(action.get("target_id",""))
 	var reserved_sides:Array[String]=[]
@@ -9225,7 +9221,7 @@ func _activity_available_for_member(action:Dictionary,member_id:String) -> bool:
 	if reserved_sides.size()>=2:return false
 	if not residents.home_visit.welcome_start_allowed(action):return false
 	if str(action.get("id","")) in LifeSim.SOCIAL_ACTIONS and LifeResidents.PEOPLE.has(str(action.get("target_id",""))):
-		if not residents.present(str(action.target_id)) or not residents.home_visit.conversation_start_allowed(str(action.target_id),action):return false
+		if not residents.present(str(action.target_id)) or not residents.visit_for(str(action.target_id)).conversation_start_allowed(str(action.target_id),action):return false
 	if meal_flow.standing_place_blocks(member_id,action) or meal_flow.guest_blocks(action,member_id):return false
 	var wanted:Array[String]=_activity_resources(action)
 	var session_id:String=str(action.get("cooperation_id",""))

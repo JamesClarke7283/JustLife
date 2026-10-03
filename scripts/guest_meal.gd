@@ -122,7 +122,7 @@ func _replan_pickup()->void:
 	state.target=place;visit.state.route={"points":route,"point":0}
 func _begin_eating()->void:
 	var action:Dictionary=activity()
-	if not flow().guest_place_valid(action):
+	if not flow().guest_place_valid(action,false,person()):
 		if not _choose_place():cancel("Your guest's dining place is blocked.")
 		return
 	var serving:Dictionary=plate()
@@ -210,7 +210,7 @@ func present(reconstruct:bool=false)->void:
 	if reconstruct:body().reconstruct_meal_pose(str(state.phase)=="eating")
 func physical_error()->String:
 	if not active():return ""
-	if str(state.phase) in ["to_place","eating"] and not flow().guest_place_valid(activity(),true):return "The saved guest dining reservation is unavailable."
+	if str(state.phase) in ["to_place","eating"] and not flow().guest_place_valid(activity(),true,person()):return "The saved guest dining reservation is unavailable."
 	var serving:Dictionary=plate()
 	if not serving.is_empty() and (str(serving.owner)!=person() or str(serving.venue)!="home"):return "The saved guest no longer owns their plate."
 	if str(state.phase)=="eating" and body().position.distance_to(state.target)>.00001:return "The saved guest is not at their dining place."

@@ -8,6 +8,10 @@ const STAY_MINUTES:float=360.0
 ## from the moment they accept, overriding the ordinary leave timer.
 const STAY_OVER_EXTRA_MINUTES:float=720.0
 const GREETING_MINUTES:float=25.0
+## A party guest's stay can run no longer than the longest party.
+const PARTY_MAX_MINUTES:float=300.0
+## How far apart two guests' standing places and routes' ends must be.
+const GUEST_GAP:float=.85
 ## An uninvited caller rings the doorbell and waits on the doorstep. They stay
 ## outside the whole time: ringing is the only way in, and letting them in is the
 ## household's decision. A visitor who was invited over is expected, so their
@@ -81,6 +85,7 @@ func welcome_start_allowed(action:Dictionary)->bool:
 
 func requirement(id:String)->String:
 	if active():return "One neighbor is already visiting. Say goodbye and let them leave first."
+	if _residents().party_active():return "Your party guests are still visiting. Let them leave before inviting someone else."
 	if ringing():return "Somebody is already at the door. Let them in or turn them away first."
 	if app.current_venue!="home" or app.mode!="live":return "Invite a neighbor while you are at home in Live mode."
 	if not LifeResidents.PEOPLE.has(id) or not app.residents.can_visit(id):return "Reach 20 friendship with this neighbor before inviting them over."
@@ -88,6 +93,24 @@ func requirement(id:String)->String:
 	if not app.residents.trip.is_empty():return "Finish the current trip before inviting a neighbor."
 	if not app.residents._speaker(id).is_empty():return "Finish the current conversation with this neighbor before inviting them over."
 	return ""
+
+## The rules for inviting a neighbor to a party. The one-neighbor rule does not
+## apply, so several guests can be here at once, but every layout, trip and
+## conversation check of an ordinary invitation still does, and a neighbor who is
+## already a guest or is standing at the door cannot be asked twice.
+func party_requirement(id:String)->String:
+	var residents=_residents()
+	for visit:LifeHomeVisit in residents.visits():
+		if visit.owns(id) or visit.owns_bell(id):return "That neighbor is already visiting."
+	if app.current_venue!="home" or app.mode!="live":return "Invite a neighbor while you are at home in Live mode."
+	if not LifeResidents.PEOPLE.has(id) or not residents.can_visit(id):return "Reach 20 friendship with this neighbor before inviting them over."
+	if _building().is_empty():return "This home needs a supported ground-floor layout before inviting a guest."
+	if not residents.trip.is_empty():return "Finish the current trip before inviting a neighbor."
+	if not residents._speaker(id).is_empty():return "Finish the current conversation with this neighbor before inviting them over."
+	return ""
+
+## The residents service that owns this visit.
+func _residents()->Variant:return _owner.get_ref()
 
 # ------------------------------------------------------------------ doorbell
 
@@ -105,6 +128,8 @@ func _bell_now()->float:return (app.household.day-1)*1440.0+app.household.minute
 func consider_ring(force:bool=false)->bool:
 	if app.current_venue!="home" or app.mode!="live" or app.household==null:return false
 	if ringing() or active() or not app.residents.trip.is_empty():return false
+	# Nobody rings while a party is on: the guests are already arriving.
+	if app.residents.party_active():return false
 	if force:return _start_ring()
 	if not app.residents.present("maya"):pass
 	for id:String in LifeResidents.PEOPLE:
@@ -270,7 +295,7 @@ func invite(id:String)->bool:
 ## friend, so this skips only the friendship rule — every layout, path and
 ## presence check the ordinary invite makes still applies, and the guest then
 ## joins exactly the same visit state machine.
-func _begin_visit(id:String,notice:String,auto_welcome:bool=false)->bool:
+func _begin_visit(id:String,notice:String,auto_welcome:bool=false,party:int=0,party_until:float=0.0)->bool:
 	var actor:LifeActor=_body(id)
 	if not is_instance_valid(actor):app.show_notice("This neighbor is unavailable right now.");return false
 	var start:Vector3=actor.position if app.residents.present(id) else _curb_point(id)
@@ -286,6 +311,8 @@ func _begin_visit(id:String,notice:String,auto_welcome:bool=false)->bool:
 		app.show_notice("Make room for a clear ground-floor gathering place and a route back to the sidewalk.");return false
 	# All fallible layout/presence checks precede any queue, body or lifecycle change.
 	state={"serial":next_serial,"guest":id,"phase":"arriving","created_at":_now(),"arrived_at":-1.0,"admitted_at":-1.0,"phase_at":_now(),"welcome":welcome,"inside":inside,"exit":exit,"route":{"points":incoming,"point":0},"greeting":{},"next_greeting":1,"departure":{},"blocked":false,"meal":{},"next_meal":1,"auto_welcome":auto_welcome,"front_door":str(door.id),"entrance":{}}
+	# A party guest is admitted at the door without a host greeting and goes home when the party ends.
+	if party>0:state.party=party;state.party_until=party_until
 	next_serial+=1
 	activity.restore({})
 	actor.position=start;app.world.set_actor_away(id,false,false)
@@ -322,6 +349,9 @@ func _clear(id:String,point:Vector3,building:Dictionary={})->bool:
 		if not action.is_empty() and point.distance_to(action.target_position)<.85:return false
 		var motion:Dictionary=app.motion_states.get(str(member.id),{})
 		if bool(motion.get("walk",false)) and point.distance_to(motion.get("destination",Vector3.INF))<.85:return false
+	# Other guests' places are theirs: two guests never share a doorstep or room spot.
+	for reserved:Vector3 in _residents().reserved_guest_points(self):
+		if point.distance_to(reserved)<GUEST_GAP:return false
 	return true
 
 func _curb_point(id:String)->Vector3:
@@ -543,6 +573,8 @@ func _admit(guest:String,event_time:float)->void:
 ## this without rewriting phase_at, so meal and save clocks stay consistent.
 func stay_deadline() -> float:
 	if not active(): return 0.0
+	# A party guest stays until the party ends.
+	if state.has("party_until"): return float(state.party_until)
 	var base: float = float(state.get("phase_at", 0.0)) + STAY_MINUTES
 	if bool(state.get("stay_over", false)):
 		return base + STAY_OVER_EXTRA_MINUTES
@@ -566,6 +598,9 @@ func stay_over_refusal() -> String:
 	return "Thanks, but I'd better head home tonight. Let's get to know each other a little better first."
 
 func ask_to_stay_over() -> bool:
+	if active() and state.has("party"):
+		if app != null: app.show_notice("They came for the party and will head home when it ends.")
+		return false
 	if not active() or str(state.phase) != "inside":
 		if app != null: app.show_notice("Welcome your guest inside before asking them to stay.")
 		return false
@@ -661,6 +696,8 @@ func tick(delta:float)->void:
 			if int(state.route.point)>=state.route.points.size():
 				if phase=="arriving":
 					state.phase="waiting";state.arrived_at=now;state.phase_at=now
+					# A party guest walks straight in: no host greets each one at the door.
+					if state.has("party"):_admit(id,now);return
 					if bool(state.get("auto_welcome",false)):
 						# The household already answered the doorbell: this caller
 						# was let in, so they come straight inside instead of being
@@ -752,6 +789,7 @@ func restore(value:Dictionary)->void:
 	activity.restore(state.get("activity",{}))
 	if not state.meal.is_empty():state.meal.target=_vector(state.meal.target)
 	state.serial=int(state.serial);state.next_greeting=int(state.next_greeting)
+	if state.has("party"):state.party=int(state.party);state.party_until=float(state.party_until)
 	if not state.greeting.is_empty():state.greeting.token=int(state.greeting.token)
 	for key:String in ["welcome","inside","exit"]:state[key]=_vector(state[key])
 	var points:=PackedVector3Array()
@@ -816,7 +854,8 @@ static func _point(value:Variant)->bool:
 	if not value is Array or value.size()!=3:return false
 	return Building.number(value[0],-Building.Land.MAX_SPAN,Building.Land.MAX_SPAN) and Building.number(value[1],.15999999,.16000001) and Building.number(value[2],-Building.Land.MAX_SPAN,Building.Land.MAX_SPAN)
 
-static func saved_visit(data:Dictionary)->Variant:
+## The saved resident record of the selected Lifelet, which carries every guest, or null.
+static func saved_context(data:Dictionary)->Variant:
 	var members:Variant=data.get("members")
 	if not members is Array:return null
 	var selected:Variant=data.get("selected_index",0)
@@ -826,18 +865,69 @@ static func saved_visit(data:Dictionary)->Variant:
 	var character:Variant=entry.state.get("character")
 	if not character is Dictionary or not character.get("world_state") is Dictionary:return null
 	var residents:Variant=character.world_state.get("residents")
-	if not residents is Dictionary or not residents.has("home_visit"):return null
-	return {"value":residents.home_visit,"residents":residents,"context":character.world_state,"member_state":entry.state}
+	if not residents is Dictionary:return null
+	return {"residents":residents,"context":character.world_state,"member_state":entry.state}
+
+## The ordinary visit's saved record (and its context), or null when none was saved.
+static func saved_visit(data:Dictionary)->Variant:
+	var found:Variant=saved_context(data)
+	if found==null or not found.residents.has("home_visit"):return null
+	found["value"]=found.residents.home_visit
+	return found
+
+## Each saved party visit's record with the same context, in saved order.
+static func saved_party_visits(data:Dictionary)->Array:
+	var result:Array=[]
+	var found:Variant=saved_context(data)
+	if found==null or not found.residents.get("party_visits") is Array:return result
+	for value:Variant in found.residents.party_visits:
+		var entry:Dictionary=found.duplicate()
+		entry["value"]=value
+		result.append(entry)
+	return result
+
+## The saved visit states of the party guests, for the food validators.
+static func saved_party_guests(data:Dictionary)->Array:
+	var guests:Array=[]
+	for entry:Dictionary in saved_party_visits(data):
+		if entry.value is Dictionary and entry.value.get("visit") is Dictionary and not entry.value.visit.is_empty():guests.append(entry.value.visit)
+	return guests
 
 static func validate_saved(data:Dictionary)->String:
 	var found:Variant=saved_visit(data)
-	if found==null:return ""
-	var value:Variant=found.value
-	if not value is Dictionary or not Building.number(value.get("version"),1,2,true) or not Building.number(value.get("next_serial"),1,1000000000,true) or not value.get("visit") is Dictionary:return "Save contains an invalid home-visit record."
+	var ordinary:Dictionary={}
+	if found!=null and found.value is Dictionary and found.value.get("visit") is Dictionary:ordinary=found.value.visit
+	var base:Variant=saved_context(data)
+	if base!=null and base.residents.has("party_visits") and (not base.residents.party_visits is Array or base.residents.party_visits.size()>LifeResidents.PEOPLE.size()):return "Save contains an invalid party-visit list."
+	var party:Array=saved_party_visits(data)
+	# Every saved guest's state, so each one's journey is checked with the others on the stairs.
+	var everyone:Array=[]
+	if not ordinary.is_empty():everyone.append(ordinary)
+	for entry:Dictionary in party:
+		if entry.value is Dictionary and entry.value.get("visit") is Dictionary and not entry.value.visit.is_empty():everyone.append(entry.value.visit)
+	if found!=null:
+		var error:String=validate_value(found.value,found,data,false,everyone.filter(func(other:Dictionary)->bool:return not is_same(other,ordinary)))
+		if not error.is_empty():return error
+	var seen:Dictionary={}
+	if not ordinary.is_empty():seen[str(ordinary.get("guest",""))]=true
+	for entry:Dictionary in party:
+		var party_state:Dictionary=entry.value.get("visit",{}) if entry.value is Dictionary and entry.value.get("visit") is Dictionary else {}
+		var error:String=validate_value(entry.value,entry,data,true,everyone.filter(func(other:Dictionary)->bool:return not is_same(other,party_state)))
+		if not error.is_empty():return error
+		if seen.has(str(party_state.guest)):return "A neighbor cannot be two guests at once."
+		seen[str(party_state.guest)]=true
+	if found!=null and found.value is Dictionary and found.value.get("doorbell") is Dictionary and seen.has(str(found.value.doorbell.get("guest",""))) and str(found.value.doorbell.get("guest",""))!=str(ordinary.get("guest","")):return "A party guest is also at the door."
+	return ""
+
+## One saved visit record. `is_party` marks a party guest's record; `others` are the
+## other saved guests' visit states (ordinary and party) for the shared checks.
+static func validate_value(value:Variant,found:Dictionary,data:Dictionary,is_party:bool=false,others:Array=[])->String:
+	if not value is Dictionary or not Building.number(value.get("version"),1,2,true) or not Building.number(value.get("next_serial"),1,1000000000,true) or not value.get("visit") is Dictionary:return "Save contains an invalid party-visit record." if is_party else "Save contains an invalid home-visit record."
 	var doorbell_error:String=_validate_bell(value.get("doorbell",{}),value.get("next_bell_serial",1),found)
 	if not doorbell_error.is_empty():return doorbell_error
+	if is_party and not value.get("doorbell",{}).is_empty():return "A party guest cannot be ringing the doorbell."
 	var visit:Dictionary=value.visit
-	if visit.is_empty():return ""
+	if visit.is_empty():return "Save contains an empty party visit." if is_party else ""
 	if int(value.version)==1 and (visit.has("meal") or visit.has("next_meal")):return "A version-one visit cannot contain a guest meal."
 	if int(value.version)==2 and (not visit.get("meal") is Dictionary or not Building.number(visit.get("next_meal"),1,1000000,true)):return "Save contains an invalid guest meal envelope."
 	if not Building.number(found.residents.get("version"),1,1,true):return "An active home visit requires the supported resident state version."
@@ -845,6 +935,7 @@ static func validate_saved(data:Dictionary)->String:
 	if not Building.number(visit.get("serial"),1,float(value.next_serial)-1,true) or not LifeResidents.PEOPLE.has(str(visit.get("guest",""))):return "Save contains an unknown guest or visit identity."
 	var phase:String=str(visit.get("phase",""))
 	if phase not in ["arriving","waiting","entering","inside","leaving"]:return "Save contains an invalid guest phase."
+	if is_party and phase=="waiting":return "A party guest never waits at the door for a greeting."
 	if not visit.get("blocked") is bool:return "Save contains invalid guest movement state."
 	var managed:bool=LifeGuestActivity.allows_elevated_position(visit)
 	for key:String in ["welcome","inside","exit"]:
@@ -856,13 +947,15 @@ static func validate_saved(data:Dictionary)->String:
 	var now:float=(float(clock.day)-1)*1440.0+float(clock.minutes)
 	for key:String in ["created_at","arrived_at","admitted_at","phase_at"]:
 		if not Building.number(visit.get(key),-1,now):return "Save contains an invalid guest phase clock."
+	var party_error:String=_validate_party_keys(visit,data,is_party,now)
+	if not party_error.is_empty():return party_error
 	var meal_error:String=LifeGuestMeal.validate(visit,now)
 	if not meal_error.is_empty():return meal_error
 	var activity_error:String=LifeGuestActivity.validate(visit,now)
 	if not activity_error.is_empty():return activity_error
 	if managed:
 		if phase not in ["inside","leaving"] or not visit.get("meal",{}).is_empty():return "The visitor journey conflicts with its current phase."
-		var travel_error:String=LifeGuestActivity.validate_route(visit,data)
+		var travel_error:String=LifeGuestActivity.validate_route(visit,data,others)
 		if not travel_error.is_empty():return travel_error
 	var entrance_error:String=_validate_entrance(visit,data)
 	if not entrance_error.is_empty():return entrance_error
@@ -906,6 +999,7 @@ static func validate_saved(data:Dictionary)->String:
 	if not resident is Dictionary or resident.get("position")!=visit.position or resident.get("rotation")!=visit.rotation or str(resident.get("phase",""))!="walking":return "The guest and resident transform records disagree."
 	if not Building.number(resident.get("wait"),0,999999) or not Building.number(resident.get("direction"),-1,1,true) or float(resident.direction)==0 or not Building.number(resident.get("waypoint"),0,2,true):return "Save contains invalid guest resident scheduling state."
 	if not visit.get("greeting") is Dictionary or not visit.get("departure") is Dictionary or not Building.number(visit.get("next_greeting"),1,1000000,true):return "Save contains an invalid guest conversation record."
+	if is_party and (not visit.greeting.is_empty() or not visit.get("entrance",{}).is_empty()):return "A party guest has no host greeting."
 	var members:Dictionary={}
 	for entry:Variant in data.members:
 		if entry is Dictionary and entry.get("state") is Dictionary:members[str(entry.get("id",""))]=entry.state
@@ -937,7 +1031,10 @@ static func validate_saved(data:Dictionary)->String:
 			var action:Variant=queue[index]
 			if not action is Dictionary:return "The saved guest host action is invalid."
 			if action.has("home_visit_serial") or action.has("home_visit_token"):
-				if visit.greeting.is_empty() or member_id!=str(visit.greeting.member) or action.get("home_visit_serial")!=visit.serial or action.get("home_visit_token")!=visit.greeting.token:return "The saved welcome token has no matching visit owner."
+				# Welcome tokens belong to the ordinary visit alone; its own record checks them.
+				if is_party:
+					if str(action.get("target_id",""))==str(visit.guest):return "The saved welcome token has no matching visit owner."
+				elif visit.greeting.is_empty() or member_id!=str(visit.greeting.member) or action.get("home_visit_serial")!=visit.serial or action.get("home_visit_token")!=visit.greeting.token:return "The saved welcome token has no matching visit owner."
 			if str(action.get("target_id",""))!=str(visit.guest) or str(action.get("id","")) not in LifeSim.SOCIAL_ACTIONS or str(action.get("phase",""))!="active":continue
 			active_hosts+=1
 			if not visit.get("meal",{}).is_empty() or not visit.get("activity",{}).get("current",{}).is_empty():return "The guest has conflicting activity and conversation ownership."
@@ -945,6 +1042,26 @@ static func validate_saved(data:Dictionary)->String:
 			if phase=="entering" and (visit.greeting.is_empty() or member_id!=str(visit.greeting.member) or str(visit.get("entrance",{}).get("stage",""))!="greeting"):return "The entrance conversation is not owned by its host."
 			if phase=="leaving" and (visit.departure.is_empty() or member_id!=str(visit.departure.member)):return "A departing guest has an unowned active conversation."
 	if active_hosts>1:return "Two household members cannot own the same guest conversation."
+	return ""
+
+## A visit's optional party keys: a whole number for the party and the absolute
+## minute the guest goes home, no earlier than the invitation and no more than the
+## longest party's length after the save's own time (a party has already begun, so
+## it cannot end later than that). Every party guest's record must carry them, and
+## when the save also holds the household's party record the guest must be on its
+## list and stay no later than it ends.
+static func _validate_party_keys(visit:Dictionary,data:Dictionary,is_party:bool,now:float)->String:
+	if not (is_party or visit.has("party") or visit.has("party_until")):return ""
+	if not Building.number(visit.get("party"),1,1000000000,true) or not Building.number(visit.get("party_until"),float(visit.created_at),now+PARTY_MAX_MINUTES):return "Save contains an invalid party guest stay."
+	var record:Variant=data.get("party")
+	if record is Dictionary and not record.is_empty():
+		if record.has("serial") and not is_equal_approx(float(record.get("serial",0)),float(visit.party)):return "A party guest belongs to a different party."
+		if record.get("guests") is Array:
+			var listed:bool=false
+			for entry:Variant in record.guests:
+				if entry is Dictionary and str(entry.get("id",""))==str(visit.guest):listed=true
+			if not listed:return "A party guest is not on the party's guest list."
+		if Building.number(record.get("ends_at"),0,1e12) and float(visit.party_until)>float(record.ends_at)+.001:return "A party guest stays past the party's end."
 	return ""
 
 static func _validate_entrance(visit:Dictionary,data:Dictionary)->String:

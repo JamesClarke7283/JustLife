@@ -124,6 +124,7 @@ static func complete(household:Node,host_id:String,target_id:String,position:Vec
 			var residents:Dictionary=context.get("residents",{})
 			for place:Dictionary in residents.get("locations",{}).values():place.erase(target_id)
 			if str(residents.get("home_visit",{}).get("visit",{}).get("guest",""))==target_id:residents.home_visit.visit={}
+			if residents.get("party_visits") is Array:residents.party_visits=residents.party_visits.filter(func(record:Variant)->bool:return not record is Dictionary or str(record.get("visit",{}).get("guest",""))!=target_id)
 		if str(entry.id)!=spouse_id and state.relationships.has(spouse_id):state.relationships[spouse_id].name=spouse_state.character.name
 	var host_state:Dictionary={}
 	for entry:Dictionary in data.members:
