@@ -8,7 +8,7 @@ The initial feature covers one invited guest, one active portion, and fresh serv
 
 ## Persistence and ownership
 
-Home-visit and food records now use version 2. Earlier version-1 visitors and household meals remain readable. A guest-owned portion binds its owner to the active visit serial and meal token; pickup changes the serving count and creates that portion once. Restore reconstructs the saved route, carrying or eating pose, and remaining progress without claiming food or advancing time.
+Home-visit and food records now use version 2. Earlier version-1 visitors and household meals remain readable. A guest-owned portion binds its owner to the active visit serial and meal token; pickup changes the serving count and creates that portion once. When several guests are visiting (see [home visits](HOME_VISITS.md)), each has a visit and a portion of their own: a plate is checked against its own guest's visit and meal, and no two guests take the same chair or plate. Restore reconstructs the saved route, carrying or eating pose, and remaining progress without claiming food or advancing time.
 
 Ordinary paused Live presentation leaves authoritative food positions unchanged. Explicit Build move/delete operations still reconcile supported placement, and resumed Live simulation continues normal reconciliation.
 
