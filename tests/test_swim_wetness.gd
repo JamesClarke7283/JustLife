@@ -59,13 +59,13 @@ func _run_front(sim: LifeSim, minutes: int) -> void:
 		sim.tick(1.0)
 
 
-## Children, teens, young adults and adults all use every pool and the hot tub.
+## Children, teens, young adults, adults and elders all use every pool and the hot tub.
 func _access() -> void:
 	for kind: String in ["pool", "hot_tub", "pool_ring", "pool_noodle", "pool_slide", "pool_ladder", "pool_light"]:
-		for stage: String in ["child", "teen", "young_adult", "adult"]:
+		for stage: String in ["child", "teen", "young_adult", "adult", "elder"]:
 			check(LifeOutdoorActs.act_error(kind, stage, false, true, false).is_empty(), "A %s may use the %s (%s)." % [stage, kind, LifeOutdoorActs.act_error(kind, stage, false, true, false)])
 		check(not LifeOutdoorActs.act_error(kind, "baby", false, true, false).is_empty(), "A baby is still kept out of the %s." % kind)
-	for stage: String in ["child", "teen", "young_adult", "adult"]:
+	for stage: String in ["child", "teen", "young_adult", "adult", "elder"]:
 		var sim: LifeSim = _sim(stage)
 		_targets(sim)
 		for target: String in ["pool_1", "tub_1"]:

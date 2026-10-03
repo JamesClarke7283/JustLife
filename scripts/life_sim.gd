@@ -711,6 +711,11 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		if id=="career_day" and LifeCareers.is_police(str(career.get("track",""))):
 			data["label"]="Go to the police station"
 			data["description"]="%s. Earn ℒ%d for the full shift; late arrival reduces pay. Meals and rest breaks keep at least 80% energy for home."%[str(_career_pattern().label),career_pay()]
+		if id == LifeOutdoorActs.ACTION_ID and LifeOutdoorActs.is_outdoor_act(kind):
+			# The menu names what this furnishing does ("Go for a swim", "Soak in
+			# the hot tub") rather than the family's generic "Enjoy the garden".
+			var flavoured: Dictionary = _outdoor_definition(data, kind, _company_at(target_id))
+			for key: String in ["label", "duration", "description"]: data[key] = flavoured[key]
 		if kind == "child_bed":
 			if str(data.id) == "sleep": data["label"] = "Go to Bed"
 			elif str(data.id) == "nap": data["label"] = "Take a Nap"
@@ -3488,16 +3493,20 @@ func _autonomy_target_for(id:String,excluded_target_ids:Array=[]) -> Dictionary:
 				available=_school_availability(id,str(target.id),true).is_empty()
 		if not available:continue
 		var cost:float=_autonomy_target_load(str(target.id))
-		# A bookshelf hosts homework first so desks stay open for classes and
-		# home shifts, but a busy shelf must still yield to an idle desk:
-		# one queued assignment is a longer wait than the protection is worth.
-		if id=="homework":cost+=_homework_bias(target)
+		# Homework is done sitting down. The child's own desk and chair, a table
+		# with a chair, or a desk come first, in that order, and a busy one is
+		# still preferred to standing at a shelf: the bookshelf (or a child desk
+		# with no chair) is only the fallback when nowhere to sit exists.
+		var fallback:float=0.0
+		if id=="homework":
+			cost+=_homework_bias(target)
+			fallback=HOMEWORK_STANDING_TIER if _homework_standing(target) else 0.0
 		# A free slide, swing or climbing frame beats a pool when a child is choosing play.
 		if id == LifeOutdoorActs.ACTION_ID and str(character.age_stage) == "child" and str(target.kind) not in CHILD_SOLO_OUTDOOR:
 			cost += 30.0
 		# A free child's bed beats an equally free sofa when a child is tired, so a
 		# weekday nap is taken in their own bed rather than wherever is listed first.
-		var rank:float=cost-(.5 if id in ["nap","sleep"] and str(target.kind)=="child_bed" and str(character.age_stage)=="child" else 0.0)
+		var rank:float=cost+fallback-(.5 if id in ["nap","sleep"] and str(target.kind)=="child_bed" and str(character.age_stage)=="child" else 0.0)
 		if rank<lowest:
 			lowest=rank;selected={"id":id,"target_id":str(target.id),"position":target.position,"load":cost}
 	return selected
@@ -4675,6 +4684,9 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 		if stored.has("commute"): action["commute"] = stored.commute.duplicate(true)
 		if stored.has("chore"): ChoreDefs.restore_action(action, stored)
 		if stored.has("swim_lane"): action["swim_lane"] = int(stored.swim_lane)
+		if stored.has("edge_side"):
+			action["edge_side"] = int(stored.edge_side)
+			action["label"] = LifeTVGroup.EDGE_LABEL
 		if stored.has("toy_stage") and str(stored.toy_stage) in ["fetch", "pickup", "carry", "enter", "swim", "draw", "place", "done"]: action["toy_stage"] = str(stored.toy_stage)
 		if stored.has("cooperation_primary"): action["cooperation_primary"] = bool(stored.cooperation_primary)
 		if stored.has("partner_id"): action["partner_id"] = str(stored.partner_id)
@@ -5339,17 +5351,44 @@ func _study_station_reason(id: String, target_id: String, kind: String) -> Strin
 	return ""
 
 
+## Added to a standing place's rank for homework. It is larger than any queue at a
+## desk or table can be, so waiting for a seat never sends a pupil to the shelf.
+const HOMEWORK_STANDING_TIER: float = 1000.0
+
 ## How much a station costs in the autonomy ranking for homework: lower is
-## chosen first. Somewhere to sit beats standing at a shelf, and the pupil's own
-## child desk and chair beat everything.
+## chosen first. The pupil's own child desk and chair beat everything, then a
+## table with a chair, then a desk or computer.
 func _homework_bias(target: Dictionary) -> float:
-	var seated: bool = not str(target.get("study_seat", "")).is_empty()
 	match str(target.kind):
-		"child_desk": return 0.0 if seated else 25.0
+		"child_desk": return 0.0
 		"dining": return 20.0 if str(character.age_stage) == "teen" else 10.0
 		"desk", "computer": return 15.0
-		"bookshelf": return 25.0
+		"bookshelf": return 10.0
 	return 0.0
+
+
+## Where this pupil would do their homework right now, as the autonomy ranking
+## orders it: the child desk and chair, a table with a chair, a desk or computer,
+## and a shelf or chairless child desk only when nowhere to sit exists. {} when no
+## station is open to them.
+func homework_station() -> Dictionary:
+	return _autonomy_target_for("homework")
+
+
+## Whether homework at the station with this id is done standing (see below).
+func homework_is_standing(target_id: String) -> bool:
+	for target: Dictionary in _targets:
+		if str(target.id) == target_id: return _homework_standing(target)
+	return false
+
+
+## Whether homework at this station is done standing: a bookshelf, or a child desk
+## that has no chair facing it. Those are the fallback when there is nowhere to sit.
+func _homework_standing(target: Dictionary) -> bool:
+	match str(target.kind):
+		"bookshelf": return true
+		"child_desk": return str(target.get("study_seat", "")).is_empty()
+	return false
 
 
 func _school_action_error(action: Dictionary) -> String:

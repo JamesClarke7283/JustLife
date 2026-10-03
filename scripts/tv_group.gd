@@ -4,6 +4,11 @@ class_name LifeTVGroup
 ## physical activities. Session facts travel with those activities in saves.
 const SEATS = ["sofa", "loveseat", "armchair", "bench", "chair"]
 const WATER = ["pool", "hot_tub"]
+## The menu ids of the garden-television choices at the water. The pool is watched
+## from a seat on its coping, the hot tub from the water itself.
+const EDGE_TV = "watch_pool_edge_tv"
+const EDGE_LABEL = "Sit by the pool and watch TV"
+const WATER_TV = "watch_water_tv"
 const SHOWS = ["Garden Detectives", "Kitchen Stories", "Neighborhood Cup"]
 const TOPICS = [
 	["That gardener has definitely hidden the key!", "I think the robin found our next clue.", "The greenhouse mystery gets better every week."],
@@ -17,6 +22,10 @@ var serial: int = 0
 static func owns(action: Dictionary) -> bool:
 	return action.get("tv") is Dictionary
 
+## Whether this viewing is from a seat on a pool's coping rather than from the water.
+static func edge(action: Dictionary) -> bool:
+	return action.get("edge_side") != null
+
 static func save_error(action: Dictionary) -> String:
 	if not action.has("tv"): return ""
 	if not owns(action) or str(action.get("id", "")) not in ["watch", "watch_together", "enjoy_outdoors"]: return "Invalid television activity."
@@ -29,6 +38,7 @@ static func save_error(action: Dictionary) -> String:
 	if not state.get("ready") is bool or not state.get("shared") is bool: return "Invalid television attendance."
 	if bool(state.ready) and not bool(action.get("paid",false)): return "Television attendance has not started."
 	if str(action.id)=="enjoy_outdoors" and not LifeBuildingState.number(action.get("swim_lane"),0,LifeOutdoorActs.MAX_JOIN-1,true): return "Invalid television water place."
+	if edge(action) and (str(action.id)!="watch_together" or not LifeBuildingState.number(action.get("swim_lane"),0,LifeOutdoorActs.MAX_JOIN-1,true) or not LifeBuildingState.number(action.get("edge_side"),0,1,true)): return "Invalid television poolside place."
 	return ""
 
 func _guest():
@@ -84,7 +94,7 @@ func blocks(action: Dictionary, person: String) -> bool:
 func _visible(tv: Dictionary, furnishing: Dictionary) -> bool:
 	return not tv.is_empty() and not furnishing.is_empty() and app.world.item_level(tv)==app.world.item_level(furnishing) and tv.node.position.distance_to(furnishing.node.position)<10.0 and app.world.sight_line_clear(tv.node.position,furnishing.node.position)
 
-func _plan(person: String, tv: Dictionary, session: Dictionary, preferred: String = "", reserved: Array = []) -> Dictionary:
+func _plan(person: String, tv: Dictionary, session: Dictionary, preferred: String = "", reserved: Array = [], poolside: bool = false) -> Dictionary:
 	var body: LifeActor = app.world.actors.get(person)
 	if not is_instance_valid(body): return {}
 	var who: LifeSim = app.household.member_sim(person)
@@ -98,6 +108,7 @@ func _plan(person: String, tv: Dictionary, session: Dictionary, preferred: Strin
 		return plan
 	var preferred_item: Dictionary = app._find_item(preferred)
 	if str(preferred_item.get("kind","")) in WATER and str(tv.kind)=="outdoor_tv":
+		if poolside and str(preferred_item.kind)=="pool": return _edge_plan(person,preferred_item,tv,session,reserved)
 		return _water_plan(person,preferred_item,session,reserved)
 	var seats: Array = []
 	for item: Dictionary in app.world.items:
@@ -135,6 +146,23 @@ func _water_plan(person: String, item: Dictionary, session: Dictionary, reserved
 		if point.is_finite() and _free(plan,person,reserved) and not app.world.path_to(body.position,point).is_empty(): return plan
 	return {}
 
+## A seat on the pool's coping, facing the garden television across the water. The
+## sitter stays dry and in their own clothes: it is the same shared viewing a sofa
+## gives, with the pool as the place and the coping as the seat.
+func _edge_plan(person: String, item: Dictionary, tv: Dictionary, session: Dictionary, reserved: Array = []) -> Dictionary:
+	var body: LifeActor = app.world.actors.get(person)
+	if not is_instance_valid(body): return {}
+	var who: LifeSim = app.household.member_sim(person)
+	if who!=null and not LifeOutdoorActs.act_error("pool",str(who.character.age_stage),who.is_away()).is_empty(): return {}
+	for place: Dictionary in app.world.pool_edge_seats(item,tv.node.position):
+		var seat: Dictionary = app.world.pool_edge_seat(item,int(place.side),int(place.lane),tv.node.position)
+		if seat.is_empty(): continue
+		var plan: Dictionary = app.sim._actions.watch_together.duplicate(true)
+		plan.merge({"label":EDGE_LABEL,"description":"Sit on the edge of the pool with your feet over the water and watch the garden television.","target_id":str(item.id),"target_kind":"pool","target_position":seat.approach,"swim_lane":int(seat.lane),"edge_side":int(seat.side),"phase":"queued","elapsed":0.0,"progress":0.0,"paid":false,"tv":session.duplicate(true)},true)
+		plan.tv.ready=false
+		if _free(plan,person,reserved) and not app.world.path_to(body.position,seat.approach).is_empty(): return plan
+	return {}
+
 func _enqueue(who: LifeSim, plan: Dictionary) -> bool:
 	if who==null or who.is_away() or who.action_queue.size()>=LifeSim.MAX_QUEUE: return false
 	var current: Dictionary = who.get_current_action()
@@ -163,12 +191,12 @@ func request(who: LifeSim, tv_id: String, together: bool = false) -> bool:
 			if str(member.id)==person or member.sim.is_away() or str(member.sim.character.age_stage) in ["baby","toddler"]: continue
 			var action: Dictionary = member.sim.get_current_action()
 			if not action.is_empty() and str(app._find_item(str(action.get("target_id",""))).get("kind","")) not in WATER: continue
-			var plan: Dictionary = _plan(str(member.id),tv,state,str(first.target_id),[first])
+			var plan: Dictionary = _plan(str(member.id),tv,state,str(first.target_id),[first],edge(first))
 			if not plan.is_empty(): invited.append({"sim":member.sim,"plan":plan});break
 		if invited.is_empty():
 			var guest = _guest()
 			if guest!=null:
-				var plan: Dictionary = _plan(guest.person(),tv,state,str(first.target_id),[first])
+				var plan: Dictionary = _plan(guest.person(),tv,state,str(first.target_id),[first],edge(first))
 				if not plan.is_empty() and guest.request_plan(plan,true): invited.append({"sim":null,"plan":plan})
 		if invited.is_empty() and not records().any(func(record: Dictionary)->bool:return str(record.action.tv.id)==tv_id and str(record.id)!=person):
 			app.show_notice("A free housemate or welcomed visitor and a second seat are needed to watch together.");return false
@@ -188,7 +216,7 @@ func join(who: LifeSim, id: String) -> bool:
 	if host.is_empty(): return false
 	var state: Dictionary = host.action.tv.duplicate(true)
 	state.shared=true
-	var plan: Dictionary = _plan(_member_id(who),app._find_item(str(state.id)),state,str(host.action.target_id))
+	var plan: Dictionary = _plan(_member_id(who),app._find_item(str(state.id)),state,str(host.action.target_id),[],edge(host.action))
 	if plan.is_empty(): app.show_notice("There is no free, reachable place beside these viewers.");return false
 	if not _enqueue(who,plan): return false
 	host.action.tv.shared=true
@@ -200,7 +228,7 @@ func guest_target(host_id: String) -> Dictionary:
 	if guest==null or host.is_empty(): return {}
 	var state: Dictionary = host.action.tv.duplicate(true)
 	state.shared=true
-	return _plan(guest.person(),app._find_item(str(state.id)),state,str(host.action.target_id))
+	return _plan(guest.person(),app._find_item(str(state.id)),state,str(host.action.target_id),[],edge(host.action))
 
 func nearby_tv(item: Dictionary) -> Dictionary:
 	for tv: Dictionary in app.world.items:
@@ -211,27 +239,59 @@ func menu(item: Dictionary, actions: Array) -> void:
 	var host: Dictionary = host_record(str(item.id))
 	if not host.is_empty() and str(host.id)!=app.bound_member_id:
 		actions.append({"id":"join_tv","label":"Join watching "+str(host.action.tv.show),"duration":60,"cost":0,"available":true,"description":"Sit beside them, watch the same programme and talk about the show."})
-	if str(item.kind) in WATER and not nearby_tv(item).is_empty():
-		actions.append({"id":"watch_water_tv","label":"Relax and watch TV together","duration":60,"cost":0,"available":true,"description":"Watch the outdoor screen and chat while relaxing in the water."})
+	if str(item.kind) in WATER:
+		var viewer: Dictionary = water_viewer(str(item.id))
+		if not viewer.is_empty() and str(viewer.id)!=app.bound_member_id:
+			actions.append({"id":"join_tv","label":"Join watching "+str(viewer.action.tv.show),"duration":60,"cost":0,"available":true,"description":"Settle in beside them, watch the same programme and talk about the show."})
+		actions.append(_water_choice(item))
+
+## The garden-television choice a pool or hot tub offers beside its swim or soak: a
+## seat on the pool's coping, or a relaxed place in the tub. It is listed even with
+## no television in view, unavailable and saying what is missing.
+func _water_choice(item: Dictionary) -> Dictionary:
+	var poolside: bool = str(item.kind)=="pool"
+	var reason: String = ""
+	var tv: Dictionary = nearby_tv(item)
+	if tv.is_empty(): reason="Place a garden TV in clear view of the %s first." % ("pool" if poolside else "hot tub")
+	elif not bool(app.sim.get_action_availability("watch",str(tv.id)).available): reason=str(app.sim.get_action_availability("watch",str(tv.id)).reason)
+	elif poolside: reason=LifeOutdoorActs.act_error("pool",str(app.sim.character.age_stage),app.sim.is_away())
+	else: reason=str(app.sim.get_action_availability("enjoy_outdoors",str(item.id)).reason)
+	return {"id":EDGE_TV if poolside else WATER_TV,
+		"label":"Sit by the edge and watch the garden TV" if poolside else "Relax and watch the garden TV",
+		"duration":60,"cost":0,"available":reason.is_empty(),"unavailable_reason":reason,
+		"description":"Sit on the edge of the pool, dry, with your feet over the water, and watch the garden television. A free housemate sits beside you." if poolside else "Soak in the warm water and watch the garden television. A free housemate soaks beside you."}
+
+## Someone watching the garden television from this pool or hot tub, or {}.
+func water_viewer(furnishing_id: String) -> Dictionary:
+	for record: Dictionary in records():
+		if str(record.action.get("target_id",""))==furnishing_id and str(record.action.get("id","")) in ["watch_together","enjoy_outdoors"]: return record
+	return {}
 
 func dispatch(item: Dictionary, id: String) -> bool:
-	if id=="join_tv": join(app.sim,str(item.id));app.refresh_hud();return true
+	if id=="join_tv":
+		var viewer: Dictionary = water_viewer(str(item.id)) if str(item.kind) in WATER else {}
+		join(app.sim,str(viewer.id) if not viewer.is_empty() else str(item.id));app.refresh_hud();return true
 	if id in ["watch","watch_together"] and str(item.kind) in ["tv","outdoor_tv"]:
 		request(app.sim,str(item.id),id=="watch_together");app.refresh_hud();return true
-	if id=="watch_water_tv":
+	if id==WATER_TV or id==EDGE_TV:
+		var poolside: bool = id==EDGE_TV and str(item.kind)=="pool"
 		var tv: Dictionary = nearby_tv(item)
-		if tv.is_empty(): return true
+		if tv.is_empty(): app.show_notice("Place a garden TV in clear view of the %s first." % ("pool" if str(item.kind)=="pool" else "hot tub"));return true
+		var watching: Dictionary = app.sim.get_action_availability("watch",str(tv.id))
+		if not bool(watching.available): app.show_notice(str(watching.reason));return true
 		var state: Dictionary = session_for(str(tv.id))
 		state.shared=true
 		var current: Dictionary = app.sim.get_current_action()
-		if str(current.get("id",""))=="enjoy_outdoors" and str(current.get("target_id",""))==str(item.id):
+		if not poolside and str(current.get("id",""))=="enjoy_outdoors" and str(current.get("target_id",""))==str(item.id):
 			current.tv=state;current.tv.ready=str(current.phase)=="active";current.swim_lane=int(current.get("swim_lane",0))
 		else:
-			var first: Dictionary = _water_plan(app.bound_member_id,item,state)
-			if first.is_empty() or not _enqueue(app.sim,first): return true
+			var first: Dictionary = _edge_plan(app.bound_member_id,item,tv,state) if poolside else _water_plan(app.bound_member_id,item,state)
+			if first.is_empty():
+				app.show_notice("There is no free, reachable place by the water to watch from.");return true
+			if not _enqueue(app.sim,first): return true
 		for member: Dictionary in app.household.members:
 			if str(member.id)==app.bound_member_id or not member.sim.action_queue.is_empty(): continue
-			var plan: Dictionary = _water_plan(str(member.id),item,state)
+			var plan: Dictionary = _edge_plan(str(member.id),item,tv,state) if poolside else _water_plan(str(member.id),item,state)
 			if not plan.is_empty(): _enqueue(member.sim,plan);break
 		app.refresh_hud();return true
 	return false
@@ -261,6 +321,8 @@ func valid_target(action: Dictionary) -> bool:
 	var tv: Dictionary = app._find_item(str(action.tv.id))
 	var seat: Dictionary = app._find_item(str(action.get("target_id","")))
 	if str(tv.get("kind","")) not in ["tv","outdoor_tv"] or not _visible(tv,seat): return false
+	if edge(action):
+		return str(tv.kind)=="outdoor_tv" and str(seat.kind)=="pool" and LifeBuildingState.number(action.get("swim_lane"),0,LifeOutdoorActs.MAX_JOIN-1,true) and LifeBuildingState.number(action.get("edge_side"),0,1,true)
 	if str(action.get("id",""))=="enjoy_outdoors":
 		return str(tv.kind)=="outdoor_tv" and str(seat.kind) in WATER and LifeBuildingState.number(action.get("swim_lane"),0,LifeOutdoorActs.MAX_JOIN-1,true)
 	return str(seat.kind) in SEATS and app.world.seat_slots(seat).has(str(action.get("seat_slot","")))
@@ -278,10 +340,25 @@ func _attending(record: Dictionary) -> bool:
 	# endpoint. Keep the paused body and programme visible until that resumes.
 	return record.sim!=null and is_instance_valid(record.body) and bool(record.action.tv.ready) and bool(record.action.get("paid",false)) and bool(app.motion_states.get(str(record.id),{}).get("resume_active",false)) and record.body.position.distance_to(record.action.target_position)<.02
 
+## The place on a pool's coping this viewing was given, worked out from where the
+## pool and the screen stand now, or {}. Its approach (where the walker stops) is
+## left out when only the seat is wanted, as the per-frame anchor does.
+func edge_spot(action: Dictionary, with_approach: bool = true) -> Dictionary:
+	if not edge(action) or not owns(action): return {}
+	var pool: Dictionary = app._find_item(str(action.get("target_id","")))
+	var tv: Dictionary = app._find_item(str(action.tv.id))
+	if pool.is_empty() or tv.is_empty(): return {}
+	return app.world.pool_edge_seat(pool,int(action.edge_side),int(action.swim_lane),tv.node.position,with_approach)
+
 func anchor(action: Dictionary, body: LifeActor) -> Dictionary:
 	if not owns(action) or not valid_target(action): return {}
 	var seat: Dictionary = app._find_item(str(action.target_id))
 	var tv: Dictionary = app._find_item(str(action.tv.id))
+	if edge(action):
+		var spot: Dictionary = edge_spot(action,false)
+		if spot.is_empty(): return {}
+		var sitter: Dictionary = {"position":spot.position,"yaw":spot.yaw,"kind":"seat","tv_target":tv.node.position+Vector3(0,1.1,0),"animation":str(action.id)}
+		return _share_gaze(action,body,sitter)
 	var result: Dictionary = app.world.activity_anchor(seat,str(action.id),action)
 	if str(seat.kind) in WATER:
 		result=app.world.outdoor_water_anchor(seat,action)
@@ -299,8 +376,11 @@ func anchor(action: Dictionary, body: LifeActor) -> Dictionary:
 		result.yaw=atan2(toward.x,toward.z)
 	result.tv_target=tv.node.position+Vector3(0,1.1,0)
 	result.animation=str(action.id)
-	var others: Array = records()
-	for other: Dictionary in others:
+	return _share_gaze(action,body,result)
+
+## While the viewers talk, whoever is next to speak turns to look at the others.
+func _share_gaze(action: Dictionary, body: LifeActor, result: Dictionary) -> Dictionary:
+	for other: Dictionary in records():
 		if other.body!=body and is_instance_valid(other.body) and str(other.action.tv.id)==str(action.tv.id) and str(other.action.tv.session)==str(action.tv.session) and str(other.action.phase)=="active":
 			if fmod(float(action.tv.chat),5.0)<1.8: result.tv_target=other.body.to_global(other.body.get_portrait_center())
 			break

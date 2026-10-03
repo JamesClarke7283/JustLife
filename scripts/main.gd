@@ -5959,6 +5959,10 @@ func _refresh_member_targets(replan:bool=true) -> void:
 		# A passing moment keeps the spot beside the passer it was given.
 		if str(action.id) in LifeSim.SOCIAL_ACTIONS or passing_chat.owns(action) or (water_flow.keeps_own_target(action) or toy_flow.keeps_own_target(action) or LifeStrollerFlow.owns(action)):continue
 		var destination:Vector3=world.lot_exit_position(_member_index(bound_member_id)) if str(action.id) in ["school_day","career_day","morning_run"] else by_id[target_id].position
+		# A seat on a pool's coping has its own approach, worked out from the pool and the screen.
+		if LifeTVGroup.edge(action):
+			var coping:Dictionary=tv_group.edge_spot(action)
+			if not coping.is_empty():destination=coping.approach
 		# Generic furnishing targets do not name an occupied cushion or bed half.
 		# Resolve the existing place without allocating it again, so an unrelated
 		# departure preserves it while a moved furnishing still changes its point.
@@ -6137,18 +6141,26 @@ func _queue_pet_beat(action_id:String,pet_id:String,destination:Vector3,pet_name
 			action["target_kind"]="pet"
 	refresh_hud()
 
-## Homework goes to the first desk-like furnishing the home has, in the order a
-## household would reach for one: a desk, a computer, the child's own desk, a
-## bookshelf.
+## Homework goes to the best place the home has to do it, in the order a household
+## would reach for one: the child's own desk and chair, a table with a chair, a desk
+## or computer, and a bookshelf only when there is nowhere to sit.
 func queue_homework_desk() -> void:
+	# The order a child chooses by on coming home from school: somewhere to sit first
+	# (their own desk, a table with a chair, a desk), the shelf or a chairless child
+	# desk only when there is nowhere to sit. Availability, not the menu's listing, so
+	# a table is still found before three o'clock.
 	var refusal:String=""
-	for kind:String in ["child_desk","desk","computer","dining","bookshelf"]:
+	var standing:Dictionary={}
+	for kind:String in ["child_desk","dining","desk","computer","bookshelf"]:
 		if kind=="child_desk" and str(sim.character.age_stage)!="child":continue
 		for item in world.items:
 			if item.kind!=kind:continue
 			var availability:Dictionary=sim.get_action_availability("homework",str(item.id))
-			if bool(availability.available):queue_interaction(item,"homework");return
-			if refusal.is_empty():refusal=str(availability.reason)
+			if bool(availability.available):
+				if not sim.homework_is_standing(str(item.id)):queue_interaction(item,"homework");return
+				if standing.is_empty():standing=item
+			elif refusal.is_empty():refusal=str(availability.reason)
+	if not standing.is_empty():queue_interaction(standing,"homework");return
 	show_notice(refusal if not refusal.is_empty() else "Add a desk, a child desk or a table with chairs in Build & buy first.")
 
 func queue_nearest(kind:String,id:String) -> void:
@@ -9121,6 +9133,9 @@ func _activity_resources(action:Dictionary) -> Array[String]:
 	var item:Dictionary=_find_item(target_id)
 	var resources:Array[String]=[]
 	if item.is_empty():resources.append(target_id)
+	elif LifeTVGroup.edge(action):
+		# A place on the pool's coping is its own resource, apart from the water.
+		resources.append(target_id+":edge:"+str(int(action.get("edge_side",0)))+":"+str(int(action.get("swim_lane",0))))
 	elif str(item.kind) in LifeTVGroup.WATER and str(action.get("id",""))=="enjoy_outdoors":
 		resources.append(target_id+":water:"+str(int(action.get("swim_lane",0))))
 	else:

@@ -68,6 +68,11 @@ func school_day(starter: String, strip: Array = [], until: float = 1080.0) -> Di
 	out["missed"] = int(sim.education.missed)
 	return out
 
+## The kind of furnishing this pupil would do homework at now.
+func _station_kind(pupil: LifeSim) -> String:
+	var pick: Dictionary = pupil.homework_station()
+	return str(app._find_item(str(pick.get("target_id", ""))).get("kind", "none"))
+
 func run() -> void:
 	# ---- the default home: a child who takes the bus is home at three with attendance
 	var willow: Dictionary = await school_day("willow")
@@ -111,6 +116,51 @@ func run() -> void:
 	var nowhere: Dictionary = await school_day("willow", ["desk", "bookshelf", "computer", "dining", "chair"], 1200.0)
 	check(float(nowhere.hw_started) < 0.0, "With nowhere to sit there is no homework to start")
 	check(float(nowhere.idle) < 120.0, "They find something to do rather than stand about (%.0f idle minutes)" % float(nowhere.idle))
+
+	# ---- somewhere to sit always outranks the shelf, even with a queue for it
+	await school_day("lumen", [], 1080.0)
+	var pupil: LifeSim = app.household.member_sim(str(app.household.members[1].id))
+	var parent: LifeSim = app.household.member_sim(str(app.household.members[0].id))
+	parent.autonomy = false; pupil.autonomy = false
+	for candidate: Vector2 in [Vector2(-3.0, -3.4), Vector2(-1.0, -3.4), Vector2(1.0, -3.4), Vector2(-3.0, 3.4), Vector2(2.0, 3.4), Vector2(-4.5, 1.0)]:
+		if app.world.can_place("bookshelf", Vector3(candidate.x, .16, candidate.y), 0):
+			app.world.add_item({"id": "hw_shelf", "kind": "bookshelf", "x": candidate.x, "z": candidate.y, "rotation": 0.0})
+			break
+	app.world.rebuild_navigation(); app._refresh_sim_targets()
+	check(not app._find_item("hw_shelf").is_empty(), "A bookshelf stands in the home beside the child desk")
+	pupil.education.last_homework_day = 0
+	pupil.education.homework = maxi(0, int(pupil.education.homework) - 1)
+	pupil.minutes = 1000.0
+	check(_station_kind(pupil) == "child_desk", "Their own desk and chair come before the shelf (%s)" % _station_kind(pupil))
+	var desk_id: String = ""
+	for item: Dictionary in app.world.items:
+		if str(item.kind) == "child_desk": desk_id = str(item.id)
+	parent.action_queue.push_front({"id": "homework", "target_id": desk_id, "phase": "active", "duration": 45.0, "elapsed": 1.0})
+	check(_station_kind(pupil) == "child_desk", "A sibling already at that desk does not send them to the shelf (%s)" % _station_kind(pupil))
+	parent.action_queue.clear()
+	app.pending_move = {}
+	for item: Dictionary in app.world.items.duplicate():
+		if str(item.kind) in ["child_chair"]: app.world.remove_item(str(item.id))
+	app.world.rebuild_navigation(); app._refresh_sim_targets()
+	check(_station_kind(pupil) == "child_desk", "A child desk with no chair still beats the shelf (%s)" % _station_kind(pupil))
+	app.world.remove_item(desk_id)
+	app.world.rebuild_navigation(); app._refresh_sim_targets()
+	check(_station_kind(pupil) == "bookshelf", "With no desk, table or chair in the home the shelf is the fallback (%s)" % _station_kind(pupil))
+	check(str(pupil.homework_station().get("id", "")) == "homework", "That fallback is homework, not a pastime")
+
+	# ---- the Homework button follows the same order, at any hour
+	await school_day("willow", ["desk", "computer"], 1080.0)
+	var hud_pupil: LifeSim = app.household.member_sim(str(app.household.members[1].id))
+	app.household.member_sim(str(app.household.members[0].id)).autonomy = false
+	hud_pupil.autonomy = false
+	hud_pupil.education.last_homework_day = 0
+	hud_pupil.education.homework = maxi(0, int(hud_pupil.education.homework) - 1)
+	hud_pupil.minutes = 600.0
+	app.select_household_member(1)
+	while not hud_pupil.action_queue.is_empty(): hud_pupil.cancel_action()
+	app.queue_homework_desk()
+	var hud_kind: String = str(app._find_item(str(hud_pupil.get_current_action().get("target_id", ""))).get("kind", "none"))
+	check(hud_kind == "dining", "At ten in the morning the Homework button sends them to the table and its chair, not the shelf (%s)" % hud_kind)
 
 	print("HOMEWORK_AFTER_SCHOOL ", checks, " checks, ", failures.size(), " failures")
 	for message: String in failures: print("  ", message)

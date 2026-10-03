@@ -140,6 +140,45 @@ func _run() -> void:
 	app.queue_interaction(pool,"enjoy_outdoors")
 	check(app.tv_group.request(a,"test_outdoor_tv",false) and a.action_queue.size()==1 and str(a.get_current_action().id)=="enjoy_outdoors" and a.get_current_action().has("swim_lane"),"Adding TV to an existing pool visit preserves its activity and assigns its water place")
 	cancel_all()
+	# The pool's other choice: a seat on its coping, dry and in everyday clothes.
+	app.select_household_member(0)
+	var pool_choices: Array=[];app.tv_group.menu(pool,pool_choices)
+	check(pool_choices.any(func(choice: Dictionary)->bool:return str(choice.id)==LifeTVGroup.EDGE_TV and bool(choice.available) and str(choice.label)=="Sit by the edge and watch the garden TV"),"The pool offers to sit by the edge and watch the garden TV")
+	check(not pool_choices.any(func(choice: Dictionary)->bool:return str(choice.id)==LifeTVGroup.WATER_TV),"The pool's own menu keeps the swim and the edge seat apart from the tub's in-water choice")
+	for sim: LifeSim in [a,b]:
+		sim.wetness=0.0;sim.auto_swimwear=false;LifeCharacterIdentity.apply_category(sim.character,"everyday")
+	app.queue_interaction(pool,LifeTVGroup.EDGE_TV)
+	check(LifeTVGroup.edge(a.get_current_action()) and LifeTVGroup.edge(b.get_current_action()) and str(a.get_current_action().id)=="watch_together","Sitting by the edge queues a coping seat for both viewers")
+	both=until_pair();check(both,"Both viewers walk round to the pool and sit on its edge")
+	if both:
+		advance(60)
+		var edge_a: Dictionary=a.get_current_action();var edge_b: Dictionary=b.get_current_action()
+		var edge_tv: Dictionary=app._find_item("test_outdoor_tv")
+		var seat_a: Dictionary=app.tv_group.anchor(edge_a,app.world.actors[aid]);var seat_b: Dictionary=app.tv_group.anchor(edge_b,app.world.actors[bid])
+		check(edge_a.edge_side==edge_b.edge_side and edge_a.swim_lane!=edge_b.swim_lane and seat_a.position.distance_to(seat_b.position)>.8,"Edge viewers take separate places along the same side of the coping")
+		check(str(seat_a.kind)=="seat" and absf(seat_a.position.y-(pool.node.position.y+.42))<.05 and absf(pool.node.to_local(seat_a.position).z)>1.5 and absf(pool.node.to_local(seat_a.position).z)<1.9,"A viewer's hips rest on the coping, not in the water or beside it")
+		var inward: Vector3=app.world.pool_edge_seat(pool,int(edge_a.edge_side),int(edge_a.swim_lane),edge_tv.node.position).inward
+		check(Vector3(sin(seat_a.yaw),0,cos(seat_a.yaw)).dot(inward)>.8,"The viewer faces out across the water, turned a little toward the screen")
+		var knee: Vector3=app.world.actors[aid]._joints.Shin_L.global_position;var hip: Vector3=app.world.actors[aid]._joints.Leg_L.global_position
+		check(absf(pool.node.to_local(knee).z)<absf(pool.node.to_local(hip).z)-.2 and absf(pool.node.to_local(knee).z)<1.35,"Their legs come forward over the water, clear of the pool wall")
+		check(a.wetness==0.0 and b.wetness==0.0 and str(a.character.outfit_category)!="swim" and app.world.actors[aid]._sit_amount>.95,"Sitting by the edge keeps them dry, clothed and seated")
+		check(edge_a.tv.session==edge_b.tv.session and not app._activity_resources(edge_a).any(func(resource: String)->bool:return app._activity_resources(edge_b).has(resource) and not resource.begins_with("standing")),"The two coping places are separate resources")
+		check(LifeTVGroup.save_error(edge_a).is_empty(),"An edge viewing is a valid saved television activity")
+		var bad_side: Dictionary=edge_a.duplicate(true);bad_side.edge_side=2
+		var bad_id: Dictionary=edge_a.duplicate(true);bad_id.id="watch"
+		check(not LifeTVGroup.save_error(bad_side).is_empty() and not LifeTVGroup.save_error(bad_id).is_empty(),"A corrupt coping side or action is rejected")
+		await capture("pool_edge_tv",pool.node.position)
+		app.household.set_speed(0)
+		var edge_facts: Dictionary=edge_a.tv.duplicate(true);var edge_lane: int=int(edge_a.swim_lane);var edge_side: int=int(edge_a.edge_side)
+		check(app.save_game("","Pool edge TV checkpoint"),"Full save accepts viewers sitting on the pool edge")
+		var edge_epoch: int=app.load_epoch
+		app.load_game(app.active_save_id)
+		a=app.household.member_sim(aid);b=app.household.member_sim(bid)
+		check(app.load_epoch==edge_epoch+1 and LifeTVGroup.edge(a.get_current_action()) and int(a.get_current_action().swim_lane)==edge_lane and int(a.get_current_action().edge_side)==edge_side and a.get_current_action().tv==edge_facts,"Full load restores the coping seat and the programme")
+		check(app.world.actors[aid]._sit_amount>.95 and app.world.actors[bid]._sit_amount>.95 and app.tv_group.screens.has(str(edge_facts.id)),"Paused load reseats both viewers and relights the screen")
+		app.household.set_speed(1)
+		pool=app._find_item("test_pool_tv")
+	cancel_all()
 	check(app.world.can_place("hot_tub",Vector3(-11,.16,-2),0),"Hot tub fits clear garden ground")
 	app.world.add_item({"id":"test_hot_tub_tv","kind":"hot_tub","x":-11.0,"z":-2.0,"rotation":0.0})
 	app._refresh_sim_targets();app.select_household_member(0)

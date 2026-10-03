@@ -2777,6 +2777,98 @@ func outdoor_water_anchor(item:Dictionary,landmarks:Dictionary={}) -> Dictionary
 	# A ring is sat in: its anchor is the hips, so the body tips about them.
 	return {"position":from,"yaw":atan2(to.x-from.x,to.z-from.z),"kind":"seat" if kind=="pool_ring" else "swim","outdoor_kind":kind,"swim_from":from,"swim_to":to,"swim_span":half_width,"swim_lane_offset":lane_z}
 
+## Where the hips of someone sitting on a pool's coping go, as a distance across the
+## pool from its middle. The wall's inner face is `face`, the coping runs from
+## `inner` to `outer` (the authored model's metres, scaled with the pool by `scale`;
+## tools/create_outdoor_water.py). The knees come about 0.35 m forward of the hips,
+## so the hips sit that far behind the wall's face to leave the legs over the water,
+## and never off the coping's inner edge or too near its outer one.
+func _coping_hip(face:float,inner:float,outer:float,scale:float) -> float:
+	return clampf(face*scale+.30,inner*scale,outer*scale-.10)
+
+## Where one place on a pool's coping lies, in metres from the pool's origin.
+## `side` 0 is the pool's front (+z) and 1 its back (-z); `lane` spreads up to
+## MAX_JOIN sitters along that side. The classic and roman pools have straight
+## copings whose rounded ends the roman one curves round, and the lagoon sits on
+## the rim of the lobe each side faces. `inward` is the direction across the water
+## from that spot.
+func _pool_rim_point(style:String,side:int,lane:int,scale:float) -> Dictionary:
+	var front:float=1.0 if side==0 else -1.0
+	var step:float=float(lane)-float(LifeOutdoorActs.MAX_JOIN-1)*.5
+	match style:
+		"lagoon":
+			var lobe:Vector3=Vector3(.33,.24,1.19) if side==0 else Vector3(-1.18,-.30,1.24)
+			var radius:float=_coping_hip(lobe.z-.10,lobe.z-.06,lobe.z+.34,scale)
+			var across:float=step*.6*scale
+			var centre:=Vector2(lobe.x,lobe.y)*scale
+			var point:=centre+Vector2(across,front*sqrt(radius*radius-across*across))
+			return {"point":point,"inward":(centre-point).normalized()}
+		"roman":
+			var x:float=step*.9
+			var round_end:float=maxf(0.0,absf(x)-.9)
+			if round_end==0.0:
+				return {"point":Vector2(x*scale,front*_coping_hip(1.35,1.5,1.9,scale)),"inward":Vector2(0.0,-front)}
+			var radius:float=_coping_hip(1.42,1.5,1.9,scale)
+			var centre:=Vector2(signf(x)*.9*scale,0.0)
+			var along:float=round_end*scale
+			var point:=Vector2(x*scale,front*sqrt(radius*radius-along*along))
+			return {"point":point,"inward":(centre-point).normalized()}
+	return {"point":Vector2(step*1.1*scale,front*_coping_hip(1.35,1.5,1.9,scale)),"inward":Vector2(0.0,-front)}
+
+## One place to sit on a pool's coping with the legs over the water, facing across
+## it. `toward` is the garden television the sitter watches: the body turns a little
+## toward it and the head does the rest. The approach, a clear spot outside the
+## pool's solid hull where the walker stops before sitting, is only worked out when
+## `with_approach` is set: it costs a search, and an anchor is read every frame.
+func pool_edge_seat(item:Dictionary,side:int,lane:int,toward:Vector3,with_approach:bool=true) -> Dictionary:
+	if str(item.get("kind",""))!="pool" or not is_instance_valid(item.get("node")):return {}
+	if side<0 or side>1 or lane<0 or lane>=LifeOutdoorActs.MAX_JOIN:return {}
+	var basin:Node3D=item.node
+	var variant:Dictionary=item.get("variant",{})
+	var scale:float=Variants.size_scale(str(variant.get("size","")))
+	var style:String=Variants.style_or_default(str(variant.get("style","")),LifeCatalog.get_item("pool"))
+	var rim:Dictionary=_pool_rim_point(style,side,lane,scale)
+	var local:Vector2=rim.point
+	var seat:Vector3=basin.to_global(Vector3(local.x,.35*scale+.07,local.y))
+	var inward:Vector3=basin.global_basis*Vector3(rim.inward.x,0.0,rim.inward.y)
+	inward.y=0.0
+	inward=inward.normalized()
+	var yaw:float=atan2(inward.x,inward.z)
+	if toward.is_finite():
+		var to_screen:Vector3=toward-seat
+		var wanted:float=atan2(to_screen.x,to_screen.z)
+		yaw+=clampf(wrapf(wanted-yaw,-PI,PI),-.3,.3)
+	var result:Dictionary={"position":seat,"yaw":yaw,"side":side,"lane":lane,"inward":inward}
+	if with_approach:
+		var wish:Vector3=seat-inward*.65
+		var approach:Vector3=nearest_clear_point(wish,item_level(item),8)
+		if not approach.is_finite():return {}
+		result["approach"]=approach
+	return result
+
+## Every place round a pool's coping to watch `toward` from, best first: the side
+## that looks across the water toward it comes before the one that turns its back.
+## The places carry no approach; ask `pool_edge_seat` for the one that is wanted.
+func pool_edge_seats(item:Dictionary,toward:Vector3) -> Array:
+	var sides:Array=[]
+	for side:int in 2:
+		var seat:Dictionary=pool_edge_seat(item,side,1,toward,false)
+		if seat.is_empty():continue
+		var to_screen:Vector3=toward-seat.position
+		to_screen.y=0.0
+		sides.append({"side":side,"score":Vector3(seat.inward).dot(to_screen.normalized()) if to_screen.length()>.01 else 0.0})
+	sides.sort_custom(func(a:Dictionary,b:Dictionary)->bool:return float(a.score)>float(b.score))
+	var seats:Array=[]
+	for entry:Dictionary in sides:
+		var side_seats:Array=[]
+		for lane:int in LifeOutdoorActs.MAX_JOIN:
+			var seat:Dictionary=pool_edge_seat(item,int(entry.side),lane,toward,false)
+			if not seat.is_empty():side_seats.append(seat)
+		# The first to sit takes the place nearest the screen, so company fills in beside them.
+		side_seats.sort_custom(func(a:Dictionary,b:Dictionary)->bool:return Vector3(a.position).distance_squared_to(toward)<Vector3(b.position).distance_squared_to(toward))
+		seats.append_array(side_seats)
+	return seats
+
 ## What is done sitting down at a child desk or dining table, and where.
 const STUDY_ACTIONS: Array[String] = ["homework", "child_desk_study", "child_draw", "child_colour"]
 const STUDY_KINDS: Array[String] = ["child_desk", "dining"]

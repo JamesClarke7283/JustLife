@@ -29,7 +29,7 @@ func _run() -> void:
 
 	check(LifeOutdoorActs.act_error("hot_tub", "adult", false, true, true).contains("Pregnant"), "Pregnant adults are refused the hot tub.")
 	check(LifeOutdoorActs.act_error("hot_tub", "child", false, true, false).is_empty(), "Children may soak when not pregnant.")
-	check(not LifeOutdoorActs.act_error("pool", "adult", false, true, false).is_empty(), "Adults are outside the pool age window.")
+	check(LifeOutdoorActs.act_error("pool", "adult", false, true, false).is_empty() and LifeOutdoorActs.act_error("pool", "elder", false, true, false).is_empty(), "Adults and elders swim.")
 	check(LifeOutdoorActs.act_error("pool", "young_adult", false, true, false).is_empty(), "Young adults may swim.")
 	check(LifeOutdoorActs.acts("adult_slide").has("from"), "Adult slide is an outdoor act.")
 	check(LifeOutdoorActs.acts("baby_pram").has("from"), "Pram push is an outdoor act.")

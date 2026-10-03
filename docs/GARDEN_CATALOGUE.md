@@ -174,10 +174,10 @@ Every new furnishing is **usable**, not decoration. `scripts/outdoor_acts.gd`
 
 | Furnishing | Action | Who may |
 | --- | --- | --- |
-| Pool | Go for a swim (Fitness) | child, teen, young adult and adult |
-| Hot tub | Soak in the hot tub | child, teen, young adult and adult (not while pregnant) |
-| Swimming pool noodle, rubber ring | Fetch the toy, carry it to the pool and ride it (Fitness) | child, teen, young adult and adult; refused with a reason while no pool stands |
-| Pool slide, pool ladder, pool light | Slide, climb or swim in the lit pool (Fitness) | child, teen, young adult and adult; refused with a reason while no pool stands |
+| Pool | Go for a swim (Fitness), or sit by the edge and watch the garden TV | every age from child up, elders included |
+| Hot tub | Soak in the hot tub, or relax and watch the garden TV | every age from child up, elders included (not while pregnant) |
+| Swimming pool noodle, rubber ring | Fetch the toy, carry it to the pool and ride it (Fitness) | every age from child up; refused with a reason while no pool stands |
+| Pool slide, pool ladder, pool light | Slide, climb or swim in the lit pool (Fitness) | every age from child up; refused with a reason while no pool stands |
 | Beach towel, towel rack | Dry off with a towel | anyone but a baby, while wet |
 | Sofa, loveseat, armchair, bench, garden table, garden swing | Sit and dry off | anyone but a baby, while wet or towelled |
 | Kids swing set, kids slide, climbing frame | Play (Fitness, Creativity) | **child and teen exactly** |
@@ -204,6 +204,26 @@ rather than allowing it silently.
 Garden games (below) each offer their own single activity; the rest reuse an
 action the game already has, so a bought garden table is cleared by exactly the
 code that clears a dining table, and a car is driven by the bicycle's own rule.
+
+## Watching the garden television from the water
+
+A pool and a hot tub each list two choices on their own menu: the swim or the soak,
+and a place to watch an outdoor television from (`LifeTVGroup.menu`). The TV choice is
+listed even before a television stands in clear view of the water, switched off and
+saying what to place.
+
+* **Pool: sit by the edge and watch the garden TV.** The Lifelet walks to a clear spot
+  beside the pool and sits on its coping with their feet over the water, facing
+  across it and turned a little toward the screen. They stay dry and in their own
+  clothes: this is the shared viewing a sofa gives (`watch_together`), with the pool
+  as the place. `World.pool_edge_seat` works the place out from the pool's style, size
+  and turning (`edge_side` 0 is the pool's front, 1 its back, and `swim_lane` is the
+  place along it); the side that looks across the water toward the screen is used
+  first, and a free housemate is seated beside them.
+* **Hot tub: relax and watch the garden TV.** The Lifelet soaks, soaked and in
+  swimwear, in the water facing the screen, as before.
+* Either choice leaves a **Join watching** entry on the same pool or tub for the next
+  Lifelet. A save keeps the coping place (`edge_side`, `swim_lane`) and the programme.
 
 ## Swimming, wetness and towels
 

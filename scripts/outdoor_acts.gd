@@ -28,18 +28,20 @@ const ACTION_ID: String = "enjoy_outdoors"
 ## `from` / `to` are the youngest and oldest life stages that may use it, both
 ## inclusive, read against the lifecycle's own stage order. So a children's swing
 ## with `from: child, to: teen` is for children and teenagers exactly, and an
-## adult is the one who pushes. `company` is the need the activity
+## adult is the one who pushes. The pool, the hot tub and the things floated in
+## them carry no `to`: every Lifelet from a child up uses the water, elders
+## included. `company` is the need the activity
 ## shares with anyone else doing it at the same furnishing, which is how playing
 ## together lifts a friendship.
 const ACTS: Dictionary = {
 	"pool": {
 		"label": "Go for a swim", "note": "Swim a few lengths with a proper stroke through the water.",
-		"duration": 60.0, "skill": "fitness", "xp": 40.0, "from": "child", "to": "adult",
+		"duration": 60.0, "skill": "fitness", "xp": 40.0, "from": "child",
 		"changes": {"fun": 46.0, "energy": -18.0, "hygiene": 20.0, "social": 10.0},
 	},
 	"hot_tub": {
 		"label": "Soak in the hot tub", "note": "Warm water and a long soak together. Not while pregnant.",
-		"duration": 45.0, "skill": "", "xp": 0.0, "from": "child", "to": "adult",
+		"duration": 45.0, "skill": "", "xp": 0.0, "from": "child",
 		"changes": {"fun": 34.0, "energy": 12.0, "hygiene": 22.0, "social": 14.0},
 		"block_pregnant": true,
 	},
@@ -81,11 +83,11 @@ const ACTS: Dictionary = {
 	},
 	# The floating toys are used in the pool rather than on their own, so they
 	# offer the same swim with their own flavour.
-	"pool_ring": {"label": "Float about", "note": "Tuck the ring under your arms and drift.", "duration": 40.0, "skill": "fitness", "xp": 16.0, "from": "child", "to": "adult", "changes": {"fun": 40.0, "hygiene": 12.0, "social": 12.0}, "needs_pool": true},
-	"pool_noodle": {"label": "Float about", "note": "Lie back on the noodle and paddle.", "duration": 40.0, "skill": "fitness", "xp": 16.0, "from": "child", "to": "adult", "changes": {"fun": 40.0, "hygiene": 12.0, "social": 12.0}, "needs_pool": true},
-	"pool_slide": {"label": "Go down the pool slide", "note": "Climb up and splash straight in.", "duration": 30.0, "skill": "fitness", "xp": 22.0, "from": "child", "to": "adult", "changes": {"fun": 46.0, "energy": -10.0, "hygiene": 14.0, "social": 12.0}, "needs_pool": true},
-	"pool_ladder": {"label": "Use the pool ladder", "note": "Climb in and out the easy way.", "duration": 30.0, "skill": "fitness", "xp": 14.0, "from": "child", "to": "adult", "changes": {"fun": 36.0, "hygiene": 12.0, "social": 8.0}, "needs_pool": true},
-	"pool_light": {"label": "Swim in the pool lights", "note": "A lit pool after dark is a treat on its own.", "duration": 40.0, "skill": "fitness", "xp": 18.0, "from": "child", "to": "adult", "changes": {"fun": 42.0, "hygiene": 12.0, "social": 10.0}, "needs_pool": true},
+	"pool_ring": {"label": "Float about", "note": "Tuck the ring under your arms and drift.", "duration": 40.0, "skill": "fitness", "xp": 16.0, "from": "child", "changes": {"fun": 40.0, "hygiene": 12.0, "social": 12.0}, "needs_pool": true},
+	"pool_noodle": {"label": "Float about", "note": "Lie back on the noodle and paddle.", "duration": 40.0, "skill": "fitness", "xp": 16.0, "from": "child", "changes": {"fun": 40.0, "hygiene": 12.0, "social": 12.0}, "needs_pool": true},
+	"pool_slide": {"label": "Go down the pool slide", "note": "Climb up and splash straight in.", "duration": 30.0, "skill": "fitness", "xp": 22.0, "from": "child", "changes": {"fun": 46.0, "energy": -10.0, "hygiene": 14.0, "social": 12.0}, "needs_pool": true},
+	"pool_ladder": {"label": "Use the pool ladder", "note": "Climb in and out the easy way.", "duration": 30.0, "skill": "fitness", "xp": 14.0, "from": "child", "changes": {"fun": 36.0, "hygiene": 12.0, "social": 8.0}, "needs_pool": true},
+	"pool_light": {"label": "Swim in the pool lights", "note": "A lit pool after dark is a treat on its own.", "duration": 40.0, "skill": "fitness", "xp": 18.0, "from": "child", "changes": {"fun": 42.0, "hygiene": 12.0, "social": 10.0}, "needs_pool": true},
 	"baby_pram": {
 		"label": "Push the pram", "note": "Settle a baby in and stroll the neighbourhood. You can stop and chat.",
 		"duration": 35.0, "skill": "", "xp": 0.0, "from": "teen",
