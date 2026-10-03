@@ -136,6 +136,10 @@ var ambience_player: AudioStreamPlayer
 var music_player: AudioStreamPlayer
 var sound_enabled: bool = true
 var music_enabled: bool = true
+## The centre-screen announcements (a birthday, retiring, a licence) and the one
+## owner of party and birthday music.
+var announcements: LifeAnnouncements
+var party_music: LifePartyMusic
 ## Automatic saving. The player chooses the interval; the default is five
 ## minutes. `autosave_wait` counts real seconds of play since the last write, and
 ## only advances while the household is actually living, so a paused menu or a
@@ -308,6 +312,8 @@ func setup_services() -> void:
 	household.new_household(household_profiles)
 	sim=household.selected()
 	build_transactions=LifeBuildTransactions.new(self)
+	announcements=LifeAnnouncements.new(self);add_child(announcements)
+	party_music=LifePartyMusic.new(self);add_child(party_music)
 
 
 func _ready() -> void:
@@ -356,6 +362,7 @@ func _ready() -> void:
 	# before any stream starts so a restart keeps "Music: off" quiet.
 	_load_audio_preferences()
 	setup_audio()
+	CelebrationAudio.warm()
 	menus=LifeMenus.new(self)
 	show_main_menu()
 	if "--smoke-live" in OS.get_cmdline_user_args():start_household()
@@ -421,6 +428,7 @@ func _connect_live_nodes() -> void:
 	household.member_passing_due.connect(_on_member_passing_due)
 	household.pregnancy_began.connect(_on_pregnancy_began)
 	household.member_age_changed.connect(func(id: String, _previous: String, _current: String): _refresh_aged_member.call_deferred(id,load_epoch,sender))
+	if is_instance_valid(announcements) and not household.member_milestone.is_connected(announcements.milestone):household.member_milestone.connect(announcements.milestone)
 	world.object_clicked.connect(on_object_clicked)
 	world.wall_clicked.connect(toggle_walls)
 	# The world owns the ghost's own style and size, so the check describes the
@@ -8098,6 +8106,8 @@ func set_sound(enabled:bool) -> void:
 	if is_instance_valid(music_player):
 		music_player.stream_paused=not (enabled and music_enabled)
 		if not enabled and music_player.playing:music_player.stop()
+	if is_instance_valid(party_music):party_music.refresh()
+	if is_instance_valid(announcements):announcements.sound_changed(enabled)
 	_sync_actor_sound()
 
 ## The music switch is independent of the sound switch: the menu offers music on
@@ -8107,6 +8117,7 @@ func set_sound(enabled:bool) -> void:
 func set_music(enabled:bool) -> void:
 	music_enabled=enabled
 	_save_audio_preferences()
+	if is_instance_valid(party_music):party_music.refresh()
 	if not is_instance_valid(music_player):return
 	if enabled and sound_enabled:
 		music_player.stream_paused=false
@@ -8155,6 +8166,8 @@ func _gate_walkers() -> Array:
 
 func _process(delta:float) -> void:
 	elapsed+=delta
+	if is_instance_valid(announcements):announcements.tick(delta)
+	if is_instance_valid(party_music):party_music.tick(delta)
 	if is_instance_valid(notice_card):
 		notice_time-=delta
 		if notice_time<.5:notice_card.modulate.a=clampf(notice_time*2,0,1)

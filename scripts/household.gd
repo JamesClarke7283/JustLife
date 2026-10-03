@@ -7,6 +7,10 @@ signal member_action_started(member_id: String, action: Dictionary)
 signal member_action_finished(member_id: String, action: Dictionary)
 signal member_passed(member_id: String)
 signal member_passing_due(member_id: String, cause: String)
+## A life milestone worth a banner (a birthday, retiring, a licence): `kind` and
+## `data` are the Lifelet's own `milestone` signal, relayed with who it was. It is
+## never sent while a save is being restored, so a load shows no old celebrations.
+signal member_milestone(member_id: String, kind: String, data: Dictionary)
 signal baby_born(mother_id: String)
 ## Raised the moment a couple conceives, so the view can tell the player the
 ## news with a sound and a notice before the birth arrives days later.
@@ -151,6 +155,8 @@ func connect_member(id: String, sim: LifeSim) -> void:
 	sim.age_changed.connect(func(previous: String, current: String):
 		_sync_social_context()
 		if not restoring: member_age_changed.emit(id, previous, current))
+	sim.milestone.connect(func(kind: String, data: Dictionary):
+		if not restoring: _relay_milestone(id, kind, data))
 	sim.life_changed.connect(func(status: String):
 		if not restoring and status == "passed": _record_passing(id))
 	sim.passing_due.connect(func(cause: String):
@@ -173,6 +179,14 @@ func connect_member(id: String, sim: LifeSim) -> void:
 			member_action_finished.emit(id,action))
 	sim.notice.connect(func(message:String):
 		if not restoring:notice.emit(message))
+
+## A milestone leaves the household for the view. A birthday also posts its card.
+func _relay_milestone(id: String, kind: String, data: Dictionary) -> void:
+	if kind == "birthday":
+		var sim: LifeSim = member_sim(id)
+		var full: String = str(data.get("name", sim.character.name if sim != null else ""))
+		if not full.is_empty(): post_birthday_letter(full.split(" ")[0])
+	member_milestone.emit(id, kind, data)
 
 ## Share one garden activity with whoever else is standing at the same
 ## furnishing: they gain the fun, and the two of them gain friendship with each
@@ -2759,6 +2773,16 @@ func post_milestone(reason: String, who: String) -> Dictionary:
 	var serial: int = int(mail.get("next_serial", 1))
 	return deliver_mail(LifeMail.milestone(serial, reason, who, day))
 
+
+## The card for one birthday, posted once for that person on that day. Unlike the
+## other milestone letters it comes again at every birthday, so the box keeps the
+## newest cards and a repeat of the same event on the same day does nothing.
+func post_birthday_letter(who: String) -> Dictionary:
+	var title: String = str(LifeMail.LETTERS.birthday.title)
+	for entry: Dictionary in mail.get("letters", []):
+		if str(entry.get("subject", "")) == who and str(entry.get("title", "")) == title and int(entry.get("day", 0)) == day:
+			return {}
+	return deliver_mail(LifeMail.milestone(int(mail.get("next_serial", 1)), "birthday", who, day))
 
 ## Post the household's outstanding bill, so the box can show what is owed. One
 ## bill is posted at a time; a reload of the same bill does not post a second.
