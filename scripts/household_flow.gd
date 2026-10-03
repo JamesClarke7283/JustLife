@@ -35,8 +35,10 @@ const MAX_BOOKS: int = 6
 const BIN_CAPACITY: int = 4
 ## Furniture put away into the household's storage unit. A stored furnishing is
 ## a detached layout record (kind, x, z, rotation, level) held outside the live
-## world, so it costs nothing to keep and can be withdrawn or sold later.
-const MAX_STORAGE: int = 30
+## world, so it costs nothing to keep and can be withdrawn or sold later. It holds
+## as many furnishings as a lot can (LifeWorld.MAX_FURNISHINGS), so a whole home,
+## the biggest starters included, can be put away to clear the house for building.
+const MAX_STORAGE: int = 512
 
 var app: Node
 var books: Array = []                       # [{"id":"book_1","skill":"cooking","shelf":"item_6"}]
@@ -191,7 +193,7 @@ static func _stored_record_valid(entry: Variant) -> bool:
 		return false
 	if not LifeCatalog.ITEMS.has(str(entry.get("kind", ""))):
 		return false
-	if not LifeBuildingState.number(entry.get("level", 0), 0, 1, true):
+	if not LifeBuildingState.number(entry.get("level", 0), 0, LifeBuildingState.MAX_LEVEL, true):
 		return false
 	for axis: String in ["x", "z", "rotation"]:
 		if not LifeBuildingState.number(entry.get(axis, 0), -100000, 100000):

@@ -858,7 +858,7 @@ func _plan_agility(id: String) -> Array[Vector3]:
 			var material := StandardMaterial3D.new();material.albedo_color = Color("efb447")
 			mesh.mesh = cylinder;mesh.material_override = material
 			props.add_child(mesh);mesh.position = pole + Vector3(0,.325,0)
-		app.world._assign_layers(props, LifeWorld.VIEW_GROUND if actor.floor_level == 0 else LifeWorld.VIEW_UPPER)
+		app.world._assign_layers(props, LifeWorld.view_layer(actor.floor_level))
 		agility_props[id] = props
 		return points
 	return []

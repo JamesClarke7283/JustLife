@@ -257,7 +257,7 @@ func _seated_and_held_cases()->void:
 	check(scene_world.item_level(food_app._find_item(str(plate.id)))==1 and view.get_node("FoodPicking").collision_layer==0,"Held food with old lower host follows upper carrier and is not independently pickable.")
 	check(view.find_children("*","MeshInstance3D",true,false).all(func(mesh:MeshInstance3D)->bool:return mesh.layers==World.VIEW_ACTOR_UPPER),"Held upper food receives the upper actor view mask.")
 	carrier.position.y=1.6;flow.sync_world(false)
-	check(view.find_children("*","MeshInstance3D",true,false).all(func(mesh:MeshInstance3D)->bool:return mesh.layers==(World.VIEW_ACTOR_GROUND|World.VIEW_ACTOR_UPPER)),"In-flight held presentation spans both views without inventing a settled floor.")
+	check(view.find_children("*","MeshInstance3D",true,false).all(func(mesh:MeshInstance3D)->bool:return mesh.layers==World.all_actor_layers()),"In-flight held presentation spans every floor's view without inventing a settled floor.")
 	carrier.position.y=.16
 	for member:Dictionary in food_app.household.members:member.sim.action_queue.clear()
 	food_app.household.meals.clear();flow.sync_world(false)

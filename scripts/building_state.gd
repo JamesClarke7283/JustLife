@@ -6,6 +6,8 @@ const Land=preload("res://scripts/land.gd")
 const VERSION:int=2
 const GROUND_Y:float=.16
 const RISE:float=3.0
+## The highest storey: the ground floor is level 0, so a home has up to four storeys.
+const MAX_LEVEL:int=3
 const CELL:float=.25
 const STAIR_WIDTH:float=1.25
 const STAIR_RUN:float=3.75
@@ -40,7 +42,7 @@ const GROUPS:Array[String]=["walls","floors","stairs","openings","roofs"]
 const MAX_RECORDS:int=512
 
 static func fresh() -> Dictionary:
-	return {"kind":"__construction","version":VERSION,"revision":0,"next_serial":1,"levels":[0,1],"walls":[],"floors":[],"stairs":[],"openings":[],"roofs":[]}
+	return {"kind":"__construction","version":VERSION,"revision":0,"next_serial":1,"levels":range(MAX_LEVEL+1),"walls":[],"floors":[],"stairs":[],"openings":[],"roofs":[]}
 
 static func number(value:Variant,low:float,high:float,whole:bool=false) -> bool:
 	return (value is int or value is float) and is_finite(float(value)) and float(value)>=low and float(value)<=high and (not whole or float(value)==floorf(float(value)))
@@ -154,7 +156,7 @@ static func _covered(bounds:Rect2,surfaces:Array,holes:Array=[]) -> bool:
 	return bounds.size.x>0 and bounds.size.y>0
 
 static func footprint_supported(state:Dictionary,level:int,bounds:Rect2,include_terrain:bool=false) -> bool:
-	if level not in [0,1] or not lot().encloses(bounds):return false
+	if level<0 or level>MAX_LEVEL or not lot().encloses(bounds):return false
 	var surfaces:Array=_rects(state,"floors",level)
 	surfaces.append_array(_wall_bearing_rects(state,level))
 	if level==0 and include_terrain:surfaces.append(lot())
@@ -162,7 +164,7 @@ static func footprint_supported(state:Dictionary,level:int,bounds:Rect2,include_
 
 static func _wall_bearing_rects(state:Dictionary,level:int) -> Array:
 	var result:Array=[]
-	if level!=1:return result
+	if level<1:return result
 	var floors:Array=_rects(state,"floors",level);var holes:Array=_rects(state,"openings",level)
 	for wall:Dictionary in state.walls:
 		if int(wall.level)!=level:continue
@@ -227,11 +229,78 @@ static func blocked_rect(state:Dictionary,level:int,bounds:Rect2,include_stairs:
 					if guard.intersects(bounds):return true
 	return false
 
+## Whether an upper floor stands over the storey below it: that storey's floors or
+## the walls standing on them. An upper floor needs no bearing walls of its own.
+static func _footing(state:Dictionary,lower:int,bounds:Rect2) -> bool:
+	if lower<0 or lower>MAX_LEVEL or not lot().encloses(bounds):return false
+	# A staircase's landing holds up only the people on it, not a floor above.
+	var surfaces:Array=[]
+	for floor:Dictionary in state.floors:
+		if int(floor.level)==lower and floor.get("landing_for")==null:surfaces.append(rect(floor))
+	surfaces.append_array(_rects(state,"walls",lower))
+	surfaces.append_array(_lintels(state,lower))
+	return _covered(bounds,surfaces)
+
+## The widest doorway or window bay a wall line spans with a lintel.
+const LINTEL_SPAN:float=3.0
+
+## The lintels over the doorways in a storey's walls: the gap between two lengths
+## of the same wall line, up to LINTEL_SPAN wide, carries the floor above like the
+## wall either side of it.
+static func _lintels(state:Dictionary,level:int) -> Array:
+	var lines:Dictionary={}
+	for wall:Dictionary in state.walls:
+		if int(wall.level)!=level or minf(float(wall.w),float(wall.d))>.20:continue
+		var r:Rect2=rect(wall)
+		var horizontal:bool=float(wall.w)>float(wall.d)
+		var key:String="%s:%.2f:%.3f" % ["h" if horizontal else "v",r.get_center().y if horizontal else r.get_center().x,minf(r.size.x,r.size.y)]
+		if not lines.has(key):lines[key]={"horizontal":horizontal,"rects":[]}
+		lines[key].rects.append(r)
+	var result:Array=[]
+	for key:String in lines:
+		var horizontal:bool=lines[key].horizontal
+		var spans:Array=lines[key].rects
+		spans.sort_custom(func(a:Rect2,b:Rect2)->bool:return (a.position.x if horizontal else a.position.y)<(b.position.x if horizontal else b.position.y))
+		for index:int in range(1,spans.size()):
+			var before:Rect2=spans[index-1];var after:Rect2=spans[index]
+			var start:float=before.end.x if horizontal else before.end.y
+			var end:float=after.position.x if horizontal else after.position.y
+			if end-start<=EPS or end-start>LINTEL_SPAN:continue
+			result.append(Rect2(start,before.position.y,end-start,before.size.y) if horizontal else Rect2(before.position.x,start,before.size.x,end-start))
+	return result
+
 static func _support_error(state:Dictionary,record:Dictionary) -> String:
 	var lower:int=int(record.level)-1
 	if lower<0:return ""
-	if not footprint_supported(state,lower,rect(record)):return "An upper floor is outside lower floor support."
-	return _perimeter_support_error(state,record,lower)
+	# A staircase's own landing is held up by the stair, wherever it climbs from.
+	if record.get("landing_for")!=null:return ""
+	if not _footing(state,lower,rect(record)):return "An upper floor must stand over the floor of the storey below it."
+	return ""
+
+## The top storey a home has really built: the highest level with a floor that is
+## not just a staircase's landing. 0 for a ground-floor home.
+static func top_level(state:Dictionary) -> int:
+	var top:int=0
+	for floor:Dictionary in state.get("floors",[]):
+		if floor.get("landing_for")==null:top=maxi(top,int(floor.level))
+	return top
+
+## The highest level anything stands on, landings included.
+static func highest_level(state:Dictionary) -> int:
+	var top:int=0
+	for floor:Dictionary in state.get("floors",[]):top=maxi(top,int(floor.level))
+	return top
+
+## The floor a staircase brings with it at its top: the opening, the upper landing
+## and the rail around the opening, snapped out to the quarter-metre grid so the
+## slab meets the walls and floors laid on that grid.
+static func stair_top_area(stair:Dictionary) -> Rect2:
+	var area:Rect2=stair_rect(stair).merge(landing_rect(stair,true))
+	for guard:Rect2 in guard_footprints(stair):area=area.merge(guard)
+	area=area.grow(.05)
+	var low:=Vector2(floorf(area.position.x/CELL)*CELL,floorf(area.position.y/CELL)*CELL)
+	var high:=Vector2(ceilf(area.end.x/CELL)*CELL,ceilf(area.end.y/CELL)*CELL)
+	return Rect2(low,high-low).intersection(lot())
 
 static func _perimeter_support_error(state:Dictionary,record:Dictionary,support_level:int) -> String:
 	var supports:Variant=record.get("supports")
@@ -271,7 +340,9 @@ static func validate(state:Variant) -> String:
 	if not state is Dictionary or state.get("kind")!="__construction" or state.get("version")!=VERSION:return "Unsupported building format."
 	if not number(state.get("revision"),0,1e9,true) or not number(state.get("next_serial"),1,1e9,true):return "Invalid building revision."
 	var levels:Variant=state.get("levels")
-	if not levels is Array or levels.size()!=2 or not number(levels[0],0,0,true) or not number(levels[1],1,1,true):return "Invalid building levels."
+	if not levels is Array or levels.size()<2 or levels.size()>MAX_LEVEL+1:return "Invalid building levels."
+	for index:int in levels.size():
+		if not number(levels[index],index,index,true):return "Invalid building levels."
 	var cleared:Variant=state.get("cleared_vegetation",[])
 	if not cleared is Array or cleared.size()>4096:return "Invalid cleared garden plants."
 	var seen_plants:Dictionary={}
@@ -289,17 +360,18 @@ static func validate(state:Variant) -> String:
 			if value.has("refund_rate") and (not REFUND_RATES.has(group) or not number(value.refund_rate,0,float(REFUND_RATES.get(group,0)))):return "Invalid construction refund rate."
 			if value.has("refund_value") and (group!="stairs" or not number(value.refund_value,0,250,true)):return "Invalid staircase refund value."
 			if group=="stairs":
-				if not number(value.get("lower"),0,0,true) or not number(value.get("upper"),1,1,true) or not number(value.get("rotation"),0,270,true) or int(value.rotation)%90!=0:return "A stair must join adjacent supported levels with a right-angle rotation."
+				if not number(value.get("lower"),0,MAX_LEVEL-1,true) or not number(value.get("upper"),1,MAX_LEVEL,true) or int(value.upper)!=int(value.lower)+1 or not number(value.get("rotation"),0,270,true) or int(value.rotation)%90!=0:return "A stair must join adjacent supported levels with a right-angle rotation."
 				for key:String in ["x","z"]:
 					if not number(value.get(key),-Land.MAX_SPAN,Land.MAX_SPAN) or not is_equal_approx(snappedf(float(value[key]),CELL),float(value[key])):return "A stair has an invalid grid position."
 				if not identifier(value.get("opening")) or not lot().encloses(stair_rect(value)) or not lot().encloses(landing_rect(value,false)) or not lot().encloses(landing_rect(value,true)):return "A stair or landing extends beyond the lot."
 			else:
-				if not number(value.get("level"),0,1,true):return "A record has an invalid level."
+				if not number(value.get("level"),0,MAX_LEVEL,true):return "A record has an invalid level."
 				var error:String=_rect_error(value)
 				if not error.is_empty():return error
 				if group in ["walls","floors","roofs"] and not _material(value.get("material")):return "A building material is invalid."
 				if group=="walls" and (not number(value.get("height"),2.6,2.6) or not value.get("cut") is bool):return "A wall has invalid height or cutaway data."
-				if group=="openings" and (value.level!=1 or not identifier(value.get("stair"))):return "An opening has no valid owning staircase."
+				if group=="openings" and (not number(value.level,1,MAX_LEVEL,true) or not identifier(value.get("stair"))):return "An opening has no valid owning staircase."
+				if group=="floors" and value.get("landing_for")!=null and not identifier(value.landing_for):return "A staircase landing names an invalid staircase."
 				if group=="roofs" and (not number(value.get("pitch"),.05,1.0) or not number(value.get("rotation"),0,90,true) or int(value.rotation)%90!=0):return "Invalid roof parameters."
 				if group=="roofs":
 					var style:String=LifeRoofGeometry.normalize_style(value.get("style","gabled"))
@@ -311,31 +383,47 @@ static func validate(state:Variant) -> String:
 		for finish:Variant in finishes:
 			if not finish is Dictionary or not _rect_error(finish).is_empty() or not rect(floor).encloses(rect(finish)) or not _material(finish.get("material")):return "A floor finish must stay inside its slab."
 			if str(finish.get("carpet","")) not in ["","plain","geometric","loop","striped","vintage"]:return "Invalid carpet style."
+		if floor.get("landing_for")!=null:
+			# Only a real staircase arriving on that storey holds a landing up, and
+			# only the landing it brought: its opening, landing and rail.
+			if _group_of(state,str(floor.landing_for))!="stairs" or int(find(state,str(floor.landing_for)).upper)!=int(floor.level):return "A staircase landing has no staircase beneath it."
+			if not stair_top_area(find(state,str(floor.landing_for))).grow(.01).encloses(rect(floor)):return "A staircase landing is larger than the stairs' own landing."
 		var error:String=_support_error(state,floor)
 		if not error.is_empty():return error
 	for wall:Dictionary in state.walls:
-		if int(wall.level)==1 and not footprint_supported(state,1,rect(wall)):return "An upper wall needs continuous floor beneath its whole footprint."
+		if int(wall.level)>=1 and not footprint_supported(state,int(wall.level),rect(wall)):return "An upper wall needs continuous floor beneath its whole footprint."
 		for other:Dictionary in state.walls:
 			if wall.id==other.id or wall.level!=other.level:continue
 			if (float(wall.w)>float(wall.d))==(float(other.w)>float(other.d)) and rect(wall).grow(-.001).intersects(rect(other).grow(-.001)):return "Parallel wall interiors overlap."
 	for opening:Dictionary in state.openings:
 		if _group_of(state,str(opening.stair))!="stairs":return "An opening refers to a missing stair."
 		var stair:Dictionary=find(state,str(opening.stair))
-		if str(stair.opening)!=str(opening.id) or not rect(opening).is_equal_approx(stair_rect(stair)):return "The stair opening does not match its stair footprint."
-		if not _covered(rect(opening),_rects(state,"floors",1)):return "A stair opening is outside an upper slab."
+		if str(stair.opening)!=str(opening.id) or int(opening.level)!=int(stair.upper) or not rect(opening).is_equal_approx(stair_rect(stair)):return "The stair opening does not match its stair footprint."
+		if not _covered(rect(opening),_rects(state,"floors",int(stair.upper))):return "A stair opening is outside an upper slab."
 	for stair:Dictionary in state.stairs:
 		if _group_of(state,str(stair.opening))!="openings" or str(find(state,str(stair.opening)).stair)!=str(stair.id):return "A stair lacks its unique matching opening."
-		if not footprint_supported(state,0,stair_rect(stair)) or not footprint_supported(state,0,landing_rect(stair,false)) or not footprint_supported(state,1,landing_rect(stair,true)):return "A stair or landing has no continuous floor support."
+		var low:int=int(stair.lower);var high:int=int(stair.upper)
+		# A ground-floor staircase may stand on the garden as well as on a floor.
+		if not footprint_supported(state,low,stair_rect(stair),low==0) or not footprint_supported(state,low,landing_rect(stair,false),low==0) or not footprint_supported(state,high,landing_rect(stair,true)):return "A stair or landing has no continuous floor support."
 		for guard:Rect2 in guard_footprints(stair):
-			if not footprint_supported(state,1,guard):return "The stair opening needs surrounding slab beneath its full guard and post footprints."
+			if not footprint_supported(state,high,guard):return "The stair opening needs surrounding slab beneath its full guard and post footprints."
 			# A wall standing in the guard's own band is itself the barrier at that
 			# edge, so it does not refuse the staircase: the run and landing checks
 			# below still keep the whole staircase body clear of every wall.
-		for level:int in [0,1]:
-			if blocked_rect(state,level,stair_rect(stair),false) or blocked_rect(state,level,landing_rect(stair,level==1),false):return "A wall blocks a stair or landing."
+		for level:int in [low,high]:
+			if blocked_rect(state,level,stair_rect(stair),false) or blocked_rect(state,level,landing_rect(stair,level==high),false):return "A wall blocks a stair or landing."
 		for other:Dictionary in state.stairs:
-			if stair.id!=other.id and stair_rect(stair).grow(.01).intersects(stair_rect(other)):return "Stair volumes overlap."
-			if stair.id!=other.id and (landing_rect(stair,false).intersects(stair_rect(other)) or landing_rect(stair,true).intersects(stair_rect(other))):return "A stair run blocks another stair's landing."
+			if stair.id==other.id:continue
+			if int(other.lower)==low:
+				if stair_rect(stair).grow(.01).intersects(stair_rect(other)):return "Stair volumes overlap."
+				if landing_rect(stair,false).intersects(stair_rect(other)) or landing_rect(stair,true).intersects(stair_rect(other)):return "A stair run blocks another stair's landing."
+			elif int(other.upper)==low:
+				# A flight starting on the floor another one arrives at keeps clear of
+				# that one's landing and the rail round its opening.
+				var foot:Rect2=stair_rect(stair).merge(landing_rect(stair,false))
+				if foot.intersects(landing_rect(other,true)):return "A stair run blocks another stair's landing."
+				for guard:Rect2 in guard_footprints(other):
+					if guard.intersects(foot):return "A stair run blocks another stair's rail."
 	for roof:Dictionary in state.roofs:
 		# A roof spans above the stair opening; it is not a walkable floor.
 		if not _covered(rect(roof),_rects(state,"floors",int(roof.level))):return "A roof is outside its storey footprint."
@@ -406,21 +494,31 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant) -> Dicti
 		var group:Variant=operation.get("collection")
 		if not group is String or group not in ["walls","floors","stairs","roofs"] or not operation.get("record") is Dictionary:return _error("Invalid construction operation.")
 		var record:Dictionary=operation.record.duplicate(true)
-		if record.has("id") or record.has("opening"):return _error("New structural identities are allocated by the transaction.")
+		if record.has("id") or record.has("opening") or record.has("landing_for"):return _error("New structural identities are allocated by the transaction.")
 		record["id"]=_new_id(after,group)
+		var landing_area:float=0.0
 		if group=="stairs":
 			for key:String in ["x","z","rotation"]:
 				if not number(record.get(key),-Land.MAX_SPAN if key!="rotation" else 0,Land.MAX_SPAN if key!="rotation" else 270):return _error("Invalid new stair position.")
-			record["lower"]=0;record["upper"]=1;record["opening"]=_new_id(after,"openings")
+			if not number(record.get("lower",0),0,MAX_LEVEL-1,true):return _error("A staircase climbs from the ground floor or a storey with one above it.")
+			var lower:int=int(record.get("lower",0))
+			record["lower"]=lower;record["upper"]=lower+1;record["opening"]=_new_id(after,"openings")
 			var hole:Rect2=stair_rect(record)
-			after.openings.append({"id":record.opening,"stair":record.id,"level":1,"x":hole.get_center().x,"z":hole.get_center().y,"w":hole.size.x,"d":hole.size.y})
+			# A staircase needs no floor waiting for it upstairs: where there is
+			# none round its top, it brings its own landing slab with it.
+			var top:Rect2=stair_top_area(record)
+			var before_area:float=_union_area(_rects(after,"floors",lower+1))
+			if top.has_area() and not _covered(top,_rects(after,"floors",lower+1)):
+				after.floors.append({"id":_new_id(after,"floors"),"level":lower+1,"x":top.get_center().x,"z":top.get_center().y,"w":top.size.x,"d":top.size.y,"material":"cfa97e","landing_for":record.id})
+				landing_area=maxf(0.0,_union_area(_rects(after,"floors",lower+1))-before_area)
+			after.openings.append({"id":record.opening,"stair":record.id,"level":lower+1,"x":hole.get_center().x,"z":hole.get_center().y,"w":hole.size.x,"d":hole.size.y})
 		after[group].append(record)
 		error=validate(after)
 		if not error.is_empty():return _error(error)
 		match group:
 			"walls":cost=roundi(maxf(float(record.w),float(record.d))*55)
 			"floors":cost=roundi((_union_area(_rects(after,"floors",int(record.level)))-_union_area(_rects(current,"floors",int(record.level))))*12)
-			"stairs":cost=650
+			"stairs":cost=650+roundi(landing_area*12)
 			"roofs":cost=roundi(float(record.w)*float(record.d)*18)
 		if cost<=0:return _error("This construction adds no new priced geometry.")
 	elif op=="remove":
@@ -429,12 +527,24 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant) -> Dicti
 		if group.is_empty() or group=="openings":return _error("Remove the owning structural object.")
 		var old:Dictionary=find(after,operation.id)
 		after[group]=after[group].filter(func(record:Dictionary)->bool:return record.id!=operation.id)
-		if group=="stairs":after.openings=after.openings.filter(func(record:Dictionary)->bool:return record.stair!=old.id)
+		var landing_refund:int=0
+		if group=="stairs":
+			after.openings=after.openings.filter(func(record:Dictionary)->bool:return record.stair!=old.id)
+			# The landing slab a staircase brought goes with it, unless something
+			# now stands on it: then it stays as an ordinary floor.
+			var bare:Dictionary=after.duplicate(true)
+			bare.floors=bare.floors.filter(func(record:Dictionary)->bool:return str(record.get("landing_for",""))!=str(old.id))
+			if bare.floors.size()<after.floors.size() and validate(bare).is_empty():
+				landing_refund=floori(maxf(0.0,_union_area(_rects(after,"floors",int(old.upper)))-_union_area(_rects(bare,"floors",int(old.upper))))*4)
+				after=bare
+			else:
+				for floor:Dictionary in after.floors:
+					if str(floor.get("landing_for",""))==str(old.id):floor.erase("landing_for")
 		if group=="walls":cost=-floori(maxf(float(old.w),float(old.d))*float(old.get("refund_rate",20.0)))
 		elif group=="floors":
 			var area:float=maxf(0.0,_union_area(_rects(current,"floors",int(old.level)))-_union_area(_rects(after,"floors",int(old.level))))
 			cost=-floori(area*float(old.refund_rate)) if old.has("refund_rate") else -roundi(area*4)
-		elif group=="stairs":cost=-int(old.get("refund_value",250))
+		elif group=="stairs":cost=-int(old.get("refund_value",250))-landing_refund
 		elif group=="roofs":cost=-floori(float(old.w)*float(old.d)*float(old.refund_rate)) if old.has("refund_rate") else -roundi(float(old.w)*float(old.d)*6)
 		error=validate(after)
 		if not error.is_empty():return _error(error)

@@ -2055,7 +2055,7 @@ func spawn_pet(id:String,pet:Dictionary,spawn:Vector3,destination:Vector3) -> Li
 ## clicking it opens its card through the ordinary clicked-object path.
 func _pet_pick_body(actor:LifePetActor,id:String) -> void:
 	var body:=StaticBody3D.new()
-	body.collision_layer=LifeWorld.PICK_GROUND|LifeWorld.PICK_UPPER
+	body.collision_layer=LifeWorld.all_pick_layers()
 	body.input_ray_pickable=true
 	body.set_meta("item_id",id)
 	actor.add_child(body)
@@ -2579,13 +2579,13 @@ func refresh_pet_layers() -> void:
 		var actor:LifePetActor=pet_actors[id]
 		if not is_instance_valid(actor):continue
 		var floor:int=actor.floor_level
-		var layer_key:int=2 if actor.traversing_stairs else floor
+		var layer_key:int=-1 if actor.traversing_stairs else floor
 		if int(actor.get_meta("pet_layer",-99))==layer_key:continue
 		actor.set_meta("pet_layer",layer_key)
-		var mask:int=(LifeWorld.VIEW_ACTOR_GROUND|LifeWorld.VIEW_ACTOR_UPPER) if actor.traversing_stairs else (LifeWorld.VIEW_ACTOR_GROUND if floor==0 else LifeWorld.VIEW_ACTOR_UPPER)
+		var mask:int=LifeWorld.all_actor_layers() if actor.traversing_stairs else LifeWorld.actor_layer(floor)
 		world._assign_layers(actor,mask)
 		for child:Node in actor.get_children():
-			if child is CollisionObject3D:child.collision_layer=(LifeWorld.PICK_GROUND|LifeWorld.PICK_UPPER) if actor.traversing_stairs else (LifeWorld.PICK_UPPER if floor==1 else LifeWorld.PICK_GROUND)
+			if child is CollisionObject3D:child.collision_layer=LifeWorld.all_pick_layers() if actor.traversing_stairs else LifeWorld.pick_layer(floor)
 
 ## A pet card: what it is, what it is wearing, how it is doing, and everything
 ## this Lifelet can do with it. The actions come from the household's own policy,
@@ -2947,12 +2947,21 @@ func draw_live() -> void:
 	icon_button("menu","Pause menu (Esc)",Vector2(1357,27),Vector2(48,42),show_menu).name="PauseMenu"
 	# Live floor viewing changes only visibility and camera height.
 	if mode=="live" and current_venue=="home":
-		for level:int in [0,1]:
-			var floor_button:=button("Ground" if level==0 else "Upper",Vector2(1306,383+49*level),Vector2(99,42),func():set_live_view_level(level),world.view_level==level)
-			floor_button.name="LiveGroundView" if level==0 else "LiveUpperView"
-			floor_button.disabled=not _live_floor_available(level)
-			floor_button.tooltip_text="View ground floor (Page Down)" if level==0 else ("View upper floor (Page Up)" if not floor_button.disabled else "Build an upper floor to view it (Page Up)")
-			live_floor_buttons[level]=floor_button
+		# A storey stepper: down a floor (reading "Ground" when that is where it
+		# goes) and up a floor (reading "Upper" from the ground).
+		var below:int=maxi(0,world.view_level-1);var above:int=world.view_level+1
+		var down_button:=button("Ground" if below==0 else "Down",Vector2(1306,383),Vector2(99,42),func():set_live_view_level(maxi(0,world.view_level-1)),world.view_level==0)
+		down_button.name="LiveGroundView"
+		down_button.tooltip_text="Viewing the %s. Go down to the %s (Page Down)." % [storey_name(world.view_level),storey_name(below)] if world.view_level>0 else "Viewing the ground floor (Page Down)."
+		live_floor_buttons[0]=down_button
+		# On the top floor the button stays lit as the floor in view, as Upper always
+		# did in a two-storey home; pressing it there keeps the view where it is.
+		var at_top:bool=world.view_level>=1 and not _live_floor_available(above)
+		var up_button:=button("Upper" if world.view_level==0 or (world.view_level==1 and at_top) else "Up",Vector2(1306,432),Vector2(99,42),func():set_live_view_level(world.view_level+1 if _live_floor_available(world.view_level+1) else world.view_level),at_top)
+		up_button.name="LiveUpperView"
+		up_button.disabled=not at_top and not _live_floor_available(above)
+		up_button.tooltip_text="Viewing the %s, the top floor." % storey_name(world.view_level) if at_top else ("Go up to the %s (Page Up)." % storey_name(above) if not up_button.disabled else "Build an upper floor to view it (Page Up).")
+		live_floor_buttons[1]=up_button
 	# Camera affordances remain visible above the household controls.
 	icon_button("zoom_out","Zoom out (mouse wheel)",Vector2(1359,530),Vector2(46,42),func():world.camera.size=minf(world.camera.size+LifeWorld.CAMERA_BUTTON_ZOOM_STEP,LifeWorld.CAMERA_MAX_ZOOM)).name="CameraZoomOut"
 	icon_button("zoom_in","Zoom in (mouse wheel)",Vector2(1359,481),Vector2(46,42),func():world.camera.size=maxf(world.camera.size-LifeWorld.CAMERA_BUTTON_ZOOM_STEP,LifeWorld.CAMERA_MIN_ZOOM)).name="CameraZoomIn"
@@ -2969,10 +2978,14 @@ func draw_live() -> void:
 
 func _live_floor_available(level:int) -> bool:
 	if level==0:return true
-	if level!=1 or world.construction.building_state.is_empty():return false
+	if level<0 or level>LifeBuildingState.MAX_LEVEL or world.construction.building_state.is_empty():return false
 	for floor:Dictionary in world.construction.building_state.floors:
-		if int(floor.level)==1:return true
+		if int(floor.level)==level:return true
 	return false
+
+## What a storey is called: the ground floor, then the first, second and third.
+func storey_name(level:int) -> String:
+	return ["ground floor","first floor","second floor","third floor"][clampi(level,0,LifeBuildingState.MAX_LEVEL)]
 
 func set_live_view_level(level:int) -> void:
 	if mode!="live" or current_venue!="home" or overlay_open or not _live_floor_available(level):return
@@ -2988,7 +3001,7 @@ func center_lifelet() -> void:
 	if current_venue=="home":
 		var level:int=world.point_level(actor.position)
 		var route:Dictionary=traversal.routes.get(selected_id,{})
-		var supported:bool=level==0 or (level==1 and world.construction.floor_contains(Vector2(actor.position.x,actor.position.z),1))
+		var supported:bool=level==0 or (level>=1 and world.construction.floor_contains(Vector2(actor.position.x,actor.position.z),level))
 		if str(route.get("phase",""))!="transit" and supported and _live_floor_available(level):
 			world.set_view_level(level)
 	world.camera_target=actor.position
@@ -3680,7 +3693,8 @@ func draw_build_catalog() -> void:
 	build_quote.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	var catalog_width:float=interface_width()-40.0
 	card(Vector2(interface_local_x(20.0),643),Vector2(catalog_width,239),P.WHITE,18)
-	small_caps("Make yourself at home",Vector2(40,657))
+	# Which storey the tools work on, once the home has more than the ground floor.
+	small_caps("Make yourself at home" if world.viewable_top()==0 or (world.view_level==0 and not world.construction.has_upper_floor()) else "Building on the "+storey_name(world.view_level),Vector2(40,657)).name="BuildStoreyCaption"
 	text_label("Build & buy",Vector2(38,687),Vector2(210,42),29,P.INK,true)
 	# The filter row grows with the catalogue, so it scrolls sideways rather than
 	# running the last category off the canvas where it could not be pressed.
@@ -3703,10 +3717,17 @@ func draw_build_catalog() -> void:
 	# The catalogue strip begins at x=292; the level and storage controls share
 	# that left column in full, so none of them may extend into the strip or the
 	# strip would swallow their clicks.
-	var ground_button=button("Ground",Vector2(40,745),Vector2(78,37),func():set_build_level(0),world.view_level==0)
+	# A storey stepper: down a floor ("Ground" when that is where it goes) and up
+	# a floor ("Upper" from the ground). A home has up to four storeys.
+	var ground_button=button("Ground" if world.view_level<=1 else "Down",Vector2(40,745),Vector2(78,37),func():set_build_level(maxi(0,world.view_level-1)),world.view_level==0)
 	compact_button(ground_button)
-	var upper_button=button("Upper",Vector2(127,745),Vector2(78,37),func():set_build_level(1),world.view_level==1)
+	ground_button.name="BuildLevelDown"
+	ground_button.tooltip_text="Building on the %s. Go down a storey (Page Down)." % storey_name(world.view_level)
+	var upper_button=button("Upper" if world.view_level==0 else "Up",Vector2(127,745),Vector2(78,37),func():set_build_level(world.view_level+1),false)
 	compact_button(upper_button)
+	upper_button.name="BuildLevelUp"
+	upper_button.disabled=world.view_level>=mini(LifeBuildingState.MAX_LEVEL,maxi(1,world.viewable_top()))
+	upper_button.tooltip_text="Go up to the %s (Page Up)." % storey_name(world.view_level+1) if not upper_button.disabled else "This is the top storey you can build on. Add a storey to go higher (four at most)."
 	var search:=LineEdit.new();search.placeholder_text="Search furnishings";search.text=catalog_search
 	rect(search,Vector2(40,792),Vector2(232,34))
 	search.text_changed.connect(func(value:String):
@@ -3967,6 +3988,48 @@ func _buy_upstairs_preset(choices:Dictionary) -> void:
 	_refresh_sim_targets(false);refresh_hud();draw_live()
 	show_notice("Upstairs built with rooms, windows, doors, roof and stairs. −ℒ%d." % int(result.cost))
 
+## Add a storey: a card with the quote, and one button to build it. The new storey
+## gets a floor over the rooms below, the outer walls raised on the same lines and
+## the roof lifted onto it. A home has four storeys at most.
+func show_add_storey() -> void:
+	const Storeys=preload("res://scripts/storey_edits.gd")
+	if mode!="build":return
+	cancel_placement()
+	if world.construction.building_state.is_empty():
+		var migrated:Dictionary=build_transactions.current()
+		if not bool(migrated.ok):show_notice(str(migrated.error));return
+		world.construction.restore(migrated.state);world.rebuild_navigation()
+	world.construction.quote_provider=build_transactions.prepare
+	var state:Dictionary=world.construction.building_state
+	var storeys:int=Storeys.storeys(state)
+	var quote:Dictionary=build_transactions.prepare({"op":Storeys.OP})
+	close_overlay();overlay_open=true;dismiss_layer()
+	var p=Vector2(430,190)
+	card(p,Vector2(580,420),P.WHITE,22,overlay)
+	text_label("Add a storey",p+Vector2(34,24),Vector2(500,49),32,P.INK,true,overlay).name="AddStoreyTitle"
+	paragraph("Your home has %d %s of a possible %d." % [storeys,"storey" if storeys==1 else "storeys",LifeBuildingState.MAX_LEVEL+1],p+Vector2(36,84),Vector2(508,30),17,P.INK,overlay)
+	paragraph("A new storey goes on top: a floor over the rooms below, the outer walls raised on the same lines, and the roof lifted onto the new top floor. Then place Stairs on the floor below to reach it; they bring their own landing.",p+Vector2(36,122),Vector2(508,110),15,P.MUTED,overlay)
+	var buy:Button
+	if bool(quote.ok):
+		buy=button("Build the %s · ℒ%s" % [storey_name(int(quote.get("level",storeys))),commas(int(quote.cost))],p+Vector2(32,282),Vector2(516,48),_buy_storey.bind(quote),true,overlay)
+		buy.disabled=sim.funds<int(quote.cost)
+	else:
+		paragraph(str(quote.error),p+Vector2(36,236),Vector2(508,40),15,P.CORAL,overlay).name="AddStoreyRefusal"
+		buy=button("Add storey",p+Vector2(32,282),Vector2(516,48),func():pass,false,overlay)
+		buy.disabled=true
+	buy.name="AddStoreyConfirm"
+	button("Back to Build & buy",p+Vector2(32,342),Vector2(516,48),func():close_overlay();draw_live(),false,overlay)
+
+func _buy_storey(quote:Dictionary) -> void:
+	var result:Dictionary=build_transactions.commit(quote)
+	if not bool(result.ok):close_overlay();show_notice(str(result.error));draw_live();return
+	build_undo.append({"architecture":result.receipt,"level":world.view_level})
+	var level:int=int(quote.get("level",world.view_level+1))
+	close_overlay()
+	world.set_view_level(level);world.set_cutaway(true);world.construction.set_roof_visibility(false)
+	_refresh_sim_targets(false);refresh_hud();draw_live()
+	show_notice("The %s is built, with its walls and the roof raised on top. Go down a storey and place Stairs to reach it. −ℒ%s." % [storey_name(level),commas(int(result.cost))])
+
 func change_floor(color:String) -> void:
 	if mode=="build":
 		world.construction.floor_finish_color=color
@@ -3996,19 +4059,20 @@ func _build_snapshot(funds_delta:int=0) -> Dictionary:
 	return {"layout":world.serialize_items(),"funds_delta":funds_delta,"floor":floor_color,"level":world.view_level}
 
 func set_build_level(level:int) -> void:
-	if mode!="build" or level not in [0,1]:return
+	if mode!="build" or level<0 or level>LifeBuildingState.MAX_LEVEL:return
 	cancel_placement()
 	if world.construction.building_state.is_empty():
 		var migrated:Dictionary=build_transactions.current()
 		if not bool(migrated.ok):show_notice(str(migrated.error));return
 		world.construction.restore(migrated.state);world.rebuild_navigation()
-	world.set_view_level(level)
+	if not world.set_view_level(level):
+		show_notice("Add a storey or lay a floor on the %s before building higher." % storey_name(maxi(0,level-1)));draw_live();return
 	world.construction.quote_provider=build_transactions.prepare
-	if level==1 and not world.construction.has_upper_floor():
-		# Second-storey guidance: switching to Upper with no slab yet starts
-		# the floor tool itself, so the recipe is one press plus a drag.
+	if level>=1 and not world.construction.has_floor(level):
+		# An empty storey: the Floor tool is ready for a slab over the rooms below.
+		# Stairs placed on the storey below, or Add storey, also give it a floor.
 		begin_construction("floor")
-		show_notice("No upper floor yet, so the Floor tool is ready. Click two corners anywhere over the rooms below — the slab fits itself to the two bearing walls, so a rough rectangle buys the whole floor. Then choose Stairs; it snaps onto the free edge beside the opening.")
+		show_notice("The %s has no floor yet, so the Floor tool is ready: click two corners over the rooms below. Or go down a storey and place Stairs (they bring their own landing), or use Add storey to raise the whole house." % storey_name(level))
 	draw_live()
 
 func set_roof_pitch(value:float)->void:
@@ -4059,7 +4123,7 @@ func begin_construction(tool:String) -> void:
 		elif tool=="roof_edit":show_notice("Select a roof, then its two new corners. R rotates; pitch and finish changes are free.")
 		else:show_notice("Point at a roof to review its removal. Esc cancels.")
 	elif tool=="floor" and world.view_level==0:show_notice("This paints the ground-floor finish. For a second storey, press Upper first — it starts the upper floor tool for you.")
-	elif tool=="stairs":world.placement_angle=0;show_notice("Point near the upper slab's free edge. R rotates; the stair snaps to the nearest clear spot with its opening and guard included.")
+	elif tool=="stairs":world.placement_angle=0;show_notice("Point where the stairs should start. They climb from the %s to the %s and bring their own landing, so no upstairs floor or walls are needed. R rotates; the stair snaps to the nearest clear spot." % [storey_name(world.construction.stair_lower()),storey_name(world.construction.stair_lower()+1)])
 	elif tool=="remove_structure":show_notice("Point at a floor or staircase to review its removal. Esc cancels.")
 	elif tool=="grab":show_notice("Select a wall, then click to push or pull it. Connected walls and outward floor extensions follow. Esc cancels.")
 	elif tool=="paint":show_notice("Click inside a walled room to paint its walls. Select a colour and style below.")
@@ -4085,8 +4149,8 @@ func on_construction(data:Dictionary) -> void:
 		world.construction.refresh_decorations()
 		_refresh_sim_targets(false);refresh_hud()
 		var follow_up:=""
-		if world.construction.tool=="floor" and world.view_level==1:
-			follow_up=" Upper floor added — now choose Stairs and point at its lower end along its edge."
+		if world.construction.tool=="floor" and world.view_level>=1:
+			follow_up=" Floor added — go down a storey and choose Stairs to reach it."
 		show_notice("Your structure is in place. %sℒ%d.%s"%["−" if int(result.cost)>=0 else "+",absi(int(result.cost)),follow_up])
 		return
 	show_notice("Preview this structure again before confirming it.")
@@ -4119,7 +4183,7 @@ func on_placement(kind:String,p:Vector3,angle:float,style:String="",size:String=
 	if sim.funds<price:show_notice("You need ℒ%d for this furnishing." % price);return
 	var snapshot:Dictionary=pending_move.snapshot if moving else _build_snapshot(price)
 	var entry:Dictionary={"id":str(pending_move.entry.id) if moving else "placed_%d" % Time.get_ticks_usec(),"kind":kind,"x":p.x,"z":p.z,"rotation":angle}
-	if world.view_level==1:entry["level"]=1
+	if world.view_level>0:entry["level"]=world.view_level
 	entry.merge(Variants.record(data,variant.style,variant.color,variant.size),true)
 	entry.merge(world.surface_placement(kind,p,angle),true)
 	if data.has("hang"):entry["hang"]=world.placement_hang if world.placement_kind==kind else float(data.hang)
@@ -8663,9 +8727,9 @@ func _unhandled_input(event:InputEvent) -> void:
 		if mode in ["live","build"]:
 			match event.keycode:
 				KEY_PAGEUP:
-					if mode=="live" and current_venue=="home":set_live_view_level(1);get_viewport().set_input_as_handled()
+					if mode=="live" and current_venue=="home":set_live_view_level(world.view_level+1);get_viewport().set_input_as_handled()
 				KEY_PAGEDOWN:
-					if mode=="live" and current_venue=="home":set_live_view_level(0);get_viewport().set_input_as_handled()
+					if mode=="live" and current_venue=="home":set_live_view_level(maxi(0,world.view_level-1));get_viewport().set_input_as_handled()
 				KEY_B:set_build_mode(mode!="build")
 				KEY_SPACE:set_game_speed(1 if sim.speed==0 else 0)
 				KEY_1:set_game_speed(1)

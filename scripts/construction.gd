@@ -46,6 +46,8 @@ var last_error:String=""
 ## Why the last staircase search found nowhere to stand, in the player's words.
 ## Set by _nearest_valid_stair and read by the refusal notice.
 var _nearest_valid_stair_reason:String=""
+## Stair searches already made for this building, by spot, turn and storey.
+var _stair_search_cache:Dictionary={}
 var quote_provider:Callable
 var _preview_signature:String=""
 var _wood_floor_materials:Dictionary={}
@@ -123,10 +125,11 @@ func _rebuild_wall(e:Dictionary, supports:Dictionary)->void:
 	elif not pattern.is_empty():_dress_nursery_pattern(node,e,horizontal,length,h,pattern,pieces)
 	world.box(node,Vector3(0,h+.025,0),Vector3(float(e.w)+.025,.05,float(e.d)+.025),"f5efdf")
 	world.box(node,Vector3(0,.055,0),Vector3(float(e.w)+.015,.11,float(e.d)+.015),"f5efdf")
-	if not building_state.is_empty() and not cutaway:
+	if not building_state.is_empty() and (not cutaway or level<_viewed_level()):
 		var supports_upper:bool=false
+		var footing:Rect2=wall_rect(e).grow(-.001)
 		for floor:Dictionary in building_state.floors:
-			if int(floor.level)==level+1 and floor.get("supports",[]).has(str(e.id)):supports_upper=true
+			if int(floor.level)==level+1 and Building.rect(floor).intersects(footing):supports_upper=true
 		if supports_upper:
 			# The 3m storey includes the 16cm slab and a 24cm structural rim over
 			# the declared 2.6m bearing wall. Cutaway hides this with that wall.
@@ -158,7 +161,25 @@ func snapshot() -> Dictionary:
 func has_upper_floor() -> bool:
 	if building_state.is_empty():return false
 	for floor:Dictionary in building_state.floors:
-		if int(floor.level)==1:return true
+		if int(floor.level)>=1:return true
+	return false
+
+## The storey a staircase placed now climbs from. On the ground floor, and on any
+## storey with floor above it, the stairs go up from where the player is building.
+## On the top storey they come up to it from the floor below, which is how a new
+## upstairs is reached. Nothing upstairs is needed either way: a staircase brings
+## its own landing.
+func stair_lower() -> int:
+	if build_level<=0:return 0
+	if build_level<Building.MAX_LEVEL and has_floor(build_level+1):return build_level
+	return build_level-1
+
+## Whether this storey has any floor at all, a staircase landing included.
+func has_floor(level:int) -> bool:
+	if level==0:return true
+	if building_state.is_empty():return false
+	for floor:Dictionary in building_state.floors:
+		if int(floor.level)==level:return true
 	return false
 
 func restore(data: Dictionary) -> void:
@@ -202,7 +223,7 @@ func _render_building() -> void:
 	for floor:Dictionary in building_state.floors:
 		var entry:Dictionary=floor.duplicate(true);entry["color"]=entry.material
 		floor_records.append(entry)
-	for level:int in [0,1]:
+	for level:int in Building.MAX_LEVEL+1:
 		for tile:Dictionary in Building.surface_tiles(building_state,level):
 			var area:Rect2=tile.rect
 			# Keep the authored ground boards/tiles when migrating the starter.
@@ -217,7 +238,11 @@ func _render_building() -> void:
 		node.position=Vector3(float(stair.x),Building.level_y(int(stair.lower)),float(stair.z))
 		node.rotation_degrees.y=float(stair.rotation)
 		node.set_meta("stair_id",str(stair.id));node.set_meta("building_level",int(stair.lower))
-		world.assign_stair_layer(node);stair_nodes[str(stair.id)]=node
+		# The ground staircase shows from every floor it joins; a flight higher
+		# up belongs to the storey it starts from, hidden while looking below it.
+		if int(stair.lower)==0:world.assign_stair_layer(node)
+		else:world.assign_structure_layer(node,int(stair.lower))
+		stair_nodes[str(stair.id)]=node
 		_render_guard(stair)
 	for record:Dictionary in building_state.roofs:
 		var node:Node3D=Roof.create(record);add_child(node);roof_nodes[str(record.id)]=node
@@ -361,7 +386,7 @@ func _render_guard(stair:Dictionary) -> void:
 		# Fascia stays on supported slab, flush with its top, never bridging the hole.
 		var trim:MeshInstance3D=world.box(parent,(first+last)*.5-Vector3(0,.08,0),Vector3(first.distance_to(last),.16,.055),"ae9169")
 		trim.rotation.y=-atan2(last.z-first.z,last.x-first.x);trim.set_meta("guard_trim",true)
-	world.assign_structure_layer(parent,1)
+	world.assign_structure_layer(parent,int(stair.upper))
 
 func validated_state() -> Dictionary:
 	if not building_state.is_empty():return {"ok":true,"state":building_state.duplicate(true)}
@@ -461,10 +486,11 @@ func update_preview(p: Vector3) -> void:
 	if proposal.has("stair_preview"):
 		var stair:Dictionary=proposal.stair_preview
 		var model:Node3D=load("res://assets/models/juniper_stair.glb").instantiate();preview.add_child(model)
-		model.position=Vector3(float(stair.x),Building.GROUND_Y,float(stair.z));model.rotation_degrees.y=float(stair.rotation)
+		var lower:int=int(stair.get("lower",build_level))
+		model.position=Vector3(float(stair.x),Building.level_y(lower),float(stair.z));model.rotation_degrees.y=float(stair.rotation)
 		for mesh:MeshInstance3D in model.find_children("*","MeshInstance3D",true,false):mesh.material_override=preview_mat
-		var footprint:Rect2=Building.stair_rect({"x":stair.x,"z":stair.z,"rotation":stair.rotation,"lower":0})
-		var outline:MeshInstance3D=world.box(preview,Vector3(footprint.get_center().x,3.175,footprint.get_center().y),Vector3(footprint.size.x,.025,footprint.size.y),"397e70")
+		var footprint:Rect2=Building.stair_rect({"x":stair.x,"z":stair.z,"rotation":stair.rotation,"lower":lower})
+		var outline:MeshInstance3D=world.box(preview,Vector3(footprint.get_center().x,Building.level_y(lower+1)+.015,footprint.get_center().y),Vector3(footprint.size.x,.025,footprint.size.y),"397e70")
 		outline.material_override=preview_mat
 
 	if proposal.has("roof_preview"):
@@ -646,29 +672,59 @@ func _nearest_valid_stair(state:Dictionary,p:Vector3)->Dictionary:
 	# staircase body or its opening guard has no slab to stand on, instead of the
 	# one vague sentence that used to cover every cause.
 	_nearest_valid_stair_reason=""
+	var lower:int=stair_lower()
 	const MAX_RING:int=8
 	var rotation:int=posmod(roundi(world.placement_angle),360)
+	# The preview asks every frame while the pointer rests; the answer only changes
+	# with the spot, the turn, the storey or the building, so it is remembered.
+	var key:String="%d|%d|%d|%.2f|%.2f|%s" % [int(state.revision),int(state.next_serial),lower*1000+rotation,snappedf(p.x,.25),snappedf(p.z,.25),str(Building.lot())]
+	if _stair_search_cache.has(key):
+		var known:Dictionary=_stair_search_cache[key]
+		_nearest_valid_stair_reason=str(known.reason)
+		return known.spot.duplicate()
+	var found:Dictionary=_search_stair(state,p,lower,rotation,MAX_RING)
+	if _stair_search_cache.size()>256:_stair_search_cache.clear()
+	_stair_search_cache[key]={"spot":found.duplicate(),"reason":_nearest_valid_stair_reason}
+	return found
+
+## One search outward from the pointer for the nearest spot a staircase fits.
+func _search_stair(state:Dictionary,p:Vector3,lower:int,rotation:int,max_ring:int)->Dictionary:
 	var best:Dictionary={}
 	var best_distance:float=INF
 	var examined_distance:float=INF
-	for ring:int in range(0,MAX_RING+1):
+	for ring:int in range(0,max_ring+1):
 		for step:int in range(-ring,ring+1):
 			# Ring zero is the clicked point itself, so an exact valid click is
 			# never nudged to a neighbour.
 			var offsets:Array=[Vector2.ZERO] if ring==0 else [Vector2(float(step),float(ring)),Vector2(float(step),-float(ring)),Vector2(float(ring),float(step)),Vector2(-float(ring),float(step))]
 			for offset:Vector2 in offsets:
-				var record:Dictionary={"x":snappedf(p.x+offset.x*.25,.25),"z":snappedf(p.z+offset.y*.25,.25),"rotation":rotation}
+				var record:Dictionary={"x":snappedf(p.x+offset.x*.25,.25),"z":snappedf(p.z+offset.y*.25,.25),"rotation":rotation,"lower":lower}
 				var distance:float=Vector2(record.x-p.x,record.z-p.z).length()
 				if distance>=best_distance:continue
 				# Reject the impossible spots with two rectangle tests before
 				# paying for a full structural proposal (about 2.5 ms each).
-				var stair:Dictionary={"x":record.x,"z":record.z,"rotation":rotation,"lower":0,"upper":1}
+				var stair:Dictionary={"x":record.x,"z":record.z,"rotation":rotation,"lower":lower,"upper":lower+1}
 				if not Building.lot().encloses(Building.stair_rect(stair)) or not Building.lot().encloses(Building.landing_rect(stair,false)) or not Building.lot().encloses(Building.landing_rect(stair,true)):
 					_note_stair_refusal(distance,examined_distance,"The staircase and both its landings have to fit inside the lot. Point further in.")
 					examined_distance=minf(examined_distance,distance)
 					continue
-				if not Building.footprint_supported(state,1,Building.stair_rect(stair)):
-					_note_stair_refusal(distance,examined_distance,"A staircase needs upper floor above its whole run. Point at a spot that is under the upper slab.")
+				# No floor is needed upstairs (the staircase brings its own landing),
+				# only something to stand on at its foot.
+				if not Building.footprint_supported(state,lower,Building.stair_rect(stair),lower==0):
+					_note_stair_refusal(distance,examined_distance,"A staircase needs floor beneath its whole run. Point over the floor of this storey.")
+					examined_distance=minf(examined_distance,distance)
+					continue
+				# Walls across the run or a landing, on either storey, and another
+				# flight in the way are rectangle tests too: no proposal needed.
+				if Building.blocked_rect(state,lower,Building.stair_rect(stair),false) or Building.blocked_rect(state,lower,Building.landing_rect(stair,false),false) or Building.blocked_rect(state,lower+1,Building.stair_rect(stair),false) or Building.blocked_rect(state,lower+1,Building.landing_rect(stair,true),false):
+					_note_stair_refusal(distance,examined_distance,"A wall is in the way of the run or a landing. Point clear of the wall.")
+					examined_distance=minf(examined_distance,distance)
+					continue
+				var crowded:bool=false
+				for other:Dictionary in state.stairs:
+					if int(other.lower)==lower and (Building.stair_rect(stair).grow(.01).intersects(Building.stair_rect(other)) or Building.landing_rect(stair,false).intersects(Building.stair_rect(other)) or Building.landing_rect(stair,true).intersects(Building.stair_rect(other))):crowded=true;break
+				if crowded:
+					_note_stair_refusal(distance,examined_distance,"Another staircase is too close. Leave a clear run and landing for each one.")
 					examined_distance=minf(examined_distance,distance)
 					continue
 				var attempt:Dictionary=Building.propose(state,{"op":"add","collection":"stairs","record":record.duplicate(true)},1000000)
@@ -693,78 +749,29 @@ func _note_stair_refusal(distance:float,examined:float,reason:String)->void:
 ## Returns "" when the sentence is not one this tool recognises, so a caller can
 ## keep the validator's own words rather than replacing them with a guess.
 func _stair_refusal_hint(error:String)->String:
-	if error.contains("beyond the lot") or error.contains("outside an upper slab"):return "The staircase and both its landings have to fit inside the lot, with upper floor over the opening. Point further in."
+	if error.contains("beyond the lot") or error.contains("outside an upper slab"):return "The staircase and both its landings have to fit inside the lot. Point further in."
 	if error.contains("furnishing") or error.contains("wall or stair run"):return "A furnishing, wall or existing staircase is in the way. Move it clear of the run and both landings."
-	if error.contains("no continuous floor support"):return "The run and its landings each need floor beneath them. Point over floor on both storeys."
+	if error.contains("no continuous floor support"):return "The run and its foot need floor beneath them. Point over the floor of this storey."
 	if error.contains("guard") or error.contains("slab beneath its full guard"):return "Leave the slab clear around the opening so the rail and its posts have floor to stand on."
 	if error.contains("blocks a stair or landing"):return "A wall is in the way of the run or a landing. Point clear of the wall."
 	if error.contains("overlap") or error.contains("blocks another stair"):return "Another staircase is too close. Leave a clear run and landing for each one."
 	if error.contains("upper wall needs continuous floor"):return "An upper wall has no floor beneath part of it. Finish the upper slab before adding that wall."
+	if error.contains("roof's full height envelope") or error.contains("intersects the roof"):return "The roof is in the way of the stairs' landing upstairs. Use Add storey first: it raises the walls and lifts the roof onto the new floor."
 	if error.contains("Lifelet"):return error
 	return ""
 
 
-func _supported_upper_slab(state:Dictionary, area:Rect2) -> Dictionary:
-	# The slab must rest on two complete opposite ground walls. Instead of
-	# refusing a drag that runs past them, take the largest rectangle spanned by
-	# a pair of opposite bearing walls and clip it to what the player dragged:
-	# one rough rectangle then buys the whole floor instead of having to trace it.
-	var walls:Array=[]
-	for wall:Dictionary in state.walls:
-		if int(wall.level)!=0 or float(wall.height)<2.6:continue
-		var r:Rect2=Building.rect(wall)
-		if minf(r.size.x,r.size.y)>.20:continue
-		walls.append({"id":str(wall.id),"rect":r,"cx":r.get_center().x,"cz":r.get_center().y})
-	var best:Dictionary={};var best_area:float=0.0
-	for first:Dictionary in walls:
-		for second:Dictionary in walls:
-			if str(first.id)==str(second.id):continue
-			var a:Rect2=first.rect;var b:Rect2=second.rect
-			var slab:=Rect2()
-			if a.size.x>a.size.y and b.size.x>b.size.y:
-				# Two walls running along x, facing each other across z.
-				var low:float=minf(first.cz,second.cz);var high:float=maxf(first.cz,second.cz)
-				var left:float=maxf(a.position.x,b.position.x);var right:float=minf(a.end.x,b.end.x)
-				slab=Rect2(maxf(left,area.position.x),maxf(low,area.position.y),minf(right,area.end.x)-maxf(left,area.position.x),minf(high,area.end.y)-maxf(low,area.position.y))
-			elif a.size.y>=a.size.x and b.size.y>=b.size.x:
-				# Two walls running along z, facing each other across x.
-				var low2:float=minf(first.cx,second.cx);var high2:float=maxf(first.cx,second.cx)
-				var bottom:float=maxf(a.position.y,b.position.y);var top:float=minf(a.end.y,b.end.y)
-				slab=Rect2(maxf(low2,area.position.x),maxf(bottom,area.position.y),minf(high2,area.end.x)-maxf(low2,area.position.x),minf(top,area.end.y)-maxf(bottom,area.position.y))
-			else:continue
-			if slab.size.x<.5 or slab.size.y<.5:continue
-			var trial:Dictionary={"level":1,"x":slab.get_center().x,"z":slab.get_center().y,"w":slab.size.x,"d":slab.size.y,
-				"material":"cfa97e","supports":[str(first.id),str(second.id)]}
-			if not Building._perimeter_support_error(state,trial,0).is_empty():continue
-			if not Building.validate(_state_with_floor(state,trial)).is_empty():continue
-			if slab.get_area()>best_area:best_area=slab.get_area();best=trial
-	return best
-
-
-func _fit_to_ground_support(state:Dictionary, area:Rect2) -> Dictionary:
-	# The wall centrelines run a half-thickness past the ground slab, so a slab
-	# traced straight along them overhangs the floor below by a few centimetres
-	# and would be refused. Intersect each candidate with the lower floors and
-	# keep the largest fit that both rests on its two walls and stays supported.
-	var best:Dictionary={};var best_area:float=0.0
+## The part of a dragged upper floor that stands over the floor below it: the
+## rectangle itself when it already does, otherwise its largest overlap with one
+## of the floors (and the walls on them) of the storey below.
+func _fit_over_floor_below(state:Dictionary,area:Rect2)->Rect2:
+	if Building._footing(state,build_level-1,area):return area
+	var best:=Rect2();var best_area:float=0.0
 	for floor:Dictionary in state.floors:
-		if int(floor.level)!=0:continue
+		if int(floor.level)!=build_level-1:continue
 		var clipped:Rect2=area.intersection(Building.rect(floor))
-		if clipped.size.x<.5 or clipped.size.y<.5:continue
-		var fitted:Dictionary=_supported_upper_slab(state,clipped)
-		if fitted.is_empty():continue
-		var fit_area:float=float(fitted.w)*float(fitted.d)
-		if fit_area>best_area:best_area=fit_area;best=fitted
+		if clipped.get_area()>best_area and Building._footing(state,build_level-1,clipped):best=clipped;best_area=clipped.get_area()
 	return best
-
-
-func _state_with_floor(state:Dictionary, record:Dictionary) -> Dictionary:
-	var trial:Dictionary=state.duplicate(true)
-	var copy:Dictionary=record.duplicate(true)
-	copy["id"]=Building._new_id(trial,"floors")
-	trial.floors.append(copy)
-	return trial
-
 
 func _make_level_proposal(p:Vector3)->Dictionary:
 	var state_result:Dictionary=validated_state()
@@ -775,28 +782,27 @@ func _make_level_proposal(p:Vector3)->Dictionary:
 		var spot:Dictionary=_nearest_valid_stair(state,p)
 		if spot.is_empty():
 			var why:String=_nearest_valid_stair_reason
-			if why.is_empty():why="No staircase fits here yet. Point at clear upper floor beside the opening; R rotates."
+			if why.is_empty():why="No staircase fits here yet. Point at clear floor with room for the run and its landings; R rotates."
 			return {"valid":false,"error":why}
-		var record:Dictionary={"x":spot.x,"z":spot.z,"rotation":spot.rotation}
+		var record:Dictionary={"x":spot.x,"z":spot.z,"rotation":spot.rotation,"lower":int(spot.get("lower",stair_lower()))}
 		operation={"op":"add","collection":"stairs","record":record};view["stair_preview"]=record
 	elif tool=="floor":
 		if not anchored:return {}
 		var width:float=absf(p.x-anchor.x);var depth:float=absf(p.z-anchor.z)
 		if width<.5 or depth<.5:return {"valid":false,"error":"Choose a floor rectangle at least half a metre wide and deep."}
-		var record:Dictionary={"level":build_level,"x":(p.x+anchor.x)*.5,"z":(p.z+anchor.z)*.5,"w":width,"d":depth,"material":"cfa97e"}
+		# An upper floor needs no bearing walls, only floor below it to stand over.
+		# A rough drag that runs past the floor below is trimmed to it, so one
+		# rectangle over the rooms buys the whole floor rather than being refused.
+		var dragged:=Rect2(Vector2(minf(p.x,anchor.x),minf(p.z,anchor.z)),Vector2(width,depth))
+		if build_level>=1:dragged=_fit_over_floor_below(state,dragged)
+		if dragged.size.x<.5 or dragged.size.y<.5:view["error"]="An upper floor must stand over the floor of the storey below it. Drag over the rooms below.";return view
+		var record:Dictionary={"level":build_level,"x":dragged.get_center().x,"z":dragged.get_center().y,"w":dragged.size.x,"d":dragged.size.y,"material":"cfa97e"}
 		view["floors"]=[record]
-		if build_level==1:
-			# The slab rests on two complete opposite bearing walls. A drag that
-			# runs past them is fitted to the largest supported span, so a rough
-			# rectangle still buys the whole floor instead of being refused.
-			var fitted:Dictionary=_fit_to_ground_support(state,Rect2(Vector2(minf(p.x,anchor.x),minf(p.z,anchor.z)),Vector2(width,depth)))
-			if fitted.is_empty():view["error"]="An upper floor needs two complete opposite bearing walls below it. Enclose the room below with walls first (a closed room works), or drag a smaller rectangle over a walled room.";return view
-			record=fitted
-			view["floors"]=[record]
 		operation={"op":"add","collection":"floors","record":record}
 	else:
 		var selected:Dictionary={}
 		for stair:Dictionary in state.stairs:
+			if int(stair.lower)!=build_level and int(stair.upper)!=build_level:continue
 			if Building.stair_rect(stair).grow(.1).has_point(Vector2(p.x,p.z)):selected=stair;view["stair_preview"]=stair;break
 		if selected.is_empty():
 			for index:int in range(state.floors.size()-1,-1,-1):
@@ -832,12 +838,6 @@ func _convert_proposal(data:Dictionary) -> Dictionary:
 	for floor:Dictionary in data.get("floors",[]):
 		var record:Dictionary=floor.duplicate(true)
 		record["id"]=Building._new_id(state,"floors");record["level"]=build_level;record["material"]=record.get("color","cfa97e");record.erase("color")
-		if build_level==1:
-			for first:Dictionary in state.walls:
-				for second:Dictionary in state.walls:
-					record["supports"]=[str(first.id),str(second.id)]
-					if Building._perimeter_support_error(state,record,0).is_empty():break
-				if Building._perimeter_support_error(state,record,0).is_empty():break
 		state.floors.append(record)
 	state.revision=int(state.revision)+1
 	var error:String=Building.validate(state)
@@ -956,9 +956,15 @@ func _dress_nursery_pattern(node:Node3D,entry:Dictionary,horizontal:bool,_length
 		if not horizontal:panel.rotation_degrees.y=90.0
 		world._apply_variant_colour(panel,data,{"style":pattern,"color":str(entry.get("color",entry.get("material","8faf9f"))),"size":""})
 
+## How tall a wall is drawn. Lowering the walls cuts away the storey being looked
+## at (and any above it); the storeys below keep their walls at full height, so
+## the floor in view stands on real walls rather than floating over low ones.
 func _visible_wall_height(entry:Dictionary)->float:
 	var height:float=float(entry.height)
-	return minf(.65,height) if cutaway else height
+	return minf(.65,height) if cutaway and int(entry.get("level",0))>=_viewed_level() else height
+
+func _viewed_level()->int:
+	return int(world.get("view_level")) if is_instance_valid(world) and world.get("view_level")!=null else 0
 
 ## Test the displayed wall volume, including the low strip in cutaway. No
 ## physical collider is needed: navigation continues to use the full wall.

@@ -11,6 +11,7 @@ const Navigation=preload("res://scripts/lot_navigation.gd")
 const Protection=preload("res://scripts/build_protection.gd")
 const Variants=preload("res://scripts/catalog_variants.gd")
 const Upstairs=preload("res://scripts/upstairs_presets.gd")
+const Storeys=preload("res://scripts/storey_edits.gd")
 var app:Node
 var _busy:bool=false
 var _cache_key:String=""
@@ -75,6 +76,7 @@ func prepare(operation:Dictionary,force:bool=false)->Dictionary:
 func _propose(state:Dictionary,operation:Variant,funds:Variant,original_plants:Array=[])->Dictionary:
 	var quote:Dictionary
 	if operation is Dictionary and operation.get("op")=="upstairs_preset":quote=Upstairs.propose(state,operation,funds)
+	elif operation is Dictionary and operation.get("op")==Storeys.OP:quote=Storeys.propose(state,operation,funds)
 	elif operation is Dictionary and operation.get("op")=="roof_edit":quote=RoofEdits.propose(state,operation,funds)
 	elif operation is Dictionary and operation.get("op")=="structure":quote=Edits.propose(state,operation,funds)
 	else:quote=Building.propose(state,operation,funds)
@@ -356,12 +358,13 @@ func _layout_candidate_error(before:Dictionary,after:Dictionary,layout:Array)->S
 		if app.world.lot_navigation.point_clear(level,at) and not candidate.point_clear(level,at):return "Leave the Lifelet’s current standing space open."
 		var body:=Rect2(Vector2(at.x,at.z)-Vector2(.30,.30),Vector2(.60,.60))
 		for stair:Dictionary in changed_stairs:
-			if Building.stair_rect(stair).intersects(body) or Building.landing_rect(stair,level==1).intersects(body):return "A Lifelet is using the staircase or its landing. Leave that space clear."
+			if level!=int(stair.lower) and level!=int(stair.upper):continue
+			if Building.stair_rect(stair).intersects(body) or Building.landing_rect(stair,level==int(stair.upper)).intersects(body):return "A Lifelet is using the staircase or its landing. Leave that space clear."
 		var support:=Rect2(Vector2(at.x,at.z)-Vector2(.16,.16),Vector2(.32,.32))
 		if not Building.footprint_supported(after,level,support,level==0):return "This change would remove the floor beneath a Lifelet."
 		if Building.blocked_rect(after,level,support) and not Building.blocked_rect(before,level,support):return "This change would build through a Lifelet's standing space."
 		var route:Dictionary=candidate.route(Navigation.floor_location(level,at),Navigation.floor_location(0,exit_at))
-		if level==1 and not bool(route.ok):return "Keep a clear staircase and route home for the Lifelets upstairs."
+		if level>=1 and not bool(route.ok):return "Keep a clear staircase and route home for the Lifelets upstairs."
 		if level==0:
 			var original:Dictionary=app.world.lot_navigation.route(Navigation.floor_location(0,at),Navigation.floor_location(0,exit_at))
 			if bool(original.ok) and not bool(route.ok):return "This change would block a Lifelet's route out of the home."

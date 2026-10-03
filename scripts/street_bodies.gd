@@ -134,7 +134,7 @@ func _spawn(passer: Dictionary) -> Node3D:
 func _pick_body(body: Node3D, passer: Dictionary) -> void:
 	var pick := StaticBody3D.new()
 	pick.name = "PasserPick"
-	pick.collision_layer = LifeWorld.PICK_GROUND | LifeWorld.PICK_UPPER
+	pick.collision_layer = LifeWorld.all_pick_layers()
 	pick.input_ray_pickable = true
 	pick.set_meta("item_id", str(passer.id))
 	body.add_child(pick)
@@ -155,7 +155,7 @@ func _set_pickable(body: Node3D, _id: String, live: bool) -> void:
 	var pick: StaticBody3D = body.get_node_or_null("PasserPick") as StaticBody3D
 	if pick == null:
 		return
-	pick.collision_layer = (LifeWorld.PICK_GROUND | LifeWorld.PICK_UPPER) if live else 0
+	pick.collision_layer = LifeWorld.all_pick_layers() if live else 0
 
 
 ## A lead between the walker's hand and the dog's collar.

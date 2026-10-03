@@ -115,8 +115,13 @@ func _create(opening:Dictionary,fixture:Dictionary)->Dictionary:
 func set_cutaway(value:bool)->void:
 	lowered=value
 	for door:Dictionary in doors.values():
-		door.root.visible=not value
-		if is_instance_valid(door.get("fixture_hinge")):door.fixture_hinge.visible=not value
+		# Lowered walls take their doors with them only on the storey in view and
+		# above; a door on a floor below stands in its full-height wall.
+		var level:int=roundi((door.root.global_position.y-LifeBuildingState.GROUND_Y)/LifeBuildingState.RISE) if door.root.is_inside_tree() else 0
+		var viewed:int=int(world.get("view_level")) if is_instance_valid(world) and world.get("view_level")!=null else 0
+		var hidden:bool=value and level>=viewed
+		door.root.visible=not hidden
+		if is_instance_valid(door.get("fixture_hinge")):door.fixture_hinge.visible=not hidden
 
 func _open(door:Dictionary,progress:float)->void:
 	door.progress=clampf(progress,0.0,1.0)

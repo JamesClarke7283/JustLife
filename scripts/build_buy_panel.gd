@@ -39,6 +39,9 @@ static func draw(app:Node)->void:
 	for option:Array in [["Warm oak","cfa97e"],["Pale stone","dcd6c6"],["Walnut","896953"]]:
 		action(app,finishes,option[0],app.change_floor.bind(option[1]),construction.tool=="floor_finish" and construction.floor_finish_color==option[1])
 	action(app,finishes,"Full house" if app.world.cutaway else "Lower walls",app.toggle_house_view)
+	var storey:Button=action(app,finishes,"Add storey",app.show_add_storey,false,124)
+	storey.name="AddStorey"
+	storey.tooltip_text="Raise the house a storey: a new floor, the outer walls and the roof go up together. Four storeys at most."
 	if construction.tool=="paint":
 		var styles:HBoxContainer=row(body)
 		for palette:String in ["home","nursery"]:

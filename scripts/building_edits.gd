@@ -24,7 +24,7 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 	if not operation is Dictionary or operation.get("op")!="structure" or not Building.number(funds,0,1e9,true):return _error("Invalid structure edit.")
 	if int(current.revision)>=1000000000:return _error("Building revision limit reached.")
 	var tool:Variant=operation.get("tool");var level:Variant=operation.get("level")
-	if not tool is String or tool not in ["wall","room","door","erase","finish","paint","carpet","floor_finish","room_pack","grab"] or not Building.number(level,0,1,true):return _error("Invalid structure tool or level.")
+	if not tool is String or tool not in ["wall","room","door","erase","finish","paint","carpet","floor_finish","room_pack","grab"] or not Building.number(level,0,Building.MAX_LEVEL,true):return _error("Invalid structure tool or level.")
 	var after:Dictionary=current.duplicate(true);var cost:int=0
 	if tool=="room_pack":
 		var built:Dictionary=_room_pack(after,operation,int(level))
@@ -71,15 +71,9 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 			var before_area:float=Building._union_area(Building._rects(current,"floors",int(level)))
 			after.floors.append(floor)
 			var added_area:float=Building._union_area(Building._rects(after,"floors",int(level)))-before_area
+			# An upper room needs no bearing walls beneath it, only the storey below
+			# to stand over, which the validation of the whole building checks.
 			if added_area<=Building.EPS:after.floors.pop_back()
-			elif int(level)==1:
-				var supported:bool=false
-				for first:Dictionary in after.walls:
-					for second:Dictionary in after.walls:
-						floor["supports"]=[str(first.id),str(second.id)]
-						if Building._perimeter_support_error(after,floor,0).is_empty():supported=true;break
-					if supported:break
-				if not supported:return _error("An upper room needs a supported floor or two complete opposite bearing walls below.")
 			floor_cost=maxf(0.0,added_area)*12
 		# A room built against an existing room shares that wall rather than
 		# building a second one on top of it: two rooms side by side are divided
@@ -276,12 +270,15 @@ static func _extend_wall_floor(state:Dictionary,horizontal:bool,old_line:float,n
 			var finish:Dictionary=original.duplicate(true)
 			_write_rect(finish,Rect2(low_finish,start,high_finish-low_finish,end-start) if horizontal else Rect2(start,low_finish,end-start,high_finish-low_finish))
 			finishes.append(finish)
-		if level==1:
-			# Keep the slab's bearing edges intact, then verify its expanded support.
+		if level>=1:
+			# An upper slab grows with the wall pushed out; it needs no bearing
+			# walls beneath, only the storey below to stand over.
 			strip=area.merge(strip)
 			_write_rect(floor,strip)
+			# A grown landing is no longer just the stairs' own: it becomes an
+			# ordinary floor that must stand over the storey below.
+			floor.erase("landing_for")
 			if not finishes.is_empty():floor["finish_regions"]=floor.get("finish_regions",[])+finishes
-			if not _bind_floor_support(state,floor):return "Extend the supporting ground floor and bearing walls before the upper wall."
 		else:
 			_write_rect(extended,strip);extended.id=Building._new_id(state,"floors")
 			if not finishes.is_empty():extended["finish_regions"]=finishes

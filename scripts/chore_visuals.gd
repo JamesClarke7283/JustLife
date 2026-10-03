@@ -319,7 +319,7 @@ func sparkle(flow: Node, at: Vector3, toward: Vector3, along: Vector3) -> void:
 	root.name = "Sparkle"
 	app.world.house.add_child(root)
 	root.global_position = at
-	app.world.assign_structure_layer(root, clampi(roundi((at.y - LifeBuildingState.GROUND_Y) / LifeBuildingState.RISE), 0, 1))
+	app.world.assign_structure_layer(root, clampi(roundi((at.y - LifeBuildingState.GROUND_Y) / LifeBuildingState.RISE), 0, LifeBuildingState.MAX_LEVEL))
 	for index: int in 9:
 		var bit: MeshInstance3D = MeshInstance3D.new()
 		var mesh: SphereMesh = SphereMesh.new()

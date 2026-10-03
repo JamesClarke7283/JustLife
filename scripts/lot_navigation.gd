@@ -14,15 +14,31 @@ var _stair_edges:Dictionary={}
 var generation:int=0
 var penalties:Dictionary={}
 # Derived geometry belongs to the same immutable rebuild as the graph.
-var _support_surfaces:Array=[[],[]]
-var _support_holes:Array=[[],[]]
-var _blockers:Array=[[],[]]
+var _support_surfaces:Array=_per_level()
+var _support_holes:Array=_per_level()
+var _blockers:Array=_per_level()
 # Who owns each rectangle in `_blockers`, index for index: a placed item (by its
 # own id, however many solid bands it has), a wall, a staircase or an object
 # that is not furniture (the parked food truck). Blocked-route notices read it.
-var _blocker_sources:Array=[[],[]]
+var _blocker_sources:Array=_per_level()
 const ITEM_COST:float=6.0    # weight of a cell a placed item covers, in `blocker_between`
 const HARD_COST:float=40.0   # weight of a wall or staircase cell: crossed only when nothing else joins the two spots
+
+## One empty list for every storey a home can have.
+static func _per_level()->Array:
+	var lists:Array=[]
+	for level:int in Building.MAX_LEVEL+1:lists.append([])
+	return lists
+
+## The storeys that have anything to walk on: the ground, and every level with a
+## floor. An empty storey adds no graph points, so a tall house costs no more to
+## route than the floors it really has.
+func _levels()->Array:
+	var levels:Array=[0]
+	for floor:Dictionary in _state.get("floors",[]):
+		if not levels.has(int(floor.level)):levels.append(int(floor.level))
+	levels.sort()
+	return levels
 
 func rebuild(state:Variant,obstacles:Variant=[]) -> Dictionary:
 	var error:String=Building.validate(state)
@@ -30,7 +46,7 @@ func rebuild(state:Variant,obstacles:Variant=[]) -> Dictionary:
 	if not obstacles is Array or obstacles.size()>512:return {"ok":false,"error":"Invalid navigation obstacles."}
 	var identities:Dictionary={}
 	for item:Variant in obstacles:
-		if not item is Dictionary or not Building.identifier(item.get("id")) or identities.has(item.id) or not Building.number(item.get("level"),0,1,true):return {"ok":false,"error":"Invalid obstacle identity or level."}
+		if not item is Dictionary or not Building.identifier(item.get("id")) or identities.has(item.id) or not Building.number(item.get("level"),0,Building.MAX_LEVEL,true):return {"ok":false,"error":"Invalid obstacle identity or level."}
 		identities[item.id]=true
 		if not Building._rect_error(item).is_empty():return {"ok":false,"error":"Invalid obstacle footprint."}
 	# Build off to the side: even a valid schema can have a blocked stair landing.
@@ -57,7 +73,7 @@ func _add(point:Vector3,location:Dictionary) -> int:
 
 func _build_graph() -> Dictionary:
 	_prepare_geometry()
-	for level:int in [0,1]:
+	for level:int in _levels():
 		var cells:Rect2i=Building.cell_range()
 		for x:int in range(cells.position.x,cells.end.x):
 			for z:int in range(cells.position.y,cells.end.y):
@@ -87,8 +103,8 @@ func _build_graph() -> Dictionary:
 		# staircase that no route ever used.
 		var start:Vector3=Building.stair_point(stair,-.5)
 		var finish:Vector3=Building.stair_point(stair,Building.STAIR_RUN+.5,Building.RISE)
-		var first:String=_cell_key(0,Vector2i(roundi(start.x/CELL),roundi(start.z/CELL)))
-		var last:String=_cell_key(1,Vector2i(roundi(finish.x/CELL),roundi(finish.z/CELL)))
+		var first:String=_cell_key(int(stair.lower),Vector2i(roundi(start.x/CELL),roundi(start.z/CELL)))
+		var last:String=_cell_key(int(stair.upper),Vector2i(roundi(finish.x/CELL),roundi(finish.z/CELL)))
 		if not _floor_ids.has(first) or not _floor_ids.has(last):continue
 		var run_blocked:bool=false
 		for obstacle:Dictionary in _obstacles:
@@ -107,8 +123,8 @@ func _build_graph() -> Dictionary:
 	return {"ok":true}
 
 func _prepare_geometry()->void:
-	_support_surfaces=[[],[]];_support_holes=[[],[]];_blockers=[[],[]];_blocker_sources=[[],[]]
-	for level:int in [0,1]:
+	_support_surfaces=_per_level();_support_holes=_per_level();_blockers=_per_level();_blocker_sources=_per_level()
+	for level:int in Building.MAX_LEVEL+1:
 		var surfaces:Array=Building._rects(_state,"floors",level)
 		# Bearings are computed from the original slabs and openings once.
 		surfaces.append_array(Building._wall_bearing_rects(_state,level))
@@ -134,7 +150,7 @@ func _bounds_clear(level:int,bounds:Rect2)->bool:
 	return true
 
 func point_clear(level:int,point:Vector3,half:Vector2=Vector2(RADIUS,RADIUS)) -> bool:
-	if _state.is_empty() or level not in [0,1] or not point.is_finite() or absf(point.y-Building.level_y(level))>.00001 or half.x<=0 or half.y<=0:return false
+	if _state.is_empty() or level<0 or level>Building.MAX_LEVEL or not point.is_finite() or absf(point.y-Building.level_y(level))>.00001 or half.x<=0 or half.y<=0:return false
 	return _bounds_clear(level,Rect2(Vector2(point.x,point.z)-half,half*2))
 
 func _segment_bounds_clear(level:int,from:Vector3,to:Vector3)->bool:
@@ -186,7 +202,7 @@ func boundary_entry(point:Vector3) -> Vector3:
 	return best
 
 func _endpoint(value:Variant) -> Dictionary:
-	if not value is Dictionary or value.get("kind")!="floor" or not Building.number(value.get("level"),0,1,true):return {"ok":false,"error":"Route endpoint requires an explicit floor level."}
+	if not value is Dictionary or value.get("kind")!="floor" or not Building.number(value.get("level"),0,Building.MAX_LEVEL,true):return {"ok":false,"error":"Route endpoint requires an explicit floor level."}
 	var point:Variant=value.get("position")
 	if point is Array:
 		if point.size()!=3:return {"ok":false,"error":"Invalid route position."}
@@ -344,7 +360,7 @@ func _disable_occupied_points(start:Vector3,occupied:Array[Vector3],radius:float
 		# the exact original 3D distance and floor-height tests decide every node.
 		var low:=Vector2i(floori((float(body.x)-radius)/CELL)-1,floori((float(body.z)-radius)/CELL)-1)
 		var high:=Vector2i(ceili((float(body.x)+radius)/CELL)+1,ceili((float(body.z)+radius)/CELL)+1)
-		for level:int in [0,1]:
+		for level:int in Building.MAX_LEVEL+1:
 			for x:int in range(low.x,high.x+1):
 				for z:int in range(low.y,high.y+1):
 					var key:String=_cell_key(level,Vector2i(x,z))
@@ -389,7 +405,7 @@ func blockers_touching(level:int,area:Rect2)->Array:
 	# A placed item sorts ahead of a wall at the same distance: it is the one a
 	# player can move.
 	var found:Array=[]
-	if level not in [0,1]:return found
+	if level<0 or level>Building.MAX_LEVEL:return found
 	var centre:=area.get_center()
 	for index:int in range(_blockers[level].size()):
 		var footprint:Rect2=_blockers[level][index]
@@ -421,7 +437,10 @@ func blocker_between(from_level:int,from:Vector3,to_level:int,to:Vector3,ignore:
 	# among several ringing it, the one closest to it). A wall only when the
 	# two spots are closed off by walls alone, and {} when nothing solid is
 	# responsible. `ignore` lists item ids that are the goal itself.
-	if _state.is_empty() or from_level not in [0,1] or to_level not in [0,1] or not from.is_finite() or not to.is_finite():return {}
+	if _state.is_empty() or from_level<0 or from_level>Building.MAX_LEVEL or to_level<0 or to_level>Building.MAX_LEVEL or not from.is_finite() or not to.is_finite():return {}
+	# Naming a blocker follows one staircase; across several flights the route is
+	# described in general terms rather than naming the wrong thing.
+	if absi(from_level-to_level)>1:return {}
 	if from_level!=to_level:return _stair_blocker(from_level,from,to_level,to,ignore)
 	return _level_blocker(from_level,from,to,ignore)
 
@@ -501,6 +520,7 @@ func _stair_blocker(from_level:int,from:Vector3,to_level:int,to:Vector3,ignore:A
 	for stair:Dictionary in _state.stairs:
 		var foot:Vector3=Building.stair_point(stair,-.5)
 		var head:Vector3=Building.stair_point(stair,Building.STAIR_RUN+.5,Building.RISE)
+		if from_level!=int(stair.lower) and from_level!=int(stair.upper):continue
 		var up:bool=from_level==int(stair.lower)
 		var entry:Vector3=foot if up else head
 		var reach:float=Vector2(from.x-entry.x,from.z-entry.z).length()

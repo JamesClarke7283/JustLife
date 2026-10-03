@@ -396,7 +396,7 @@ func _surface_slot(host:Dictionary,half:Vector2,except_id:String="") -> Vector3:
 
 func _floor_level(at:Vector3) -> int:
 	if not at.is_finite():return -1
-	for level:int in [0,1]:
+	for level:int in Building.MAX_LEVEL+1:
 		if absf(at.y-Building.level_y(level))<.025:return level
 	# Authored wood, tile, foundation and lawn tops lie below navigationY.
 	# No upper/stair point is rounded down through a floor.
@@ -404,7 +404,7 @@ func _floor_level(at:Vector3) -> int:
 	return -1
 
 func _host_level(host:Dictionary) -> int:
-	if Building.number(host.get("level"),0,1,true):return int(host.level)
+	if Building.number(host.get("level"),0,Building.MAX_LEVEL,true):return int(host.level)
 	return _floor_level(host.node.global_position) if is_instance_valid(host.get("node")) else -1
 
 func _food_level(value:Dictionary,host:Dictionary={}) -> int:
@@ -1002,7 +1002,7 @@ func sync_world(reconcile:bool=true) -> void:
 		var body:StaticBody3D=view.get_node("FoodPicking") if view.has_node("FoodPicking") else view.get_child(view.get_child_count()-1)
 		var level:int=_food_level(value,host)
 		var held:bool=not str(value.owner).is_empty() and (str(value.storage)=="carried" or (str(value.storage)=="table" and str(value.host).is_empty()))
-		var mask:int=(LifeWorld.VIEW_ACTOR_GROUND|LifeWorld.VIEW_ACTOR_UPPER) if level<0 else ((LifeWorld.VIEW_ACTOR_GROUND if level==0 else LifeWorld.VIEW_ACTOR_UPPER) if held else (LifeWorld.VIEW_GROUND if level==0 else LifeWorld.VIEW_UPPER))
+		var mask:int=LifeWorld.all_actor_layers() if level<0 else (LifeWorld.actor_layer(level) if held else LifeWorld.view_layer(level))
 		app.world._assign_layers(view,mask)
 		var entry:Dictionary=item(key)
 		entry["food_host"]=str(value.host)
@@ -1010,7 +1010,7 @@ func sync_world(reconcile:bool=true) -> void:
 		entry["surface_half"]=_footprint(value)
 		if level>=0:entry["level"]=level
 		else:entry.erase("level")
-		body.collision_layer=((LifeWorld.PICK_GROUND if level==0 else LifeWorld.PICK_UPPER)|LifeWorld.PICK_SURFACE) if level>=0 and view.visible and str(value.storage) not in ["carried","table"] else 0
+		body.collision_layer=(LifeWorld.pick_layer(level)|LifeWorld.PICK_SURFACE) if level>=0 and view.visible and str(value.storage) not in ["carried","table"] else 0
 		var food_view:Node3D=view.find_child("Food",true,false)
 		food_view.visible=not value.has("batch") or float(value.progress)<1.0
 		if value.has("batch"):food_view.scale=Vector3(1.0,maxf(.05,1.0-float(value.progress)*.85),1.0)

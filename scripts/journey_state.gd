@@ -21,7 +21,7 @@ static func vector(value:Array)->Vector3:return Vector3(float(value[0]),float(va
 static func packed(value:Vector3)->Array:return [value.x,value.y,value.z]
 
 static func level(point:Vector3)->int:
-	for floor:int in [0,1]:
+	for floor:int in Building.MAX_LEVEL+1:
 		if absf(point.y-Building.level_y(floor))<.00001:return floor
 	return -1
 
@@ -64,7 +64,7 @@ static func rear_extent(profile:Dictionary,direction:int)->float:
 	return (value.x if direction==1 else value.y)*clampf(float(profile.get("body_scale",1.0)),.85,1.15)
 
 static func stair_plan(stair:Dictionary,profile:Dictionary,direction:int)->Dictionary:
-	var transform:=Transform3D(Basis(Vector3.UP,deg_to_rad(float(stair.rotation))),Vector3(float(stair.x),Building.level_y(0),float(stair.z)))
+	var transform:=Transform3D(Basis(Vector3.UP,deg_to_rad(float(stair.rotation))),Vector3(float(stair.x),Building.level_y(int(stair.get("lower",0))),float(stair.z)))
 	var extent:float=rear_extent(profile,direction)
 	if extent<=0:return {}
 	return Gait.plan(transform,direction,extent)
@@ -124,7 +124,7 @@ static func validate(data:Variant,household:Dictionary)->Dictionary:
 	var context:Variant=selected.get("world_state",{})
 	if not context is Dictionary:return {"ok":false,"error":"Missing saved world context."}
 	var venue:Variant=context.get("venue","home")
-	if context.has("view_level") and not number(context.view_level,0,1,true):return {"ok":false,"error":"Invalid saved visible floor."}
+	if context.has("view_level") and not number(context.view_level,0,Building.MAX_LEVEL,true):return {"ok":false,"error":"Invalid saved visible floor."}
 	if not venue is String or not LifeNeighborhood.has(venue):return {"ok":false,"error":"Invalid saved venue."}
 	# The household's land is checked and applied before any layout is validated,
 	# because every rectangle in a layout is bounded by the lot the household

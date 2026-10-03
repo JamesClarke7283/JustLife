@@ -931,6 +931,8 @@
     "scripts/stage_policy.gd.uid",
     "scripts/stair_gait.gd",
     "scripts/stair_gait.gd.uid",
+    "scripts/storey_edits.gd",
+    "scripts/storey_edits.gd.uid",
     "scripts/street_bodies.gd",
     "scripts/street_bodies.gd.uid",
     "scripts/street_life.gd",

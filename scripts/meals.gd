@@ -282,7 +282,7 @@ static func _saved_floor_error(value:Dictionary,layout:Array) -> String:
 	var at:=Vector3(float(value.position[0]),float(value.position[1]),float(value.position[2]))
 	var level:int=-1;var terrain:bool=absf(at.y-(-.148))<.012 or absf(at.y-(-.093))<.012
 	if terrain:level=0
-	for candidate:int in [0,1]:
+	for candidate:int in Building.MAX_LEVEL+1:
 		if absf(at.y-(Building.level_y(candidate)+.002))<.025:level=candidate
 	# Migrated starter boards retain their authored top instead of a new slab.
 	if level<0 and absf(at.y-.1295)<.012:
@@ -299,7 +299,7 @@ static func _saved_floor_error(value:Dictionary,layout:Array) -> String:
 	if Building.blocked_rect(state,level,bounds.grow(.002)):return "A saved floor dish overlaps the building."
 	for entry:Variant in layout:
 		if not entry is Dictionary or not LifeCatalog.ITEMS.has(str(entry.get("kind",""))) or LifeCatalog.passable(str(entry.kind)):continue
-		if not _number(entry.get("level",0),0,1,true):return "A saved floor dish has an invalid furniture level."
+		if not _number(entry.get("level",0),0,Building.MAX_LEVEL,true):return "A saved floor dish has an invalid furniture level."
 		if int(entry.get("level",0))!=level:continue
 		for axis:String in ["x","z","rotation"]:
 			if not _number(entry.get(axis,0),-100000,100000):return "A saved floor dish has an invalid furniture transform."
@@ -345,7 +345,7 @@ static func validate_layout(data:Dictionary,household:Dictionary) -> String:
 		if host.is_empty():return "A saved meal refers to missing furniture."
 		for axis:String in ["x","z","rotation"]:
 			if not _number(host.get(axis,0),-100000,100000):return "A saved meal has an invalid furniture transform."
-		if not _number(host.get("level",0),0,1,true):return "A saved meal has an invalid furniture level."
+		if not _number(host.get("level",0),0,Building.MAX_LEVEL,true):return "A saved meal has an invalid furniture level."
 		var level:int=int(host.get("level",0))
 		var local:=Vector3(float(value.offset[0]),float(value.offset[1]),float(value.offset[2]))
 		var placed:=Vector3(float(host.get("x",0)),Building.level_y(level),float(host.get("z",0)))+Basis(Vector3.UP,deg_to_rad(float(host.get("rotation",0))))*local

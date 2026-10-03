@@ -580,7 +580,7 @@ func scatter_after_play(person: String, action: Dictionary) -> int:
 		var at: Vector3 = _clear_near(wished, level) if not app.world.construction.building_state.is_empty() else Vector3(wished.x, LifeBuildingState.level_y(level), wished.z)
 		if not at.is_finite() or Vector2(at.x - wished.x, at.z - wished.z).length() > .3 or _toy_near(at, level): continue
 		var record: Dictionary = {"id": _next_id("kids_toy_%s" % person), "kind": KIDS_TOY, "style": styles[(loose_toys(KIDS_TOY).size() + made) % styles.size()], "x": at.x, "z": at.z, "rotation": fmod(angle * 57.3, 360.0)}
-		if level == 1: record["level"] = 1
+		if level > 0: record["level"] = level
 		app.world.add_item(record, false)
 		if not item(str(record.id)).is_empty(): made += 1
 	if made > 0: _changed()
@@ -617,7 +617,7 @@ func stock(box: Dictionary, count: int = -1) -> int:
 		var angle: float = float(index) * TAU / float(maxi(1, capacity(str(box.kind))))
 		var record: Dictionary = {"id": "toy_%s_%d" % [str(box.id), serial], "kind": toy_kind, "x": box.node.position.x + cos(angle) * .12, "z": box.node.position.z + sin(angle) * .12, "rotation": float(index * 30), "box_id": str(box.id)}
 		if toy_kind == KIDS_TOY: record["style"] = KID_STYLES[index % KID_STYLES.size()]
-		if level == 1: record["level"] = 1
+		if level > 0: record["level"] = level
 		app.world.add_item(record, false)
 		if not item(str(record.id)).is_empty(): made += 1
 		serial += 1

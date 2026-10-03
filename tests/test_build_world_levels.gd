@@ -192,7 +192,7 @@ func _views(world:Node3D)->void:
 	actor.position.y=3.16;world.refresh_actor_layers()
 	check(mesh.layers==World.VIEW_ACTOR_UPPER and (mesh.layers&world.camera.cull_mask)!=0,"Upper actor rendering uses the correct camera layer.")
 	actor.position.y=1.6;world.refresh_actor_layers()
-	check(mesh.layers==(World.VIEW_ACTOR_GROUND|World.VIEW_ACTOR_UPPER),"A future stair-traversing actor remains renderable from either level.")
+	check(mesh.layers==World.all_actor_layers() and mesh.layers&World.VIEW_ACTOR_GROUND!=0 and mesh.layers&World.VIEW_ACTOR_UPPER!=0,"A future stair-traversing actor remains renderable from any level.")
 	world.actors.erase("view_probe");actor.queue_free()
 	world.object_clicked.connect(func(item:Dictionary,_at:Vector2)->void:picked=str(item.id))
 	world.live_enabled=true

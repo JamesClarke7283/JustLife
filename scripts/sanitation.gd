@@ -44,7 +44,7 @@ static func validate(value:Variant,members:Array,states:Array,now:float)->String
 		if not entry.get("position") is Array or entry.position.size()!=3:return "Save contains an invalid puddle position."
 		for component:Variant in entry.position:
 			if not number(component,-1000.0,1000.0):return "Save contains an invalid puddle position."
-		if not integer(entry.get("level"),0,1) or not number(entry.get("floor_y"),-1.0,4.0) or absf(float(entry.position[1])-float(entry.floor_y))>.000001 or absf(float(entry.floor_y)-(.16+3.0*int(entry.level)))>.000001 or not number(entry.get("created"),0.0,now):return "Save contains invalid puddle floor or time."
+		if not integer(entry.get("level"),0,Building.MAX_LEVEL) or not number(entry.get("floor_y"),-1.0,Building.level_y(Building.MAX_LEVEL)+1.0) or absf(float(entry.position[1])-float(entry.floor_y))>.000001 or absf(float(entry.floor_y)-(.16+3.0*int(entry.level)))>.000001 or not number(entry.get("created"),0.0,now):return "Save contains invalid puddle floor or time."
 		if not number(entry.get("scale",1.0),MIN_SCALE,1.0):return "Save contains an invalid wet-patch footprint."
 		if not entry.get("kind","accident") is String or not KINDS.has(str(entry.get("kind","accident"))):return "Save contains a puddle of an unknown kind."
 		ids[id]=true

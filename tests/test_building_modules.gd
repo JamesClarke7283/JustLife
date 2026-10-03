@@ -65,7 +65,7 @@ func _test_upper_wall_and_landing_dependencies() -> void:
 	var narrow:Dictionary=_base();narrow.floors[1].w=1.25
 	check(Building.validate(narrow).is_empty(),"Positive guard adversary: a narrow supported upper slab is legal without stairs.")
 	var unsupported_guard:Dictionary=Building.propose(narrow,{"op":"add","collection":"stairs","record":{"x":0.0,"z":-2.0,"rotation":0}},10000)
-	check(not bool(unsupported_guard.ok) and str(unsupported_guard.get("error","")).contains("guard"),"Stair cannot create floating guard posts where only its opening and upper landing fit.")
+	check(bool(unsupported_guard.ok) and unsupported_guard.after.floors.any(func(floor:Dictionary)->bool:return floor.get("landing_for")!=null),"Where the slab above is too narrow for the rail, the stair brings its own landing slab.")
 	narrow.floors[1].w=2.0
 	check(bool(Building.propose(narrow,{"op":"add","collection":"stairs","record":{"x":0.0,"z":-2.0,"rotation":0}},10000).ok),"Adding actual surrounding slab supports the same stair and perimeter guard.")
 
@@ -85,14 +85,11 @@ func _test_schema_and_support() -> void:
 		check(not Building.validate(bad).is_empty(),"Malformed floor dimension rejects: "+str(value))
 	var bad:Dictionary=base.duplicate(true);bad.floors[1].id="north"
 	check(not Building.validate(bad).is_empty(),"IDs are unique across structural collections.")
-	bad=base.duplicate(true);bad.floors[1].supports=["missing","south"]
-	check(not Building.validate(bad).is_empty(),"Missing support wall is rejected.")
-	bad=base.duplicate(true);bad.floors[1].supports=["north","north"]
-	check(not Building.validate(bad).is_empty(),"One wall cannot pretend to support opposite edges.")
-	bad=base.duplicate(true);bad.walls[1].level=1
-	check(not Building.validate(bad).is_empty(),"A wall on the upper storey cannot support that same slab from below.")
-	bad=base.duplicate(true);bad.walls[0].w=7.0
-	check(not Building.validate(bad).is_empty(),"A short support wall cannot pass a full-edge support test.")
+	# An upper floor needs no bearing walls: standing over the floor below is enough.
+	bad=base.duplicate(true);bad.floors[1].erase("supports")
+	check(Building.validate(bad).is_empty(),"An upper floor over the ground floor needs no support walls.")
+	bad=base.duplicate(true);bad.walls.clear()
+	check(Building.validate(bad).is_empty(),"Nor any walls at all beneath it.")
 	bad=base.duplicate(true);bad.floors[1].w=9.0
 	check(not Building.validate(bad).is_empty(),"Upper floor cannot overhang the supported lower footprint.")
 	bad=base.duplicate(true);var duplicate:Dictionary=bad.walls[0].duplicate(true);duplicate.id="duplicate_north";bad.walls.append(duplicate)
@@ -167,7 +164,9 @@ func _test_transactions() -> void:
 	check(not bool(Building.commit(base,tampered,1000).ok),"Caller cannot remove the required hole from the detached quoted result.")
 	check(not bool(Building.propose(base,operation,649).ok),"Insufficient funds reject before geometry or money changes.")
 	var failed:Dictionary=Building.propose(committed.state,{"op":"remove","id":"north"},350)
-	check(not bool(failed.ok),"Removing a supporting wall refuses an invalid detached structure.")
+	check(bool(failed.ok),"Removing a ground wall leaves an upper floor that still stands over the ground floor.")
+	var shrunk:Dictionary=committed.state.duplicate(true);shrunk.floors[0].w=6.0
+	check(not Building.validate(shrunk).is_empty(),"An upper floor that no longer stands over the floor below is refused.")
 	failed=Building.propose(committed.state,{"op":"remove","id":str(committed.state.openings[0].id)},350)
 	check(not bool(failed.ok),"An opening cannot be removed separately from its stair.")
 	var undo:Dictionary=Building.undo(committed.state,committed.receipt,350)

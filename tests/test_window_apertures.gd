@@ -76,7 +76,11 @@ func v2_controls()->void:
 	for entry:Dictionary in lowered.walls:
 		if int(entry.level)==1:entry.cut=true
 	world.construction.restore(lowered);world.set_cutaway(true);await process_frame
-	check(not lower.visible and not upper.visible,"Global cutaway hides full-height windows on both floors regardless of legacy cut flags.")
+	# Lowered walls cut away the storey in view and those above it; the floors
+	# below keep their full-height walls, and their windows, under the one in view.
+	check(lower.visible and not upper.visible,"Viewing upstairs, lowered walls hide the upper windows regardless of legacy cut flags, while the ground floor keeps its windows in full walls.")
+	world.set_view_level(0);await process_frame
+	check(not lower.visible and not upper.visible,"Viewing the ground floor, lowered walls hide the windows on both floors.")
 	world.set_cutaway(false);await process_frame
 	check(lower.visible and upper.visible,"Full walls restore the same window nodes on both floors.")
 	check(wall_hit(Vector3(-2.7,4.8,-4.7),Vector3(-2.7,4.8,-5.4)),"Upper wall surrounding the opening remains opaque geometry.")

@@ -127,8 +127,9 @@ func _storage_unit(flow: LifeHouseholdFlow) -> void:
 	# The cap is exactly the advertised number and the next item is refused.
 	for i:int in range(LifeHouseholdFlow.MAX_STORAGE):
 		flow.store_furnishing({"id":"cap_%d" % i, "kind":"chair", "x":0.0, "z":0.0, "rotation":0.0, "level":0})
-	check(flow.storage_count() == LifeHouseholdFlow.MAX_STORAGE, "Storage holds exactly 30 items.")
-	check(not bool(flow.store_furnishing({"id":"cap_over", "kind":"chair", "x":0.0, "z":0.0, "rotation":0.0, "level":0}).ok), "A 31st item is refused.")
+	check(LifeHouseholdFlow.MAX_STORAGE >= LifeWorld.MAX_FURNISHINGS, "Storage holds a whole home's furnishings (%d)." % LifeHouseholdFlow.MAX_STORAGE)
+	check(flow.storage_count() == LifeHouseholdFlow.MAX_STORAGE, "Storage holds exactly %d items." % LifeHouseholdFlow.MAX_STORAGE)
+	check(not bool(flow.store_furnishing({"id":"cap_over", "kind":"chair", "x":0.0, "z":0.0, "rotation":0.0, "level":0}).ok), "One item more than that is refused.")
 	# A stored record must name a real catalogue item at a valid level.
 	check(not LifeHouseholdFlow.validate({"serial":0, "books":[], "fill":{}, "storage":[{"id":"x","kind":"not_a_kind","x":0.0,"z":0.0,"rotation":0.0,"level":0}]}, app.world.serialize_items()).is_empty(), "A stored record for an unknown furnishing is rejected.")
 	check(LifeHouseholdFlow.validate({"serial":0, "books":[], "fill":{}, "storage":[{"id":"x","kind":"chair","x":1.0,"z":1.0,"rotation":0.0,"level":0}]}, app.world.serialize_items()).is_empty(), "A well-formed stored record validates.")

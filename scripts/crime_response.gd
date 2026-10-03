@@ -609,7 +609,7 @@ static func validate_snapshot(state: Dictionary) -> String:
 			return "Unknown stolen-property kind."
 		for key: String in ["x","z"]:
 			if not _number(entry.get(key),-500,500): return "Invalid stolen-property location."
-		if not _number(entry.get("rotation",0),-36000,36000) or not _number(entry.get("level",0),0,1,true): return "Invalid stolen-property orientation or floor."
+		if not _number(entry.get("rotation",0),-36000,36000) or not _number(entry.get("level",0),0,LifeWorld.Building.MAX_LEVEL,true): return "Invalid stolen-property orientation or floor."
 		if not _number(entry.get("hang",0),0,LifeWorld.Building.RISE): return "Invalid stolen-property hanging height."
 		for key: String in ["style","size","color","paint"]:
 			if entry.has(key) and not entry[key] is String: return "Invalid stolen-property appearance."

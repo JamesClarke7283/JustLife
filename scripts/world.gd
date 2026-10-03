@@ -20,6 +20,12 @@ const VIEW_ACTOR_GROUND:int=16
 const VIEW_ACTOR_UPPER:int=32
 const PICK_GROUND:int=2
 const PICK_UPPER:int=4
+## One render layer for each storey's structure, one for the Lifelets standing on
+## it, and one pick bit for clicking things on it. Level 0 and 1 keep the original
+## ground/upper bits so older scenes and tests read the same.
+const VIEW_LEVELS:Array[int]=[2,4,64,128]
+const VIEW_ACTOR_LEVELS:Array[int]=[16,32,256,512]
+const PICK_LEVELS:Array[int]=[2,4,8,16]
 ## A second, always-on pick bit for the things that rest *on* furniture or lie
 ## under it: plates, serving dishes and wet patches. A furnishing's collision box
 ## is a plain volume from the floor to its full authored height, and that volume
@@ -526,7 +532,7 @@ func validate_home_layout(layout:Variant) -> String:
 			continue
 		if not LifeCatalog.ITEMS.has(str(entry.get("kind",""))) or not Building.identifier(entry.get("id")) or ids.has(entry.id):return "Invalid or duplicate furnishing identity."
 		ids[entry.id]=true
-		if not Building.number(entry.get("level",0),0,1,true):return "Invalid furnishing level."
+		if not Building.number(entry.get("level",0),0,Building.MAX_LEVEL,true):return "Invalid furnishing level."
 		for key:String in ["x","z","rotation"]:
 			if not Building.number(entry.get(key,0),-10000,10000):return "Invalid furnishing transform."
 		if not Building.lot().encloses(furnishing_rect(entry)):return "A furnishing extends beyond the navigable lot."
@@ -536,7 +542,7 @@ func validate_home_layout(layout:Variant) -> String:
 	for entry:Dictionary in layout:
 		if str(entry.get("kind",""))=="__construction":continue
 		var level:int=int(entry.get("level",0))
-		if level==1 and canonical.is_empty():return "Upper furniture needs a validated two-level building."
+		if level>=1 and canonical.is_empty():return "Upper furniture needs a validated building with that storey."
 		if canonical.is_empty():continue # Preserve old ground layout migration behavior.
 		# Everything below is asked of each solid band rather than of the whole
 		# declared outline, so a kind with an open interior is judged on the
@@ -713,28 +719,61 @@ func _assign_layers(node:Node,mask:int) -> void:
 	for child:Node in node.get_children():_assign_layers(child,mask)
 
 func assign_structure_layer(node:Node,level:int) -> void:
-	_assign_layers(node,VIEW_GROUND if level==0 else VIEW_UPPER)
+	_assign_layers(node,view_layer(level))
+
+## The render layer of a storey's structure and furnishings.
+static func view_layer(level:int) -> int:return VIEW_LEVELS[clampi(level,0,Building.MAX_LEVEL)]
+## The render layer of the Lifelets standing on a storey.
+static func actor_layer(level:int) -> int:return VIEW_ACTOR_LEVELS[clampi(level,0,Building.MAX_LEVEL)]
+## The pick bit for clicking things on a storey.
+static func pick_layer(level:int) -> int:return PICK_LEVELS[clampi(level,0,Building.MAX_LEVEL)]
+## Every storey's Lifelet layer at once, for a body between floors on the stairs.
+static func all_actor_layers() -> int:
+	var mask:int=0
+	for layer:int in VIEW_ACTOR_LEVELS:mask|=layer
+	return mask
+## Every storey's pick bit at once.
+static func all_pick_layers() -> int:
+	var mask:int=0
+	for layer:int in PICK_LEVELS:mask|=layer
+	return mask
+## The structure layers of every storey up to and including this one: looking at
+## an upper floor still shows the floors beneath it.
+static func view_layers_through(level:int) -> int:
+	var mask:int=0
+	for index:int in clampi(level,0,Building.MAX_LEVEL)+1:mask|=VIEW_LEVELS[index]
+	return mask
 
 func assign_stair_layer(node:Node) -> void:_assign_layers(node,VIEW_STAIRS)
 
 func item_level(item:Dictionary) -> int:
-	if Building.number(item.get("level"),0,1,true):return int(item.level)
-	if is_instance_valid(item.get("node")):return clampi(roundi((item.node.global_position.y-Building.GROUND_Y)/Building.RISE),0,1)
+	if Building.number(item.get("level"),0,Building.MAX_LEVEL,true):return int(item.level)
+	if is_instance_valid(item.get("node")):return clampi(roundi((item.node.global_position.y-Building.GROUND_Y)/Building.RISE),0,Building.MAX_LEVEL)
 	return 0
 
 func point_level(point:Vector3) -> int:
 	if not point.is_finite():return -1
-	for level:int in [0,1]:
+	for level:int in Building.MAX_LEVEL+1:
 		if absf(point.y-Building.level_y(level))<.025:return level
 	return -1
 
+## The highest storey that can be looked at or built on: one above the top floor
+## the home has, so an empty storey can be started, and never past the fourth.
+func viewable_top() -> int:
+	if not is_instance_valid(construction) or construction.building_state.is_empty():return 0
+	return mini(Building.MAX_LEVEL,Building.highest_level(construction.building_state)+1)
+
 func set_view_level(level:int) -> bool:
-	if level not in [0,1] or (level==1 and (not is_instance_valid(construction) or construction.building_state.is_empty())):return false
-	if level!=view_level:clear_placement()
+	if level<0 or level>Building.MAX_LEVEL or (level>=1 and (not is_instance_valid(construction) or construction.building_state.is_empty())):return false
+	if level>viewable_top():return false
+	var changed:bool=level!=view_level
+	if changed:clear_placement()
 	view_level=level
+	# Lowered walls follow the storey in view: the floors beneath keep theirs up.
+	if changed and is_instance_valid(construction) and cutaway:construction.refresh_decorations()
 	if construction:construction.build_level=level
 	if grid:grid.position.y=Building.RISE*level
-	camera.cull_mask=VIEW_ENVIRONMENT|VIEW_GROUND|VIEW_STAIRS|(VIEW_ACTOR_GROUND if level==0 else VIEW_UPPER|VIEW_ACTOR_UPPER)
+	camera.cull_mask=VIEW_ENVIRONMENT|VIEW_STAIRS|view_layers_through(level)|actor_layer(level)
 	camera_target.y=Building.RISE*level
 	refresh_actor_layers();construction.set_roof_visibility(construction.roofs_visible);update_camera()
 	return true
@@ -757,10 +796,10 @@ func refresh_actor_layers() -> void:
 			bodies=actor.find_children("*","CollisionObject3D",true,false)
 			cache={"bodies":bodies}
 		if int(cache.get("level",-99))==level and bool(cache.get("away",not away))==away and bodies_valid and bool(cache.get("visuals_assigned",false)):continue
-		var visual_mask:int=VIEW_ACTOR_GROUND|VIEW_ACTOR_UPPER if level<0 else (VIEW_ACTOR_GROUND if level==0 else VIEW_ACTOR_UPPER)
+		var visual_mask:int=all_actor_layers() if level<0 else actor_layer(level)
 		_assign_layers(actor,visual_mask)
 		for body:Node in bodies:
-			body.collision_layer=0 if away else (PICK_GROUND|PICK_UPPER if level<0 else (PICK_GROUND if level==0 else PICK_UPPER))
+			body.collision_layer=0 if away else (all_pick_layers() if level<0 else pick_layer(level))
 		cache["level"]=level;cache["away"]=away;cache["visuals_assigned"]=true
 		actor.set_meta("layer_cache",cache)
 
@@ -799,7 +838,7 @@ func window_panel(p: Vector3, side: bool) -> void:
 	box(root,Vector3(0,0,-.095),Vector3(1.82,.055,.06),"fff8e6")
 	box(root,Vector3(0,-.78,.01),Vector3(2,.09,.43),"fff8e6")
 	for x in [-1.0,1.0]:box(root,Vector3(x,.03,.12),Vector3(.18,1.6,.09),"d9cbb2")
-	assign_structure_layer(root,clampi(floori((p.y-Building.GROUND_Y)/Building.RISE),0,1))
+	assign_structure_layer(root,clampi(floori((p.y-Building.GROUND_Y)/Building.RISE),0,Building.MAX_LEVEL))
 
 func tree(p: Vector3, s: float, parent: Node3D = null) -> void:
 	# Coordinate-only variation preserves the world's shared random stream.
@@ -1022,9 +1061,9 @@ func refresh_mirror_reflections() -> void:
 func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	var kind: String=str(entry.get("kind","plant"))
 	if not LifeCatalog.ITEMS.has(kind):return
-	if not Building.number(entry.get("level",0),0,1,true):return
+	if not Building.number(entry.get("level",0),0,Building.MAX_LEVEL,true):return
 	var level:int=int(entry.get("level",0))
-	if level==1 and (not is_instance_valid(construction) or construction.building_state.is_empty()):return
+	if level>=1 and (not is_instance_valid(construction) or construction.building_state.is_empty()):return
 	var data:Dictionary=LifeCatalog.get_item(kind)
 	var variant:Dictionary=Variants.resolve(data,entry)
 	var path:String=Variants.model_path(kind,str(variant.style))
@@ -1128,7 +1167,7 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	info["level"]=level
 	assign_structure_layer(node,level)
 	var body=StaticBody3D.new()
-	body.collision_layer=PICK_GROUND if level==0 else PICK_UPPER
+	body.collision_layer=pick_layer(level)
 	node.add_child(body)
 	# A toy nested in a box is out of sight and cannot be clicked.
 	if str(entry.get("box_id",""))!="":
@@ -1390,7 +1429,7 @@ func variant_model_path(kind:String,style:String="") -> String:
 func set_item_pickable(item:Dictionary,on:bool) -> void:
 	if not is_instance_valid(item.get("node")):return
 	for body:Node in item.node.find_children("*","StaticBody3D",false,false):
-		(body as StaticBody3D).collision_layer=(PICK_GROUND if item_level(item)==0 else PICK_UPPER) if on else 0
+		(body as StaticBody3D).collision_layer=pick_layer(item_level(item)) if on else 0
 
 func remove_item(id: String, keep_supported:bool=false) -> Dictionary:
 	for i in range(items.size()):
@@ -1567,7 +1606,7 @@ func step_notice(from:Vector3,to:Vector3,fallback:String="") -> String:
 	return blocker_notice(lot_navigation.first_blocker(level,from,to),fallback)
 
 func nearest_clear_point(point:Vector3,level:int,radius:int=13) -> Vector3:
-	if level not in [0,1]:return Vector3.INF
+	if level<0 or level>Building.MAX_LEVEL:return Vector3.INF
 	var origin:=Vector2i(roundi(point.x*4),roundi(point.z*4))
 	var direct:=Vector3(origin.x*.25,Building.level_y(level),origin.y*.25)
 	if lot_navigation.point_clear(level,direct):return direct
@@ -1807,7 +1846,7 @@ func set_actor_away(id:String,away:bool,unavailable:bool) -> bool:
 	actor.set_meta("away",unavailable)
 	actor.visible=not away
 	for child:Node in actor.get_children():
-		if child is CollisionObject3D:child.collision_layer=0 if away else (PICK_UPPER if point_level(actor.position)==1 else PICK_GROUND)
+		if child is CollisionObject3D:child.collision_layer=0 if away else pick_layer(maxi(0,point_level(actor.position)))
 	if away:actor.clear_speech()
 	return changed
 
@@ -2163,7 +2202,7 @@ func _rebuild_supported_items() -> void:
 			item["level"]=item_level(host);item["x"]=at.x;item["z"]=at.z;item["rotation"]=item.node.rotation_degrees.y
 			assign_structure_layer(item.node,item_level(host))
 			for body:CollisionObject3D in item.node.find_children("*","CollisionObject3D",true,false):
-				body.collision_layer=PICK_GROUND if item_level(host)==0 else PICK_UPPER
+				body.collision_layer=pick_layer(item_level(host))
 			break
 	sync_surface_decorations()
 
@@ -2406,7 +2445,7 @@ func pick(screen:Vector2) -> void:
 	if build_enabled and construction.tool=="delete":
 		var origin:Vector3=camera.project_ray_origin(screen)
 		var direction:Vector3=camera.project_ray_normal(screen)
-		var query:=PhysicsRayQueryParameters3D.create(origin,origin+direction*150,PICK_GROUND if view_level==0 else PICK_UPPER)
+		var query:=PhysicsRayQueryParameters3D.create(origin,origin+direction*150,pick_layer(view_level))
 		var hit:Dictionary=get_world_3d().direct_space_state.intersect_ray(query)
 		var wall:Dictionary=construction.pick_wall(origin,direction,view_level)
 		if not wall.is_empty() and (hit.is_empty() or float(wall.distance)<origin.distance_to(hit.position)):
@@ -2425,7 +2464,7 @@ func pick(screen:Vector2) -> void:
 		return
 	var origin=camera.project_ray_origin(screen)
 	refresh_actor_layers()
-	var ray=PhysicsRayQueryParameters3D.create(origin,origin+camera.project_ray_normal(screen)*150,PICK_GROUND if view_level==0 else PICK_UPPER)
+	var ray=PhysicsRayQueryParameters3D.create(origin,origin+camera.project_ray_normal(screen)*150,pick_layer(view_level))
 	# Food resting on a surface and wet patches lying under it are picked first,
 	# on their own ray. See PICK_SURFACE: the furniture they sit on is a taller
 	# box than the surface it offers, so a single ray reached the furniture every
@@ -2483,7 +2522,7 @@ func ceiling_light(parent:Node3D,at:Vector3,room:String) -> void:
 	# the construction, never stored as furniture.
 	var id:String="room_light_"+room
 	var body:=StaticBody3D.new()
-	body.collision_layer=PICK_GROUND if point_level(at)<=0 else PICK_UPPER
+	body.collision_layer=pick_layer(maxi(0,point_level(at)))
 	dome.add_child(body)
 	var shape:=CollisionShape3D.new()
 	var bounds:=BoxShape3D.new()
@@ -2611,7 +2650,7 @@ func _show_desk_booster(chair:Node3D) -> void:
 		chair.add_child(booster)
 		booster.position=Vector3(0,.52,.02)
 		_desk_boosters[id]=booster
-	assign_structure_layer(_desk_boosters[id],clampi(point_level(chair.global_position),0,1))
+	assign_structure_layer(_desk_boosters[id],clampi(point_level(chair.global_position),0,Building.MAX_LEVEL))
 	_desk_boosters[id].visible=true
 
 func _desk_surface(node:Node3D) -> Dictionary:

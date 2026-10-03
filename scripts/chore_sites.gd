@@ -151,7 +151,7 @@ static func _floors(app: Node, context: Dictionary) -> Array:
 	var state: Dictionary = context.state
 	if state.is_empty(): return out
 	var room_names: Dictionary = {}
-	for level: int in [0, 1]:
+	for level: int in Building.MAX_LEVEL + 1:
 		var bounds: Rect2 = Rect2()
 		var found: bool = false
 		for floor: Dictionary in state.floors:

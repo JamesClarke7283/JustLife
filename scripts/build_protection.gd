@@ -34,7 +34,7 @@ static func snapshot(app:Node)->Dictionary:
 	return context.duplicate(true)
 
 static func _level(point:Vector3)->int:
-	for level:int in [0,1]:
+	for level:int in Building.MAX_LEVEL+1:
 		if absf(point.y-Building.level_y(level))<.00001:return level
 	return -1
 

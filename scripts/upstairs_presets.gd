@@ -46,7 +46,8 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 	if not operation is Dictionary or operation.get("op")!="upstairs_preset" or not Building.number(operation.get("choice"),0,2,true):return _error("Choose an upstairs layout.")
 	if not Building.number(funds,0,1e9,true):return _error("Invalid household funds.")
 	for floor:Dictionary in current.floors:
-		if int(floor.level)==1:return _error("These presets add a new upper storey. Edit the existing upstairs with the individual build tools.")
+		# A staircase's own landing is not an upstairs yet.
+		if int(floor.level)==1 and floor.get("landing_for")==null:return _error("These presets add a new upper storey. Edit the existing upstairs with the individual build tools.")
 	var index:int=int(operation.choice);var cost:int=PRICES[index]
 	if int(funds)<cost:return _error("This upstairs layout needs ℒ%d." % cost)
 	for key:String in ["wall_color","floor_color","roof_color"]:
