@@ -534,7 +534,7 @@ func _build_actions() -> void:
 	_define("pet_train_logic", "Train Logic Skills", 30.0, {"fun": 16.0, "social": 10.0}, 0, "logic", 22.0, "Practise finding familiar objects and routes. Builds Logic Skills.")
 	_define("drive_car", "Drive…", 0.0, {}, 0, "", 0.0, "Open the door, get in, and pick a destination on the town map. With a baby or child, buckle them into a car seat first.")
 	_define("drive_to_work", "Drive to work", 25.0, {"energy": -6.0}, 0, "", 0.0, "Walk out to the car and drive it to work.")
-	_define("board_school_bus", "Board the school bus", 20.0, {"fun": 8.0, "social": 6.0}, 0, "", 0.0, "The school bus has pulled up. Walk out and board it.")
+	_define("board_school_bus", "Board the school bus", 3.0, {"fun": 8.0, "social": 6.0}, 0, "", 0.0, "The school bus has pulled up. Walk out and board it.")
 	_define("put_baby_for_nap", "Nap", 15.0, {}, 0, "parenting", 8.0, "Lay the baby in the cot for a nap.")
 	_define("put_baby_for_night", "Nighttime Sleep", 20.0, {}, 0, "parenting", 12.0, "Settle the baby in the cot for the night.")
 	_define("open_garage_door", "Open garage door", 0.0, {}, 0, "", 0.0, "Raise or lower the garage door so cars can drive in and out.")
@@ -1953,8 +1953,6 @@ func _finish_front() -> void:
 		if id == "school": add_moodlet("Something learned","Focused","Online lessons are complete for today.",120,2)
 		else: add_moodlet("Ready for class","Focused","The next assignment is prepared.",120,1)
 	elif id == "board_school_bus":
-		if LifeSchoolBus.active != null:
-			LifeSchoolBus.active.note_boarded()
 		var exit_id: String = ""
 		var exit_position: Vector3 = LifeSchoolBus.CURB
 		for target: Dictionary in _targets:
@@ -1962,7 +1960,10 @@ func _finish_front() -> void:
 				exit_id = str(target.id)
 				exit_position = target.position
 				break
-		if not exit_id.is_empty() and _school_departure_error(exit_id).is_empty() and float(needs.hunger) >= 12.0 and float(needs.energy) >= 12.0 and float(needs.bladder) >= 12.0:
+		var problem: String = "School needs a real neighborhood exit." if exit_id.is_empty() else _school_departure_error(exit_id)
+		if problem.is_empty() and (float(needs.hunger) < 12.0 or float(needs.energy) < 12.0 or float(needs.bladder) < 12.0):
+			problem = "Take care of urgent needs before leaving for school."
+		if problem.is_empty():
 			# The school day is a real action at the front of the queue, exactly as
 			# on the walk to the neighbourhood exit: it is what ends the day at
 			# 15:00, brings the pupil home and lets a save of the day load.
@@ -1971,8 +1972,12 @@ func _finish_front() -> void:
 			departure.merge({"target_id": exit_id, "target_position": exit_position, "phase": "approach", "elapsed": 0.0, "progress": 0.0, "paid": false, "autonomous": bool(action.get("autonomous", false))}, true)
 			action_queue.push_front(departure)
 			_begin_school_departure(departure)
+			# The bus counts only a pupil who really went, so a pupil turned back at
+			# the door neither sends it away early nor is told they boarded.
+			if is_away() and LifeSchoolBus.active != null:
+				LifeSchoolBus.active.note_boarded()
 		else:
-			_emit_notice("%s boards the school bus." % str(character.name).split(" ")[0])
+			_emit_notice(problem)
 	elif id == "birthday":
 		if str(action.get("birthday_from_stage","")) == str(character.age_stage): celebrate_birthday(false)
 	elif id == "paint" or id == "paint_masterpiece":

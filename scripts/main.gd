@@ -83,6 +83,9 @@ var household_chips: Dictionary = {}
 ## place the way a person's chip is.
 var pet_chips: Dictionary = {}
 var away_phases: Dictionary = {}
+## The spot just inside the front door each pupil is walking to from the school
+## bus, so two pupils from the same bus never pick the same place.
+var _school_home_spots: Dictionary = {}
 var work_commute: RefCounted = preload("res://scripts/work_commute.gd").new(self)
 var need_bars: Dictionary = {}
 var need_fills: Dictionary = {}
@@ -1829,6 +1832,7 @@ func setup_live(layout:Array) -> void:
 	motion_states.clear()
 	traversal.reset()
 	away_phases.clear()
+	school_bus.reset();_school_home_spots.clear()
 	for i in range(household.members.size()):
 		var member:Dictionary=household.members[i]
 		spawn_actor(member.id,member.sim.character,Vector3(-.7+(i%2)*.65,.16,2.8+(i/2)*.48))
@@ -1952,12 +1956,9 @@ func _tick_curb_life(delta:float) -> void:
 	if current_venue!="home" or not is_instance_valid(household) or school_bus==null or street_life==null:
 		return
 	var game_minutes:float=delta*float(household.speed)*LifeSim.GAME_MINUTES_PER_SECOND
-	var pupils:int=0
-	for member:Dictionary in household.members:
-		var stage:String=str(member.sim.character.get("age_stage",""))
-		if stage in ["child","teen"] and int(member.sim.education.get("last_attendance_day",0))!=int(household.day):
-			pupils+=1
-	school_bus.consider(LifeEducation.weekday(int(household.day)),float(household.minutes),pupils)
+	var day:int=int(household.day)
+	var count:Dictionary=school_bus.census(household.members,day)
+	school_bus.consider(LifeEducation.weekday(day),float(household.minutes),count.waiting,day,count.riders,count.boarding)
 	school_bus.tick(game_minutes)
 	street_life.tick(delta,float(household.speed),float(household.minutes),street_bodies.obstacles())
 	passing_chat.tick(delta)
@@ -3532,7 +3533,7 @@ func refresh_hud() -> void:
 				if not returning:text_label("×",Vector2(130,5),Vector2(16,31),16,P.MUTED,false,b)
 				b.tooltip_text=queue_title+(" · With "+str(partner.character.name) if shared and partner else "")+(" · Click to cancel for both Lifelets" if shared else " · Click to cancel this activity")
 				if chip_dance:b.tooltip_text=queue_title+" · Canceling one dancer leaves the others dancing"
-				if returning:b.tooltip_text="Coming home · Available after entering through the back door" if a.has("commute") else "Coming home · Available after reaching the front garden"
+				if returning:b.tooltip_text="Coming home · Available after entering through the back door" if a.has("commute") else ("Coming home · Available once indoors" if str(a.id)=="school_day" else "Coming home · Available after reaching the front garden")
 				b.pressed.connect(func():cancel_current_action(i))
 		if is_instance_valid(queue_caption):
 			queue_caption.text="Next up" if sim.action_queue.size()>1 else "Queue"
@@ -7870,7 +7871,7 @@ func _adopt_loaded_world(prepared:Dictionary,slot_id:String,title:String="") -> 
 	household_profiles=[]
 	for member:Dictionary in household.members:household_profiles.append(member.sim.character.duplicate(true))
 	creator_index=household.selected_index;profile=household_profiles[creator_index]
-	close_overlay(false);pending_move.clear();build_undo.clear();away_phases.clear();mode="live"
+	close_overlay(false);pending_move.clear();build_undo.clear();away_phases.clear();school_bus.reset();_school_home_spots.clear();mode="live"
 	if is_instance_valid(stage):stage.visible=false
 	world.live_enabled=true;world.set_build(false);world.set_process(true);world.set_process_unhandled_input(true)
 	world.camera.current=true
@@ -10216,17 +10217,22 @@ func _sync_away_presence() -> bool:
 	if is_instance_valid(stroller_flow) and stroller_flow.passenger(sim):return false
 	var state:Dictionary=sim.get_away_state()
 	var phase:String=str(state.get("phase",""))
-	var changed:bool=world.set_actor_away(bound_member_id,phase=="away",not state.is_empty())
 	var previous:String=str(away_phases.get(bound_member_id,""))
+	# A pupil coming home from school stays aboard the bus until it is at the curb
+	# and it is their turn at the door, so the body stays hidden until then.
+	var ride:String=_school_bus_ride(state,phase,previous)
+	var changed:bool=world.set_actor_away(bound_member_id,phase=="away" or ride=="wait",not state.is_empty())
+	if ride=="wait":return changed
 	if phase!=previous:
 		away_phases[bound_member_id]=phase
 		_clear_motion()
 		if phase=="returning":
 			# Re-enter the rendered lot only at its sidewalk. Saved return walks
 			# retain their actual position; saved away members reappear at exit.
+			var from_school:bool=str(state.get("activity",""))=="school"
 			if previous=="away" or not player.visible:
-				player.position=school_bus.exit_position() if str(state.get("activity", "")) == "school" and school_bus.phase == "dropping" else _saved_vector(state.get("exit_position"),world.lot_exit_position(_member_index(bound_member_id)))
-			var destination:Vector3=_return_destination(_member_index(bound_member_id))
+				player.position=school_bus.exit_position() if ride=="off" else _saved_vector(state.get("exit_position"),world.lot_exit_position(_member_index(bound_member_id)))
+			var destination:Vector3=_school_home_destination(_member_index(bound_member_id)) if from_school else _return_destination(_member_index(bound_member_id))
 			if destination.is_finite():
 				_set_route(destination)
 				if path.is_empty():notify_blocked(player.position,destination,"The return path is blocked. Clear the front garden to let this Lifelet come home.")
@@ -10235,6 +10241,46 @@ func _sync_away_presence() -> bool:
 				# than leaving the Lifelet stranded at the curb forever.
 				show_notice("The front garden is crowded. Making room to come home.")
 	return changed
+
+## Where a pupil coming home from school is, as far as the bus goes: "wait" while
+## aboard (the bus is on its way, or the pupil ahead is still in the doorway),
+## "off" on the frame they step off, and "" for everyone else, including a pupil
+## who comes home early and walks in from the lot exit.
+func _school_bus_ride(state:Dictionary,phase:String,previous:String) -> String:
+	if phase!="returning" or previous=="returning" or str(state.get("activity",""))!="school":return ""
+	if previous!="away" and player.visible:return ""
+	var ride:String=school_bus.disembark(bound_member_id)
+	return "" if ride=="walk" else ride
+
+## Home by the front door for a pupil off the school bus: a free spot just inside
+## it, away from the spots the other pupils are walking to.
+func _school_home_destination(member_index:int,keep_spot:bool=true) -> Vector3:
+	var taken:Array=[]
+	for id:String in _school_home_spots.keys():
+		var other:LifeSim=household.member_sim(id)
+		if not is_instance_valid(other) or str(other.away_state.get("phase",""))!="returning":_school_home_spots.erase(id)
+		elif id!=bound_member_id:taken.append(_school_home_spots[id])
+	# Somebody already standing just inside keeps their place too.
+	for id:String in world.actors:
+		var body:Node3D=world.actors[id]
+		if id!=bound_member_id and body.visible and world.point_level(body.position)==0:taken.append(Vector3(body.position.x,.16,body.position.z))
+	# A spot already chosen for this pupil is kept while nobody else has it, so
+	# a walk planned again part-way does not change where they are going.
+	var kept:Vector3=_school_home_spots.get(bound_member_id,Vector3.INF)
+	if keep_spot and kept.is_finite() and not taken.any(func(point:Vector3)->bool:return point.distance_to(kept)<.8):return kept
+	var spot:Vector3=_front_door_destination(member_index,taken)
+	if spot.is_finite() and world.construction.floor_contains(Vector2(spot.x,spot.z),0):_school_home_spots[bound_member_id]=spot
+	else:_school_home_spots.erase(bound_member_id)
+	return spot
+
+## The way in by the front door for the bound member: the free spot just inside
+## it that can really be walked to, kept clear of the spots in `taken`. With no
+## way in it is the usual standing place in the front garden. Shared by every
+## walk home that ends indoors.
+func _front_door_destination(member_index:int,taken:Array=[]) -> Vector3:
+	var route:PackedVector3Array=work_commute.front_route(Vector3(player.position.x,.16,player.position.z),taken)
+	if route.size()>=2:return route[route.size()-1]
+	return _return_destination(member_index)
 
 ## A clear curb spot for a returning Lifelet. The household's assigned return
 ## position is preferred, but if it is occupied (a housemate standing there, or
@@ -10273,16 +10319,20 @@ func _return_destination(member_index:int) -> Vector3:
 func _advance_away_movement(delta:float) -> bool:
 	var state:Dictionary=sim.get_away_state()
 	if str(state.get("phase",""))!="returning" or sim.speed<=0:return false
+	var from_school:bool=str(state.get("activity",""))=="school"
+	# A pupil still aboard the school bus has not stepped off, so cannot walk yet.
+	if from_school and str(away_phases.get(bound_member_id,""))!="returning":return false
 	var moved:bool=_advance_path(delta)
 	if moved and path_index>=path.size():
 		_clear_motion()
 		away_phases[bound_member_id]=""
+		_school_home_spots.erase(bound_member_id)
 		sim.complete_away_return()
 	elif not moved and path.is_empty():
 		# A return whose route could not start (a body or furniture now fills the
 		# only way in) keeps trying from the current spot instead of standing
 		# still at the curb for the rest of the day.
-		var destination:Vector3=_return_destination(_member_index(bound_member_id))
+		var destination:Vector3=_school_home_destination(_member_index(bound_member_id),false) if from_school else _return_destination(_member_index(bound_member_id))
 		if destination.is_finite():_set_route(destination)
 	return moved
 

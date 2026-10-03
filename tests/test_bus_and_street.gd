@@ -47,16 +47,75 @@ func _initialize() -> void:
 		bus.tick(1.0)
 		away += 1
 	check(bus.phase == "gone", "The morning bus leaves the street during the school day.")
-	bus.consider(true, 895.0, 0)
+	# ---- the morning run is made once: a bus that has left does not come back for the same pupil
+	bus.consider(true, 510.0, 1, 1, 1)
+	check(bus.phase == "gone", "The morning bus does not come back for a second go the same day.")
+	# ---- and with nobody at school there is nothing to bring home
+	bus.consider(true, 895.0, 0, 1, 0)
+	check(bus.phase == "gone", "With nobody at school the bus makes no afternoon run.")
+	bus.consider(true, 895.0, 0, 1, 1)
 	check(bus.phase == "returning", "The bus comes back at the end of the school day.")
 	var homeward: int = 0
 	while bus.phase == "returning" and homeward < 20:
+		bus.consider(true, 892.0, 0, 1, 1)
 		bus.tick(1.0)
 		homeward += 1
 	check(bus.phase == "dropping" and bus.position.distance_to(LifeSchoolBus.CURB) < 0.2, "The afternoon bus stops at the same curb to drop the children.")
-	for _wait in 14:
+	for _wait in 30:
+		bus.consider(true, 900.0, 0, 1, 1)
 		bus.tick(1.0)
-	check(bus.phase == "leaving" or bus.phase == "gone", "After the drop-off the bus drives away again.")
+	check(bus.phase == "dropping", "The doors stay open while a pupil is still to step off.")
+	check(bus.disembark("kit") == "off" and bus.disembark("rae") == "wait", "Pupils step off one at a time.")
+	bus.tick(LifeSchoolBus.STEP_OFF_GAP + 0.1)
+	check(bus.disembark("rae") == "off" and bus.dropped == 2, "The next pupil steps off after a short gap.")
+	for _wait in 14:
+		bus.consider(true, 905.0, 0, 1, 0)
+		bus.tick(1.0)
+	check(bus.phase == "leaving" or bus.phase == "gone", "After the last pupil is off the bus drives away again.")
+	var gone: int = 0
+	while bus.phase == "leaving" and gone < 60:
+		bus.consider(true, 910.0, 0, 1, 0)
+		bus.tick(1.0)
+		gone += 1
+	check(bus.phase == "gone", "The afternoon bus leaves the street.")
+	for minute in range(895, 920):
+		bus.consider(true, float(minute), 0, 1, 1)
+	check(bus.phase == "gone", "The afternoon run is made once a day, however many are still about.")
+	bus.consider(true, 450.0, 1, 2)
+	check(bus.phase == "approaching" and bus.run_day == 2, "The next school day starts a new morning run.")
+	bus.reset()
+	check(bus.phase == "gone" and bus.run_day == 0 and bus.drop_day == 0 and bus.aboard.is_empty(), "A new household or a loaded game starts with a bare street.")
+
+	# ---- a bus nobody boards still leaves, and not before it has waited
+	var idle := LifeSchoolBus.new()
+	idle.consider(true, 470.0, 1, 3)
+	while idle.phase == "approaching":
+		idle.tick(1.0)
+	check(idle.waiting(), "An empty-handed bus waits at the curb.")
+	idle.consider(true, 539.0, 1, 3)
+	check(idle.waiting(), "It waits for the end of boarding time.")
+	idle.consider(true, 540.0, 1, 3, 0, 1)
+	check(idle.waiting(), "It holds a little longer for a pupil already walking to the door.")
+	idle.consider(true, 559.0, 1, 3, 0, 1)
+	check(idle.waiting(), "It holds for that pupil until 09:20.")
+	idle.consider(true, 560.0, 1, 3, 0, 1)
+	check(idle.phase == "departing", "It never holds past 09:20.")
+	var empty_run := LifeSchoolBus.new()
+	empty_run.consider(true, 470.0, 1, 3)
+	while empty_run.phase == "approaching":
+		empty_run.tick(1.0)
+	empty_run.consider(true, 500.0, 0, 3, 1)
+	check(empty_run.phase == "departing", "It leaves at once when nobody is left at home to go.")
+	var weekend := LifeSchoolBus.new()
+	weekend.consider(false, 470.0, 1, 6)
+	weekend.consider(false, 895.0, 0, 6, 1)
+	check(weekend.phase == "gone", "There is no bus at the weekend.")
+	var stale := LifeSchoolBus.new()
+	stale.consider(true, 470.0, 1, 3)
+	while stale.phase == "approaching":
+		stale.tick(1.0)
+	stale.consider(true, 100.0, 1, 4)
+	check(stale.phase == "departing", "A waiting bus left over from an earlier day drives off.")
 	var street := LifeStreetLife.new()
 	for _step in 40:
 		street.tick(1.0)
