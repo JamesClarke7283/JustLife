@@ -4,6 +4,7 @@ class_name LifeSim
 
 const ChoreDefs = preload("res://scripts/chore_defs.gd")
 const PartyFood = preload("res://scripts/party_food.gd")
+const DrivingSchool = preload("res://scripts/driving_school.gd")
 signal changed()
 signal action_started(action: Dictionary)
 signal action_finished(action: Dictionary)
@@ -135,6 +136,9 @@ var criminal_record: Dictionary = {}
 ## Retirement: whether an elder has stopped working, and the pension they live on
 ## (`LifeRetirement`). A Lifelet who has never retired holds the fresh record.
 var retirement: Dictionary = LifeRetirement.fresh()
+## The driving licence and the course that earns it (`LifeDrivingSchool`): a Lifelet
+## who starts life as a young adult or older holds one already.
+var driving: Dictionary = DrivingSchool.fresh("adult")
 var cooperation_owner: Node = null
 var cooperation_member_id: String = ""
 ## What brought the latest birthday about: "auto" when the lifespan clock ran out,
@@ -247,14 +251,15 @@ const ACTIVITY_OUTFITS: Dictionary = {
 	"dance":"party",
 	"career_day":"formal", "ask_partner":"formal", "commit":"formal",
 	"school_day":"everyday",
+	"driving_lesson":"everyday",
 	"visit":"everyday",
 	"return_home":"everyday",
 }
-const HOME_AFTER: Array[String] = ["sleep", "nap", "career_day", "school_day", "jog", "morning_run", "stretch", "visit"]
+const HOME_AFTER: Array[String] = ["sleep", "nap", "career_day", "school_day", "jog", "morning_run", "stretch", "visit", "driving_lesson"]
 ## How long a trip across town keeps the solo traveller at the destination.
 const TRIP_MINUTES: float = 15.0
 const SPIRIT_BLOCKED: Array[String] = [
-	"career_day", "school_day", "job", "work", "birthday",
+	"career_day", "school_day", "job", "work", "birthday", "learn_to_drive", "book_driving_lesson", "driving_lesson",
 	"cook", "snack", "eat_meal", "store_meal", "eat_party_food", "refill_party_food",
 	"flirt", "ask_partner", "go_on_date", "commit", "break_up",
 ]
@@ -350,6 +355,7 @@ func new_household(profile: Dictionary) -> void:
 	degree = "none"
 	criminal_record = {}
 	retirement = LifeRetirement.fresh()
+	driving = DrivingSchool.fresh(str(character.age_stage))
 	career = {"schedule":LifeCareerSchedule.fresh(1),"track":LifeCareers.DEFAULT_JOB,
 		"title":LifeCareers.title_at(LifeCareers.DEFAULT_JOB,1),"level":1,"performance":0.0,
 		"salary":LifeCareers.base_pay(LifeCareers.DEFAULT_JOB,1),"worked_day":0,"shift":"day"}
@@ -550,6 +556,12 @@ func _build_actions() -> void:
 	_define("pet_train_logic", "Train Logic Skills", 30.0, {"fun": 16.0, "social": 10.0}, 0, "logic", 22.0, "Practise finding familiar objects and routes. Builds Logic Skills.")
 	_define("drive_car", "Drive…", 0.0, {}, 0, "", 0.0, "Open the door, get in, and pick a destination on the town map. With a baby or child, buckle them into a car seat first.")
 	_define("drive_to_work", "Drive to work", 25.0, {"energy": -6.0}, 0, "", 0.0, "Walk out to the car and drive it to work.")
+	# Learning to drive: an hour of theory at a bookcase or a desk, then 90-minute lessons with an
+	# instructor's car (driving_school.gd has the rules, driving_lesson.gd the car and the walk out).
+	# Studying gives no fun, so autonomy never chooses it; the lesson and its booking are the player's.
+	_define(DrivingSchool.THEORY_ACTION, "Learn to drive", DrivingSchool.THEORY_MINUTES, {"energy": -4.0}, 0, "", 0.0, "Study the Highway Code and road signs for an hour. Study on seven different days to unlock practical lessons with an instructor.")
+	_define(DrivingSchool.LESSON_ACTION, "Driving lesson", DrivingSchool.LESSON_MINUTES, {"fun": 10.0, "energy": -8.0}, 0, "", 0.0, "An instructor's car with L plates pulls up outside. Walk out, get in and drive. Home again in an hour and a half. Free.")
+	_define(DrivingSchool.BOOK_ACTION, "Book a driving lesson…", 0.0, {}, 0, "", 0.0, "Have a lesson now, or book one after school or on Saturday or Sunday.")
 	_define("board_school_bus", "Board the school bus", 3.0, {"fun": 8.0, "social": 6.0}, 0, "", 0.0, "The school bus has pulled up. Walk out and board it.")
 	_define("put_baby_for_nap", "Nap", 15.0, {}, 0, "parenting", 8.0, "Lay the baby in the cot for a nap.")
 	_define("put_baby_for_night", "Nighttime Sleep", 20.0, {}, 0, "parenting", 12.0, "Settle the baby in the cot for the night.")
@@ -699,6 +711,10 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		elif kind == "bookshelf": ids = ["read","homework","study","study_book","buy_book","deep_read"]
 	if kind in ["car", "car_electric", "electric_car"] and str(character.life_stage) == "adult" and not ids.has("drive_to_work"):
 		ids.append("drive_to_work")
+	# Learning to drive is offered at the bookcase and every desk, only to someone who may take the course.
+	if kind == "bookshelf" or kind in LifeCatalog.WORK_DESKS:
+		for driving_id: String in DrivingSchool.menu_ids(driving, str(character.age_stage), lifecycle, day, is_spirit()):
+			if not ids.has(driving_id): ids.append(driving_id)
 	if str(character.age_stage) == "child" and kind in ["desk", "study_desk", "dining", "table", "coffee_table"]:
 		var study: Array = ["child_desk_study", "read"]
 		# Homework is done sitting down: at the study desk or a dining table. A
@@ -992,6 +1008,9 @@ func _tick_away(_game_minutes: float) -> void:
 	if str(away_state.activity)=="career":
 		_tick_career_away()
 		return
+	if str(away_state.activity)==DrivingSchool.LESSON_ACTION:
+		_tick_lesson_away()
+		return
 	# A prison sentence is not a school day with a curriculum: the Lifelet is
 	# simply not here until the household's own release tick brings them home,
 	# so time passes without an action to progress.
@@ -1221,6 +1240,9 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 	if id == "drive_to_work":
 		var reason: String = str(get_action_availability(id, target_id).reason)
 		if not reason.is_empty(): _emit_notice(reason); return false
+	if id == DrivingSchool.BOOK_ACTION:
+		_emit_notice("Choose Book a driving lesson at a bookcase, a study desk or the home office computer.")
+		return false
 	if ChoreDefs.is_chore(id) and is_instance_valid(chore_service):return chore_service.request(self,id,target_id,target_position)
 	if id=="arrive_home":return false # Only the validated household transaction creates arrival.
 	if id=="career_day":
@@ -1229,6 +1251,9 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 		if not problem.is_empty():_emit_notice(problem);return false
 	if id == "school_day" and target_id.is_empty():
 		_emit_notice("Choose the neighborhood exit to leave for school.")
+		return false
+	if id == DrivingSchool.LESSON_ACTION and _target_kind_of(target_id) != "lot_exit":
+		_emit_notice("A driving lesson starts at the neighborhood exit.")
 		return false
 	if id == "school_day" and not _school_departure_error(target_id).is_empty():
 		_emit_notice(_school_departure_error(target_id))
@@ -1324,7 +1349,7 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 		else:
 			definition["changes"] = {"fun": 26.0, "social": 18.0}
 			definition["xp"] = 6.0
-	if id == "clean_litter_tray" or id in SOCIAL_ACTIONS or id in LifePassingPolicy.ALL or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or COMPUTER_MASTERY_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "snack", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "bin_meal", "jog", "play_toys", "play_dollhouse", "child_desk_study", "child_draw", "child_colour", "play_rattle", "play_baby_mat", "use_potty", "sleep", "nap", "put_in_fridge", LifeGardenGames.ACTION_ID, LifeOutdoorActs.ACTION_ID, LifeOutdoorActs.PUSH_ID, LifeWetness.DRY_OFF_ID, LifeWetness.DRY_SIT_ID] or id in PartyFood.IDS:
+	if id == "clean_litter_tray" or id in SOCIAL_ACTIONS or id in LifePassingPolicy.ALL or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or COMPUTER_MASTERY_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "snack", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "bin_meal", "jog", "play_toys", "play_dollhouse", "child_desk_study", "child_draw", "child_colour", "play_rattle", "play_baby_mat", "use_potty", "sleep", "nap", "put_in_fridge", DrivingSchool.THEORY_ACTION, DrivingSchool.LESSON_ACTION, LifeGardenGames.ACTION_ID, LifeOutdoorActs.ACTION_ID, LifeOutdoorActs.PUSH_ID, LifeWetness.DRY_OFF_ID, LifeWetness.DRY_SIT_ID] or id in PartyFood.IDS:
 		var availability: Dictionary = get_action_availability(id, target_id)
 		if not bool(availability.available):
 			_emit_notice(str(availability.reason))
@@ -1336,7 +1361,7 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 	# The furnishing an outdoor act was queued at rides the action, so a saved
 	# swim resumes with the effects of that furnishing rather than the generic ones.
 	if id == LifeOutdoorActs.ACTION_ID: action["target_kind"] = _target_kind_of(target_id)
-	if id in ["school_day","career_day"]: action["target_kind"] = "lot_exit"
+	if id in ["school_day","career_day",DrivingSchool.LESSON_ACTION]: action["target_kind"] = "lot_exit"
 	if id in ["school","homework"]: action["target_kind"] = _education_target_kind(target_id)
 	if id == "birthday": action["birthday_from_stage"] = str(character.age_stage)
 	action.merge({"target_id": target_id, "target_position": target_position, "phase": "queued", "elapsed": 0.0, "progress": 0.0, "paid": false, "autonomous": false}, true)
@@ -1376,7 +1401,7 @@ func begin_current_action() -> void:
 	if action_queue.is_empty() or str(action_queue[0]["phase"]) != "approach":
 		return
 	var action: Dictionary = action_queue[0]
-	if str(action.id) in ["arrive_home", "drive_to_work"]:return # Physical arrival is confirmed by the controller.
+	if str(action.id) in ["arrive_home", "drive_to_work", DrivingSchool.LESSON_ACTION]:return # Physical arrival is confirmed by the controller.
 	if action.has("chore") and is_instance_valid(chore_service) and not chore_service.before_begin(self,action):return
 	if str(action.id)=="career_day":
 		_begin_career_departure(action)
@@ -1433,7 +1458,7 @@ func begin_current_action() -> void:
 		else:
 			var recipe_reason:String=LifeMeals.recipe_error(str(action.get("recipe","garden_skillet")),int(skills.cooking.level),str(character.age_stage),funds,bool(action.paid))
 			if not recipe_reason.is_empty():_emit_notice(recipe_reason);cancel_action();return
-	if str(action.id) in RELATIONSHIP_ACTIONS or str(action.id) in LifePassingPolicy.ALL or str(action.id) in ["flirt", "birthday", "job", "work"]:
+	if str(action.id) in RELATIONSHIP_ACTIONS or str(action.id) in LifePassingPolicy.ALL or str(action.id) in ["flirt", "birthday", "job", "work", DrivingSchool.THEORY_ACTION]:
 		var availability: Dictionary = get_action_availability(str(action.id), str(action.target_id))
 		if not bool(availability.available):
 			_emit_notice(str(availability.reason))
@@ -1759,6 +1784,7 @@ func _step(game_minutes: float) -> void:
 		day += 1
 		_new_day()
 	_advance_age(game_minutes)
+	_advance_driving()
 	_update_passing_pressure(game_minutes)
 	if pending_passing_cause.is_empty() and (ready_to_starve() or ready_to_overexert() or ready_to_pass_on()):
 		# Ask the player before the Lifelet actually passes, so Extend / Change
@@ -2042,6 +2068,8 @@ func _finish_front() -> void:
 			_emit_notice(problem)
 	elif id == "birthday":
 		if str(action.get("birthday_from_stage","")) == str(character.age_stage): celebrate_birthday(false,"cake")
+	elif id == DrivingSchool.THEORY_ACTION:
+		_credit_driving_theory()
 	elif id == "paint" or id == "paint_masterpiece":
 		# A masterpiece rides the Inspired mood: its canvas is worth far more
 		# than an ordinary sale, and the mood bonus stacks on top.
@@ -2344,7 +2372,11 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 		if not reason.is_empty(): return {"available": false, "reason": reason}
 	if id == "drive_to_work":
 		reason = _career_departure_error("lot_exit")
+		if reason.is_empty() and not is_licensed(): reason = "%s needs a driving licence to drive to work. Walk to work, or finish the driving lessons." % str(character.name).split(" ")[0]
 		if reason.is_empty() and _target_kind_of(target_id) not in ["car", "car_electric", "electric_car"]: reason = "Choose a household car to drive to work."
+		return {"available": reason.is_empty(), "reason": reason}
+	if id in [DrivingSchool.THEORY_ACTION, DrivingSchool.BOOK_ACTION, DrivingSchool.LESSON_ACTION]:
+		reason = driving_error(id)
 		return {"available": reason.is_empty(), "reason": reason}
 	if id in ["plant_wee","mop_puddle"]:
 		reason=_sanitation_reason(id,target_id)
@@ -3903,7 +3935,7 @@ func _commute_choice(duty: String, excluded_target_ids: Array) -> Dictionary:
 			return {"id": "board_school_bus", "target_id": "school_bus_stop", "position": bus.door_position(), "load": 0.0}
 		if _target_kind_present("school_bus"):
 			return _autonomy_target_for("board_school_bus", excluded_target_ids)
-	if duty == "career_day" and str(character.life_stage) == "adult" and (_target_kind_present("car") or _target_kind_present("car_electric") or _target_kind_present("electric_car")):
+	if duty == "career_day" and str(character.life_stage) == "adult" and is_licensed() and (_target_kind_present("car") or _target_kind_present("car_electric") or _target_kind_present("electric_car")):
 		return _autonomy_target_for("drive_to_work", excluded_target_ids)
 	return {}
 
@@ -3986,7 +4018,7 @@ func _reconsider_active_autonomy() -> void:
 			var recovery:Dictionary=_autonomy_need_choice(need)
 			if not recovery.is_empty() and (str(recovery.id)!=str(current.id) or str(recovery.target_id)!=str(current.target_id)):danger=true
 	var duty:String=_autonomy_duty_id()
-	var optional:bool=str(current.id) not in ["school","school_day","career_day","homework","job","drive_to_work","board_school_bus"]
+	var optional:bool=str(current.id) not in ["school","school_day","career_day","homework","job","drive_to_work","board_school_bus",DrivingSchool.LESSON_ACTION]
 	var duty_ready:bool=optional and not duty.is_empty() and _autonomy_projection_need(duty).is_empty() and not _autonomy_target_for(duty).is_empty()
 	# A pastime that still ends in time for an on-time arrival is not cut short by the open duty.
 	if duty_ready and duty in ["school_day","career_day"] and str(current.id) in LEISURE_ACTIONS and minutes+float(current.duration)-float(current.elapsed)+DEPARTURE_WALK<=_duty_deadline(duty):duty_ready=false
@@ -4538,7 +4570,7 @@ func get_mood() -> Dictionary:
 
 func get_state() -> Dictionary:
 	if not lifecycle.has("stage_day"): _anchor_stage_day()
-	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "second_wind": second_wind, "wetness": wetness, "towel": towel.duplicate(true), "auto_swimwear": auto_swimwear, "bladder_grace":bladder_grace, "starvation_minutes":starvation_minutes, "exhaustion_minutes":exhaustion_minutes, "deferred_passing_minutes":deferred_passing_minutes, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "degree": degree, "criminal_record": criminal_record.duplicate(true), "retirement": retirement.duplicate(true), "wants": wants.duplicate(true), "whims": whims.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "last_bill_day": last_bill_day, "pending_bill":pending_bill.duplicate(true), "bills_paid_total":bills_paid_total, "bills_late":bills_late, "utilities_cut":utilities_cut, "insurance_policy_id":insurance_policy_id, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "resident_aliases":resident_aliases.duplicate(true), "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "passing_contacts":passing_contacts.duplicate(true), "last_passing_any":maxf(last_passing_any,-1.0), "routine_memory_days":routine_memory_days.duplicate(true)}
+	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "second_wind": second_wind, "wetness": wetness, "towel": towel.duplicate(true), "auto_swimwear": auto_swimwear, "bladder_grace":bladder_grace, "starvation_minutes":starvation_minutes, "exhaustion_minutes":exhaustion_minutes, "deferred_passing_minutes":deferred_passing_minutes, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "degree": degree, "criminal_record": criminal_record.duplicate(true), "retirement": retirement.duplicate(true), "driving": driving.duplicate(true), "wants": wants.duplicate(true), "whims": whims.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "last_bill_day": last_bill_day, "pending_bill":pending_bill.duplicate(true), "bills_paid_total":bills_paid_total, "bills_late":bills_late, "utilities_cut":utilities_cut, "insurance_policy_id":insurance_policy_id, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "resident_aliases":resident_aliases.duplicate(true), "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "passing_contacts":passing_contacts.duplicate(true), "last_passing_any":maxf(last_passing_any,-1.0), "routine_memory_days":routine_memory_days.duplicate(true)}
 
 
 func save_game(world_data: Array = []) -> bool:
@@ -4656,6 +4688,7 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 	degree = LifeCareers.normalise_degree(str(state.get("degree", "none")))
 	criminal_record = (state.get("criminal_record", {}) as Dictionary).duplicate(true)
 	retirement = LifeRetirement.migrate(state.get("retirement"))
+	driving = DrivingSchool.migrate(state.get("driving"), str(character.age_stage))
 	# A save made before this ladder grew can carry a rung and a title from the
 	# old five-level table, so the record is rebuilt from the ladder it names.
 	var saved_track: String = str(career.get("track", LifeCareers.DEFAULT_JOB))
@@ -4771,6 +4804,7 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 		if stored.has("stroller"): action["stroller"] = stored.stroller.duplicate(true)
 		if stored.has("tv"): action["tv"] = stored.tv.duplicate(true)
 		if stored.has("commute"): action["commute"] = stored.commute.duplicate(true)
+		if stored.has("lesson"): action["lesson"] = stored.lesson.duplicate(true)
 		if stored.has("chore"): ChoreDefs.restore_action(action, stored)
 		if stored.has("swim_lane"): action["swim_lane"] = int(stored.swim_lane)
 		if stored.has("edge_side"):
@@ -4851,6 +4885,8 @@ func _validate_away_state(state:Dictionary) -> String:
 		return _validate_prison_away_state(state)
 	if str(state.get("away_state",{}).get("activity",""))=="hospital":
 		return _validate_hospital_away_state(state)
+	if str(state.get("away_state",{}).get("activity",""))==DrivingSchool.LESSON_ACTION:
+		return DrivingSchool.lesson_away_error(state)
 	if str(state.get("away_state",{}).get("activity",""))=="career" or state.action_queue.any(func(action:Dictionary)->bool:return str(action.id)=="career_day"):
 		return _validate_career_away_state(state)
 	return _validate_school_away_state(state)
@@ -5050,6 +5086,8 @@ func _validate_state(state: Dictionary) -> String:
 	# Retired for good means no shift is planned or under way, whatever the queue says.
 	var retired_in_save: bool = state.get("retirement") is Dictionary and bool(state.retirement.get("retired", false))
 	if retired_in_save and state.get("away_state") is Dictionary and str(state.away_state.get("activity", "")) == "career": return "Save sends a retired Lifelet to work."
+	var driving_problem: String = DrivingSchool.validate(state.get("driving"), int(state.day))
+	if not driving_problem.is_empty(): return driving_problem
 	if job.has("schedule"):
 		var schedule_error:String=LifeCareerSchedule.validate(job.schedule,int(state.day),int(job.get("worked_day",0)),job)
 		if not schedule_error.is_empty():return schedule_error
@@ -5189,6 +5227,13 @@ func _validate_state(state: Dictionary) -> String:
 		if action.has("commute"):
 			var commute_error: String = preload("res://scripts/work_commute.gd").save_error(action.commute, action, state.get("away_state", {}))
 			if not commute_error.is_empty() or action_id not in ["drive_to_work", "career_day"]: return "Save contains invalid work commute progress."
+		if action.has("lesson") or action_id == DrivingSchool.LESSON_ACTION:
+			# The record of the car's choreography is added by the controller when the lesson
+			# starts, so a lesson that has none yet is a lesson whose car has not come.
+			var lesson_problem: String = preload("res://scripts/driving_lesson.gd").save_error(action.get("lesson", {"phase": "away" if not state.get("away_state", {}).is_empty() else "arrive", "time": 0.0, "leg": 0}), action, state.get("away_state", {}))
+			if action_id != DrivingSchool.LESSON_ACTION or not lesson_problem.is_empty(): return "Save contains an invalid driving lesson: %s" % lesson_problem
+			var record: Variant = state.get("driving")
+			if str(state.get("away_state", {}).get("activity", "")) != DrivingSchool.LESSON_ACTION and (not record is Dictionary or not DrivingSchool.theory_done(record) or DrivingSchool.is_licensed(record)): return "Save contains a driving lesson before the theory was done."
 		if action_id in ["job","career_day","work","drive_to_work"] and str(profile.get("life_stage","adult")) != "adult": return "Save contains adult work queued for a non-adult Lifelet."
 		if retired_in_save and action_id in LifeRetirement.WORK_ACTIONS: return "Save sends a retired Lifelet to work."
 		if action_id == "cook":
@@ -5517,7 +5562,10 @@ func _enforce_mandatory_homework() -> void:
 	var player_plans: bool = false
 	for queued: Dictionary in action_queue:
 		if str(queued.id) == "homework": return
+		# A driving lesson that is queued, or booked to start within the next 45 minutes, comes first: homework can still be done after it.
+		if str(queued.id) == DrivingSchool.LESSON_ACTION: return
 		if not bool(queued.get("autonomous",false)): player_plans = true
+	if driving_booking_soon(): return
 	var front: Dictionary = action_queue[0]
 	if not player_plans or homework_enforcement_blocked(str(front.id),front) or str(front.get("phase","")) not in ["queued","approach","active"]: return
 	var need: String = str(HOMEWORK_NEED_BREAKS.get(str(front.id),""))
@@ -5913,10 +5961,13 @@ func celebrate_birthday(start_next_action: bool = true, source: String = "auto")
 ## `source` is "auto" or "cake" for a birthday and "change_age" for the death
 ## dialog's Change Age. Features that begin with a stage (retirement, learning to
 ## drive) start their own clocks here, so a stage change has one place to hook.
-func _on_stage_entered(previous: String, next: String, _source: String) -> void:
+func _on_stage_entered(previous: String, next: String, source: String) -> void:
 	# A new stage starts the retirement clock over: a Lifelet who is changed back
 	# to a younger age works again, and a new elder has fourteen days to wait.
 	if previous != next: retirement = LifeRetirement.fresh()
+	# Change Age is a fresh start for the licence too: held by a young adult or older,
+	# to be earned by anyone younger. A birthday keeps the record as it is.
+	if previous != next and source == "change_age": driving = DrivingSchool.fresh(next)
 
 ## Whether this Lifelet has stopped working for good.
 func is_retired() -> bool: return LifeRetirement.is_retired(retirement)
@@ -5986,6 +6037,167 @@ func _advance_retirement() -> void:
 	if bool(retirement.eligible_noticed): return
 	retirement["eligible_noticed"] = true
 	_emit_milestone("retirement_eligible", {"name": str(character.name), "day": day, "text": "%s has been an elder for %d days and can now retire. Open Career details and choose Retire." % [str(character.name).split(" ")[0], LifeRetirement.days_as_elder(lifecycle, day)]})
+
+# ------------------------------------------------------------ driving school
+# The rules are LifeDrivingSchool's; this is the Lifelet's side of them: the record
+# it keeps, the study and lesson actions, the notices and the lesson absence. The
+# car, the walk out and the walk home belong to the controller (driving_lesson.gd).
+
+## Whether this Lifelet holds a driving licence.
+func is_licensed() -> bool: return DrivingSchool.is_licensed(driving)
+
+## Why this driving action cannot be done right now, or "" when it can. The menus,
+## queue_action and the booking panel all read this one answer.
+func driving_error(id: String, check_window: bool = true) -> String:
+	if is_away(): return "This Lifelet will be available after coming home."
+	var stage: String = str(character.age_stage)
+	if id == DrivingSchool.THEORY_ACTION: return DrivingSchool.theory_error(driving, stage, lifecycle, day, is_spirit())
+	if id == DrivingSchool.BOOK_ACTION: return DrivingSchool.panel_error(driving, stage, lifecycle, day, is_spirit())
+	# A lesson that has already left is not turned back because the window closed on the way.
+	var at: float = minutes
+	if not check_window: at = DrivingSchool.WEEKDAY_FIRST if DrivingSchool.is_weekday(day) else DrivingSchool.WEEKEND_FIRST
+	var problem: String = DrivingSchool.lesson_error(driving, stage, lifecycle, day, at, is_spirit())
+	if not problem.is_empty(): return problem
+	for need: String in ["hunger", "energy", "bladder"]:
+		if float(needs[need]) < 12.0: return "Take care of urgent needs before the lesson."
+	return ""
+
+## One line for the age tooltip: where this Lifelet stands with the licence ("" when there is nothing to say).
+func driving_status() -> String:
+	return DrivingSchool.status_text(driving, str(character.age_stage), lifecycle, day, is_spirit())
+
+## What the booking panel shows: the record's summary and the slots on offer.
+func driving_summary() -> Dictionary:
+	var summary: Dictionary = DrivingSchool.summary(driving)
+	summary["options"] = DrivingSchool.booking_options(driving, str(character.age_stage), lifecycle, day, minutes)
+	summary["lesson_error"] = driving_error(DrivingSchool.LESSON_ACTION)
+	summary["panel_error"] = driving_error(DrivingSchool.BOOK_ACTION)
+	return summary
+
+## Hold a lesson for a day and a start time. Replaces any booking already held.
+func book_driving_lesson(book_day: int, book_minutes: float) -> Dictionary:
+	var problem: String = driving_error(DrivingSchool.BOOK_ACTION)
+	if problem.is_empty(): problem = DrivingSchool.booking_error(driving, str(character.age_stage), lifecycle, day, book_day, book_minutes)
+	if problem.is_empty() and not DrivingSchool.lesson_window(book_day, book_minutes): problem = DrivingSchool.window_text()
+	if problem.is_empty() and book_day == day and book_minutes + DrivingSchool.BOOKING_GRACE < minutes: problem = "That time has already gone."
+	if not problem.is_empty(): return {"ok": false, "error": problem}
+	driving = DrivingSchool.book(driving, book_day, book_minutes)
+	_emit_notice("%s has a driving lesson booked for %s at %s." % [str(character.name).split(" ")[0], "today" if book_day == day else LifeEducation.weekday_name(book_day), DrivingSchool.clock_text(book_minutes)])
+	_emit_changed()
+	return {"ok": true, "day": book_day, "minutes": book_minutes}
+
+func cancel_driving_booking() -> bool:
+	if not DrivingSchool.has_booking(driving): return false
+	driving = DrivingSchool.unbook(driving)
+	_emit_changed()
+	return true
+
+## Whether the lesson this Lifelet booked is due: its day, from its time to the end
+## of the grace, with them at home.
+func driving_booking_due() -> bool:
+	return not is_away() and DrivingSchool.booking_due(driving, day, minutes)
+
+## Whether a lesson is booked to begin within `within` minutes, so that things which
+## would put it off (required homework) step aside.
+func driving_booking_soon(within: float = 45.0) -> bool:
+	return DrivingSchool.booking_soon(driving, day, minutes, within)
+
+## An hour of theory is done: one more study day, never two on the same day.
+func _credit_driving_theory() -> void:
+	var before: int = int(driving.theory_days)
+	driving = DrivingSchool.credit_theory(driving, day)
+	if int(driving.theory_days) == before: return
+	var first: String = str(character.name).split(" ")[0]
+	if DrivingSchool.theory_done(driving):
+		# The finishing notice is the first reminder, so the next one is three days on.
+		driving["last_reminder_day"] = day
+		add_moodlet("Theory done", "Focused", "Seven days of road signs and the Highway Code. Time to get behind the wheel.", 360, 2)
+		remember("Driving theory", "Finished studying for the driving test.")
+		_emit_notice("%s finished the driving theory. Book a practical lesson after school, or on a Saturday or Sunday." % first)
+	else:
+		_emit_notice("%s studied for the driving theory (%d of %d days)." % [first, int(driving.theory_days), DrivingSchool.THEORY_DAYS])
+
+## Once a minute: tell a teenager (or a young adult who never learned) that lessons
+## have opened, remind a learner whose theory is done, give up on a booking whose
+## grace ran out and start a course over once its fourteen days have gone.
+func _advance_driving() -> void:
+	if is_spirit() or DrivingSchool.is_licensed(driving): return
+	var first: String = str(character.name).split(" ")[0]
+	for event: String in DrivingSchool.events(driving, str(character.age_stage), lifecycle, day, minutes, is_away()):
+		match event:
+			"introduce":
+				driving = DrivingSchool.introduced(driving, day)
+				_emit_milestone("driving_introduced", {"name": str(character.name), "day": day, "text": "Choose Learn to drive at the bookcase or a desk."})
+			"remind":
+				driving = DrivingSchool.reminded(driving, day)
+				var taken: int = DrivingSchool.lessons(driving)
+				var course: String = (" · course ends day %d" % DrivingSchool.course_end_day(driving)) if taken > 0 else ""
+				_emit_notice("%s could have a driving lesson after school, or on Saturday or Sunday (%d of %d lessons%s)." % [first, taken, DrivingSchool.LESSONS_REQUIRED, course])
+			"missed":
+				driving = DrivingSchool.unbook(driving)
+				_emit_notice("%s missed the booked driving lesson. Book another from a bookcase or a desk." % first)
+			"lapse":
+				var done: int = DrivingSchool.lessons(driving)
+				driving = DrivingSchool.lapse(driving)
+				_emit_notice("%s's 14-day driving course ran out with %d of %d lessons done. The theory still counts; book again to start a new course." % [first, done, DrivingSchool.LESSONS_REQUIRED])
+
+## The car has left and the lesson begins: the Lifelet is away for 90 minutes. Called
+## by the controller. Returns "" or the reason it could not start (the action is then
+## cancelled). The booking, if one brought them here, is used up now, so cancelling
+## the lesson cannot make it come round again.
+func begin_driving_lesson() -> String:
+	if is_away() or action_queue.is_empty() or str(action_queue[0].id) != DrivingSchool.LESSON_ACTION: return "There is no lesson to start."
+	var problem: String = driving_error(DrivingSchool.LESSON_ACTION, false)
+	if not problem.is_empty():
+		cancel_action()
+		_emit_notice(problem)
+		return problem
+	var action: Dictionary = action_queue[0]
+	_wear_for_activity(DrivingSchool.LESSON_ACTION)
+	driving = DrivingSchool.unbook(driving)
+	action.merge({"phase": "active", "paid": true, "started_day": day, "started_minutes": minutes, "elapsed": 0.0, "progress": 0.0}, true)
+	away_state = {"version": 1, "activity": DrivingSchool.LESSON_ACTION, "phase": "away", "departure_day": day, "departure_minutes": minutes,
+		"return_day": day, "return_minutes": minutes + DrivingSchool.LESSON_MINUTES, "exit_id": str(action.target_id), "exit_position": action.target_position,
+		"age_stage": str(character.age_stage), "lesson": DrivingSchool.lessons(driving) + 1, "completed": false, "ended_at": 0.0}
+	_publish("away_changed", [get_away_state()])
+	_emit_changed()
+	_emit_notice("%s is off on a driving lesson and will be home in an hour and a half." % str(character.name).split(" ")[0])
+	return ""
+
+## The lesson's own clock. At the end the lesson counts (the fifth passes the test)
+## and the Lifelet is on the way home; leaving early earns nothing.
+func _tick_lesson_away() -> void:
+	if action_queue.is_empty() or str(action_queue[0].id) != DrivingSchool.LESSON_ACTION or day != int(away_state.departure_day):
+		request_return_home()
+		return
+	var action: Dictionary = action_queue[0]
+	var departed: float = float(int(away_state.departure_day) - 1) * 1440.0 + float(away_state.departure_minutes)
+	var due: float = departed + DrivingSchool.LESSON_MINUTES
+	var elapsed: float = clampf(_autonomy_now() - departed, 0.0, float(action.duration))
+	var gained: float = maxf(0.0, elapsed - float(action.elapsed))
+	action.elapsed = elapsed
+	action.progress = elapsed / float(action.duration)
+	_apply_continuous_effects(action, gained / float(action.duration))
+	if _autonomy_now() < due: return
+	begin_notifications()
+	var first: String = str(character.name).split(" ")[0]
+	driving = DrivingSchool.credit_lesson(driving, int(away_state.departure_day))
+	away_state.phase = "returning"
+	away_state.ended_at = due
+	away_state.completed = true
+	add_moodlet("Behind the wheel", "Confident", "A lesson with the instructor went well.", 240, 2)
+	var taken: int = DrivingSchool.lessons(driving)
+	if DrivingSchool.is_licensed(driving):
+		add_moodlet("Licensed to drive", "Confident", "Passed the driving test.", 720, 3)
+		remember("Passed the driving test", "Became a licensed driver after five lessons.")
+		_emit_notice("%s passed the driving test and can now drive the household car." % first)
+		_emit_milestone("driving_licensed", {"name": str(character.name), "day": day, "text": "%s passed the driving test and may drive the household car." % str(character.name)})
+	else:
+		_emit_notice("%s finished driving lesson %d of %d. The course ends on day %d." % [first, taken, DrivingSchool.LESSONS_REQUIRED, DrivingSchool.course_end_day(driving)])
+	_publish("away_changed", [get_away_state()])
+	_emit_changed()
+	_wear_home_clothes()
+	dispatch_notifications(release_notifications())
 
 func relationship_order() -> Array:
 	var ids: Array = relationships.keys()

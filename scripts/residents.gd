@@ -532,8 +532,19 @@ func party_error() -> String:
  return "Everyone is busy: %s" % str(options[0].reason)
 
 
+## Why this party cannot take the household's own car, or "" when it can: someone who
+## holds a driving licence has to come along to drive it. An empty party is everyone.
+## The shared car at the kerb is the town's own and needs no driver.
+func driver_error(ids:Array) -> String:
+ if _find_owned_vehicle().is_empty():return ""
+ for member:Dictionary in app.household.members:
+  if not ids.is_empty() and not ids.has(str(member.id)):continue
+  if member.sim.is_licensed():return ""
+ return "Someone with a driving licence must come along to drive the household car."
+
 func begin_trip(destination:String, party: Array = []) -> bool:
  if home_visit.active():app.show_notice("Say goodbye and wait for your guest to leave before traveling.");return false
+ if app.driving_lesson.running():app.show_notice("Wait for the driving lesson to finish before traveling.");return false
  if not trip.is_empty():return false
  # The trip replaces the lot traversal and hides members staying behind too.
  # Everybody must first reach a supported landing, including nontravellers.
@@ -569,6 +580,8 @@ func begin_trip(destination:String, party: Array = []) -> bool:
  # that already left home in the household car keeps that remember even when the
  # destination lot has no parked body.
  var owned:Dictionary=_find_owned_vehicle()
+ var driver_problem:String=driver_error(party)
+ if not driver_problem.is_empty():app.show_notice(driver_problem);return false
  var vehicle_before:Dictionary=trip_vehicle.duplicate(true)
  var car_at:Transform3D=_trip_car_transform(owned)
  var drive:Dictionary=Drive.trip_departure(app,owned,car_at)
@@ -655,6 +668,11 @@ func begin_trip(destination:String, party: Array = []) -> bool:
  # children are buckled into their seats first.
  var seating:Array=[]
  for member:Dictionary in travellers:seating.append({"id":str(member.id),"stage":str(member.sim.character.get("age_stage","adult"))})
+ # The first grown-up in the list takes the front door and drives, so a licensed one goes first.
+ for index:int in range(seating.size()):
+  if str(seating[index].stage) in CarEntry.CHILD_STAGES or not travellers[index].sim.is_licensed():continue
+  if index>0:seating.insert(0,seating.pop_at(index))
+  break
  car_entry=CarEntry.new(car,seating)
  trip={"destination":destination,"resume":resume,"phase":"boarding","time":0.0,"boarding":boarding,"canonical":canonical,"party":boarding.keys(),"own_car":using_own,"visibility_before":visibility,"contexts_before":contexts,"vehicle_before":vehicle_before,"reused_venue_car":reused_venue_car,"camera_before":camera_before}
  if drive.has("path"):trip["drive"]=drive;trip["cam"]=app.world.camera_target

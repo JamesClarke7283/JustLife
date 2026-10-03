@@ -12,6 +12,8 @@ const CareMotion = preload("res://scripts/care_motion.gd")
 const ChoreUI = preload("res://scripts/chore_ui.gd")
 const PartyDecor = preload("res://scripts/party_decor.gd")
 const PartyFood = preload("res://scripts/party_food.gd")
+const DrivingSchool = preload("res://scripts/driving_school.gd")
+const DrivingPanel = preload("res://scripts/driving_panel.gd")
 const RoomPack = preload("res://scripts/room_pack.gd")
 const CREATOR_FACE_GROUPS: Dictionary = {
 	"Shape":["face_round","jaw_strong","chin_length","face_length"],
@@ -89,6 +91,8 @@ var away_phases: Dictionary = {}
 ## bus, so two pupils from the same bus never pick the same place.
 var _school_home_spots: Dictionary = {}
 var work_commute: RefCounted = preload("res://scripts/work_commute.gd").new(self)
+## The practical driving lesson: the instructor's car, the walk out and the walk home.
+var driving_lesson: RefCounted = preload("res://scripts/driving_lesson.gd").new(self)
 var need_bars: Dictionary = {}
 var need_fills: Dictionary = {}
 var need_values: Dictionary = {}
@@ -1616,6 +1620,7 @@ func _move_house(house_id:String) -> void:
 	if not pending_house_move.is_empty() or not residents.trip.is_empty():return
 	if is_instance_valid(safety) and safety.unresolved():show_notice("Resolve the burglary report with the police before moving house.");return
 	if not build_transactions.commute_vehicles().is_empty():show_notice("Wait for every driver to return home before moving house.");return
+	if driving_lesson.running():show_notice("Wait for the driving lesson to finish before moving house.");return
 	var house:Dictionary=Properties.houses(properties).get(house_id,{})
 	var type_id:String=str(house.get("type",house_id))
 	# The home being left is saved with its land *before* the move is quoted, so
@@ -3049,6 +3054,8 @@ func _refresh_progress_labels() -> void:
 		age_label.tooltip_text=LifeLifecycle.description(str(sim.character.age_stage),sim.lifecycle)
 		var retirement_line:String=str(sim.retirement_status().text)
 		if not retirement_line.is_empty():age_label.tooltip_text+="\n"+retirement_line
+		var driving_line:String=sim.driving_status()
+		if not driving_line.is_empty():age_label.tooltip_text+="\n"+driving_line
 	if not career_labels.is_empty():
 		if str(sim.character.age_stage) in ["child","teen"]:
 			var school: Dictionary=LifeEducation.summary(sim.education)
@@ -3528,9 +3535,14 @@ func refresh_hud() -> void:
 		if action_context:
 			action_context.text=str(sim.career.title).to_upper() if str(away.activity)=="career" else str(LifeEducation.summary(sim.education).school).to_upper()
 			action_context.tooltip_text="Weekdays · 09:00–17:00" if str(away.activity)=="career" else "Weekdays · 08:00–15:00"
+			if str(away.activity)=="driving_lesson":
+				action_context.text="DRIVING LESSON %d OF %d" % [int(away.get("lesson",1)),DrivingSchool.LESSONS_REQUIRED]
+				action_context.tooltip_text="A lesson lasts an hour and a half"
 		if action_label:action_label.text=_away_status(away);action_label.tooltip_text=action_label.text
 	if action_label and work_commute.owns(action) and not work_commute.caption(action).is_empty():
 		action_label.text=work_commute.caption(action);action_label.tooltip_text=action_label.text
+	if action_label and driving_lesson.owns(action) and not driving_lesson.caption(action).is_empty():
+		action_label.text=driving_lesson.caption(action);action_label.tooltip_text=action_label.text
 	if action_bar:action_bar.value=0 if action.is_empty() else float(action.progress)*100
 	if queue_box:
 		var key:String=bound_member_id+str(away.get("phase",""))+str(sim.action_queue.map(func(a:Dictionary):return a.id+":"+str(a.phase)+":"+str(a.get("cooperation_id",""))))
@@ -3551,6 +3563,7 @@ func refresh_hud() -> void:
 				var chip_view:Dictionary=household.cooperative_presentation(bound_member_id) if chip_dance else {}
 				var queue_title:String=(("Dance together · %d Lifelets" % int(chip_view.get("dancer_count",1))) if chip_dance else ("Learn together" if str(a.id)=="homework" else "Help with homework")) if shared else str(a.label)
 				if str(a.id) in ["school_day","career_day"] and not away.is_empty():queue_title=("At work" if str(a.id)=="career_day" else "At school") if str(away.phase)=="away" else "Coming home"
+				if str(a.id)=="driving_lesson" and not away.is_empty():queue_title="On a driving lesson" if str(away.phase)=="away" else "Coming home"
 				# Two activities can share a label but differ in target — two
 				# cooks, or a read at either bookshelf. Naming the target tells the
 				# player which chip cancels which activity.
@@ -4861,6 +4874,7 @@ func _run_interaction(item:Dictionary,a:Dictionary) -> void:
 		# is owned, otherwise the shared Juniper kerb stand.
 		residents.preferred_vehicle_id=str(item.id)
 		close_overlay();show_drive_party()
+	elif str(a.id)==DrivingSchool.BOOK_ACTION:DrivingPanel.show_panel(self,bound_member_id)
 	elif str(a.id)==LifeBabyPlan.ACTION_ID:try_for_baby(item);close_overlay()
 	elif str(a.id)=="stop_try_for_baby":
 		household.cancel_cooperative_action(bound_member_id)
@@ -6062,7 +6076,7 @@ func _refresh_member_targets(replan:bool=true) -> void:
 		# admitted endpoint until the shared reconciliation below can replan it.
 		# A passing moment keeps the spot beside the passer it was given.
 		if str(action.id) in LifeSim.SOCIAL_ACTIONS or passing_chat.owns(action) or (water_flow.keeps_own_target(action) or toy_flow.keeps_own_target(action) or LifeStrollerFlow.owns(action)):continue
-		var destination:Vector3=world.lot_exit_position(_member_index(bound_member_id)) if str(action.id) in ["school_day","career_day","morning_run"] else by_id[target_id].position
+		var destination:Vector3=world.lot_exit_position(_member_index(bound_member_id)) if str(action.id) in ["school_day","career_day","morning_run","driving_lesson"] else by_id[target_id].position
 		# A seat on a pool's coping has its own approach, worked out from the pool and the screen.
 		if LifeTVGroup.edge(action):
 			var coping:Dictionary=tv_group.edge_spot(action)
@@ -6534,7 +6548,7 @@ func _member_action_finished(id:String,action:Dictionary) -> void:
 func _start_clearing_walk(action:Dictionary) -> void:
 	if walk_only or waiting_for_target or resume_activity or not sim.action_queue.is_empty():return
 	if not is_instance_valid(player) or sim.is_away():return
-	if str(action.get("id","")) in LifeSim.SOCIAL_ACTIONS or passing_chat.owns(action) or str(action.get("id","")) in ["arrive_home","school_day","career_day","morning_run"]:return
+	if str(action.get("id","")) in LifeSim.SOCIAL_ACTIONS or passing_chat.owns(action) or str(action.get("id","")) in ["arrive_home","school_day","career_day","morning_run","driving_lesson"]:return
 	if not action.has("target_position"):return
 	var use:Vector3=action.target_position
 	if not use.is_finite() or player.position.distance_to(use)>.1:return
@@ -6586,9 +6600,11 @@ func on_action_started(action:Dictionary) -> void:
 	if is_instance_valid(stroller_flow) and stroller_flow.passenger(sim):return
 	if loading_game or reconciling_targets or not is_instance_valid(player) or sim.is_away():return
 	if not work_commute.owns(action) and work_commute.views.has(bound_member_id):work_commute._release(bound_member_id)
+	if not driving_lesson.owns(action) and driving_lesson.views.has(bound_member_id):driving_lesson._release(bound_member_id)
 	if traversal.busy(bound_member_id):
 		traversal.cancel(bound_member_id);pending_action=action;return
 	if work_commute.owns(action):work_commute.prepare(action);return
+	if driving_lesson.owns(action):driving_lesson.prepare(action);return
 	if passing_chat.owns(action):passing_chat.prepare(action);return
 	if str(action.id)=="arrive_home":adoption_flow.start_arrival(action);return
 	var social_admitted:bool=traversal.active(bound_member_id) or not path.is_empty() or str(action.phase)=="active"
@@ -7993,7 +8009,7 @@ func _restore_journeys() -> Dictionary:
 			if not toy_flow.restore(member.sim,current):current=member.sim.get_current_action()
 			# The route saved with it led to wherever the old stage was going; walk to the toy afresh.
 			elif traversal.active(id):traversal.cancel(id)
-		if not current.is_empty() and str(current.phase)=="approach" and not work_commute.owns(current) and not traversal.active(id) and not motion.waiting and not member.sim.is_away():
+		if not current.is_empty() and str(current.phase)=="approach" and not work_commute.owns(current) and not driving_lesson.owns(current) and not traversal.active(id) and not motion.waiting and not member.sim.is_away():
 			var built:Dictionary=traversal.request(id,current.target_position)
 			if not bool(built.ok):
 				# A standing spot chosen before a piece's walking hull was measured
@@ -8240,6 +8256,8 @@ func _process(delta:float) -> void:
 	if mode not in ["live","build"]:return
 	if mode=="live":
 		work_commute.cleanup()
+		driving_lesson.cleanup(delta)
+		driving_lesson.consider_bookings()
 		_update_cover_beat(delta)
 		_tick_birth_arrival(delta)
 		residents.publish_targets()
@@ -8275,12 +8293,18 @@ func _process(delta:float) -> void:
 				work_commute.tick(delta)
 				away_targets_changed=was_unavailable!=bool(player.get_meta("away",false)) or away_targets_changed
 				_store_motion(); continue
+			if driving_lesson.owns(sim.get_current_action()) and not traversal.safety(bound_member_id):
+				var lesson_was_unavailable:bool=bool(player.get_meta("away",false))
+				driving_lesson.tick(delta)
+				away_targets_changed=lesson_was_unavailable!=bool(player.get_meta("away",false)) or away_targets_changed
+				_store_motion(); continue
 			away_targets_changed=_sync_away_presence() or away_targets_changed
 			var moving:bool=_advance_away_movement(delta) if sim.is_away() else _advance_movement(delta)
 			var action:Dictionary=sim.get_current_action()
 			var action_id:String="" if action.is_empty() or action.phase!="active" else action.id
 			if LifeBabyPlan.is_beat(action_id):action_id="sleep"
 			if action_id==PartyFood.EAT:action_id="snack" # a bite from the platter uses the snack pose
+			if action_id=="learn_to_drive":action_id="study" # theory is studied like any other study
 			if action_id.is_empty() and is_instance_valid(relationship_flow) and relationship_flow.companion(bound_member_id):action_id="friendly"
 			if not str(action.get("cooperation_id","")).is_empty() and action_id.is_empty():
 				var shared:Dictionary=household.cooperative_presentation(bound_member_id)
@@ -9056,7 +9080,7 @@ func _reconcile_social_routes()->void:
 
 func _resolve_activity_target(action:Dictionary,keep_committed_endpoint:bool=false) -> void:
 	if is_instance_valid(tv_group) and tv_group.resolve(action):return
-	if str(action.id) in ["school_day","career_day","morning_run"]:
+	if str(action.id) in ["school_day","career_day","morning_run","driving_lesson"]:
 		action.target_position=world.lot_exit_position(_member_index(bound_member_id));return
 	if str(action.id) in CareMotion.CARE_ACTIONS and pet_actors.has(str(action.target_id)):
 		action.target_position=_pet_interaction_destination(str(action.target_id),str(action.id))
@@ -9254,7 +9278,7 @@ func _partner_shares_bed(action:Dictionary,member_id:String,holder_id:String,oth
 	return str(mine.romantic_partner)==holder_id
 
 func _activity_resources(action:Dictionary) -> Array[String]:
-	if str(action.get("id","")) in ["school_day","career_day","morning_run"]:return []
+	if str(action.get("id","")) in ["school_day","career_day","morning_run","driving_lesson"]:return []
 	var target_id:String=str(action.get("target_id",""))
 	var item:Dictionary=_find_item(target_id)
 	var resources:Array[String]=[]
@@ -9624,8 +9648,9 @@ func show_trip_party(destination:String, reset:bool = true) -> void:
 		y+=68.0
 	var go:Button=button("Travel  →",Vector2(502,y+8),Vector2(440,46),func():_start_trip(destination),true,overlay)
 	go.name="TripPartyGo"
-	go.disabled=party_selection.is_empty()
-	go.tooltip_text="Travel with the Lifelets you have chosen." if not party_selection.is_empty() else "Choose at least one Lifelet to come along."
+	var trip_driver:String=residents.driver_error(party_selection)
+	go.disabled=party_selection.is_empty() or not trip_driver.is_empty()
+	go.tooltip_text=trip_driver if not trip_driver.is_empty() else ("Travel with the Lifelets you have chosen." if not party_selection.is_empty() else "Choose at least one Lifelet to come along.")
 	button("Back",Vector2(502,y+62),Vector2(440,36),func():show_neighborhood(destination),false,overlay)
 
 
@@ -9676,7 +9701,11 @@ func show_drive_party(reset:bool = true) -> void:
 			lifelets_chosen=true;break
 	var go:Button=button("Choose destination  →",Vector2(462,mini(y+8.0,720.0)),Vector2(496,44),func():show_neighborhood(),true,overlay)
 	go.name="DrivePartyGo"
-	go.disabled=not lifelets_chosen
+	var drive_driver:String=residents.driver_error(party_selection)
+	go.disabled=not lifelets_chosen or not drive_driver.is_empty()
+	if not drive_driver.is_empty():
+		go.text="Someone with a licence must drive"
+		go.tooltip_text=drive_driver
 	button("Back to life",Vector2(462,mini(y+60.0,760.0)),Vector2(496,36),close_overlay,false,overlay)
 
 
@@ -10269,6 +10298,10 @@ func _away_status(state:Dictionary) -> String:
 		return "Inside until day %d" % int(state.get("return_day",0))
 	if str(state.get("activity",""))=="hospital":
 		return "At the hospital · Welcome Baby Home when ready"
+	if str(state.get("activity",""))=="driving_lesson":
+		if str(state.get("phase",""))=="returning":return "Coming home from the driving lesson"
+		var back:int=int(state.get("return_minutes",900))
+		return "Driving lesson · Back %02d:%02d" % [back/60,back%60]
 	var career_state:bool=str(state.get("activity",""))=="career"
 	var activity:String="work" if career_state else "school"
 	if str(state.get("phase",""))=="returning":return "Coming home from "+activity
