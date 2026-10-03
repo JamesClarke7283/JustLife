@@ -2,7 +2,9 @@ extends SceneTree
 ## "Try for Baby" and the baby creator, headless through the public paths.
 ##
 ## The pair's beat is a cooperative session: it is offered only for a male and
-## a female Young Adult/Adult partner at one bed, also works from sleep, runs
+## a female partner at one bed where the woman is a Young Adult or Adult (an Elder
+## man may be the father, see test_make_baby_elder.gd; an Elder woman cannot
+## carry), also works from sleep, runs
 ## a bounded beat whose clock belongs to one member, and on completion opens the
 ## ordinary creator seeded as the baby stage. Confirming adds the edited baby to
 ## the household, and a fresh save/load restores both the pending birth and the
@@ -153,6 +155,7 @@ func _refusal_cases()->void:
 					var relationship:Dictionary=household.members[pair[0]].sim.relationships[ids[pair[1]]]
 					relationship["bond"]="none"
 					relationship["romance"]=0.0
+			# The woman is an Elder: an Elder man could be the father, but she cannot carry.
 			"elder":household.members[0].sim.character.age_stage="elder"
 			"baby_present":
 				household.add_member({"name":"Baby Vale","age_stage":"baby","life_stage":"minor","gender":"female"})
@@ -166,6 +169,7 @@ func _refusal_cases()->void:
 			await _admit(app,bed)
 		var offered:Dictionary=first.get_action_availability(LifeBabyPlan.ACTION_ID,str(bed.id))
 		check(not bool(offered.available),"Try for Baby is refused when %s: %s." % [scenario,str(offered.reason)])
+		if scenario=="elder":check(str(offered.reason).contains("cannot carry"),"An Elder woman is told an Elder cannot carry a baby: %s." % str(offered.reason))
 		var plan:Dictionary=household.try_for_baby_plan(ids[0],str(bed.id))
 		check(not bool(plan.ok) and not str(plan.get("error","")).is_empty(),"The household refuses %s with a notice: %s." % [scenario,str(plan.get("error",""))])
 		app.queue_free();await process_frame

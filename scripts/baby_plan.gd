@@ -41,6 +41,11 @@ const ASPIRATIONS: Array[String] = ["Maker","Connected","Successful","Balanced"]
 ## meshes the baby model does not carry, so they are never rolled or offered.
 const BABY_HAIR_STYLES: Array[int] = [0,1,2]
 const HAIR_STYLES: int = 8
+## Who may try for a baby, and who may carry one. A Young Adult, Adult or Elder
+## can be a parent, but the mother-to-be must be a Young Adult or Adult: an Elder
+## can be the father only.
+const PARENT_STAGES: Array[String] = ["young_adult","adult","elder"]
+const CARRIER_STAGES: Array[String] = ["young_adult","adult"]
 
 static func fresh() -> Dictionary:
 	return {"version":SAVE_VERSION,"active":false,"pending":false,"mother_id":"","father_id":"","conceived_at":0.0,"due_at":0.0,"serial":1,"baby":{}}
@@ -155,10 +160,16 @@ static func sleeping_in(sim: LifeSim, bed_id: String) -> bool:
 		return false
 	return str(action.get("target_id","")) == bed_id and str(action.get("phase","")) == "active"
 
+## Whether this Lifelet's age lets them carry a pregnancy. Gender is a separate
+## question: `mother_of` picks the female partner, and this checks her age.
+static func can_carry(profile: Dictionary) -> bool:
+	return LifeLifecycle.stage_for(profile) in CARRIER_STAGES
+
 ## The single refusal path for the whole feature. Empty means the pair may try.
+## Either partner may start it from the bed.
 static func try_error(sim: LifeSim, bed_id: String, members: Array, pregnancy: Dictionary) -> String:
-	if sim == null or LifeLifecycle.stage_for(sim.character) not in ["young_adult", "adult"]:
-		return "Make Baby needs a Young Adult or Adult Lifelet."
+	if sim == null or LifeLifecycle.stage_for(sim.character) not in PARENT_STAGES:
+		return "Make Baby needs a Young Adult, Adult or Elder Lifelet."
 	var partner_id:String = str(sim.romantic_partner)
 	var partner:LifeSim = null
 	for member:Dictionary in members:
@@ -169,12 +180,18 @@ static func try_error(sim: LifeSim, bed_id: String, members: Array, pregnancy: D
 		return "Try for Baby needs your household partner."
 	if str(partner.romantic_partner) != mine:
 		return "Try for Baby needs your household partner."
-	if LifeLifecycle.stage_for(partner.character) not in ["young_adult", "adult"]:
-		return "Make Baby needs two Young Adult or Adult partners."
+	if LifeLifecycle.stage_for(partner.character) not in PARENT_STAGES:
+		return "Make Baby needs two grown-up partners."
+	if sim.is_spirit() or partner.is_spirit():
+		return "Try for Baby needs two living partners."
 	if LifeFamilyGraph.is_family(sim._family_role(partner_id)) or LifeFamilyGraph.is_family(partner._family_role(mine)):
 		return "Make Baby needs unrelated partners."
 	if gender_of(sim.character) == gender_of(partner.character):
 		return "Try for Baby needs a male and a female partner."
+	# The pair is opposite-gender here, so exactly one of them is the mother.
+	var mother:LifeSim = sim if gender_of(sim.character) == "female" else partner
+	if not can_carry(mother.character):
+		return "An Elder cannot carry a baby. The mother-to-be must be a Young Adult or Adult."
 	if sim.is_away() or partner.is_away():
 		return "Both partners need to be home."
 	if not str(sim.get_current_action().get("cooperation_id", "")).is_empty() or not str(partner.get_current_action().get("cooperation_id", "")).is_empty():
@@ -245,12 +262,20 @@ static func _inherit(parents: Array, rng: RandomNumberGenerator, palette: Array[
 	for parent:Dictionary in parents:
 		if rng.randf() < 0.45:
 			var value:Variant = parent.get(key)
+			# An Elder's grey hair is age, not heredity, so a newborn never takes it.
+			# The draw above is still made, so two parents who are not Elders roll
+			# exactly the babies they always did.
+			if key == "hair_color" and _is_elder_grey(parent,value):
+				continue
 			# Creator palettes may expand without changing family resemblance.
 			# Validate the actual value before converting it: numeric or object
 			# lookalikes must not become acceptable colour strings through a cast.
 			if _color(value):
 				return str(value)
 	return palette[rng.randi()%palette.size()]
+
+static func _is_elder_grey(parent: Dictionary, value: Variant) -> bool:
+	return LifeLifecycle.stage_for(parent) == "elder" and value is String and str(value).trim_prefix("#").to_lower() in LifeCharacterIdentity.ELDER_HAIR_COLORS
 
 ## Conception state for the household. The baby profile is stored immediately
 ## (hidden from play) so a save taken mid-pregnancy restores the same child.

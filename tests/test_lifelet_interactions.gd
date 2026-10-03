@@ -65,7 +65,13 @@ func run()->void:
  var bed:Dictionary=item("bed")
  check(bool(a.get_action_availability(LifeBabyPlan.ACTION_ID,bed.id).available),"Awake Young Adult and Adult partners can choose Make Baby at a bed")
  b.character.age_stage="elder"
- check(not bool(a.get_action_availability(LifeBabyPlan.ACTION_ID,bed.id).available),"Elders are excluded from Make Baby")
+ check(bool(a.get_action_availability(LifeBabyPlan.ACTION_ID,bed.id).available),"A Young Adult woman can choose Make Baby with an Elder man")
+ check(bool(b.get_action_availability(LifeBabyPlan.ACTION_ID,bed.id).available),"The Elder man can start Make Baby with his Young Adult partner")
+ a.character.age_stage="elder"
+ var elder_woman:Dictionary=a.get_action_availability(LifeBabyPlan.ACTION_ID,bed.id)
+ check(not bool(elder_woman.available) and str(elder_woman.reason).contains("cannot carry"),"An Elder woman cannot be the mother: "+str(elder_woman.reason))
+ check(not bool(b.get_action_availability(LifeBabyPlan.ACTION_ID,bed.id).available),"Two Elders are refused Make Baby, since the woman cannot carry")
+ a.character.age_stage="young_adult"
  b.character.age_stage="adult"
  if not OS.get_cmdline_user_args().has("--stroller-only"):
   app.try_for_baby(bed)
