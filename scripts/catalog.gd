@@ -7,6 +7,10 @@ const GAMES_SIZES: Array[String] = ["small", "medium", "large"]
 
 const Kitchen = preload("res://scripts/kitchen_furnishings.gd")
 
+## The ten shades the party props come in. The gathering table's festive cloth is
+## laid in the same shades, so a decorated room can match.
+const PARTY_COLORS: Array[String] = ["ef476f", "ffd166", "06d6a0", "118ab2", "9b5de5", "f15bb5", "fee440", "00bbf9", "f4f1ea", "e0b15a"]
+
 const ITEMS = {
 	"home_phone": {"label":"Home telephone", "category":"Activities", "price":60, "size":Vector2(.24,.09), "height":.38, "color":"e9eee8", "wall_mounted":true, "hang":1.25, "description":"A wall telephone for household services and emergency police calls. Children and older Lifelets can use it."},
 	"burglar_alarm": {"label":"Burglar prevention keypad", "category":"Activities", "price":300, "size":Vector2(.30,.08), "height":.42, "color":"e9eee8", "wall_mounted":true, "hang":1.45, "description":"A wall keypad with an audible security siren. Detects a break-in and calls the police automatically. Included with home insurance."},
@@ -130,6 +134,18 @@ const ITEMS = {
 	# a cabinet worktop or a table. Placement records its chosen support height.
 	"coffee_machine": {"label":"Counter-top espresso machine", "category":"Kitchen", "price":280, "size":Vector2(.42,.55), "height":.86, "color":"4a4f55", "surface_placeable":true, "description":"Place on the floor, a kitchen worktop or a table."},
 	"memorial": {"label":"Garden remembrance stone", "category":"Decor", "price":80, "size":Vector2(.72,.72), "height":.48, "color":"8c8a84"},
+	# Party items are built from code (party_props.gd), so they need no authored model.
+	# The festive tablecloth is not sold here: it is a setting on the gathering table.
+	"party_balloons": {"label":"Party balloon bunch", "category":"Party", "price":25, "size":Vector2(.6,.6), "height":1.9, "color":"ef476f", "tint":true,
+		"styles":["bunch","column","trio"], "style_labels":{"bunch":"Balloon bunch","column":"Balloon column","trio":"Big three"}, "colors":PARTY_COLORS,
+		"description":"Helium balloons on a weighted base, in the colour you choose with gold and white among them."},
+	"party_streamers": {"label":"Party streamers", "category":"Party", "price":15, "size":Vector2(2.4,.08), "height":.55, "color":"ffd166", "tint":true,
+		"styles":["bunting","crepe","tassel"], "style_labels":{"bunting":"Bunting","crepe":"Crepe swags","tassel":"Tassel fringe"}, "colors":PARTY_COLORS,
+		"wall_mounted":true, "hang":2.05, "description":"Streamers that hang against a wall. Raise or lower them with the mouse wheel."},
+	"party_food": {"label":"Party food platter", "category":"Party", "price":40, "size":Vector2(.5,.34), "height":.2, "color":"f4f1ea",
+		"styles":["cupcakes","sandwiches","snacks"], "style_labels":{"cupcakes":"Cupcakes","sandwiches":"Sandwiches","snacks":"Savoury snacks"},
+		"surface_placeable":true, "surface_only":true, "surface_hosts":["dining","table","coffee_table","counter","corner_counter"], "servings":8,
+		"description":"Eight servings for anyone who is hungry. Refill the empty platter for ℒ30."},
 	"guitar": {"label":"Sit-and-strum guitar", "category":"Activities", "price":320, "size":Vector2(.5,.55), "height":1.05, "color":"d7ae7e"},
 	"violin": {"label":"Evening violin", "category":"Activities", "price":380, "size":Vector2(.4,.5), "height":.65, "color":"624435"},
 	"pet_bowl": {"label":"Food & water bowl", "category":"Pets", "price":60, "size":Vector2(.4,.32), "height":.12, "color":"c8a562"},
@@ -361,14 +377,14 @@ const ITEMS = {
 const PET_ACCESSORIES: Array[String] = ["pet_bowl", "cat_tree", "kennel"]
 
 # The Build & buy filter row, in display order. Structure is the tool page.
-const CATEGORIES: Array[String] = ["All", "Comfort", "Bedroom", "Baby & Kids", "Kitchen", "Bathroom", "Activities", "Decor", "Pets", "Garden", "Pool", "Kids", "Outdoor", "Vehicles", "Structure"]
+const CATEGORIES: Array[String] = ["All", "Comfort", "Bedroom", "Baby & Kids", "Kitchen", "Bathroom", "Activities", "Decor", "Party", "Pets", "Garden", "Pool", "Kids", "Outdoor", "Vehicles", "Structure"]
 
 # Instruments share one practice action; the authored model is the difference.
 const INSTRUMENTS: Array[String] = ["guitar", "violin"]
 
 # Floor coverings and wall decor, the telephone and the alarm keypad included: they
 # hang above the furniture and never block routes, walls or other furnishings.
-const PASSABLE: Array[String] = ["rug", "child_rug", "bath_mat", "painting", "framed_picture", "children_picture", "wall_clock", "shelf", "home_phone", "burglar_alarm", "yoga_mat", "beach_towel", "room_light", "memorial", "curtains", "house_door", "house_window", "pet_toy_cat", "pet_toy_dog", "kids_toy", "garden_gate", "garden_gate_double", "garden_gate_drive"]
+const PASSABLE: Array[String] = ["rug", "child_rug", "bath_mat", "painting", "framed_picture", "children_picture", "wall_clock", "shelf", "home_phone", "burglar_alarm", "yoga_mat", "beach_towel", "room_light", "memorial", "curtains", "house_door", "house_window", "pet_toy_cat", "pet_toy_dog", "kids_toy", "garden_gate", "garden_gate_double", "garden_gate_drive", "party_streamers"]
 
 ## Fence runs and gates share one edge. Their footprints may touch; a gap is
 ## only the overlap of the panels themselves.
@@ -404,6 +420,19 @@ static func wall_mounted(kind: String) -> bool:
 
 static func passable(kind: String) -> bool:
 	return kind in PASSABLE
+
+## The kinds the world draws from code because no model file exists for them: the
+## shapes live in the world's builders and in party_props.gd. The placed piece, its
+## placement ghost and its shop thumbnail all read this one list, so a new code-made
+## kind is added here once. Kitchen cabinets are also drawn from code, but their
+## builder is `Kitchen`.
+const PROCEDURAL: Array[String] = ["memorial", "kids_toy", "bath_mat", "framed_picture", "home_phone", "burglar_alarm", "garden_gate", "garden_gate_double", "garden_gate_drive", "party_balloons", "party_streamers", "party_food"]
+
+static func procedural(kind: String) -> bool:
+	return kind in PROCEDURAL
+
+## The decorations that make a room feel festive, for whoever scores a party.
+const PARTY_DECOR: Array[String] = ["party_balloons", "party_streamers"]
 
 ## The paints offered for a car, in the row's order, led by the shade the model
 ## already wears. Any six-digit shade is valid on a record — this is the palette

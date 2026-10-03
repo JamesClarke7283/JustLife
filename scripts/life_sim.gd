@@ -3,6 +3,7 @@ class_name LifeSim
 ## Deterministic single-household simulation. The world owns movement and calls tick.
 
 const ChoreDefs = preload("res://scripts/chore_defs.gd")
+const PartyFood = preload("res://scripts/party_food.gd")
 signal changed()
 signal action_started(action: Dictionary)
 signal action_finished(action: Dictionary)
@@ -244,7 +245,7 @@ const HOME_AFTER: Array[String] = ["sleep", "nap", "career_day", "school_day", "
 const TRIP_MINUTES: float = 15.0
 const SPIRIT_BLOCKED: Array[String] = [
 	"career_day", "school_day", "job", "work", "birthday",
-	"cook", "snack", "eat_meal", "store_meal",
+	"cook", "snack", "eat_meal", "store_meal", "eat_party_food", "refill_party_food",
 	"flirt", "ask_partner", "go_on_date", "commit", "break_up",
 ]
 const PASSING_CAUSES: Dictionary = {
@@ -404,6 +405,10 @@ func _build_actions() -> void:
 	# needs the power the household's bills pay for.
 	_define("drink_coffee", "Drink a coffee", 15.0, {"fun": 6.0, "second_wind": 55.0}, 6, "", 0.0, "Pull a shot of espresso and drink it. The beans cost ℒ6 and the lift is a temporary second wind that fades on its own.")
 	_define("snack", "Grab a snack", 15.0, {"hunger": 32.0}, 4, "", 0.0, "A quick bite to keep the day going.")
+	# The party platter keeps its own servings: eating takes one, a refill costs ℒ30 and
+	# restores all eight (party_food.gd).
+	_define(PartyFood.EAT, "Grab some party food", 15.0, {"hunger": 26.0, "fun": 8.0}, 0, "", 0.0, "Take one of the platter's servings. A cheerful bite that lifts the mood.")
+	_define(PartyFood.REFILL, "Refill the party food", 5.0, {}, PartyFood.REFILL_COST, "", 0.0, "Set out a fresh eight servings on the platter. Costs ℒ30.")
 	_define("cook", "Cook a fresh meal", 45.0, {"fun": 8.0, "hygiene": -5.0}, 8, "cooking", 34.0, "Choose a recipe to prepare and share. Cooking skill unlocks more dishes. Eating restores hunger. Ingredients start at ℒ8.")
 	_define("sleep", "Sleep", 360.0, {"energy": 95.0, "fun": 15.0}, 0, "", 0.0, "A full night's rest restores energy and chases the boredom away.")
 	_define("try_for_baby", "Make Baby", LifeBabyPlan.DURATION, {"social": 20.0, "fun": 14.0, "energy": -6.0}, 0, "", 0.0, "An intimate moment with your partner while you share the bed. If you both want to, this can begin a pregnancy.")
@@ -611,6 +616,7 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"yoga_mat": ids = ["stretch"]
 		"stereo": ids = ["dance"]
 		"coffee_machine": ids = ["drink_coffee"]
+		"party_food": ids = [PartyFood.EAT, PartyFood.REFILL]
 		"toybox", "toy_chest": ids = ["play_toys"]  # adults see the disabled entry with its reason
 		"wardrobe":
 			var worn_category: String = LifeCharacterIdentity.normalize_category(character.get("outfit_category", "everyday"))
@@ -1277,7 +1283,7 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 		else:
 			definition["changes"] = {"fun": 26.0, "social": 18.0}
 			definition["xp"] = 6.0
-	if id == "clean_litter_tray" or id in SOCIAL_ACTIONS or id in LifePassingPolicy.ALL or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or COMPUTER_MASTERY_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "snack", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "bin_meal", "jog", "play_toys", "play_dollhouse", "child_desk_study", "child_draw", "child_colour", "play_rattle", "play_baby_mat", "use_potty", "sleep", "nap", "put_in_fridge", LifeGardenGames.ACTION_ID, LifeOutdoorActs.ACTION_ID, LifeOutdoorActs.PUSH_ID, LifeWetness.DRY_OFF_ID, LifeWetness.DRY_SIT_ID]:
+	if id == "clean_litter_tray" or id in SOCIAL_ACTIONS or id in LifePassingPolicy.ALL or EMOTION_ACTIONS.has(id) or TRAIT_ACTIONS.has(id) or COMPUTER_MASTERY_ACTIONS.has(id) or id in ["plant_wee", "mop_puddle", "birthday", "job", "work", "cook", "snack", "school", "homework", "eat_meal", "store_meal", "clean_plate", "discard_meal", "bin_meal", "jog", "play_toys", "play_dollhouse", "child_desk_study", "child_draw", "child_colour", "play_rattle", "play_baby_mat", "use_potty", "sleep", "nap", "put_in_fridge", LifeGardenGames.ACTION_ID, LifeOutdoorActs.ACTION_ID, LifeOutdoorActs.PUSH_ID, LifeWetness.DRY_OFF_ID, LifeWetness.DRY_SIT_ID] or id in PartyFood.IDS:
 		var availability: Dictionary = get_action_availability(id, target_id)
 		if not bool(availability.available):
 			_emit_notice(str(availability.reason))
@@ -1350,6 +1356,12 @@ func begin_current_action() -> void:
 		var age_reason:Dictionary=get_action_availability(str(action.id),str(action.get("target_id","")))
 		if not bool(age_reason.available):
 			_emit_notice(str(age_reason.reason));cancel_action();return
+	if str(action.id) in PartyFood.IDS and not bool(action.paid):
+		# Someone else may have taken the last serving, or the platter is gone, while this
+		# Lifelet walked over.
+		var party_check:Dictionary=get_action_availability(str(action.id),str(action.get("target_id","")))
+		if not bool(party_check.available):
+			_emit_notice(str(party_check.reason));cancel_action();return
 	if str(action.id) in ["plant_wee","mop_puddle"]:
 		var sanitation_reason:String=_sanitation_reason(str(action.id),str(action.target_id),bool(action.paid) and float(action.elapsed)>0.0)
 		if not sanitation_reason.is_empty():
@@ -1592,6 +1604,13 @@ func _drying_reason(id: String, target_id: String) -> String:
 	if not LifeWetness.is_soft_seat(kind):return "Choose a sofa, armchair, bench or garden seat."
 	if wetness <= 0.0 and towel.is_empty():return "Already dry."
 	return ""
+
+
+## The servings the world last reported on a party platter (nothing for another target).
+func _target_servings(target_id: String) -> int:
+	for entry: Dictionary in _targets:
+		if str(entry.get("id", "")) == target_id:return int(entry.get("servings", 0))
+	return 0
 
 
 func _valid_towel(value: Variant) -> bool:
@@ -2341,6 +2360,10 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 		var wet_reason: String = _drying_reason(id, target_id)
 		if not wet_reason.is_empty():
 			return {"available":false, "reason":wet_reason}
+	elif id in PartyFood.IDS:
+		var party_reason: String = PartyFood.reason(id, _target_kind_of(target_id), _target_servings(target_id), funds)
+		if not party_reason.is_empty():
+			return {"available":false, "reason":party_reason}
 	if is_spirit() and (id in SPIRIT_BLOCKED or id == LifeBabyPlan.ACTION_ID or ChoreDefs.is_chore(id)):
 		return {"available":false, "reason":"A spirit has finished that chapter of life."}
 	# A bicycle's own entry names the ages that fit it, and a helmet must really
