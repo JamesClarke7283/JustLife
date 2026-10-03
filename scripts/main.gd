@@ -3054,6 +3054,10 @@ func _refresh_progress_labels() -> void:
 			var school: Dictionary=LifeEducation.summary(sim.education)
 			career_labels.title.text=str(school.school)
 			career_labels.details.text="Grade %s · Homework %s" % [school.grade,"ready" if school.homework_ready else "needed"]
+			if bool(school.homework_required):
+				# A teenager must hand it in: say so while it is due, and count what was missed.
+				if sim.homework_mandatory():career_labels.details.text="Grade %s · Homework due by 23:00" % school.grade
+				if int(school.missed_homework)>0:career_labels.details.text+=" · %d missed" % int(school.missed_homework)
 			career_labels.work.disabled=not sim.get_action_availability("school_day").available
 			career_labels.work.tooltip_text=str(sim.get_action_availability("school_day").reason)
 			career_labels.homework.disabled=sim.is_away() or not sim.get_action_availability("homework").available
@@ -4646,7 +4650,7 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 		if LifeBabyPlan.session_kind(session)!=LifeBabyPlan.SESSION_KIND:continue
 		actions.insert(0,{"id":"stop_try_for_baby","label":"Stop the moment","cost":0,"duration":0,"available":true,"description":"End it now. Nothing is decided unless the whole moment finishes."})
 		break
-	if str(item.kind) in ["desk","computer"] and str(sim.character.age_stage) in ["child","teen"]:
+	if str(item.kind) in LifeCatalog.WORK_DESKS and str(sim.character.age_stage) in ["child","teen"]:
 		var availability:Dictionary=sim.get_action_availability("homework",str(item.id))
 		var reason:String=str(availability.reason)
 		if not sim.action_queue.is_empty():reason="Finish or cancel this Lifelet’s current activity first."
@@ -6146,6 +6150,9 @@ func cancel_current_action(index:int=0) -> void:
 		sim.request_return_home();refresh_hud();return
 	if index==0 and not sim.get_current_action().is_empty() and bool(sim.get_current_action().get("autonomous",false)):
 		sim.defer_autonomous_responsibility(str(sim.get_current_action().id))
+	elif index<sim.action_queue.size() and str(sim.action_queue[index].id)=="homework" and sim.homework_mandatory():
+		# A teenager's required homework, cancelled from further down the queue, comes back in half an hour.
+		sim.defer_autonomous_responsibility("homework")
 	# The next action's start signal is synchronous; clear the OLD route first.
 	if index==0:_clear_motion()
 	if index==0 and household.cancel_cooperative_action(bound_member_id):
@@ -6241,27 +6248,38 @@ func _queue_pet_beat(action_id:String,pet_id:String,destination:Vector3,pet_name
 			action["target_kind"]="pet"
 	refresh_hud()
 
-## Homework goes to the best place the home has to do it, in the order a household
-## would reach for one: the child's own desk and chair, a table with a chair, a desk
-## or computer, and a bookshelf only when there is nowhere to sit.
+## Homework goes to the best place the home has to do it, in the order pupils reach
+## for one: the study desk with a laptop, the home office desk (and the older desk
+## and computer beside each), then the child's own desk and chair and a table with a
+## chair, and a bookcase (or a desk with no chair) only when there is nowhere to sit.
 func queue_homework_desk() -> void:
-	# The order a child chooses by on coming home from school: somewhere to sit first
-	# (their own desk, a table with a chair, a desk), the shelf or a chairless child
-	# desk only when there is nowhere to sit. Availability, not the menu's listing, so
-	# a table is still found before three o'clock.
+	# Availability, not the menu's listing, so a table is still found before three
+	# o'clock. The lowest-ranked free place wins (LifeSim.homework_place_rank).
 	var refusal:String=""
-	var standing:Dictionary={}
-	for kind:String in ["child_desk","dining","desk","computer","bookshelf"]:
-		if kind=="child_desk" and str(sim.character.age_stage)!="child":continue
+	var best:Dictionary={}
+	var best_rank:float=INF
+	for item in world.items:
+		if item.kind=="child_desk" and str(sim.character.age_stage)!="child":continue
+		var rank:float=sim.homework_place_rank(str(item.id))
+		if is_inf(rank):continue
+		var availability:Dictionary=sim.get_action_availability("homework",str(item.id))
+		if bool(availability.available):
+			if rank<best_rank:best=item;best_rank=rank
+		elif refusal.is_empty():refusal=str(availability.reason)
+	if not best.is_empty():queue_interaction(best,"homework");return
+	show_notice(refusal if not refusal.is_empty() else "Add a study desk with laptop, a home office desk, a child desk, a table with chairs or a bookcase in Build & buy first.")
+
+## The first place of any of these kinds that can take this activity, in the order
+## the kinds are given (so the laptop desks come before the office desks).
+func queue_nearest_of(kinds:Array,id:String) -> void:
+	var refusal:String=""
+	for kind in kinds:
 		for item in world.items:
 			if item.kind!=kind:continue
-			var availability:Dictionary=sim.get_action_availability("homework",str(item.id))
-			if bool(availability.available):
-				if not sim.homework_is_standing(str(item.id)):queue_interaction(item,"homework");return
-				if standing.is_empty():standing=item
+			var availability:Dictionary=sim.get_action_availability(id,str(item.id))
+			if bool(availability.available):queue_interaction(item,id);return
 			elif refusal.is_empty():refusal=str(availability.reason)
-	if not standing.is_empty():queue_interaction(standing,"homework");return
-	show_notice(refusal if not refusal.is_empty() else "Add a desk, a child desk or a table with chairs in Build & buy first.")
+	show_notice(refusal if not refusal.is_empty() else "Add a study desk, home office desk, desk or computer in Build & buy first.")
 
 func queue_nearest(kind:String,id:String) -> void:
 	for item in world.items:
@@ -10069,8 +10087,9 @@ func show_school_record() -> void:
 	var classes:String="%d %s attended" % [sim.education.attended,"class" if int(sim.education.attended)==1 else "classes"]
 	var assignments:String="%d %s" % [sim.education.homework,"assignment" if int(sim.education.homework)==1 else "assignments"]
 	text_label("%s · %d missed · %s · %d min late" % [classes,sim.education.missed,assignments,int(sim.education.get("late_minutes",0.0))],Vector2(465,504),Vector2(506,30),14,P.INK,false,overlay)
+	if bool(school.homework_required):text_label("Homework is required every school day · %d not handed in · 3 grade points each" % int(school.missed_homework),Vector2(465,529),Vector2(506,24),13,P.INK,false,overlay)
 	paragraph("Graduation needs at least three attended classes, 70% attendance and a C grade. Your school record stays with you as you grow.",Vector2(465,555),Vector2(505,63),14,P.MUTED,overlay)
-	var online:Button=button("Online classes",Vector2(464,653),Vector2(216,45),func():close_overlay();queue_nearest("desk","school"),false,overlay)
+	var online:Button=button("Online classes",Vector2(464,653),Vector2(216,45),func():close_overlay();queue_nearest_of(LifeCatalog.WORK_DESKS,"school"),false,overlay)
 	online.tooltip_text="Optional three-hour class at a home computer. It shares today’s attendance credit with school."
 	online.disabled=not sim.get_action_availability("school").available or sim.is_away()
 	button("Back to life",Vector2(693,653),Vector2(283,45),close_overlay,true,overlay)
@@ -10423,7 +10442,7 @@ func show_career_record() -> void:
 			pick.name="PoliceShift_"+shift;pick.disabled=sim.is_away();index+=1
 	else:paragraph("A home shift is an optional six-hour alternative. It shares today's paid attendance with going to work.",Vector2(466,485),Vector2(505,60),14,P.MUTED,overlay)
 	if not retired:
-		var work:Button=button("Go to the station" if police else "Work from home",Vector2(465,590),Vector2(243,43),func():close_overlay();_go_to_work() if police else queue_nearest("desk","job"),false,overlay)
+		var work:Button=button("Go to the station" if police else "Work from home",Vector2(465,590),Vector2(243,43),func():close_overlay();_go_to_work() if police else queue_nearest_of(LifeCatalog.WORK_DESKS,"job"),false,overlay)
 		work.disabled=not sim.get_action_availability("career_day" if police else "job").available
 	var change:Button=button("Find a job",Vector2(720,590),Vector2(251,43),show_careers,false,overlay);change.disabled=sim.is_away() or retired
 	if retired:change.tooltip_text=sim.career_entry_error("")

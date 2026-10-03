@@ -1,8 +1,10 @@
 extends SceneTree
 ## A child comes home from school (by the real bus) and goes straight to somewhere
-## to sit and do their homework: their own desk and chair, a desk, or a dining
-## table with a chair; never standing at a shelf while a seat is free, and never
-## standing idle when there is nowhere to do it.
+## to sit and do their homework, in the order pupils reach for one: the study desk
+## with laptop, the home office desk (and the older desk and computer beside each),
+## then their own desk and chair or a dining table with a chair; never standing at a
+## shelf while a seat is free, and never standing idle when there is nowhere to do
+## it. (tests/test_homework_desks.gd covers the study and office desks themselves.)
 const DT: float = .05
 var app: Node
 var checks: int = 0
@@ -79,7 +81,7 @@ func run() -> void:
 	check(float(willow.returned) > 880.0 and float(willow.returned) < 1000.0, "The child is back from school between 14:40 and 16:40 (%.0f)" % float(willow.returned))
 	check(bool(willow.attended) and int(willow.missed) == 0, "Their school day counts as attended, not missed")
 	check(float(willow.hw_started) > 0.0 and float(willow.hw_started) - float(willow.returned) < 60.0, "They start their homework within the hour (%.0f -> %.0f)" % [float(willow.returned), float(willow.hw_started)])
-	check(str(willow.hw_kind) in ["desk", "dining", "child_desk"], "They do it at a desk or table, not at the bookshelf (%s)" % str(willow.hw_kind))
+	check(str(willow.hw_kind) in ["study_desk", "office_desk", "desk", "computer", "dining", "child_desk"], "They do it at a desk or table, not at the bookshelf (%s)" % str(willow.hw_kind))
 	check(str(willow.anchor) == "seat", "They sit down to do it (%s)" % str(willow.anchor))
 	check(bool(willow.done), "The homework is done for the day")
 
@@ -87,7 +89,7 @@ func run() -> void:
 	for starter: String in ["lumen", "haven"]:
 		var home: Dictionary = await school_day(starter)
 		check(float(home.returned) > 880.0 and float(home.returned) < 1000.0, "%s: back from school at three (%.0f)" % [starter, float(home.returned)])
-		check(str(home.hw_kind) in ["child_desk", "dining", "desk"], "%s: homework at their own desk or a table (%s)" % [starter, str(home.hw_kind)])
+		check(str(home.hw_kind) in ["study_desk", "office_desk", "child_desk", "dining", "desk", "computer"], "%s: homework at their own desk or a table (%s)" % [starter, str(home.hw_kind)])
 		check(str(home.anchor) == "seat", "%s: they sit (%s)" % [starter, str(home.anchor)])
 		check(float(home.palm) < .25, "%s: their hands are on the desk (%.2f m)" % [starter, float(home.palm)])
 		check(bool(home.done), "%s: the homework is finished" % starter)
