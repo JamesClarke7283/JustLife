@@ -38,11 +38,11 @@ func run() -> void:
 	check(of_kind(agenda,"school").size()==1,"Current school forecasting stops before the age transition.")
 	child.lifecycle.auto_age=false
 	check(of_kind(LifeCalendar.entries(household,1),"birthday").is_empty() and of_kind(LifeCalendar.entries(household,1),"school").size()==5,"Turning automatic aging off removes its prediction and restores the current routine.")
-	child.lifecycle.auto_age=true;child.lifecycle.progress=1.0-120.0/(14.0*1440.0)
+	child.lifecycle.auto_age=true;child.lifecycle.progress=1.0-120.0/(LifeLifecycle.duration("child","normal")*1440.0)
 	check(absf(float(of_kind(LifeCalendar.entries(household,1),"school",1)[0].end)-600.0)<.000001,"A birthday during school marks an early end instead of promising a full day.")
 	adult.lifecycle.progress=1.0-120.0/(42.0*1440.0)
 	check(LifeCalendar.clock_text(fmod(LifeCalendar.birthday_time(adult),1440.0))=="10:00","Fractional adult age progress preserves the intended exact-minute birthday label.")
-	child.lifecycle.progress=1.0-960.0/(14.0*1440.0)
+	child.lifecycle.progress=1.0-960.0/(LifeLifecycle.duration("child","normal")*1440.0)
 	child.day=2;child.minutes=0;child._advance_age(960.0)
 	check(child.character.age_stage=="teen" and of_kind(LifeCalendar.entries(household,2),"school",2)[0].title=="Morrow Secondary","After the real lifecycle transition, the calendar uses the new school stage.")
 	adult.lifecycle.progress=.9999;adult.character.age_stage="elder"

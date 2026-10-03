@@ -28,7 +28,7 @@ const LETTERS: Dictionary = {
 	"school": {"title": "First day at school", "body": "A note from the school office confirms %s is enrolled and starts on the next weekday."},
 	"adoption": {"title": "A new arrival", "body": "Everyone at the agency is delighted that %s has joined the household."},
 	"pet": {"title": "Pet registration", "body": "The veterinary practice has registered %s and enclosed a first appointment card."},
-	"birthday": {"title": "Many happy returns", "body": "A card for %s' birthday, signed by the neighbours on the lane."},
+	"birthday": {"title": "Many happy returns", "body": "A birthday card for %s, signed by the neighbours on the lane."},
 	"utility": {"title": "Utilities notice", "body": "A reminder that %s pays for what the home uses, and that the account is in good standing."},
 	"juniper": {"title": "News from Juniper Gardens", "body": "The gardens say a new season is starting and %s is welcome any afternoon."},
 }

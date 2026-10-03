@@ -35,6 +35,10 @@ const BLADDER_GRACE_MINUTES: float = 10.0
 var bladder_grace: float = 0.0
 signal notice(text: String)
 signal age_changed(previous: String, current: String)
+## A life milestone worth a banner: kind is "birthday", "retired", "retirement_eligible",
+## "driving_introduced", "driving_licensed" or "pension", and data carries what that
+## kind needs (a birthday names the stages and where it came from).
+signal milestone(kind: String, data: Dictionary)
 signal away_changed(state: Dictionary)
 signal life_changed(status: String)
 signal passing_due(cause: String)
@@ -129,6 +133,9 @@ var degree: String = "none"
 var criminal_record: Dictionary = {}
 var cooperation_owner: Node = null
 var cooperation_member_id: String = ""
+## What brought the latest birthday about: "auto" when the lifespan clock ran out,
+## "cake" for the paid fridge celebration, or a caller's own word.
+var last_birthday_source: String = ""
 var _notification_depth: int = 0
 var _pending_notifications: Array = []
 var skills: Dictionary = {}
@@ -1052,15 +1059,26 @@ func request_return_home() -> bool:
 		action.elapsed = elapsed
 		action.progress = elapsed/float(action.duration)
 		_apply_continuous_effects(action,gained/float(action.duration))
-	var returning_from_work:bool=str(away_state.activity)=="career"
-	defer_autonomous_responsibility("career_day" if returning_from_work else "school_day",maxf(1.0,float(int(away_state.departure_day)-day)*1440.0+float(_career_pattern().close)+1.0-minutes) if returning_from_work else maxf(1.0,721.0-minutes))
+	var activity:String=str(away_state.get("activity","school"))
+	var returning_from_work:bool=activity=="career"
+	# A driving lesson or a stay in hospital or prison leaves no school day or shift to put off.
+	if activity not in BIRTHDAY_HOLD_ACTIVITIES:defer_autonomous_responsibility("career_day" if returning_from_work else "school_day",maxf(1.0,float(int(away_state.departure_day)-day)*1440.0+float(_career_pattern().close)+1.0-minutes) if returning_from_work else maxf(1.0,721.0-minutes))
 	away_state.phase = "returning"
 	away_state.ended_at = _autonomy_now()
 	away_state.completed = false
 	_publish("away_changed",[get_away_state()])
 	_emit_changed()
-	_emit_notice(("%s is leaving work early. Today’s full shift and pay have not been earned." if returning_from_work else "%s is leaving school early. Today’s attendance has not been earned.") % str(character.name))
+	_emit_notice(_early_return_text(activity) % str(character.name))
 	return true
+
+
+## What the household reads when someone is called home before their absence ends.
+func _early_return_text(activity: String) -> String:
+	match activity:
+		"career": return "%s is leaving work early. Today’s full shift and pay have not been earned."
+		"school": return "%s is leaving school early. Today’s attendance has not been earned."
+		"driving_lesson": return "%s is coming back from the driving lesson early. It will not count."
+	return "%s is coming home early."
 
 
 ## A solo trip's own refusal, re-checked when the traveller reaches the exit.
@@ -1688,6 +1706,7 @@ func tick(delta: float) -> void:
 
 
 func _step(game_minutes: float) -> void:
+	if not lifecycle.has("stage_day"): _anchor_stage_day()
 	var bladder_before:float=float(needs.bladder)
 	for i in range(moodlets.size()-1,-1,-1):
 		moodlets[i].remaining=maxf(0,float(moodlets[i].remaining)-game_minutes)
@@ -1974,7 +1993,7 @@ func _finish_front() -> void:
 		else:
 			_emit_notice("%s boards the school bus." % str(character.name).split(" ")[0])
 	elif id == "birthday":
-		if str(action.get("birthday_from_stage","")) == str(character.age_stage): celebrate_birthday(false)
+		if str(action.get("birthday_from_stage","")) == str(character.age_stage): celebrate_birthday(false,"cake")
 	elif id == "paint" or id == "paint_masterpiece":
 		# A masterpiece rides the Inspired mood: its canvas is worth far more
 		# than an ordinary sale, and the mood bonus stacks on top.
@@ -4452,6 +4471,7 @@ func get_mood() -> Dictionary:
 
 
 func get_state() -> Dictionary:
+	if not lifecycle.has("stage_day"): _anchor_stage_day()
 	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "second_wind": second_wind, "wetness": wetness, "towel": towel.duplicate(true), "auto_swimwear": auto_swimwear, "bladder_grace":bladder_grace, "starvation_minutes":starvation_minutes, "exhaustion_minutes":exhaustion_minutes, "deferred_passing_minutes":deferred_passing_minutes, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "degree": degree, "criminal_record": criminal_record.duplicate(true), "wants": wants.duplicate(true), "whims": whims.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "last_bill_day": last_bill_day, "pending_bill":pending_bill.duplicate(true), "bills_paid_total":bills_paid_total, "bills_late":bills_late, "utilities_cut":utilities_cut, "insurance_policy_id":insurance_policy_id, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "resident_aliases":resident_aliases.duplicate(true), "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "passing_contacts":passing_contacts.duplicate(true), "last_passing_any":maxf(last_passing_any,-1.0), "routine_memory_days":routine_memory_days.duplicate(true)}
 
 
@@ -4533,6 +4553,7 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 	lifecycle = state.get("lifecycle", LifeLifecycle.fresh()).duplicate(true)
 	lifecycle.progress = float(lifecycle.progress)
 	for birthday: Dictionary in lifecycle.history: birthday.day = int(birthday.day)
+	if lifecycle.has("stage_day"): lifecycle.stage_day = int(lifecycle.stage_day)
 	if is_spirit():
 		lifecycle["passed"] = true
 	needs = state["needs"].duplicate(true)
@@ -4625,6 +4646,7 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 	for key: Variant in state.get("routine_memory_days", {}):routine_memory_days[str(key)] = int(state["routine_memory_days"][key])
 	funds = int(state["funds"])
 	day = int(state["day"])
+	if not lifecycle.has("stage_day"): _anchor_stage_day()
 	minutes = float(state["minutes"])
 	var school_state: Dictionary = state.get("education",LifeEducation.fresh(str(character.age_stage),day))
 	education = LifeEducation.advance(school_state,str(character.age_stage),day).state
@@ -4885,6 +4907,7 @@ func _validate_state(state: Dictionary) -> String:
 		return "Save contains a Lifelet who passed without a known cause."
 	for birthday: Dictionary in state.get("lifecycle", LifeLifecycle.fresh()).history:
 		if int(birthday.day) > int(state.get("day", 0)): return "Save contains a future birthday."
+	if int(state.get("lifecycle", LifeLifecycle.fresh()).get("stage_day", 0)) > int(state.get("day", 0)): return "Save contains a future stage date."
 	if not profile.get("name") is String or not profile.get("traits") is Array or str(profile.get("aspiration", "")) not in ASPIRATION_NAMES:
 		return "Save contains an invalid character."
 	for trait_name: Variant in profile["traits"]:
@@ -5540,6 +5563,11 @@ func set_aging(lifespan: String, enabled: bool) -> bool:
 	_emit_changed()
 	return true
 
+## A Lifelet is created before the household sets the shared clock, so the day the
+## current stage began is noted the first time the sim runs or is saved.
+func _anchor_stage_day() -> void:
+	LifeLifecycle.anchor_stage_day(lifecycle, str(character.get("age_stage", "adult")), day)
+
 func _advance_age(game_minutes: float) -> void:
 	if is_spirit(): return
 	if not bool(lifecycle.auto_age) or str(character.age_stage) == "unknown": return
@@ -5653,15 +5681,34 @@ func cancel_pending_passing(new_age_stage: String = "") -> bool:
 	needs.hunger = maxf(float(needs.hunger), 55.0)
 	needs.energy = maxf(float(needs.energy), 55.0)
 	if not new_age_stage.is_empty() and new_age_stage in LifeLifecycle.STAGES:
+		var changed_from: String = str(character.age_stage)
 		character.age_stage = new_age_stage
 		character.life_stage = LifeLifecycle.eligibility(new_age_stage)
 		lifecycle.progress = 0.0
 		lifecycle["passed"] = false
+		# The birthday history and the school record have to describe the new age or
+		# the save no longer loads, and the new stage starts today. Earlier school
+		# terms stay on the record; the term in progress does not carry over.
+		lifecycle.history = LifeLifecycle.history_after_change(lifecycle.history, changed_from, new_age_stage, day)
+		if changed_from != new_age_stage:
+			lifecycle["stage_day"] = day
+			var earlier_terms: Array = (education.get("records", []) as Array).filter(func(term: Dictionary) -> bool: return LifeEducation.STAGES.find(str(term.stage)) < LifeEducation.STAGES.find(new_age_stage))
+			education = LifeEducation.fresh(new_age_stage, day)
+			education.records = earlier_terms
+			var cancelled: Dictionary = _cancel_age_actions()
+			_on_stage_entered(changed_from, new_age_stage, "change_age")
+			if bool(cancelled.front_removed): _start_front()
 	_emit_notice("%s will keep living a while longer." % str(character.name))
 	_emit_changed()
 	return true
 
-func celebrate_birthday(start_next_action: bool = true) -> bool:
+## Absences that a birthday does not cut short. A hospital stay ends when the baby
+## comes home, a sentence ends on release and a driving lesson ends with the drive.
+const BIRTHDAY_HOLD_ACTIVITIES: Array[String] = ["hospital", "prison", "driving_lesson"]
+
+## `source` says what brought the birthday: "auto" when the lifespan clock ran out,
+## "cake" for the paid fridge celebration.
+func celebrate_birthday(start_next_action: bool = true, source: String = "auto") -> bool:
 	if is_spirit(): return false
 	# Close a due school day before changing the age and archiving its record.
 	# This also keeps the legitimate exact-bell transition serializable.
@@ -5673,7 +5720,7 @@ func celebrate_birthday(start_next_action: bool = true) -> bool:
 	if not bool(school_result.ok):
 		_emit_notice(str(school_result.error))
 		return false
-	if is_away() and str(away_state.phase) == "away": request_return_home()
+	if is_away() and str(away_state.phase) == "away" and str(away_state.get("activity", "")) not in BIRTHDAY_HOLD_ACTIVITIES: request_return_home()
 	character.age_stage = next
 	character.life_stage = LifeLifecycle.eligibility(next)
 	# Elders keep their face and frame, but hair should read as aged. Birthdays
@@ -5686,9 +5733,13 @@ func celebrate_birthday(start_next_action: bool = true) -> bool:
 	if LifeLifecycle.eligibility(previous)!="adult" and str(character.life_stage)=="adult":career.schedule=LifeCareerSchedule.fresh(day,day+1 if minutes>LifeCareerSchedule.CLOSE else day)
 	lifecycle.progress = 0.0
 	lifecycle.history.append({"from":previous,"to":next,"day":day})
+	lifecycle["stage_day"] = day
 	education = school_result.state
+	last_birthday_source = source
+	_on_stage_entered(previous, next, source)
 	var cancelled: Dictionary = _cancel_age_actions()
 	_emit_age_changed(previous,next)
+	_emit_milestone("birthday",{"previous":previous,"current":next,"source":source,"name":str(character.name),"day":day})
 	_apply_education_result(school_result)
 	add_moodlet("A new chapter", "Happy", "A birthday full of possibilities.", 360, 2)
 	remember("Happy birthday", "Became %s." % LifeLifecycle.with_article(next))
@@ -5698,6 +5749,14 @@ func celebrate_birthday(start_next_action: bool = true) -> bool:
 	if bool(cancelled.front_removed) and start_next_action: _start_front()
 	_emit_changed()
 	return true
+
+## Runs once a Lifelet has entered a new life stage, after the stage, the birthday
+## history and the school record all describe it and before any signal goes out.
+## `source` is "auto" or "cake" for a birthday and "change_age" for the death
+## dialog's Change Age. Features that begin with a stage (retirement, learning to
+## drive) start their own clocks here, so a stage change has one place to hook.
+func _on_stage_entered(_previous: String, _next: String, _source: String) -> void:
+	pass
 
 func relationship_order() -> Array:
 	var ids: Array = relationships.keys()
@@ -5740,6 +5799,7 @@ func _publish(event: String, args: Array = []) -> void:
 		"action_started": action_started.emit(args[0])
 		"action_finished": action_finished.emit(args[0])
 		"age_changed": age_changed.emit(str(args[0]),str(args[1]))
+		"milestone": milestone.emit(str(args[0]),args[1])
 		"away_changed": away_changed.emit(args[0])
 		"life_changed": life_changed.emit(str(args[0]))
 		"passing_due": passing_due.emit(str(args[0]))
@@ -5752,6 +5812,7 @@ func _emit_notice(message: String) -> void: _publish("notice",[message])
 func _emit_action_started(action: Dictionary) -> void: _publish("action_started",[action])
 func _emit_action_finished(action: Dictionary) -> void: _publish("action_finished",[action])
 func _emit_age_changed(previous: String, current: String) -> void: _publish("age_changed",[previous,current])
+func _emit_milestone(kind: String, data: Dictionary = {}) -> void: _publish("milestone",[kind,data])
 
 func _career_departure_error(target_id:String,ignore_queue:bool=false) -> String:
 	if str(character.life_stage)!="adult":return "Full-time careers become available in young adulthood."

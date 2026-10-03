@@ -6,7 +6,7 @@ extends "res://tests/test_ninety_day_progress.gd"
 ##
 ## Pregnancy is 14 days. On a normal lifespan a baby reaches young adult
 ## (the first stage whose life_stage is adult, which Try for Baby requires)
-## 63 days after birth: baby 28, child 14, teen 21. Two pregnancies cannot
+## 69 days after birth: baby 28, child 20, teen 21. Two pregnancies cannot
 ## overlap, and a household that already has a baby cannot start another, so
 ## the second child waits until the first leaves the baby stage. Both births
 ## and a grandchild still fit inside 180 days. Lifespans are not shortened.
