@@ -1942,6 +1942,11 @@ func _baby_session_error(session: Dictionary) -> String:
 			return "The moment ends early. Both partners can try again when they are settled in together."
 		if str(actor.character.get("life_stage","adult")) != "adult":
 			return "The moment ends early. Both partners must be adults."
+	# An Elder may be the father, but the mother-to-be must still be a Young Adult
+	# or Adult when the moment finishes (she could age up while it runs).
+	var mother: LifeSim = member_sim(str(session.mother_id))
+	if mother == null or not LifeBabyPlan.can_carry(mother.character):
+		return "The moment ends early. The mother-to-be must be a Young Adult or Adult."
 	return ""
 
 func _reconcile_cooperations() -> void:
@@ -2323,6 +2328,8 @@ func _validate_saved_baby_session(session: Dictionary, data: Dictionary, by_id: 
 	if str(first.character.get("life_stage","")) != "adult" or str(second.character.get("life_stage","")) != "adult": return "Save contains an intimate session with a non-adult."
 	if str(first.get("romantic_partner","")) != b_id or str(second.get("romantic_partner","")) != a_id: return "Save starts an intimate session without a partnership."
 	if LifeBabyPlan.gender_of(first.character) == LifeBabyPlan.gender_of(second.character): return "Save starts an intimate session without opposite genders."
+	var mother_state: Dictionary = by_id[str(session.mother_id)]
+	if LifeBabyPlan.gender_of(mother_state.character) != "female" or not LifeBabyPlan.can_carry(mother_state.character): return "Save contains an intimate session with an ineligible mother."
 	for role: String in [a_id,b_id]:
 		var state: Dictionary = by_id[role]
 		if not state.get("action_queue") is Array or state.action_queue.is_empty() or not state.action_queue[0] is Dictionary: return "Save is missing a paired intimate action."
