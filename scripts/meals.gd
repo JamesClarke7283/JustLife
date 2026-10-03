@@ -248,7 +248,15 @@ static func _position(value: Variant) -> bool:
 static func _offset(value:Variant) -> bool:
 	return value is Array and value.size()==3 and _number(value[0],-2,2) and _number(value[1],0,1.1) and _number(value[2],-2,2)
 
-static func validate(data: Variant, member_ids: Array, now: float,guest:Dictionary={}) -> String:
+## The saved visit that owns this plate's guest: the ordinary visit `guest`, or one of
+## the party guests' visits in `guests`. Empty when nobody saved owns it.
+static func _guest_visit(owner: String, guest: Dictionary, guests: Array) -> Dictionary:
+	if str(guest.get("guest",""))==owner:return guest
+	for other: Variant in guests:
+		if other is Dictionary and str(other.get("guest",""))==owner:return other
+	return {}
+
+static func validate(data: Variant, member_ids: Array, now: float,guest:Dictionary={},guests:Array=[]) -> String:
 	if not data is Dictionary or not _number(data.get("version"),1,VERSION,true) or not _number(data.get("serial"),0,1e9,true):return "The saved food format is invalid."
 	if not data.get("batches") is Array or data.batches.size()>MAX_BATCHES or not data.get("portions") is Array or data.portions.size()>MAX_PORTIONS:return "The saved food collection is invalid."
 	var company_ids:Array=member_ids.duplicate()
@@ -283,12 +291,13 @@ static func validate(data: Variant, member_ids: Array, now: float,guest:Dictiona
 			unique_company[companion]=true
 		if not value.get("owner") is String or not value.get("host") is String or not value.get("seat") is String or not value.get("venue") is String or str(value.get("storage","")) not in ["carried","table","surface","dirty"]:return "The saved plate location is invalid."
 		if not str(value.owner).is_empty():
-			if (str(value.owner) not in member_ids and (int(data.version)<2 or str(value.owner)!=str(guest.get("guest","")))) or owners.has(value.owner) or str(value.storage) not in ["carried","table"]:return "A plate has conflicting ownership."
+			if (str(value.owner) not in member_ids and (int(data.version)<2 or _guest_visit(str(value.owner),guest,guests).is_empty())) or owners.has(value.owner) or str(value.storage) not in ["carried","table"]:return "A plate has conflicting ownership."
 			owners[value.owner]=value.id
 		elif str(value.storage) in ["carried","table"]:return "An active plate is missing its owner."
 		var guest_owner:bool=not str(value.owner).is_empty() and str(value.owner) not in member_ids
 		if guest_owner:
-			if value.get("guest_visit")!=guest.get("serial") or value.get("guest_meal")!=guest.get("meal",{}).get("token"):return "The guest plate belongs to a different visit or meal."
+			var owner_visit: Dictionary=_guest_visit(str(value.owner),guest,guests)
+			if value.get("guest_visit")!=owner_visit.get("serial") or value.get("guest_meal")!=owner_visit.get("meal",{}).get("token"):return "The guest plate belongs to a different visit or meal."
 		elif value.has("guest_visit") or value.has("guest_meal"):return "A released or household plate contains guest custody."
 		if str(value.storage)=="dirty" and float(value.progress)!=1.0:return "An unfinished plate is marked empty."
 		if str(value.storage)=="table" and not str(value.seat).is_empty():
@@ -413,7 +422,7 @@ static func _validate_guest_food(data:Dictionary,guest:Dictionary,owners:Diction
 	elif phase in ["to_place","eating"]:return "The guest's current meal has no owned portion."
 	return ""
 
-static func validate_actions(data:Dictionary,members:Array,custody:Dictionary={},venue:String="",guest:Dictionary={}) -> String:
+static func validate_actions(data:Dictionary,members:Array,custody:Dictionary={},venue:String="",guest:Dictionary={},guests:Array=[]) -> String:
 	var foods:Dictionary={};var active_owners:Dictionary={}
 	for value:Dictionary in data.batches+data.portions:foods[value.id]=value
 	for member:Dictionary in members:
@@ -464,6 +473,10 @@ static func validate_actions(data:Dictionary,members:Array,custody:Dictionary={}
 				active_owners[owner_id]=str(member.id)
 	var guest_error:String=_validate_guest_food(data,guest,active_owners)
 	if not guest_error.is_empty():return guest_error
+	for other_guest: Variant in guests:
+		if not other_guest is Dictionary:return "A party guest's meal record is invalid."
+		guest_error=_validate_guest_food(data,other_guest,active_owners)
+		if not guest_error.is_empty():return guest_error
 	# Custody is derived by the journey validator from one owned safe-exit
 	# crossing. It is distinct from a later action and expires at the landing.
 	for id:Variant in custody:

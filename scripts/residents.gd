@@ -16,7 +16,12 @@ var active_place:String=""
 var trip:Dictionary={}
 var car:Node3D
 var car_entry:CarEntry
+## The ordinary invitation, the doorbell and every date stay on this one visit.
 var home_visit:LifeHomeVisit
+## Extra guests who arrive together for a party, one visit each, so several
+## neighbors can be inside at once. Empty unless a party has started one.
+var party_visits:Array=[]
+var _primary_only:Array=[]
 var sidewalk_routes:Dictionary={}
 var _initiated:Dictionary={}
 var _anchor_cache:Dictionary={}
@@ -44,14 +49,149 @@ var SIDEWALK_LANES:Dictionary={}
 
 
 func _init(controller:Node) -> void:
- app=controller;home_visit=LifeHomeVisit.new(self)
+ app=controller;home_visit=LifeHomeVisit.new(self);_primary_only=[home_visit]
  for id:String in PEOPLE:
   SIDEWALK_LANES[id]=float(PEOPLE[id].get("lane",8.0))
 
 func reset() -> void:
  locations.clear();active_place="";trip.clear();car_entry=null;home_visit.reset();sidewalk_routes.clear();_initiated.clear();_anchor_cache.clear()
+ for visit:LifeHomeVisit in party_visits:visit.reset()
+ party_visits.clear()
  preferred_vehicle_id="";trip_vehicle.clear();_parked_hidden=null
  _clear_venue_car()
+
+# ------------------------------------------------------------ several guests
+## Every visit, the ordinary one first. With no party this is just `home_visit`,
+## so code that loops here behaves exactly as it did with a single guest. Read the
+## list only: it is shared while nobody else is visiting.
+func visits() -> Array:
+ if party_visits.is_empty():return _primary_only
+ var all:Array=[home_visit]
+ all.append_array(party_visits)
+ return all
+
+## The visit that owns this neighbor, or the ordinary visit when nobody does.
+## Callers that act for "the guest with this id" go through here; the fallback
+## keeps every old single-guest call working unchanged.
+func visit_for(id:String) -> LifeHomeVisit:
+ if home_visit.owns(id):return home_visit
+ for visit:LifeHomeVisit in party_visits:
+  if visit.owns(id):return visit
+ return home_visit
+
+func any_visit_active() -> bool:
+ if home_visit.active():return true
+ for visit:LifeHomeVisit in party_visits:
+  if visit.active():return true
+ return false
+
+## Whether a party guest (not the ordinary visitor) is here.
+func party_active() -> bool:
+ for visit:LifeHomeVisit in party_visits:
+  if visit.active():return true
+ return false
+
+## The neighbors who are guests right now, in visit order.
+func guest_ids() -> Array:
+ var ids:Array=[]
+ for visit:LifeHomeVisit in visits():
+  if visit.active():ids.append(str(visit.state.get("guest","")))
+ return ids
+
+## Ground points other guests have claimed (the doorstep place, the place inside,
+## the way out and where they stand), so a second guest never picks the same
+## doorstep or room spot. Nothing is reserved when nobody else is visiting.
+func reserved_guest_points(except:LifeHomeVisit=null) -> Array:
+ var points:Array=[]
+ if party_visits.is_empty() and except==home_visit:return points
+ for visit:LifeHomeVisit in visits():
+  if visit==except:continue
+  if visit.active():
+   var phase:String=str(visit.state.phase)
+   var body:LifeActor=app.world.actors.get(str(visit.state.guest))
+   if is_instance_valid(body) and body.visible:points.append(body.position)
+   if phase in ["arriving","waiting"]:points.append(visit.state.welcome)
+   if phase!="leaving":points.append(visit.state.inside)
+   if phase in ["arriving","leaving"]:points.append(visit.state.exit)
+   var entrance:Dictionary=visit.state.get("entrance",{})
+   if not entrance.is_empty():
+    points.append(entrance.wait);points.append(entrance.close)
+  if visit.ringing() and visit.bell.get("doorstep") is Vector3:points.append(visit.bell.doorstep)
+ return points
+
+## Start a neighbor's walk over for a party: a visit of their own, admitted at the
+## door without a host greeting, who goes home at `until` (an absolute game
+## minute). `party` is the party's number, saved with the visit. Returns whether
+## the guest set off; the reason is shown as a notice when not.
+func invite_to_party(id:String,party:int,until:float,notice:String=" is on the way to your party.") -> bool:
+ var visit:=LifeHomeVisit.new(self)
+ var reason:String=visit.party_requirement(id)
+ if not reason.is_empty():app.show_notice(reason);return false
+ party_visits.append(visit)
+ if not visit._begin_visit(id,notice,false,party,until):
+  party_visits.erase(visit);return false
+ return true
+
+## Forget party visits whose guest has gone home.
+func _prune_party_visits() -> void:
+ for index:int in range(party_visits.size()-1,-1,-1):
+  if not party_visits[index].active():party_visits.remove_at(index)
+
+## Whether any guest's activity is talking to this household member.
+func guest_holds_member(member_id:String) -> bool:
+ for visit:LifeHomeVisit in visits():
+  if visit.active() and visit.activity.holds_member(member_id):return true
+ return false
+
+## Stop every guest conversation with this household member.
+func release_guests_holding(member_id:String) -> void:
+ for visit:LifeHomeVisit in visits():
+  if visit.active() and visit.activity.holds_member(member_id):visit.activity.cancel("")
+
+func guest_holds_pet(pet_id:String) -> bool:
+ for visit:LifeHomeVisit in visits():
+  if visit.active() and visit.activity.holds_pet(pet_id):return true
+ return false
+
+func reconcile_visits() -> void:
+ for visit:LifeHomeVisit in visits():visit.reconcile()
+
+func prepare_host_action(member_id:String,action:Dictionary) -> bool:
+ for visit:LifeHomeVisit in visits():
+  if visit.prepare_host_action(member_id,action):return true
+ return false
+
+func holds_social_approach(action:Dictionary) -> bool:
+ for visit:LifeHomeVisit in visits():
+  if visit.holds_social_approach(action):return true
+ return false
+
+func action_finished(member_id:String,action:Dictionary) -> void:
+ for visit:LifeHomeVisit in visits():visit.action_finished(member_id,action)
+
+## Rebuild every saved guest's physical journey (stairs and managed routes).
+## Each restore keeps the highest identity and ticket counters seen so far, so
+## several guests never reuse a number. Returns the first failure, else ok.
+func restore_guest_journeys() -> Dictionary:
+ for visit:LifeHomeVisit in visits():
+  var result:Dictionary=visit.activity.restore_journey()
+  if not bool(result.ok):return result
+ return {"ok":true}
+
+func guests_physical_error() -> String:
+ for visit:LifeHomeVisit in visits():
+  var error:String=visit.physical_error()
+  if not error.is_empty():return error
+ return ""
+
+## Paint every guest's meal, activity and door latch after a load. `painted` is
+## false when only the door latch is wanted.
+func present_guests(painted:bool=true) -> void:
+ for visit:LifeHomeVisit in visits():
+  if painted:
+   visit.meal.present(true)
+   visit.activity.present(true)
+  visit.present()
 
 ## A visiting resident with a household member nearby starts one contact per
 ## game day: a cheerful chat off hours, or looking for company when their
@@ -157,7 +297,7 @@ func prepare_social(action:Dictionary) -> void:
  if PEOPLE.has(id) and present(id) and str(action.get("id","")) in LifeSim.SOCIAL_ACTIONS:
   # A quarter-grid social point must stay beyond the route body clearance.
   # The old .8 offset snapped to .75 and made a home guest an unreachable target.
-  var spacing:float=1.0 if home_visit.owns(id) and not app.world.construction.building_state.is_empty() else .8
+  var spacing:float=1.0 if visit_for(id).owns(id) and not app.world.construction.building_state.is_empty() else .8
   var at:Vector3=app.world.actors[id].position+Vector3(0,0,spacing)
   if not app.world.construction.building_state.is_empty():action.target_position=app.world.nearest_clear_point(at,app.world.point_level(app.world.actors[id].position))
   else:
@@ -184,7 +324,7 @@ func publish_targets(force:bool=false) -> void:
  for member:Dictionary in app.household.members:
   # Somebody walking past is a target only for a Lifelet who can see them.
   var seen:Array=app.passing_chat.targets_for(str(member.id)) if app.passing_chat!=null else []
-  member.sim.register_targets(targets.filter(func(t:Dictionary):return str(t.id)!=str(member.id) and home_visit.social_allowed(str(t.id),member.sim.get_current_action()))+seen)
+  member.sim.register_targets(targets.filter(func(t:Dictionary):return str(t.id)!=str(member.id) and visit_for(str(t.id)).social_allowed(str(t.id),member.sim.get_current_action()))+seen)
 
 ## The arrival flavor for a host whose routine has them out: who, where,
 ## and until when. Empty when the host is home.
@@ -292,7 +432,7 @@ func _destinations_for(id:String) -> Array:
  # lane, or stepping back on after a routine, stays on the front path and the
  # sidewalk: the old indoor waypoints put uninvited residents inside the house.
  # An invited guest is driven by home_visit, which owns its own route.
- if active_place=="home" and not home_visit.owns(id):
+ if active_place=="home" and not visit_for(id).owns(id):
   var outside:Array=[]
   for z:float in [7.15,7.55,7.95]:
    for x:float in [-1.4,-.7,0.0,.7,1.4]:
@@ -335,7 +475,7 @@ func tick(delta:float) -> void:
   # flip brings them back on their normal rhythm. An invited guest never
   # vanishes mid-visit: the step-out defers until the visit ends.
   var person:Dictionary=PEOPLE[id]
-  var guest:bool=home_visit.owns(id)
+  var guest:bool=visit_for(id).owns(id)
   # The routine's named venue is where they ARE during the window: the
   # library keeps Priya, the community garden keeps Tom. Everywhere else the
   # window hides them until it closes.
@@ -344,7 +484,7 @@ func tick(delta:float) -> void:
   var routine_on:bool=LifeResidentCatalogue.routine_active(person,LifeEducation.weekday(app.sim.day),app.sim.minutes)
   # The morning jog plays on the home lot's lane: at other venues the
   # resident keeps their normal presence rhythm.
-  var morning_on:bool=not home_visit.owns(id) and active_place=="home" and LifeResidentCatalogue.routine_morning_active(person,LifeEducation.weekday(app.sim.day),app.sim.minutes)
+  var morning_on:bool=not visit_for(id).owns(id) and active_place=="home" and LifeResidentCatalogue.routine_morning_active(person,LifeEducation.weekday(app.sim.day),app.sim.minutes)
   if speed>0 and morning_on and str(state.phase)!="walking" and app.traversal._free(id,actor.position):
    # The second beat: a morning spent out on the lane before the routine. This
    # is a presence transition like the routine ones below, so a paused household
@@ -353,7 +493,7 @@ func tick(delta:float) -> void:
    state.phase="walking";state.routine_away=false
    actor.visible=true
    app.world.set_actor_away(id,false,false);sidewalk_routes.erase(id)
-  var routine_due:bool=not home_visit.owns(id) and not at_routine_venue and routine_on and str(state.phase)!="home"
+  var routine_due:bool=not visit_for(id).owns(id) and not at_routine_venue and routine_on and str(state.phase)!="home"
   if routine_due:
    state.phase="home";state.routine_away=true;state.wait=float(person.get("home_wait",60.0))
    actor.visible=false
@@ -366,7 +506,7 @@ func tick(delta:float) -> void:
    state.wait=float(person.get("visit_wait",5.0))
    actor.visible=true
    app.world.set_actor_away(id,false,false);sidewalk_routes.erase(id)
-  if guest:sidewalk_routes.erase(id);home_visit.tick(delta);continue
+  if guest:sidewalk_routes.erase(id);visit_for(id).tick(delta);continue
   if home_visit.owns_bell(id):sidewalk_routes.erase(id);home_visit.tick_bell(delta);continue
   var speaker:Dictionary=_speaker(id)
   var moving:bool=false
@@ -411,6 +551,7 @@ func tick(delta:float) -> void:
   # sidewalk stroll and the slower indoor circuit each have their own pace.
   actor.animate(delta,LifePedestrianPace.gait_factor("indoor" if str(state.phase)=="visiting" else "adult",speed) if moving else speed,moving,talk)
   state.position=[actor.position.x,actor.position.y,actor.position.z];state.rotation=actor.rotation.y
+ _prune_party_visits()
  publish_targets(true)
 
 func snapshot() -> Dictionary:
@@ -434,13 +575,22 @@ func snapshot() -> Dictionary:
  # caller waiting on the doorstep was silently dropped from the save and the
  # household forgot them on the next load.
  if home_visit.active() or home_visit.ringing() or home_visit.next_serial>1:result.home_visit=home_visit.snapshot()
+ if party_active():
+  var party:Array=[]
+  for visit:LifeHomeVisit in party_visits:
+   if visit.active():party.append(visit.snapshot())
+  result.party_visits=party
  return result
 
 func restore(value:Variant) -> void:
  reset()
  if not value is Dictionary or not _integer(value.get("version"),1,1) or not value.get("locations") is Dictionary:return
- var saved_visit:Dictionary={}
- if value.get("home_visit") is Dictionary and value.home_visit.get("visit") is Dictionary:saved_visit=value.home_visit.visit
+ # Where each saved guest stands, so a guest on an upstairs journey keeps their place.
+ var saved_guests:Dictionary={}
+ if value.get("home_visit") is Dictionary and value.home_visit.get("visit") is Dictionary and value.home_visit.visit.has("guest"):saved_guests[str(value.home_visit.visit.guest)]=value.home_visit.visit.get("position")
+ if value.get("party_visits") is Array:
+  for record:Variant in value.party_visits:
+   if record is Dictionary and record.get("visit") is Dictionary and record.visit.has("guest"):saved_guests[str(record.visit.guest)]=record.visit.get("position")
  for raw_place:Variant in value.locations:
   if not raw_place is String:continue
   var place:String=raw_place
@@ -456,7 +606,7 @@ func restore(value:Variant) -> void:
    # Home-visit validation has already checked this exact guest position
    # against the lot and any owned stair journey. Ordinary passers still use
    # the sidewalk bounds; an upstairs guest must not fall back to that lane.
-   var visiting:bool=place=="home" and str(saved_visit.get("guest",""))==id and LifeJourneyState.vector_valid(saved_visit.get("position")) and record.position==saved_visit.position
+   var visiting:bool=place=="home" and saved_guests.has(id) and LifeJourneyState.vector_valid(saved_guests[id]) and record.position==saved_guests[id]
    if not valid:continue
    if not visiting and (absf(float(record.position[0]))>9 or absf(float(record.position[2]))>12 or absf(float(record.position[1])-.16)>.001):continue
    if str(record.get("phase","")) not in ["home","walking","visiting"]:continue
@@ -473,6 +623,11 @@ func restore(value:Variant) -> void:
   locations[place]=accepted
 
  if value.get("home_visit") is Dictionary:home_visit.restore(value.home_visit)
+ if value.get("party_visits") is Array:
+  for record:Variant in value.party_visits:
+   if not record is Dictionary:continue
+   var visit:=LifeHomeVisit.new(self)
+   visit.restore(record);party_visits.append(visit)
 
 func _integer(value:Variant,minimum:int,maximum:int) -> bool:
  if not (value is int or value is float):return false
@@ -543,7 +698,7 @@ func driver_error(ids:Array) -> String:
  return "Someone with a driving licence must come along to drive the household car."
 
 func begin_trip(destination:String, party: Array = []) -> bool:
- if home_visit.active():app.show_notice("Say goodbye and wait for your guest to leave before traveling.");return false
+ if any_visit_active():app.show_notice("Say goodbye and wait for your guest to leave before traveling.");return false
  if app.driving_lesson.running():app.show_notice("Wait for the driving lesson to finish before traveling.");return false
  if not trip.is_empty():return false
  # The trip replaces the lot traversal and hides members staying behind too.

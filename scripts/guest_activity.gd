@@ -163,6 +163,13 @@ func _available(plan: Dictionary) -> bool:
 		if _shares_game(plan,other): continue
 		for resource: String in app._activity_resources(other):
 			if wanted.has(resource): return false
+	# Another guest's place is theirs: two guests never take the same seat or bed.
+	for other_visit: LifeHomeVisit in app.residents.visits():
+		if other_visit==visit or not other_visit.active(): continue
+		var theirs: Dictionary=other_visit.meal.activity() if other_visit.meal.owns_place() else (other_visit.activity.current_action() if not bool(other_visit.activity.data.get("cancel_pending",false)) else {})
+		if theirs.is_empty() or _shares_game(plan,theirs): continue
+		for resource: String in app._activity_resources(theirs):
+			if wanted.has(resource): return false
 	return true
 
 func _shares_bed(own: Dictionary, other: Dictionary) -> bool:
@@ -279,7 +286,7 @@ func come_join(host_id: String, explicit: bool = true) -> bool:
 	if current.is_empty(): return request("friendly",host_id,explicit)
 	if str(current.get("id","")) in ["watch","watch_together"] or current.has("tv"):
 		if app.get("tv_group")!=null:
-			var plan: Dictionary = app.tv_group.guest_target(host_id)
+			var plan: Dictionary = app.tv_group.guest_target(host_id,self)
 			if not plan.is_empty(): return request_plan(plan,explicit)
 	if str(current.get("id",""))=="eat_meal":
 		return offer_meal(str(current.get("meal_source","")),explicit)
@@ -342,7 +349,7 @@ func _choose() -> void:
 	# Shared host activity is preferred to wandering when needs are comfortable.
 	if app.get("tv_group")!=null:
 		for member: Dictionary in app.household.members:
-			var plan: Dictionary = app.tv_group.guest_target(str(member.id))
+			var plan: Dictionary = app.tv_group.guest_target(str(member.id),self)
 			if not plan.is_empty() and request_plan(plan,false): return
 	var host: LifeSim=app.household.selected()
 	var host_action: Dictionary=host.get_current_action()
@@ -566,7 +573,7 @@ func show_choices() -> void:
 	ensure()
 	app.close_overlay();app.overlay_open=true;app.dismiss_layer()
 	app.card(Vector2(395,92),Vector2(610,592),app.P.WHITE,22,app.overlay)
-	app.text_label("Your visitor",Vector2(420,110),Vector2(550,40),26,app.P.INK,true,app.overlay)
+	app.text_label(str(LifeResidents.PEOPLE[person()].name) if visit.state.has("party") else "Your visitor",Vector2(420,110),Vector2(550,40),26,app.P.INK,true,app.overlay)
 	var summary: Array[String]=[]
 	for key: String in NEEDS:summary.append("%s %d" % [key.capitalize(),roundi(data.needs[key])])
 	app.paragraph(" · ".join(summary),Vector2(420,156),Vector2(550,54),14,app.P.MUTED,app.overlay)
@@ -624,7 +631,10 @@ static func allows_elevated_position(visit_state: Dictionary) -> bool:
 	var saved: Variant=visit_state.get("activity",{})
 	return saved is Dictionary and saved.get("managed_route",false)==true
 
-static func validate_route(visit_state: Dictionary, household: Dictionary) -> String:
+## `others` are the other saved guests' visit states. Any of them on a managed route
+## joins the same check, with the highest counters of all, so two guests on the
+## stairs can neither share a lock nor reuse a journey number.
+static func validate_route(visit_state: Dictionary, household: Dictionary, others: Array = []) -> String:
 	if not allows_elevated_position(visit_state):return ""
 	var activity_state: Dictionary=visit_state.activity
 	var journey: Variant=activity_state.get("journey")
@@ -648,6 +658,23 @@ static func validate_route(visit_state: Dictionary, household: Dictionary) -> St
 	var queue: Array=[]
 	if not activity_state.current.is_empty():queue.append(activity_state.current)
 	combined.members.append({"id":id,"state":{"character":profile,"action_queue":queue}})
+	for other: Variant in others:
+		# Another guest on a managed route is checked in the same journey. Its own
+		# record is validated on its own turn, so a malformed one is skipped here.
+		if not other is Dictionary or not allows_elevated_position(other):continue
+		var other_id: String=str(other.get("guest",""))
+		var other_state: Dictionary=other.activity
+		var other_journey: Variant=other_state.get("journey")
+		if other_id==id or not LifeResidents.PEOPLE.has(other_id) or not other_journey is Dictionary or not other_journey.get("members") is Dictionary or not other_journey.members.get(other_id) is Dictionary:continue
+		if not LifeJourneyState.number(other_journey.get("next_identity"),1,1e9,true) or not LifeJourneyState.number(other_journey.get("next_ticket"),1,1e9,true) or not other_state.get("current") is Dictionary:continue
+		travel.next_identity=maxi(int(travel.next_identity),int(other_journey.next_identity))
+		travel.next_ticket=maxi(int(travel.next_ticket),int(other_journey.next_ticket))
+		travel.members[other_id]=other_journey.members[other_id]
+		var other_profile: Dictionary=LifeResidents.PEOPLE[other_id].duplicate(true)
+		other_profile.world_state={"player":other_journey.members[other_id].get("position",[]),"player_rotation":other_journey.members[other_id].get("yaw",0.0)}
+		var other_queue: Array=[]
+		if not other_state.current.is_empty():other_queue.append(other_state.current)
+		combined.members.append({"id":other_id,"state":{"character":other_profile,"action_queue":other_queue}})
 	var prior_land: Dictionary=LifeBuildingState.land
 	var checked: Dictionary=LifeJourneyState.validate(travel,combined)
 	LifeBuildingState.land=prior_land

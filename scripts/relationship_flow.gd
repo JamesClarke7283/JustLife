@@ -29,9 +29,10 @@ func start_date(host_id:String,target:String)->bool:
 	var partner:LifeSim=app.household.member_sim(target)
 	if reason.is_empty() and partner!=null and not partner.action_queue.is_empty():reason="Let your partner finish their current activity before the date."
 	if not reason.is_empty():app.show_notice(reason);return false
-	if app.residents.home_visit.owns(target):
-		if str(app.residents.home_visit.state.phase)!="inside":app.show_notice("Welcome your partner inside before starting the date.");return false
-		if not app.residents.home_visit.activity.interrupt_for_social():app.show_notice("Your partner will be ready to talk after reaching a safe place.");return false
+	var visit:LifeHomeVisit=app.residents.visit_for(target)
+	if visit.owns(target):
+		if str(visit.state.phase)!="inside":app.show_notice("Welcome your partner inside before starting the date.");return false
+		if not visit.activity.interrupt_for_social():app.show_notice("Your partner will be ready to talk after reaching a safe place.");return false
 	if not host.queue_action(LifeRelationshipProgress.DATE,target,body.position):return false
 	app.close_overlay();app.show_notice("Your date begins when you are together. Stay for the whole date to complete it.")
 	return true
@@ -87,12 +88,12 @@ func _complete_marriage(host_id:String,target_id:String,epoch:int,household_inst
 	var actor:LifeActor=app.world.actors.get(target_id)
 	if not is_instance_valid(actor) or not actor.visible:app.show_notice("Your partner needs to be here to complete the proposal.");return
 	var needs:Dictionary={}
-	if app.residents.home_visit.owns(target_id):needs=app.residents.home_visit.activity.data.get("needs",{}).duplicate(true)
+	if app.residents.visit_for(target_id).owns(target_id):needs=app.residents.visit_for(target_id).activity.data.get("needs",{}).duplicate(true)
 	var result:Dictionary=LifeMarriage.complete(app.household,host_id,target_id,actor.position,actor.rotation.y,app.world.serialize_items(),needs)
 	if not bool(result.ok):app.show_notice(str(result.error));return
 	var spouse_id:String=str(result.spouse_id)
 	if bool(result.joined):
-		app.residents.home_visit.detach_moved_in(target_id)
+		app.residents.visit_for(target_id).detach_moved_in(target_id)
 		for place:Dictionary in app.residents.locations.values():place.erase(target_id)
 		app.residents.sidewalk_routes.erase(target_id)
 		app.world.actors.erase(target_id);app.world.actors[spouse_id]=actor

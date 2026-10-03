@@ -98,7 +98,7 @@ func request(member_id: String, give_way: bool = false) -> String:
 	var sim: LifeSim = app.household.member_sim(member_id)
 	if sim == null: return "Choose a household member for the lesson."
 	if running(): return "A driving lesson is already under way."
-	if not app.birth_arrival.is_empty() or app.residents.home_visit.active() or not app.residents.trip.is_empty(): return "Wait until the arrival, the visit or the trip is over."
+	if not app.birth_arrival.is_empty() or app.residents.any_visit_active() or not app.residents.trip.is_empty(): return "Wait until the arrival, the visit or the trip is over."
 	var first: String = str(sim.character.name).split(" ")[0]
 	if sim.is_away(): return "%s needs to be home for a lesson." % first
 	if not sim.action_queue.is_empty() and not (give_way and _can_give_way(sim)): return "Finish or cancel what %s is doing first." % first

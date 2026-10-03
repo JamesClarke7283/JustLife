@@ -45,14 +45,22 @@ func _guest():
 	if not is_instance_valid(app.residents) or not app.residents.home_visit.active(): return null
 	return app.residents.home_visit.activity
 
+## Every visitor's activity, the ordinary one first; party guests watch too.
+func _guests() -> Array:
+	var result: Array = []
+	if not is_instance_valid(app.residents): return result
+	for visit: LifeHomeVisit in app.residents.visits():
+		if visit.active(): result.append(visit.activity)
+	return result
+
 func records(queued: bool = false) -> Array:
 	var result: Array = []
 	for member: Dictionary in app.household.members:
 		var actions: Array = member.sim.action_queue if queued else [member.sim.get_current_action()]
 		for action: Dictionary in actions:
 			if owns(action): result.append({"id":str(member.id), "action":action, "body":app.world.actors.get(str(member.id)), "sim":member.sim})
-	var guest = _guest()
-	if guest!=null and owns(guest.current_action()): result.append({"id":guest.person(), "action":guest.current_action(), "body":guest.body(), "sim":null})
+	for guest in _guests():
+		if owns(guest.current_action()): result.append({"id":guest.person(), "action":guest.current_action(), "body":guest.body(), "sim":null, "guest":guest})
 	return result
 
 func _member_id(who: LifeSim) -> String:
@@ -74,8 +82,8 @@ func _free(plan: Dictionary, person: String, reserved: Array = []) -> bool:
 			if other!=member.sim.get_current_action() and not owns(other): continue
 			for resource: String in app._activity_resources(other):
 				if wanted.has(resource): return false
-	var guest = _guest()
-	if guest!=null and guest.person()!=person and guest.blocks(plan): return false
+	for guest in _guests():
+		if guest.person()!=person and guest.blocks(plan): return false
 	for other: Dictionary in reserved:
 		for resource: String in app._activity_resources(other):
 			if wanted.has(resource): return false
@@ -194,10 +202,9 @@ func request(who: LifeSim, tv_id: String, together: bool = false) -> bool:
 			var plan: Dictionary = _plan(str(member.id),tv,state,str(first.target_id),[first],edge(first))
 			if not plan.is_empty(): invited.append({"sim":member.sim,"plan":plan});break
 		if invited.is_empty():
-			var guest = _guest()
-			if guest!=null:
+			for guest in _guests():
 				var plan: Dictionary = _plan(guest.person(),tv,state,str(first.target_id),[first],edge(first))
-				if not plan.is_empty() and guest.request_plan(plan,true): invited.append({"sim":null,"plan":plan})
+				if not plan.is_empty() and guest.request_plan(plan,true): invited.append({"sim":null,"plan":plan});break
 		if invited.is_empty() and not records().any(func(record: Dictionary)->bool:return str(record.action.tv.id)==tv_id and str(record.id)!=person):
 			app.show_notice("A free housemate or welcomed visitor and a second seat are needed to watch together.");return false
 	if not together and str(first.id)!="enjoy_outdoors": first.id="watch";first.merge(who._actions.watch,true)
@@ -222,8 +229,9 @@ func join(who: LifeSim, id: String) -> bool:
 	host.action.tv.shared=true
 	return true
 
-func guest_target(host_id: String) -> Dictionary:
-	var guest = _guest()
+## The seat this visitor (the ordinary one unless `who` is given) can take beside a viewer.
+func guest_target(host_id: String, who = null) -> Dictionary:
+	var guest = who if who!=null else _guest()
 	var host: Dictionary = host_record(host_id)
 	if guest==null or host.is_empty(): return {}
 	var state: Dictionary = host.action.tv.duplicate(true)
@@ -394,7 +402,7 @@ func tick(delta: float) -> void:
 		if not valid_target(action):
 			if str(action.id)=="enjoy_outdoors": action.erase("tv")
 			elif record.sim!=null: record.sim.cancel_action()
-			else: _guest().cancel("")
+			else: record.guest.cancel("")
 			continue
 		var key: String = str(action.tv.id)+":"+str(action.tv.session)
 		if not groups.has(key): groups[key]=[]

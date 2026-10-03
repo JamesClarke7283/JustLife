@@ -12,6 +12,31 @@ Named saves retain the visit phase, host's identified welcome, guest and host ro
 
 Visitors can share household meals; see [guest meals](GUEST_MEALS.md). A visit alone does not make a neighbor a household member. The separate marriage flow handles a resident moving in.
 
+## Several guests at once
+
+An ordinary invitation still allows one neighbor at a time, and nothing about it changed. The code underneath, though, can now hold several guests together, which a party needs. `LifeResidents` keeps `home_visit` as the primary visit, used by the **Invite over** button, the doorbell and dates, and a list `party_visits` of extra `LifeHomeVisit` objects, one for each party guest. Every guest owns their own visit state, route, needs, activity and meal.
+
+How code finds the right guest:
+
+- `visits()` lists the primary visit followed by the party visits. With no party it is just `[home_visit]`, so a loop over it behaves exactly as the old single-guest code did.
+- `visit_for(id)` returns the visit that owns that neighbor, and falls back to `home_visit` when nobody does. Anything that acts for "the guest with this id" (the guest's wheel, `Suggest an activity…`, `Come Join Me`, a conversation, the meal and television services) goes through it.
+- `any_visit_active()` is true while any guest is here. Build mode, the property panel, household travel and driving lessons wait for it. `party_active()` is true while a party guest is here, and an ordinary invitation and the doorbell wait for that too.
+- `guest_ids()` lists the neighbors who are guests, and `reserved_guest_points(except)` lists the ground places the other guests have claimed.
+
+To keep guests from piling up, a visit refuses any standing place within `LifeHomeVisit.GUEST_GAP` (0.85 m) of another guest's claimed doorstep place, place inside, place at the kerb, entrance places or body. Three guests invited together therefore get three different doorstep and room places. A guest also never takes a seat, bed or other place another guest is already using, and a guest with a plate keeps their chair against the others. Television viewing, shared meals, pets and household conversations work for every guest.
+
+**How a party starts a guest (for the party-hosting code).** Call `app.residents.invite_to_party(neighbor_id, party_serial, ends_at)`. `party_serial` is the party's number (a whole number from 1), and `ends_at` is the absolute game minute when that guest goes home, the same clock as `LifeHomeVisit._now()`: `(day - 1) * 1440 + minutes`. A saved party guest's end time can be no more than `LifeHomeVisit.PARTY_MAX_MINUTES` (300) game minutes after the save's own time. The call returns `false`, with the reason shown as a notice, when `party_requirement(id)` refuses (not at home in Live mode, friendship under 20, the neighbor is already a guest or is ringing the doorbell, a trip or conversation is under way, or no clear route). `party_requirement` skips only the one-neighbor rule; every other check of an ordinary invitation applies.
+
+A party guest walks from the kerb to their own doorstep place and then straight in: no host is called, no greeting is queued, and the fast-forward speed is not slowed. Their visit state carries two optional keys, `party` (the serial) and `party_until` (the end time). `stay_deadline()` returns `party_until`, **Ask to Stay Over** is refused, and at that time the guest says goodbye and walks out like any other. To send a party guest home early, call `goodbye(message)` on their visit (`app.residents.visit_for(id).goodbye(...)`); the guest finishes any conversation and walks out the same way. An ordinary visitor who is already inside can join the party instead of being invited again: set both keys on `home_visit.state` and the same rules apply to them. Finished party visits are dropped from `party_visits` at the end of the next residents tick.
+
+Named saves keep the primary visit under `home_visit` as before and write the party guests as an array under the optional `residents.party_visits`, one record per guest in the same format (`version`, `next_serial`, `visit`, `doorbell`, `next_bell_serial`). Older saves have no such key and load unchanged. Validation (`LifeHomeVisit.validate_saved`, now a loop over `validate_value`) checks each party record as it checks an ordinary one, and also that:
+
+- a party record has `party` and `party_until`, with the end no earlier than the invitation and no more than five hours after the save's own time, no host greeting or entrance, never the `waiting` phase, and no doorbell caller;
+- no neighbor appears twice, and the doorbell caller is not also a party guest;
+- when the save holds a household `party` record, each guest matches its `serial`, is on its `guests` list (entries with an `id`) and goes home no later than its `ends_at`;
+- guests on managed routes (the stairs) are checked in one journey with the highest counters of all, so two guests cannot share a stair lock or reuse a journey number. At runtime each restore keeps the highest counters seen so far;
+- the food ledger accepts plates owned by any saved guest, each tied to that guest's own visit and meal (`LifeMeals.validate` and `validate_actions` take the extra guests as a list after the old single-guest argument, which still works alone).
+
 ## Clicking a person: the interaction wheel
 
 Clicking a visitor, a housemate or a neighbor opens a wheel instead of a list. The name sits in the hub with three rings round it, **Social**, **Fun** and **Romantic**, each saying how many of its choices are open. Choosing a ring spreads its choices out; one that is not yet open is greyed, and pointing at it says what unlocks it (for example *Share three successful flirts before asking to become partners*). **Back** returns to the rings. A visitor can be clicked from the moment they set off: **Ask to Stay Over**, **Come Join Me** and **Suggest an activity…** are on the wheel throughout and open once they are inside. Furnishings keep their ordinary menu.

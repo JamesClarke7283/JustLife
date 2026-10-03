@@ -28,42 +28,50 @@ func member_id(sim:LifeSim) -> String:
 func item(id:String) -> Dictionary:return app._find_item(id)
 func actor(id:String) -> LifeActor:return app.world.actors.get(id)
 
-func _home_visit()->LifeHomeVisit:
+## Every visit (the ordinary one and any party guests), or none before residents exist.
+func _visits()->Array:
 	var residents:Variant=app.get("residents")
-	return residents.home_visit if residents!=null else null
+	return residents.visits() if residents!=null else []
+
+## The visit that owns this person as its guest, or null when they are not a guest.
+func _visit_of(person:String)->LifeHomeVisit:
+	for visit:LifeHomeVisit in _visits():
+		if visit.owns(person):return visit
+	return null
 
 func _reconcile_guest_offer()->void:
-	var visit:LifeHomeVisit=_home_visit()
-	if visit!=null:visit.meal.reconcile_source()
+	for visit:LifeHomeVisit in _visits():visit.meal.reconcile_source()
 
 func activity_for(person:String)->Dictionary:
 	var sim:LifeSim=app.household.member_sim(person)
 	if is_instance_valid(sim):return sim.get_current_action()
-	var visit:LifeHomeVisit=_home_visit()
-	if visit!=null and visit.owns(person) and visit.meal.owns_place():return visit.meal.activity()
-	if visit!=null and visit.owns(person) and visit.activity.active():return visit.activity.current_action()
+	var visit:LifeHomeVisit=_visit_of(person)
+	if visit!=null and visit.meal.owns_place():return visit.meal.activity()
+	if visit!=null and visit.activity.active():return visit.activity.current_action()
 	return {}
 
 func activity_records()->Array:
 	var result:Array=[]
 	for member:Dictionary in app.household.members:
 		if not member.sim.is_away():result.append({"id":str(member.id),"action":member.sim.get_current_action()})
-	var visit:LifeHomeVisit=_home_visit()
-	if visit!=null and visit.meal.owns_place():result.append({"id":str(visit.state.guest),"action":visit.meal.activity()})
-	elif visit!=null and visit.active() and visit.activity.owns_place():result.append({"id":str(visit.state.guest),"action":visit.activity.current_action()})
+	for visit:LifeHomeVisit in _visits():
+		if visit.meal.owns_place():result.append({"id":str(visit.state.guest),"action":visit.meal.activity()})
+		elif visit.active() and visit.activity.owns_place():result.append({"id":str(visit.state.guest),"action":visit.activity.current_action()})
 	return result
 
 func guest_blocks(action:Dictionary,person:String="")->bool:
-	var visit:LifeHomeVisit=_home_visit()
-	if visit!=null and visit.active() and visit.activity.blocks(action,person):return true
-	if visit==null or not visit.meal.owns_place():return false
-	var held:Array[String]=app._activity_resources(visit.meal.activity())
-	for resource:String in app._activity_resources(action):
-		if held.has(resource):return true
+	for visit:LifeHomeVisit in _visits():
+		if visit.active() and visit.activity.blocks(action,person):return true
+		if not visit.meal.owns_place():continue
+		var held:Array[String]=app._activity_resources(visit.meal.activity())
+		for resource:String in app._activity_resources(action):
+			if held.has(resource):return true
 	return false
 
-func guest_place_valid(action:Dictionary,restoring:bool=false)->bool:
-	var person:String=str(app.residents.home_visit.state.guest)
+## Whether this guest's chosen dining place can still be used. `person` names the
+## guest; empty means the ordinary visitor, as before several guests were possible.
+func guest_place_valid(action:Dictionary,restoring:bool=false,person:String="")->bool:
+	if person.is_empty():person=str(app.residents.home_visit.state.guest)
 	if bool(action.get("meal_standing",false)):
 		if not _standing_clear(person,action.target_position):return false
 	else:
@@ -75,6 +83,9 @@ func guest_place_valid(action:Dictionary,restoring:bool=false)->bool:
 			var other:Dictionary=member.sim.get_current_action()
 			if str(other.get("meal_seat",""))==str(chair.id) or (str(other.get("study_seat",""))==str(chair.id) and str(other.get("phase",""))=="active"):return false
 			if str(other.get("target_id",""))==str(chair.id) and (str(other.get("phase",""))=="active" or bool(app.motion_states.get(str(member.id),{}).get("resume_active",false))):return false
+		# Another guest may already have this chair.
+		for other_visit:LifeHomeVisit in _visits():
+			if not other_visit.owns(person) and other_visit.meal.owns_place() and str(other_visit.meal.activity().get("meal_seat",""))==str(chair.id):return false
 	if not restoring and actor(person).position.distance_to(action.target_position)>.02:return false
 	return true
 
@@ -700,8 +711,8 @@ func _standing_route(person:String,at:Vector3) -> bool:
 	return not route.is_empty() and route[-1].is_equal_approx(at)
 
 func _dining_route(person:String,at:Vector3)->PackedVector3Array:
-	var visit:LifeHomeVisit=_home_visit()
-	if app.household.member_sim(person)==null and visit!=null and visit.owns(person):return visit._route(actor(person).position,at,person)
+	var visit:LifeHomeVisit=_visit_of(person)
+	if app.household.member_sim(person)==null and visit!=null:return visit._route(actor(person).position,at,person)
 	return app.world.path_to(actor(person).position,at)
 
 func _standing_slot(person:String) -> Vector3:
@@ -787,8 +798,7 @@ func finished(sim:LifeSim,action:Dictionary) -> void:
 	var person:String=member_id(sim)
 	if action.id=="cook":
 		var batch:Dictionary=food().create_batch(str(action.get("recipe","garden_skillet")),person,clampi(int(sim.skills.cooking.level)/3+1,1,3),app.current_venue,now())
-		var visit:LifeHomeVisit=_home_visit()
-		if not batch.is_empty() and visit!=null and visit.active() and str(visit.state.phase)=="inside":
+		if not batch.is_empty() and _guest_inside():
 			batch.guest_extra=1;batch.initial=int(batch.initial)+1;batch.remaining=int(batch.remaining)+1
 		if not batch.is_empty():_prepend(sim,"serve_meal",str(batch.id),{"meal_source":str(batch.id)})
 	elif action.id=="serve_meal":
@@ -800,8 +810,9 @@ func finished(sim:LifeSim,action:Dictionary) -> void:
 		if slot.is_finite():batch.offset=[slot.x,slot.y,slot.z]
 		else:_settle_food(batch,actor(person).position)
 		if not batch.is_empty():sim._emit_notice("Dinner is ready: %d servings of %s." % [int(batch.remaining),str(LifeMeals.RECIPES[str(batch.recipe)].label).to_lower()])
-		var visit:LifeHomeVisit=_home_visit()
-		if not batch.is_empty() and int(batch.get("guest_extra",0))==1 and visit!=null and visit.active() and str(visit.state.phase)=="inside":visit.activity.offer_meal(str(batch.id))
+		if not batch.is_empty() and int(batch.get("guest_extra",0))==1:
+			for visit:LifeHomeVisit in _visits():
+				if visit.active() and str(visit.state.phase)=="inside":visit.activity.offer_meal(str(batch.id))
 		if float(sim.needs.hunger)<75:_prepend(sim,"eat_meal",str(action.meal_source),{})
 	elif action.id=="eat_meal":
 		var plate:Dictionary=food().portion(str(action.get("meal_plate","")))
@@ -895,9 +906,15 @@ func call_to_meal(target:String) -> int:
 		if _already_eating(str(member.id)) or not _would_accept_food(member.sim):continue
 		if not is_instance_valid(actor(str(member.id))) or not actor(str(member.id)).visible:continue
 		if member.sim.queue_action("eat_meal",target,Vector3.ZERO):count+=1
-	var visit:LifeHomeVisit=_home_visit()
-	if visit!=null and visit.activity.offer_meal(target,true):count+=1
+	for visit:LifeHomeVisit in _visits():
+		if visit.activity.offer_meal(target,true):count+=1
 	return count
+
+## Whether any visitor is inside the house right now.
+func _guest_inside()->bool:
+	for visit:LifeHomeVisit in _visits():
+		if visit.active() and str(visit.state.phase)=="inside":return true
+	return false
 
 ## Every household Lifelet who could be asked whether they want food. The player
 ## chooses from this list rather than the whole household, so an invitation is a
