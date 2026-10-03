@@ -394,6 +394,34 @@ func _surface_slot(host:Dictionary,half:Vector2,except_id:String="") -> Vector3:
 		if _surface_clear(host,at,half,except_id):return at
 	return Vector3.INF
 
+## Set a dish a friend brought on a table, free for anyone to share: the way party hosting
+## serves a potluck. The household member who is hosting stays the dish's named cook
+## (every saved dish needs a household cook) and `brought_by` names the friend. With no
+## table named the first dining table, coffee table or worktop with room takes it, and with
+## no recipe the friend brings the dish `LifeMeals.potluck_recipe` picks for the day.
+## Returns the new batch, or {} when nothing has room or the friend is unknown.
+func place_potluck(guest_id:String,table_id:String="",chef_id:String="",recipe:String="") -> Dictionary:
+	if not LifeResidentCatalogue.PEOPLE.has(guest_id):return {}
+	var chef:String=chef_id if not chef_id.is_empty() else str(app.household.selected_id())
+	if recipe.is_empty():recipe=LifeMeals.potluck_recipe(guest_id,int(app.household.day))
+	var table:Dictionary=item(table_id) if not table_id.is_empty() else _potluck_table()
+	if table.is_empty() or not SURFACE_HEIGHTS.has(str(table.kind)):return {}
+	var slot:Vector3=_surface_slot(table,LifeMeals.PLATTER_HALF_SIZE)
+	if not slot.is_finite():return {}
+	var batch:Dictionary=food().place_batch(recipe,chef,2,app.current_venue,now(),str(table.id),table.node.to_global(slot),slot,guest_id)
+	if batch.is_empty():return {}
+	sync_due=true
+	if app.has_method("show_notice"):
+		var first:String=str(LifeResidentCatalogue.PEOPLE[guest_id].name).split(" ")[0]
+		app.show_notice("%s brought %s to share." % [first,str(LifeMeals.RECIPES[recipe].label).to_lower()])
+	return batch
+
+func _potluck_table() -> Dictionary:
+	for kind:String in ["dining","coffee_table","counter","corner_counter"]:
+		for host:Dictionary in app.world.items:
+			if str(host.kind)==kind and _host_level(host)>=0 and _surface_slot(host,LifeMeals.PLATTER_HALF_SIZE).is_finite():return host
+	return {}
+
 func _floor_level(at:Vector3) -> int:
 	if not at.is_finite():return -1
 	for level:int in Building.MAX_LEVEL+1:

@@ -11,6 +11,8 @@ const GardenSwing=preload("res://scripts/garden_swing.gd")
 const GateFlow=preload("res://scripts/gate_flow.gd")
 const Road=preload("res://scripts/road.gd")
 const WindowGeometry=preload("res://scripts/window_geometry.gd")
+const PartyProps=preload("res://scripts/party_props.gd")
+const PartyFood=preload("res://scripts/party_food.gd")
 const MAX_FURNISHINGS:int=512
 const VIEW_ENVIRONMENT:int=1
 const VIEW_GROUND:int=2
@@ -361,6 +363,28 @@ func _build_memorial(parent: Node3D) -> void:
 	box(parent, Vector3(0, 0.08, 0), Vector3(0.62, 0.16, 0.42), "8c8a84")
 	box(parent, Vector3(0, 0.28, -0.04), Vector3(0.46, 0.28, 0.10), "6f6c66")
 	box(parent, Vector3(0, 0.18, 0.14), Vector3(0.16, 0.04, 0.16), "c8a562")
+
+## Draw a code-made kind (LifeCatalog.PROCEDURAL) under `parent`. The placed piece, its
+## placement ghost and the shop thumbnail all come through here, so they cannot disagree
+## about which kinds are drawn from code. The result is the node a colour choice repaints:
+## the party model, or `parent` itself for a gate whose leaves carry the Tint surfaces.
+## The other pieces paint their colour as they are built and return null.
+func build_procedural(parent: Node3D, kind: String, variant: Dictionary, data: Dictionary = {}) -> Node3D:
+	if data.is_empty():data = LifeCatalog.get_item(kind)
+	if PartyProps.builds(kind):
+		var model: Node3D = PartyProps.build(kind, variant)
+		parent.add_child(model)
+		return model
+	if kind == "home_phone":_build_home_phone(parent)
+	elif kind == "burglar_alarm":_build_burglar_alarm(parent)
+	elif kind == "bath_mat":_build_bath_mat(parent, variant)
+	elif kind == "framed_picture":_build_framed_picture(parent, variant)
+	elif kind == "kids_toy":_build_kids_toy(parent, variant)
+	elif LifeCatalog.is_gate(kind):
+		_build_garden_gate(parent, float(data.size.x) > 1.5, str(variant.color), float(data.size.x))
+		return parent # the recolour finds the leaves' Tint surfaces beneath it
+	else:_build_memorial(parent)
+	return null
 
 func box(parent: Node3D, at: Vector3, dimensions: Vector3, color: String) -> MeshInstance3D:
 	var n = MeshInstance3D.new()
@@ -1069,7 +1093,7 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	var path:String=Variants.model_path(kind,str(variant.style))
 	var has_model:bool=ResourceLoader.exists(path)
 	var kitchen_cabinet:bool=Kitchen.cabinet(kind)
-	if not has_model and not kitchen_cabinet and kind not in ["memorial","bath_mat","framed_picture","kids_toy","garden_gate","garden_gate_double","garden_gate_drive","burglar_alarm","home_phone"]:return
+	if not has_model and not kitchen_cabinet and not LifeCatalog.procedural(kind):return
 	var node=Node3D.new()
 	node.name=str(entry.get("id","item_%d" % Time.get_ticks_usec()))
 	furniture.add_child(node)
@@ -1090,15 +1114,7 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 			var scale:float=Variants.size_scale(str(variant.size))
 			if not is_equal_approx(scale,1.0):model.scale=Vector3.ONE*scale
 	else:
-		if kind=="home_phone":_build_home_phone(node)
-		elif kind=="burglar_alarm":_build_burglar_alarm(node)
-		elif kind=="bath_mat":_build_bath_mat(node,variant)
-		elif kind=="framed_picture":_build_framed_picture(node,variant)
-		elif kind=="kids_toy":_build_kids_toy(node,variant)
-		elif LifeCatalog.is_gate(kind):
-			_build_garden_gate(node,float(data.size.x)>1.5,str(variant.color),float(data.size.x))
-			model=node # the recolour finds the leaves' Tint surfaces beneath it
-		else:_build_memorial(node)
+		model=build_procedural(node,kind,variant,data)
 	if is_instance_valid(model):
 		var fitted:float=float(data.get("model_scale",1.0))
 		if not is_equal_approx(fitted,1.0):model.scale*=fitted
@@ -1165,6 +1181,15 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	info["size"]=Variants.footprint(data,str(variant.size))
 	info["height"]=Variants.height(data,str(variant.size))
 	info["level"]=level
+	# A party platter keeps the servings it has left (the model shows that many), and a
+	# gathering table may wear a festive cloth: both are settings on the layout record.
+	info.erase("cloth");info.erase("servings")
+	if kind=="party_food":
+		info["servings"]=PartyFood.clean(entry.get("servings"),int(data.get("servings",0)))
+		PartyProps.show_servings(model,int(info.servings))
+	if kind in PartyProps.CLOTH_HOSTS and LifeCatalog._shade(str(entry.get("cloth",""))):
+		info["cloth"]=str(entry.cloth)
+		node.add_child(PartyProps.build_cloth(str(entry.cloth)))
 	assign_structure_layer(node,level)
 	var body=StaticBody3D.new()
 	body.collision_layer=pick_layer(level)
@@ -1196,6 +1221,9 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 				bounds.size=visual.size.max(Vector3.ONE*.01)
 				shape.position=visual.get_center()
 		body.add_child(shape)
+	# The platter sits inside the box of the table that carries it, so it is picked on the
+	# food ray like a plate (see PICK_SURFACE).
+	if kind=="party_food" and body.collision_layer!=0:body.collision_layer|=PICK_SURFACE
 	body.set_meta("item_id",info.id)
 	if kind == "car_garage":
 		node.set_meta("garage_door_open", bool(entry.get("garage_door_open", false)))
@@ -1409,7 +1437,8 @@ func _apply_variant_colour(model:Node3D,data:Dictionary,variant:Dictionary) -> v
 		if not Variants.is_tint(mesh_node.name):continue
 		var painted:=StandardMaterial3D.new()
 		painted.albedo_color=tint
-		painted.roughness=.62
+		# A balloon's surface is named TintGloss and keeps its shine when repainted.
+		painted.roughness=.22 if str(mesh_node.name).begins_with("TintGloss") else .62
 		painted.metallic=.04
 		mesh_node.material_override=painted
 
@@ -1471,6 +1500,8 @@ func serialize_items() -> Array:
 		for key:String in variant:
 			entry[key]=variant[key]
 		if str(item.kind)=="floor_lamp" and not bool(item.get("lit",true)):entry["lit"]=false
+		if str(item.kind)=="party_food":entry["servings"]=int(item.get("servings",0))
+		if not item_cloth(item).is_empty():entry["cloth"]=item_cloth(item)
 		# A toy nested in its box stays nested through a save, an undo and a trip.
 		if str(item.get("box_id",""))!="":entry["box_id"]=str(item.box_id)
 		if str(item.kind)=="memorial" and str(item.get("for",""))!="":entry["for"]=str(item.get("for"))
@@ -1875,6 +1906,7 @@ func simulation_targets() -> Array:
 		if at.is_finite():
 			var target:Dictionary={"id":item.id,"kind":item.kind,"position":at,"level":item_level(item)}
 			if str(item.kind)=="towel_rack":target["towels"]=int(item.get("towels",0))
+			if str(item.kind)=="party_food":target["servings"]=int(item.get("servings",0))
 			if bool(item.get("carried",false)):target["carried"]=true
 			# Which chair a child desk or table offers, so homework can be ranked
 			# and refused by what there is to sit on ("" when nothing faces it).
@@ -1945,16 +1977,10 @@ func begin_placement(kind:String,style:String="",size:String="",color:String="")
 	if not ResourceLoader.exists(path):
 		for candidate:String in Variants.model_paths(kind,LifeCatalog.get_item(kind)):
 			if ResourceLoader.exists(candidate):path=candidate;break
-	if not ResourceLoader.exists(path) and kind in ["bath_mat","framed_picture","kids_toy","garden_gate","garden_gate_double","garden_gate_drive","burglar_alarm","home_phone"]:
+	if not ResourceLoader.exists(path) and LifeCatalog.procedural(kind):
 		ghost=Node3D.new()
 		add_child(ghost)
-		var preview:Dictionary=Variants.resolve(LifeCatalog.get_item(kind),{"style":style,"size":size,"color":color})
-		if kind=="home_phone":_build_home_phone(ghost)
-		elif kind=="burglar_alarm":_build_burglar_alarm(ghost)
-		elif kind=="bath_mat":_build_bath_mat(ghost,preview)
-		elif kind=="framed_picture":_build_framed_picture(ghost,preview)
-		elif kind=="kids_toy":_build_kids_toy(ghost,preview)
-		else:_build_garden_gate(ghost,float(bought.size.x)>1.5,str(preview.color),float(bought.size.x))
+		build_procedural(ghost,kind,Variants.resolve(bought,{"style":style,"size":size,"color":color}),bought)
 		_ghost_materials(ghost)
 		return
 	if not ResourceLoader.exists(path):
@@ -2060,6 +2086,8 @@ func can_place(kind:String,p:Vector3,angle:float,style:String="",size_choice:Str
 	var size:Vector2=Variants.footprint(data,str(variant.size))
 	var support:Dictionary=surface_placement(kind,p,angle)
 	var depth:float=size.y
+	# A piece that only belongs on a tabletop (the party platter) is refused on bare floor.
+	if bool(data.get("surface_only",false)) and support.is_empty():return false
 	if int(roundf(angle/90))%2:size=Vector2(size.y,size.x)
 	var rect=Rect2(Vector2(p.x,p.z)-size/2,size)
 	if LifeCatalog.wall_mounted(kind):
@@ -2202,7 +2230,7 @@ func _rebuild_supported_items() -> void:
 			item["level"]=item_level(host);item["x"]=at.x;item["z"]=at.z;item["rotation"]=item.node.rotation_degrees.y
 			assign_structure_layer(item.node,item_level(host))
 			for body:CollisionObject3D in item.node.find_children("*","CollisionObject3D",true,false):
-				body.collision_layer=pick_layer(item_level(host))
+				body.collision_layer=pick_layer(item_level(host))|(PICK_SURFACE if str(item.kind)=="party_food" else 0)
 			break
 	sync_surface_decorations()
 
@@ -2276,8 +2304,11 @@ func surface_placement(kind:String,p:Vector3,angle:float) -> Dictionary:
 	var level:int=point_level(p)
 	var size:Vector2=LifeCatalog.get_item(kind).size
 	var basis:=Basis(Vector3.UP,deg_to_rad(angle))
+	# A piece that names the tables it belongs on (the party platter) skips the rest.
+	var hosts:Array=LifeCatalog.get_item(kind).get("surface_hosts",[])
 	for host:Dictionary in items:
 		if item_level(host)!=level or not Kitchen.SURFACES.has(str(host.kind)):continue
+		if not hosts.is_empty() and str(host.kind) not in hosts:continue
 		var half:Vector2=host.size*.5
 		if str(host.kind)=="coffee_table":half=Vector2(.525,.31)
 		var supported:bool=true
@@ -2623,6 +2654,48 @@ func closest_item(kind:String,from:Vector3,max_distance:float=100.0) -> Dictiona
 		var distance:float=item.node.position.distance_to(from)
 		if distance<nearest:nearest=distance;found=item
 	return found
+
+## The shade of the festive cloth on a gathering table, or "" when the table is bare.
+func item_cloth(item:Dictionary)->String:
+	var shade:String=str(item.get("cloth",""))
+	return shade if LifeCatalog._shade(shade) and str(item.get("kind","")) in PartyProps.CLOTH_HOSTS else ""
+
+## Lay a cloth of this shade on a gathering table, or take it off with "". The cloth is a
+## thin drape over the table top, so meals keep the heights they had. False when the
+## furnishing cannot wear a cloth or the shade is not a six-digit hex.
+func set_item_cloth(item:Dictionary,shade:String)->bool:
+	if str(item.get("kind","")) not in PartyProps.CLOTH_HOSTS or not is_instance_valid(item.get("node")):return false
+	if not shade.is_empty() and not LifeCatalog._shade(shade):return false
+	var old:Node=item.node.get_node_or_null("TableCloth")
+	if old!=null:
+		item.node.remove_child(old);old.queue_free()
+	if shade.is_empty():
+		item.erase("cloth");return true
+	item["cloth"]=shade
+	var cloth:Node3D=PartyProps.build_cloth(shade)
+	item.node.add_child(cloth)
+	assign_structure_layer(cloth,item_level(item))
+	return true
+
+## How many festive touches a storey has: each bunch of balloons, each set of streamers
+## and each table wearing a cloth. Party hosting reads it to judge how the home is dressed.
+func festive_count(level:int=0) -> int:
+	var count:int=0
+	for item:Dictionary in items:
+		if bool(item.get("transient_food",false)) or item_level(item)!=level:continue
+		if str(item.kind) in LifeCatalog.PARTY_DECOR or not item_cloth(item).is_empty():count+=1
+	return count
+
+## Set how many servings a party platter has left, from none to its full eight, and show
+## exactly that many on the platter.
+func set_party_servings(id:String,count:int)->bool:
+	for item:Dictionary in items:
+		if str(item.id)!=id or str(item.kind)!="party_food":continue
+		item["servings"]=clampi(count,0,int(LifeCatalog.get_item("party_food").get("servings",0)))
+		var model:Node=item.node.find_child("PartyModel",true,false)
+		if model is Node3D:PartyProps.show_servings(model as Node3D,int(item.servings))
+		return true
+	return false
 
 func item_lit(item:Dictionary)->bool:return bool(item.get("lit",true))
 
@@ -3035,9 +3108,10 @@ func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -
 		var toward:Vector3=node.global_position-at
 		at.y=node.global_position.y
 		return {"position":at,"yaw":atan2(toward.x,toward.z),"kind":"standing","mop_contact":node.global_position}
-	if str(item.kind)=="coffee_machine":
+	if str(item.kind) in ["coffee_machine","party_food"]:
 		# The appliance can be raised onto a worktop; its user always stands
 		# on the supporting floor and faces the machine from a clear approach.
+		# A party platter on a table is used the same way.
 		var at:Vector3=landmarks.get("standing_position",approach(item))
 		at.y=Building.level_y(item_level(item))
 		var toward:Vector3=node.global_position-at

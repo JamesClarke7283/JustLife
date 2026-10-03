@@ -10,6 +10,8 @@ const LifeLog = preload("res://scripts/logger.gd")
 const LifeWantsManager = preload("res://scripts/wants_manager.gd")
 const CareMotion = preload("res://scripts/care_motion.gd")
 const ChoreUI = preload("res://scripts/chore_ui.gd")
+const PartyDecor = preload("res://scripts/party_decor.gd")
+const PartyFood = preload("res://scripts/party_food.gd")
 const RoomPack = preload("res://scripts/room_pack.gd")
 const CREATOR_FACE_GROUPS: Dictionary = {
 	"Shape":["face_round","jaw_strong","chin_length","face_length"],
@@ -3622,12 +3624,9 @@ func model_thumbnail(kind:String,p:Vector2,s:Vector2,portrait:bool=false,parent:
 ## disk. One place decides that, so every caller of a model — the thumbnail, the
 ## ghost and the placed body — agrees about what exists.
 func _variant_model(kind:String,style:String,data:Dictionary) -> Resource:
-	if Kitchen.cabinet(kind) or kind in ["bath_mat","burglar_alarm","home_phone"] or LifeCatalog.is_gate(kind):
+	if Kitchen.cabinet(kind) or LifeCatalog.procedural(kind):
 		var root:Node3D=Kitchen.build(kind,Variants.resolve(data,{"style":style})) if Kitchen.cabinet(kind) else Node3D.new()
-		if LifeCatalog.is_gate(kind):world._build_garden_gate(root,float(data.size.x)>1.5,str(data.get("color","c9c3a8")),float(data.size.x))
-		elif kind=="burglar_alarm":world._build_burglar_alarm(root)
-		elif kind=="home_phone":world._build_home_phone(root)
-		elif kind=="bath_mat":world._build_bath_mat(root,Variants.resolve(data,{"style":style}))
+		if not Kitchen.cabinet(kind):world.build_procedural(root,kind,Variants.resolve(data,{"style":style}),data)
 		for child:Node in root.find_children("*","",true,false):child.owner=root
 		var generated:=PackedScene.new();generated.pack(root);root.free();return generated
 	var model_path:String=Variants.model_path(kind,Variants.style_or_default(style,data))
@@ -3644,9 +3643,11 @@ func _tint_preview(model:Node3D,data:Dictionary,color:String) -> void:
 	tint.albedo_color=Color(color)
 	tint.roughness=.62
 	tint.metallic=.04
+	var shine:=tint.duplicate() as StandardMaterial3D # balloons keep their gloss
+	shine.roughness=.22
 	for node:Node in model.find_children("*","MeshInstance3D",true,false):
 		var mesh_node:MeshInstance3D=node
-		if Variants.is_tint(mesh_node.name):mesh_node.material_override=tint
+		if Variants.is_tint(mesh_node.name):mesh_node.material_override=shine if str(mesh_node.name).begins_with("TintGloss") else tint
 
 func freeze_viewport(viewport_id:int) -> void:
 	await get_tree().process_frame
@@ -4191,6 +4192,9 @@ func on_placement(kind:String,p:Vector3,angle:float,style:String="",size:String=
 	if moving and pending_move.entry.has("refund_value"):entry["refund_value"]=Variants.resale_value(pending_move.entry)
 	if moving and pending_move.entry.has("towels"):entry["towels"]=int(pending_move.entry.towels)
 	if moving and pending_move.entry.has("lit"):entry["lit"]=pending_move.entry["lit"] # A moved lamp keeps its switch state.
+	# A moved table keeps its festive cloth and a moved platter the servings it has left.
+	if moving and pending_move.entry.has("cloth"):entry["cloth"]=pending_move.entry["cloth"]
+	if moving and pending_move.entry.has("servings"):entry["servings"]=pending_move.entry["servings"]
 	if LifeCatalog.paints(kind):
 		# A car keeps the finish it was bought or moved with: the row's choice
 		# for a new one, the record's own shade when an existing car is moved.
@@ -4626,6 +4630,8 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 		# the partner panel rather than queueing a lone action.
 		var dance_reason:String=sim.get_action_availability(LifeDancePlan.ACTION_ID,str(item.id)).reason
 		actions.insert(mini(1,actions.size()),{"id":"dance_together","label":"Dance together…","cost":0,"duration":35,"available":dance_reason.is_empty(),"unavailable_reason":dance_reason,"description":"Put on one record and dance with up to five household Lifelets at once."})
+	# The gathering table can be dressed for a party from its menu as well as in Build mode.
+	if PartyDecor.hosts(str(item.kind)) and not _find_item(str(item.id)).is_empty():actions.append_array(PartyDecor.menu_entries(self,item))
 	if str(item.kind)=="neighbor" and household.member_sim(str(item.id))!=null:
 		var toy_entry:Dictionary=_pool_toy_action(str(item.id))
 		if not toy_entry.is_empty():actions.insert(mini(1,actions.size()),toy_entry)
@@ -4790,6 +4796,7 @@ func _run_interaction(item:Dictionary,a:Dictionary) -> void:
 	elif str(a.id)=="assign_bed_sides":show_bed_assignments(str(item.id))
 	elif str(a.id)=="choose_leftovers":meal_flow.show_leftovers(str(item.id))
 	elif str(a.id)=="switch_light":switch_lamp(item);close_overlay()
+	elif str(a.id) in PartyDecor.IDS:PartyDecor.choose(self,str(a.id),str(item.id))
 	elif str(a.id)=="call_to_meal":
 		var joined:int=meal_flow.call_to_meal(str(item.id));close_overlay();show_notice("%d Lifelets are coming to eat." % joined)
 	elif str(a.id)=="ask_who_wants_food":show_food_offers(str(item.id))
@@ -5477,7 +5484,7 @@ func show_build_object(item:Dictionary,screen:Vector2) -> void:
 	var data:Dictionary=LifeCatalog.get_item(str(item.kind))
 	var colors:Array=Variants.colors(data)
 	var resizable:bool=Variants.resizable(data)
-	var rows:int=3+(1 if colors.size()>1 else 0)+(1 if resizable else 0)
+	var rows:int=3+(1 if colors.size()>1 else 0)+(1 if resizable else 0)+PartyDecor.card_rows(self,item)
 	var p=Vector2(clampf(screen.x-140,300,1100),clampf(screen.y-70,99,440))
 	card(p,Vector2(290,70.0+float(rows)*51.0),P.WHITE,17,overlay)
 	text_label(item.label,p+Vector2(18,14),Vector2(261,38),22,P.INK,true,overlay)
@@ -5494,6 +5501,7 @@ func show_build_object(item:Dictionary,screen:Vector2) -> void:
 		resize.name="ResizeFurnishing"
 		resize.tooltip_text="Make this run longer, shorter or taller. You pay for added panel and are refunded seven tenths of what you take away."
 		y+=51.0
+	y=PartyDecor.card_buttons(self,item,p,y)
 	var store=button("Put in storage",p+Vector2(16,y),Vector2(258,40),func():store_item(item);close_overlay(),false,overlay)
 	store.tooltip_text="File this furnishing away in the household storage unit ("+str(household_flow.storage_count())+"/%d used)." % LifeHouseholdFlow.MAX_STORAGE
 
@@ -5697,6 +5705,8 @@ func store_item(item:Dictionary) -> void:
 	# Stored, it keeps its style, colour and size, and a rack the towels on it.
 	if existing.get("variant") is Dictionary:entry.merge(existing.variant,false)
 	if str(existing.kind)=="towel_rack":entry["towels"]=int(existing.get("towels",0))
+	if not world.item_cloth(existing).is_empty():entry["cloth"]=world.item_cloth(existing)
+	if str(existing.kind)=="party_food":entry["servings"]=int(existing.get("servings",0))
 	# What is in a toy box is stored with it, and put back when it comes out.
 	if LifeToyFlow.is_container(str(existing.kind)):entry["toys"]=toy_flow.contents(str(existing.id)).size()
 	var result:Dictionary=household_flow.store_furnishing(entry)
@@ -6688,6 +6698,8 @@ func on_action_finished(action:Dictionary) -> void:
 		_lifelet_play_with_pet_toy(str(action.get("target_id","")))
 	elif action_id in LifeToyFlow.PLAY_ACTIONS and not loading_game:
 		toy_flow.scatter_after_play(bound_member_id,action)
+	elif action_id in PartyFood.IDS and not loading_game:
+		PartyFood.finished(self,action)
 	# A mirror or dressing-table beat opens its own panel once the Lifelet has
 	# walked there and finished, so the click leads somewhere rather than only
 	# granting a moodlet.
@@ -8219,6 +8231,7 @@ func _process(delta:float) -> void:
 			var action:Dictionary=sim.get_current_action()
 			var action_id:String="" if action.is_empty() or action.phase!="active" else action.id
 			if LifeBabyPlan.is_beat(action_id):action_id="sleep"
+			if action_id==PartyFood.EAT:action_id="snack" # a bite from the platter uses the snack pose
 			if action_id.is_empty() and is_instance_valid(relationship_flow) and relationship_flow.companion(bound_member_id):action_id="friendly"
 			if not str(action.get("cooperation_id","")).is_empty() and action_id.is_empty():
 				var shared:Dictionary=household.cooperative_presentation(bound_member_id)
@@ -9277,6 +9290,8 @@ func _safe_layout(value:Variant,layout_land:Variant=null) -> Array:
 		if not LifeBuildingState.number(entry.get("x"),-10000,10000) or not LifeBuildingState.number(entry.get("z"),-10000,10000):continue
 		var saved:Dictionary={"id":str(entry.id),"kind":str(entry.kind),"x":float(entry.x),"z":float(entry.z),"rotation":_saved_number(entry.get("rotation"),0,-10000,10000)}
 		saved.merge(Variants.from_entry(entry))
+		if str(entry.kind) in PartyDecor.HOSTS and LifeCatalog._shade(str(entry.get("cloth",""))):saved["cloth"]=str(entry.cloth)
+		if str(entry.kind)=="party_food" and LifeBuildingState.number(entry.get("servings"),0,64,true):saved["servings"]=int(entry.servings)
 		if LifeCatalog.wall_mounted(str(entry.kind)) and LifeBuildingState.number(entry.get("hang"),0,LifeBuildingState.RISE):saved["hang"]=float(entry.hang)
 		if bool(LifeCatalog.get_item(str(entry.kind)).get("surface_placeable",false)) and LifeBuildingState.identifier(entry.get("support_id")):
 			if LifeBuildingState.number(entry.get("support_x"),-15,15) and LifeBuildingState.number(entry.get("support_z"),-15,15) and LifeBuildingState.number(entry.get("support_rotation"),-INF,INF) and LifeBuildingState.number(entry.get("hang"),0,LifeBuildingState.RISE):
@@ -9289,6 +9304,9 @@ func _safe_layout(value:Variant,layout_land:Variant=null) -> Array:
 		for candidate:Dictionary in result:
 			if str(candidate.get("id",""))==str(entry.support_id):host=candidate;break
 		var supported:bool=not host.is_empty() and Kitchen.SURFACES.has(str(host.get("kind","")))
+		# A piece that names the tables it belongs on (the party platter) loses a support it may not have.
+		var allowed:Array=LifeCatalog.get_item(str(entry.get("kind",""))).get("surface_hosts",[])
+		if supported and not allowed.is_empty() and str(host.kind) not in allowed:supported=false
 		if supported:
 			var half:Vector2=Variants.footprint(LifeCatalog.get_item(str(host.kind)),str(host.get("size","")))*.5
 			supported=absf(float(entry.support_x))<=half.x and absf(float(entry.support_z))<=half.y and is_equal_approx(float(entry.hang),float(Kitchen.SURFACES[str(host.kind)]))
