@@ -431,6 +431,8 @@ func _connect_live_nodes() -> void:
 	household.pregnancy_began.connect(_on_pregnancy_began)
 	household.member_age_changed.connect(func(id: String, _previous: String, _current: String): _refresh_aged_member.call_deferred(id,load_epoch,sender))
 	if is_instance_valid(announcements) and not household.member_milestone.is_connected(announcements.milestone):household.member_milestone.connect(announcements.milestone)
+	# The Career panel names Retire once it opens and says "Retired" afterwards.
+	household.member_milestone.connect(func(id: String, kind: String, _data: Dictionary): if kind in ["retired","retirement_eligible"] and id==bound_member_id: portrait_stale=true)
 	world.object_clicked.connect(on_object_clicked)
 	world.wall_clicked.connect(toggle_walls)
 	# The world owns the ghost's own style and size, so the check describes the
@@ -3045,6 +3047,8 @@ func _refresh_progress_labels() -> void:
 	if is_instance_valid(age_label):
 		age_label.text=str(LifeLifecycle.LABELS[str(sim.character.age_stage)])
 		age_label.tooltip_text=LifeLifecycle.description(str(sim.character.age_stage),sim.lifecycle)
+		var retirement_line:String=str(sim.retirement_status().text)
+		if not retirement_line.is_empty():age_label.tooltip_text+="\n"+retirement_line
 	if not career_labels.is_empty():
 		if str(sim.character.age_stage) in ["child","teen"]:
 			var school: Dictionary=LifeEducation.summary(sim.education)
@@ -3053,6 +3057,11 @@ func _refresh_progress_labels() -> void:
 			career_labels.work.disabled=not sim.get_action_availability("school_day").available
 			career_labels.work.tooltip_text=str(sim.get_action_availability("school_day").reason)
 			career_labels.homework.disabled=sim.is_away() or not sim.get_action_availability("homework").available
+		elif sim.is_retired():
+			career_labels.title.text="Retired"
+			career_labels.details.text=_retired_details()
+			career_labels.work.disabled=true
+			career_labels.work.tooltip_text=LifeRetirement.RETIRED_REASON
 		else:
 			career_labels.title.text=sim.career.title
 			var requirement:Dictionary=sim.promotion_requirement()
@@ -3274,14 +3283,22 @@ func draw_household_bar() -> void:
 		career_labels["homework"]=button("Homework",Vector2(1241,824),Vector2(149,32),func():queue_homework_desk())
 		button("School record →",Vector2(989,848),Vector2(230,24),show_school_record)
 	else:
-		career_labels["title"]=text_label(sim.career.title,Vector2(989,778),Vector2(235,28),19,P.INK,true)
+		var retired:bool=sim.is_retired()
+		career_labels["title"]=text_label("Retired" if retired else sim.career.title,Vector2(989,778),Vector2(235,28),19,P.INK,true)
 		var requirement:Dictionary=sim.promotion_requirement()
 		var details_text:String="Level %d  ·  ℒ%d / shift" % [sim.career.level,sim.career.salary]
 		if not requirement.is_empty() and not bool(requirement.met):details_text+="  ·  Next: %s %d" % [str(requirement.skill).capitalize(),int(requirement.level)]
+		if retired:details_text=_retired_details()
 		career_labels["details"]=text_label(details_text,Vector2(990,814),Vector2(234,27),12,P.MUTED)
-		career_labels["details"].tooltip_text="" if requirement.is_empty() else ("Promotion to %s needs %s level %d and full performance." % [str(requirement.next_title),str(requirement.skill).capitalize(),int(requirement.level)])
-		career_labels["work"]=button("Go to work",Vector2(1241,779),Vector2(149,37),_go_to_work,true)
-		button("Career details",Vector2(1241,824),Vector2(149,32),show_career_record)
+		career_labels["details"].tooltip_text="" if requirement.is_empty() or retired else ("Promotion to %s needs %s level %d and full performance." % [str(requirement.next_title),str(requirement.skill).capitalize(),int(requirement.level)])
+		career_labels["work"]=button("Retired" if retired else "Go to work",Vector2(1241,779),Vector2(149,37),_go_to_work,not retired)
+		if retired:
+			career_labels.work.disabled=true
+			career_labels.work.tooltip_text=LifeRetirement.RETIRED_REASON
+		# An elder who may retire sees it named on the button that opens the record.
+		var ready_to_retire:bool=sim.retirement_eligible()
+		var details:Button=button("Retire…" if ready_to_retire else "Career details",Vector2(1241,824),Vector2(149,32),show_career_record,ready_to_retire)
+		details.name="CareerDetails"
 		if sim.character.traits.has("Active"):
 			# An Active Lifelet's own habit: out of the front door and around the
 			# block, offered beside the work departure it shares a target with.
@@ -10386,24 +10403,58 @@ func show_career_record() -> void:
 	small_caps("Your working life",Vector2(467,209),Vector2(502,24),overlay)
 	text_label(str(sim.career.title),Vector2(465,254),Vector2(510,46),27,P.TEAL,true,overlay)
 	var police:bool=LifeCareers.is_police(str(sim.career.track))
+	var retired:bool=sim.is_retired()
 	var detail:String="Work runs weekdays, 09:00–17:00. Arrive by 10:00; late arrivals until noon reduce performance. Pay reflects actual time at work."
 	if police:
 		detail="Juniper Bay Police Station · %s · ℒ%d per completed shift. The night team hands over at 09:00; the day team at 17:00." % [str(LifeCareerSchedule.pattern(sim.career).label),sim.career_pay()]
 		if str(sim.career.track)=="sergeant":detail+=" As department head, you oversee the station and its officers."
+	if retired:detail="%s is retired and no longer required to work. A pension of %s arrives every %d days." % [str(sim.character.name).split(" ")[0],LifeRetirement.amount_text(LifeRetirement.PENSION_AMOUNT),LifeRetirement.PENSION_PERIOD_DAYS]
 	paragraph(detail,Vector2(466,315),Vector2(505,100),17,P.MUTED,overlay)
 	var record:Dictionary=sim.career.get("schedule",LifeCareerSchedule.fresh(sim.day))
 	text_label("%d shifts completed · %d missed · %d min late"%[record.attended,record.missed,int(record.late_minutes)],Vector2(466,422),Vector2(505,35),16,P.INK,false,overlay)
-	if police:
+	if retired:
+		var pension:Label=paragraph("Retired on day %d · %s pension received · next %s on day %d" % [int(sim.retirement.retired_day),LifeRetirement.amount_text(int(sim.retirement.pension_paid)),LifeRetirement.amount_text(LifeRetirement.PENSION_AMOUNT),int(sim.retirement.next_pension_day)],Vector2(466,485),Vector2(505,60),16,P.INK,overlay)
+		pension.name="RetirementSummary"
+	elif police:
 		var index:int=0
 		for option:Dictionary in sim.police_shift_options():
 			var shift:String=str(option.id)
 			var pick:Button=button("%s · ℒ%d" % [str(option.label),int(option.pay)],Vector2(465,475+index*43),Vector2(506,38),func():_choose_police_shift(shift),bool(option.current),overlay)
 			pick.name="PoliceShift_"+shift;pick.disabled=sim.is_away();index+=1
 	else:paragraph("A home shift is an optional six-hour alternative. It shares today's paid attendance with going to work.",Vector2(466,485),Vector2(505,60),14,P.MUTED,overlay)
-	var work:Button=button("Go to the station" if police else "Work from home",Vector2(465,590),Vector2(243,43),func():close_overlay();_go_to_work() if police else queue_nearest("desk","job"),false,overlay)
-	work.disabled=not sim.get_action_availability("career_day" if police else "job").available
-	var change:Button=button("Find a job",Vector2(720,590),Vector2(251,43),show_careers,false,overlay);change.disabled=sim.is_away()
+	if not retired:
+		var work:Button=button("Go to the station" if police else "Work from home",Vector2(465,590),Vector2(243,43),func():close_overlay();_go_to_work() if police else queue_nearest("desk","job"),false,overlay)
+		work.disabled=not sim.get_action_availability("career_day" if police else "job").available
+	var change:Button=button("Find a job",Vector2(720,590),Vector2(251,43),show_careers,false,overlay);change.disabled=sim.is_away() or retired
+	if retired:change.tooltip_text=sim.career_entry_error("")
+	var stage:Dictionary=sim.retirement_status()
+	if stage.state in ["waiting","eligible"]:
+		var opens:String="Retirement opens on day %d." % (sim.day+int(stage.get("days",0))) if stage.state=="waiting" else "Retiring means no more shifts, and %s every %d days." % [LifeRetirement.amount_text(LifeRetirement.PENSION_AMOUNT),LifeRetirement.PENSION_PERIOD_DAYS]
+		paragraph(opens,Vector2(466,552),Vector2(505,34),14,P.MUTED,overlay).name="RetirementNote"
+		var retire_button:Button=button("Retire…",Vector2(465,645),Vector2(506,43),show_retire_confirm,stage.state=="eligible",overlay)
+		retire_button.name="CareerRetire"
+		var why_not:String=sim.retirement_error()
+		retire_button.disabled=not why_not.is_empty()
+		retire_button.tooltip_text=why_not
 	button("Back to life",Vector2(465,704),Vector2(506,43),close_overlay,true,overlay)
+
+## The last question before an elder stops working for good.
+func show_retire_confirm() -> void:
+	_begin_pause_overlay();menus.shade()
+	card(Vector2(450,250),Vector2(540,399),P.WHITE,24,overlay)
+	text_label("A well-earned rest",Vector2(481,282),Vector2(476,54),35,P.INK,true,overlay)
+	paragraph("Retire %s? They stop working for good and receive %s every %d days. This cannot be undone." % [sim.character.name,LifeRetirement.amount_text(LifeRetirement.PENSION_AMOUNT),LifeRetirement.PENSION_PERIOD_DAYS],Vector2(484,371),Vector2(470,117),19,P.INK,overlay)
+	button("Retire",Vector2(483,554),Vector2(271,48),_retire_bound_member,true,overlay).name="ConfirmRetire"
+	button("Keep working",Vector2(768,554),Vector2(188,48),show_career_record,false,overlay).name="KeepWorking"
+
+func _retire_bound_member() -> void:
+	var result:Dictionary=household.retire_member(bound_member_id)
+	close_overlay()
+	if not bool(result.ok):show_notice(str(result.error))
+
+## The Career panel's second line once someone has retired.
+func _retired_details() -> String:
+	return "%s pension · next on day %d" % [LifeRetirement.amount_text(LifeRetirement.PENSION_AMOUNT),int(sim.retirement.next_pension_day)]
 
 func _choose_police_shift(shift:String) -> void:
 	var result:Dictionary=sim.choose_police_shift(shift)

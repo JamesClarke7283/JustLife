@@ -132,6 +132,9 @@ var degree: String = "none"
 ## The criminal record: how often this Lifelet has been caught, what that cost,
 ## and the day they are free again. Empty for anybody who has never been inside.
 var criminal_record: Dictionary = {}
+## Retirement: whether an elder has stopped working, and the pension they live on
+## (`LifeRetirement`). A Lifelet who has never retired holds the fresh record.
+var retirement: Dictionary = LifeRetirement.fresh()
 var cooperation_owner: Node = null
 var cooperation_member_id: String = ""
 ## What brought the latest birthday about: "auto" when the lifespan clock ran out,
@@ -346,6 +349,7 @@ func new_household(profile: Dictionary) -> void:
 	# them. Everything above it asks for something they have not earned yet.
 	degree = "none"
 	criminal_record = {}
+	retirement = LifeRetirement.fresh()
 	career = {"schedule":LifeCareerSchedule.fresh(1),"track":LifeCareers.DEFAULT_JOB,
 		"title":LifeCareers.title_at(LifeCareers.DEFAULT_JOB,1),"level":1,"performance":0.0,
 		"salary":LifeCareers.base_pay(LifeCareers.DEFAULT_JOB,1),"worked_day":0,"shift":"day"}
@@ -585,7 +589,7 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 	var ids: Array = []
 	match kind:
 		"lot_exit":
-			ids = ["school_day"] if str(character.age_stage) in LifeEducation.SCHOOL_STAGES else (["career_day"] if str(character.life_stage)=="adult" else [])
+			ids = ["school_day"] if str(character.age_stage) in LifeEducation.SCHOOL_STAGES else (["career_day"] if str(character.life_stage)=="adult" and not is_retired() else [])
 			ids.append("morning_run")
 		"fridge":
 			ids = ["cook", "snack", "order_groceries", "birthday"]
@@ -2443,6 +2447,8 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 		reason = "Potty practice starts once a baby is a toddler."
 	elif funds < int(_actions[id].cost) and not (is_instance_valid(grocery_service) and id in ["cook", "snack"]):
 		reason = "Requires ℒ%d." % int(_actions[id].cost)
+	elif id == "job" and is_retired():
+		reason = LifeRetirement.RETIRED_REASON
 	elif id == "job" and LifeCareers.is_police(str(career.get("track",""))):
 		reason="Police shifts are served at the station. Choose Go to work at the neighborhood exit."
 	elif id == "job" and int(career.worked_day) == day:
@@ -3011,6 +3017,8 @@ func _career_end_minute() -> float:
 ## `choose_career` all read this one answer, so a greyed-out button and a refused
 ## call never disagree.
 func career_entry_error(track_id:String) -> String:
+	if is_retired():
+		return "Retired Lifelets live on their pension."
 	if is_imprisoned():
 		return "This Lifelet is serving a sentence until day %d." % int(criminal_record.get("prison_until_day", 0))
 	return LifeCareers.entry_error(track_id,str(character.life_stage),skills,_degree(),funds)
@@ -3239,7 +3247,7 @@ func _ease_mourning(amount: float) -> void:
 
 
 func _new_day() -> void:
-	var work_calendar:Dictionary=LifeCareerSchedule.advance(career.get("schedule",LifeCareerSchedule.fresh(day-1)),day,int(career.worked_day),str(character.life_stage)=="adult",career)
+	var work_calendar:Dictionary=LifeCareerSchedule.advance(career.get("schedule",LifeCareerSchedule.fresh(day-1)),day,int(career.worked_day),str(character.life_stage)=="adult" and not is_retired(),career)
 	career.schedule=work_calendar.state
 	if int(work_calendar.missed)>0:
 		career.performance=maxf(0.0,float(career.performance)-8.0*int(work_calendar.missed))
@@ -3248,6 +3256,7 @@ func _new_day() -> void:
 	_cancel_school_actions("A new school day has begun. Choose a fresh class or assignment.")
 	_warned_needs.clear()
 	_advance_bill_cycle()
+	_advance_retirement()
 	for person: Dictionary in relationships.values():
 		if float(person["friendship"]) > 0.0:
 			person["friendship"] = maxf(0.0, float(person["friendship"]) - 1.5)
@@ -3433,7 +3442,7 @@ func _autonomy_duty_id() -> String:
 			id="school_day"
 		elif int(education.last_homework_day)!=day and (int(education.last_attendance_day)==day or minutes>=900.0) and minutes>=600.0 and minutes<=1320.0:
 			id="homework"
-	elif str(character.life_stage)=="adult" and LifeCareers.has(str(career.get("track",""))) and int(career.worked_day)!=day:
+	elif str(character.life_stage)=="adult" and not is_retired() and LifeCareers.has(str(career.get("track",""))) and int(career.worked_day)!=day:
 		if day>=int(career.get("schedule",LifeCareerSchedule.fresh(day)).first_day) and minutes>=float(_career_pattern().open) and minutes<=float(_career_pattern().close):id="career_day"
 	if not id.is_empty() and float(autonomy_state.deferred.get(id,-1.0))>_autonomy_now():return ""
 	return id
@@ -3446,7 +3455,7 @@ func _autonomy_preparation_duty_id() -> String:
 	var start:float=0.0
 	if str(character.age_stage) in LifeEducation.SCHOOL_STAGES and int(education.last_attendance_day)!=day and day>=int(education.first_class_day):
 		id="school_day";start=480.0
-	elif str(character.life_stage)=="adult" and not is_imprisoned() and LifeCareers.has(str(career.get("track",""))) and int(career.worked_day)!=day:
+	elif str(character.life_stage)=="adult" and not is_imprisoned() and not is_retired() and LifeCareers.has(str(career.get("track",""))) and int(career.worked_day)!=day:
 		id="career_day";start=float(_career_pattern().open)
 		if day<int(career.get("schedule",LifeCareerSchedule.fresh(day)).first_day):return ""
 	if id.is_empty() or minutes<start-180.0 or minutes>=start:return ""
@@ -3531,7 +3540,7 @@ func _autonomy_target_for(id:String,excluded_target_ids:Array=[]) -> Dictionary:
 		for definition:Dictionary in get_actions_for(str(target.kind),str(target.id)):
 			if str(definition.id)!=id:continue
 			available=bool(definition.available)
-			if id=="career_day" and str(target.kind)=="lot_exit" and minutes>=float(_career_pattern().open)-180.0 and minutes<float(_career_pattern().open) and LifeCareerSchedule.workday(day,career) and str(character.life_stage)=="adult" and int(career.worked_day)!=day and day>=int(career.get("schedule",LifeCareerSchedule.fresh(day)).first_day) and not is_away():available=true
+			if id=="career_day" and str(target.kind)=="lot_exit" and minutes>=float(_career_pattern().open)-180.0 and minutes<float(_career_pattern().open) and LifeCareerSchedule.workday(day,career) and str(character.life_stage)=="adult" and not is_retired() and int(career.worked_day)!=day and day>=int(career.get("schedule",LifeCareerSchedule.fresh(day)).first_day) and not is_away():available=true
 			if id == "school_day" and str(target.kind) == "lot_exit" and minutes >= 300.0 and minutes < 480.0 and LifeEducation.weekday(day) and str(character.age_stage) in LifeEducation.SCHOOL_STAGES and int(education.last_attendance_day) != day and day >= int(education.first_class_day) and not is_away():
 				# Preparation can locate tomorrow's route before departure opens.
 				# The chooser separately requires a due duty before queueing it.
@@ -4500,7 +4509,7 @@ func get_mood() -> Dictionary:
 
 func get_state() -> Dictionary:
 	if not lifecycle.has("stage_day"): _anchor_stage_day()
-	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "second_wind": second_wind, "wetness": wetness, "towel": towel.duplicate(true), "auto_swimwear": auto_swimwear, "bladder_grace":bladder_grace, "starvation_minutes":starvation_minutes, "exhaustion_minutes":exhaustion_minutes, "deferred_passing_minutes":deferred_passing_minutes, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "degree": degree, "criminal_record": criminal_record.duplicate(true), "wants": wants.duplicate(true), "whims": whims.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "last_bill_day": last_bill_day, "pending_bill":pending_bill.duplicate(true), "bills_paid_total":bills_paid_total, "bills_late":bills_late, "utilities_cut":utilities_cut, "insurance_policy_id":insurance_policy_id, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "resident_aliases":resident_aliases.duplicate(true), "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "passing_contacts":passing_contacts.duplicate(true), "last_passing_any":maxf(last_passing_any,-1.0), "routine_memory_days":routine_memory_days.duplicate(true)}
+	return {"version": SAVE_VERSION, "character": character.duplicate(true), "lifecycle": lifecycle.duplicate(true), "education": education.duplicate(true), "away_state":away_state.duplicate(true), "needs": needs.duplicate(true), "second_wind": second_wind, "wetness": wetness, "towel": towel.duplicate(true), "auto_swimwear": auto_swimwear, "bladder_grace":bladder_grace, "starvation_minutes":starvation_minutes, "exhaustion_minutes":exhaustion_minutes, "deferred_passing_minutes":deferred_passing_minutes, "skills": skills.duplicate(true), "relationships": relationships.duplicate(true), "career": career.duplicate(true), "degree": degree, "criminal_record": criminal_record.duplicate(true), "retirement": retirement.duplicate(true), "wants": wants.duplicate(true), "whims": whims.duplicate(true), "funds": funds, "day": day, "minutes": minutes, "speed": speed, "autonomy": autonomy, "autonomy_state":autonomy_state.duplicate(true), "action_queue": action_queue.duplicate(true), "satisfaction": satisfaction, "last_bill_day": last_bill_day, "pending_bill":pending_bill.duplicate(true), "bills_paid_total":bills_paid_total, "bills_late":bills_late, "utilities_cut":utilities_cut, "insurance_policy_id":insurance_policy_id, "purchased_perks": purchased_perks.duplicate(),"moodlets":moodlets.duplicate(true),"memories":memories.duplicate(true), "aspiration_stage":aspiration_stage, "aspiration_next_day":aspiration_next_day, "aspiration_history":aspiration_history.duplicate(true), "story_events":story_events.duplicate(true), "story_history":story_history.duplicate(true), "story_generated_day":_story_generated_day, "romantic_partner":romantic_partner, "resident_aliases":resident_aliases.duplicate(true), "social_history":social_history.duplicate(true), "last_hugs":last_hugs.duplicate(true), "last_gossip":last_gossip.duplicate(true), "social_cooldowns":social_cooldowns.duplicate(true), "last_hosted_credit":last_hosted_credit, "last_companion_credit":last_companion_credit, "passing_contacts":passing_contacts.duplicate(true), "last_passing_any":maxf(last_passing_any,-1.0), "routine_memory_days":routine_memory_days.duplicate(true)}
 
 
 func save_game(world_data: Array = []) -> bool:
@@ -4617,6 +4626,7 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 	career = state["career"].duplicate(true)
 	degree = LifeCareers.normalise_degree(str(state.get("degree", "none")))
 	criminal_record = (state.get("criminal_record", {}) as Dictionary).duplicate(true)
+	retirement = LifeRetirement.migrate(state.get("retirement"))
 	# A save made before this ladder grew can carry a rung and a title from the
 	# old five-level table, so the record is rebuilt from the ladder it names.
 	var saved_track: String = str(career.get("track", LifeCareers.DEFAULT_JOB))
@@ -5006,6 +5016,11 @@ func _validate_state(state: Dictionary) -> String:
 	if not degree_error.is_empty(): return degree_error
 	var criminal_error: String = LifeCareers.criminal_error(state.get("criminal_record"))
 	if not criminal_error.is_empty(): return criminal_error
+	var retirement_problem: String = LifeRetirement.validate(state.get("retirement"), LifeLifecycle.stage_for(profile), state.get("lifecycle", LifeLifecycle.fresh()), int(state.day))
+	if not retirement_problem.is_empty(): return retirement_problem
+	# Retired for good means no shift is planned or under way, whatever the queue says.
+	var retired_in_save: bool = state.get("retirement") is Dictionary and bool(state.retirement.get("retired", false))
+	if retired_in_save and state.get("away_state") is Dictionary and str(state.away_state.get("activity", "")) == "career": return "Save sends a retired Lifelet to work."
 	if job.has("schedule"):
 		var schedule_error:String=LifeCareerSchedule.validate(job.schedule,int(state.day),int(job.get("worked_day",0)),job)
 		if not schedule_error.is_empty():return schedule_error
@@ -5146,6 +5161,7 @@ func _validate_state(state: Dictionary) -> String:
 			var commute_error: String = preload("res://scripts/work_commute.gd").save_error(action.commute, action, state.get("away_state", {}))
 			if not commute_error.is_empty() or action_id not in ["drive_to_work", "career_day"]: return "Save contains invalid work commute progress."
 		if action_id in ["job","career_day","work","drive_to_work"] and str(profile.get("life_stage","adult")) != "adult": return "Save contains adult work queued for a non-adult Lifelet."
+		if retired_in_save and action_id in LifeRetirement.WORK_ACTIONS: return "Save sends a retired Lifelet to work."
 		if action_id == "cook":
 			var recipe:Variant=action.get("recipe","garden_skillet")
 			if not recipe is String or not LifeMeals.RECIPES.has(recipe):return "Save contains an invalid cooking recipe."
@@ -5783,8 +5799,79 @@ func celebrate_birthday(start_next_action: bool = true, source: String = "auto")
 ## `source` is "auto" or "cake" for a birthday and "change_age" for the death
 ## dialog's Change Age. Features that begin with a stage (retirement, learning to
 ## drive) start their own clocks here, so a stage change has one place to hook.
-func _on_stage_entered(_previous: String, _next: String, _source: String) -> void:
-	pass
+func _on_stage_entered(previous: String, next: String, _source: String) -> void:
+	# A new stage starts the retirement clock over: a Lifelet who is changed back
+	# to a younger age works again, and a new elder has fourteen days to wait.
+	if previous != next: retirement = LifeRetirement.fresh()
+
+## Whether this Lifelet has stopped working for good.
+func is_retired() -> bool: return LifeRetirement.is_retired(retirement)
+
+## Whether this Lifelet holds a job they have actually started: a job on record
+## and at least one paid shift. An elder who has never been paid for a shift has
+## nothing to give up, so they retire on their own once they are allowed.
+func has_job() -> bool:
+	return LifeCareers.has(str(career.get("track", ""))) and int(career.get("worked_day", 0)) > 0
+
+## Whether this elder has been one long enough to retire (a choice, made later).
+func retirement_eligible() -> bool:
+	return LifeRetirement.eligible(retirement, str(character.get("age_stage", "")), lifecycle, day, is_spirit())
+
+## Why this Lifelet cannot retire right now, or empty when they can.
+func retirement_error() -> String:
+	return LifeRetirement.retire_error(retirement, str(character.get("age_stage", "")), lifecycle, day, is_spirit(), is_away(), is_imprisoned(), str(get_current_action().get("id", "")))
+
+## What the Career panel and the age tooltip say about retirement: the stage it is
+## in ("none" for anyone who is not an elder, "waiting", "eligible" or "retired")
+## and the line to show.
+func retirement_status() -> Dictionary:
+	if str(character.get("age_stage", "")) != "elder" or is_spirit(): return {"state": "none", "text": ""}
+	if is_retired():
+		return {"state": "retired", "text": "Retired · pension %s every %d days · next on day %d" % [LifeRetirement.amount_text(LifeRetirement.PENSION_AMOUNT), LifeRetirement.PENSION_PERIOD_DAYS, int(retirement.next_pension_day)]}
+	if retirement_eligible(): return {"state": "eligible", "text": "Can retire now"}
+	var to_go: int = LifeRetirement.days_until_eligible(lifecycle, day)
+	return {"state": "waiting", "text": "Can retire in %d %s" % [to_go, "day" if to_go == 1 else "days"], "days": to_go}
+
+## Stop working for good. Plans that would send them to work are dropped, they
+## are marked as retired and the pension cycle starts. One way: only Change Age
+## to a younger stage undoes it.
+func retire() -> Dictionary:
+	var problem: String = retirement_error()
+	if not problem.is_empty(): return {"ok": false, "error": problem}
+	for index: int in range(action_queue.size() - 1, 0, -1):
+		if str(action_queue[index].id) in LifeRetirement.WORK_ACTIONS: cancel_action(index)
+	var was: String = str(career.get("title", ""))
+	retirement = LifeRetirement.retire(retirement, day)
+	add_moodlet("Happily retired", "Happy", "No more shifts, and a pension to look forward to.", 1440, 3)
+	remember("Retired", ("Retired from %s." % was) if has_job() else "Retired.")
+	_publish("life_changed", ["retired"])
+	_emit_milestone("retired", {"name": str(character.name), "day": day, "text": LifeRetirement.RETIRED_DETAIL, "next_pension_day": int(retirement.next_pension_day)})
+	_emit_changed()
+	return {"ok": true, "retired_day": day, "next_pension_day": int(retirement.next_pension_day)}
+
+## Once a day: tell an elder who has been one long enough that they can retire
+## (or retire them, if they have no job to give up), and pay a retired one the
+## pension that has fallen due. The record is changed before anything is announced,
+## so a save taken in a callback already holds the payment.
+func _advance_retirement() -> void:
+	if is_spirit() or str(character.get("age_stage", "")) != "elder": return
+	if is_retired():
+		var total: int = 0
+		while LifeRetirement.pension_due(retirement, day) and total < 8 * LifeRetirement.PENSION_AMOUNT:
+			funds += LifeRetirement.PENSION_AMOUNT
+			retirement = LifeRetirement.paid(retirement)
+			total += LifeRetirement.PENSION_AMOUNT
+		if total > 0:
+			var text: String = "Pension day: %s received %s. The next payment arrives on day %d." % [str(character.name).split(" ")[0], LifeRetirement.amount_text(total), int(retirement.next_pension_day)]
+			_emit_milestone("pension", {"name": str(character.name), "amount": total, "day": day, "next_pension_day": int(retirement.next_pension_day), "text": text})
+		return
+	if not retirement_eligible(): return
+	if not has_job():
+		if retirement_error().is_empty(): retire()
+		return
+	if bool(retirement.eligible_noticed): return
+	retirement["eligible_noticed"] = true
+	_emit_milestone("retirement_eligible", {"name": str(character.name), "day": day, "text": "%s has been an elder for %d days and can now retire. Open Career details and choose Retire." % [str(character.name).split(" ")[0], LifeRetirement.days_as_elder(lifecycle, day)]})
 
 func relationship_order() -> Array:
 	var ids: Array = relationships.keys()
@@ -5843,6 +5930,7 @@ func _emit_age_changed(previous: String, current: String) -> void: _publish("age
 func _emit_milestone(kind: String, data: Dictionary = {}) -> void: _publish("milestone",[kind,data])
 
 func _career_departure_error(target_id:String,ignore_queue:bool=false) -> String:
+	if is_retired():return LifeRetirement.RETIRED_REASON
 	if str(character.life_stage)!="adult":return "Full-time careers become available in young adulthood."
 	if is_away():return "This Lifelet is already away from home."
 	if not LifeCareerSchedule.workday(day,career):return "Ordinary work runs Monday through Friday."
