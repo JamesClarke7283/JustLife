@@ -8,6 +8,11 @@ const SCHOOL_STAGES: Array[String] = ["child", "teen"]
 const DAY_LIMIT: int = 1000000
 const COUNTERS: Array[String] = ["attended", "missed", "homework", "prepared"]
 const DATES: Array[String] = ["last_attendance_day", "last_homework_day", "last_prepared_homework_day"]
+## A teenager must hand in homework on every school day they attend; each missed
+## assignment costs this many grade points. The counter is optional in a saved
+## record (older saves have none), so it is not listed in COUNTERS.
+const MISSED_HOMEWORK_PENALTY: float = 3.0
+const MISSED_HOMEWORK_NOTICE: String = "Homework was not handed in."
 
 
 static func fresh(stage: String, day: int = 1) -> Dictionary:
@@ -15,7 +20,7 @@ static func fresh(stage: String, day: int = 1) -> Dictionary:
 	return {"version":VERSION, "stage":valid_stage, "last_day":clampi(day,1,DAY_LIMIT),
 		"enrolled_day":clampi(day,1,DAY_LIMIT) if valid_stage in SCHOOL_STAGES else 0,
 		"first_class_day":clampi(day,1,DAY_LIMIT) if valid_stage in SCHOOL_STAGES else 0,
-		"attended":0, "missed":0, "homework":0, "prepared":0, "late_minutes":0.0,
+		"attended":0, "missed":0, "homework":0, "prepared":0, "late_minutes":0.0, "missed_homework":0,
 		"last_attendance_day":0, "last_homework_day":0, "last_prepared_homework_day":0,
 		"records":[]}
 
@@ -29,7 +34,7 @@ static func weekday_name(day: int) -> String:
 
 
 static func score(state: Dictionary) -> float:
-	return clampf(60.0+float(state.get("attended",0))*2.0+float(state.get("prepared",0))*3.0+float(state.get("homework",0))-float(state.get("missed",0))*4.0-float(state.get("late_minutes",0.0))/30.0,0.0,100.0)
+	return clampf(60.0+float(state.get("attended",0))*2.0+float(state.get("prepared",0))*3.0+float(state.get("homework",0))-float(state.get("missed",0))*4.0-float(state.get("missed_homework",0))*MISSED_HOMEWORK_PENALTY-float(state.get("late_minutes",0.0))/30.0,0.0,100.0)
 
 
 static func grade(state: Dictionary) -> String:
@@ -48,6 +53,7 @@ static func summary(state: Dictionary) -> Dictionary:
 		"grade":grade(state), "score":score(state),
 		"attendance":float(state.get("attended",0))/float(scheduled) if scheduled > 0 else 1.0,
 		"homework_ready":int(state.get("last_homework_day",0)) > int(state.get("last_prepared_homework_day",0)),
+		"homework_required":str(state.get("stage","")) == "teen", "missed_homework":int(state.get("missed_homework",0)),
 		"records":state.get("records",[]).duplicate(true)}
 
 
@@ -60,11 +66,13 @@ static func actions(state: Dictionary, stage: String, day: int, minutes: float) 
 	var current: Dictionary = advanced.state
 	var school_error: String = _availability(current,day,minutes,"school",false)
 	var homework_error: String = _availability(current,day,minutes,"homework",false)
+	var homework_note: String = "One assignment each weekday. Builds logic and prepares your next attended school day."
+	if stage == "teen": homework_note = "Required every school day. A missed assignment costs %d grade points." % int(MISSED_HOMEWORK_PENALTY)
 	return [
 		{"id":"school", "label":"Attend online classes", "duration":180.0, "available":school_error.is_empty(),
 			"unavailable_reason":school_error, "description":"Weekdays, 08:00–14:00. Attend lessons, meet classmates, and build your grade. Prepared homework improves learning."},
 		{"id":"homework", "label":"Do homework", "duration":45.0, "available":homework_error.is_empty(),
-			"unavailable_reason":homework_error, "description":"One assignment each weekday. Builds logic and prepares your next attended school day."}
+			"unavailable_reason":homework_error, "description":homework_note}
 	]
 
 
@@ -86,6 +94,12 @@ static func advance(state: Dictionary, stage: String, day: int, enrollment_minut
 		if missed > 0:
 			next.missed += missed
 			notices.append("%d missed school day%s. Current grade: %s." % [missed,"" if missed == 1 else "s",grade(next)])
+		# Homework is set at school, so only a day the teenager attended can leave an
+		# assignment undone (an absence already costs more). Children are let off.
+		var finished_day: int = int(next.last_day)
+		if old_stage == "teen" and weekday(finished_day) and int(next.last_attendance_day) == finished_day and int(next.last_homework_day) != finished_day:
+			next.missed_homework = int(next.get("missed_homework",0))+1
+			notices.append("%s Teenagers must finish it every school day. Current grade: %s." % [MISSED_HOMEWORK_NOTICE,grade(next)])
 	next.last_day = day
 	if stage != old_stage:
 		if old_stage in SCHOOL_STAGES:
@@ -150,6 +164,7 @@ static func validate(state: Variant, stage: String, day: int) -> String:
 		return "Save contains an invalid first school day."
 	for key: String in COUNTERS:
 		if not _integer(state.get(key),0,DAY_LIMIT): return "Save contains an invalid school counter."
+	if not _integer(state.get("missed_homework",0),0,DAY_LIMIT): return "Save contains an invalid school counter."
 	var late:Variant=state.get("late_minutes",0.0)
 	if not (late is int or late is float) or not is_finite(float(late)) or float(late)<0.0 or float(late)>float(state.attended)*180.0:return "Save contains invalid late-school time."
 	for key: String in DATES:
@@ -163,10 +178,14 @@ static func validate(state: Variant, stage: String, day: int) -> String:
 		var attended_today: int = 1 if int(state.last_attendance_day) == int(state.last_day) else 0
 		if int(state.attended)+int(state.missed) != completed_days+attended_today or int(state.homework) > allowed_days:
 			return "Save school attendance does not match its calendar."
+		var undone: int = int(state.get("missed_homework",0))
+		if undone > 0 and (stage != "teen" or undone > int(state.attended) or int(state.homework)+undone > allowed_days):
+			return "Save school homework record does not match its calendar."
 	else:
 		if int(state.enrolled_day) != 0 or int(state.get("first_class_day",0)) != 0: return "Save enrolls an adult in child schooling."
 		for key: String in COUNTERS+DATES:
 			if int(state[key]) != 0: return "Save contains active schooling for an unenrolled Lifelet."
+		if int(state.get("missed_homework",0)) != 0: return "Save contains active schooling for an unenrolled Lifelet."
 	if int(state.prepared) > mini(int(state.attended),int(state.homework)):
 		return "Save contains inconsistent prepared lessons."
 	if (int(state.attended) == 0) != (int(state.last_attendance_day) == 0) or (int(state.homework) == 0) != (int(state.last_homework_day) == 0) or (int(state.prepared) == 0) != (int(state.last_prepared_homework_day) == 0):
@@ -216,7 +235,7 @@ static func _term_record(state: Dictionary, day: int) -> Dictionary:
 	var passed: bool = int(state.attended) >= 3 and attendance >= .70 and score(state) >= 55.0
 	return {"stage":str(state.stage),"enrolled_day":int(state.enrolled_day),"first_class_day":int(state.get("first_class_day",state.enrolled_day)),"day":day,
 		"attended":int(state.attended),"missed":int(state.missed),"homework":int(state.homework),"prepared":int(state.prepared),
-		"late_minutes":float(state.get("late_minutes",0.0)),"grade":grade(state),"score":score(state),"outcome":("completed" if str(state.stage) == "child" else "graduated") if passed else "unfinished"}
+		"late_minutes":float(state.get("late_minutes",0.0)),"missed_homework":int(state.get("missed_homework",0)),"grade":grade(state),"score":score(state),"outcome":("completed" if str(state.stage) == "child" else "graduated") if passed else "unfinished"}
 
 
 static func _validate_record(record: Variant, day: int) -> String:
@@ -226,6 +245,8 @@ static func _validate_record(record: Variant, day: int) -> String:
 		return "Save contains an invalid graduation date."
 	for key: String in COUNTERS:
 		if not _integer(record.get(key),0,DAY_LIMIT): return "Save contains invalid graduation totals."
+	if not _integer(record.get("missed_homework",0),0,DAY_LIMIT) or int(record.get("missed_homework",0)) > int(record.attended) or (int(record.get("missed_homework",0)) > 0 and str(record.stage) != "teen"):
+		return "Save contains invalid graduation totals."
 	if not _integer(record.get("first_class_day",record.enrolled_day),int(record.enrolled_day),int(record.enrolled_day)+1): return "Save contains an invalid first school day in a term."
 	var late:Variant=record.get("late_minutes",0.0)
 	if not (late is int or late is float) or not is_finite(float(late)) or float(late)<0.0 or float(late)>float(record.attended)*180.0:return "Save contains invalid archived late-school time."
@@ -251,10 +272,12 @@ static func _normalized(state: Dictionary) -> Dictionary:
 	result["first_class_day"] = int(result.get("first_class_day",result.enrolled_day))
 	for key: String in ["version","last_day","enrolled_day"]+COUNTERS+DATES:
 		result[key] = int(result[key])
+	result["missed_homework"] = int(result.get("missed_homework",0))
 	for record: Dictionary in result.records:
 		record["first_class_day"] = int(record.get("first_class_day",record.enrolled_day))
 		for key: String in ["enrolled_day","day"]+COUNTERS:
 			record[key] = int(record[key])
+		record["missed_homework"] = int(record.get("missed_homework",0))
 	return result
 
 

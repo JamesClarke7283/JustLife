@@ -1104,9 +1104,7 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 		if not is_equal_approx(fitted,1.0):model.scale*=fitted
 		model.scale*=Kitchen.model_scale(kind)
 		_normalize_wall_model(model,kind)
-	if kind=="study_desk":
-		box(node,Vector3(0,.72,-.05),Vector3(.34,.02,.24),"2c3338").name="LaptopKeyboard"
-		box(node,Vector3(0,.84,-.16),Vector3(.32,.18,.02),"1d2124").name="LaptopScreen"
+	# The study desk's own model already carries the laptop, so none is added.
 	var lift:float=float(entry.get("hang",data.get("hang",0.0) if LifeCatalog.wall_mounted(kind) else 0.0))
 	node.position=Vector3(float(entry.get("x",0)),Building.level_y(level)+lift,float(entry.get("z",0)))
 	node.rotation_degrees.y=fmod(float(entry.get("rotation",0)),360.0)
@@ -1879,6 +1877,7 @@ func simulation_targets() -> Array:
 			# Which chair a child desk or table offers, so homework can be ranked
 			# and refused by what there is to sit on ("" when nothing faces it).
 			if str(item.kind) in STUDY_KINDS:target["study_seat"]=str(study_chair(item).get("id",""))
+			elif str(item.kind) in LifeCatalog.WORK_DESKS:target["study_seat"]=str(desk_chair(item).get("id",""))
 			a.append(target)
 	for identity:int in _target_approaches.keys():
 		if not present.has(identity):_target_approaches.erase(identity)
@@ -2653,11 +2652,29 @@ func _show_desk_booster(chair:Node3D) -> void:
 	assign_structure_layer(_desk_boosters[id],clampi(point_level(chair.global_position),0,Building.MAX_LEVEL))
 	_desk_boosters[id].visible=true
 
-func _desk_surface(node:Node3D) -> Dictionary:
-	return {"hand_center":node.to_global(Vector3(0,.915,.105)),"hand_spread":.105,
-		"desk_surface_y":node.to_global(Vector3(0,.87,0)).y,
-		"desk_front_edge":node.to_global(Vector3(0,.87,.385)),
+## The desk model's own size on the floor: the study desk is the plain desk
+## scaled down, so its top (.715 m) and its keyboard sit that much lower.
+func _desk_scale(kind:String) -> float:
+	return float(LifeCatalog.get_item(kind).get("model_scale",1.0))
+
+func _desk_surface(node:Node3D,scale:float=1.0) -> Dictionary:
+	return {"hand_center":node.to_global(Vector3(0,.915*scale,.105*scale)),"hand_spread":.105*scale,
+		"desk_surface_y":node.to_global(Vector3(0,.87*scale,0)).y,
+		"desk_front_edge":node.to_global(Vector3(0,.87*scale,.385*scale)),
 		"desk_forward":-node.global_basis.z.normalized()}
+
+## The chair a desk or computer is used from: the nearest everyday chair or desk
+## chair just in front of it, whichever way it faces (authored pairs are kept).
+func desk_chair(item:Dictionary) -> Dictionary:
+	if not is_instance_valid(item.get("node")):return {}
+	var from:Vector3=item.node.to_global(Vector3(0,0,.88))
+	var found:Dictionary={}
+	var nearest:float=1.25
+	for kind:String in LifeCatalog.DESK_CHAIRS:
+		var candidate:Dictionary=closest_item(kind,from,nearest)
+		if candidate.is_empty():continue
+		nearest=candidate.node.position.distance_to(from);found=candidate
+	return found
 
 ## Beds a partnered pair shares: the left and right halves of the mattress.
 const SHARED_BEDS: Array[String] = ["bed"]
@@ -2743,20 +2760,20 @@ func activity_resource_ids(item:Dictionary,slot:String="") -> Array[String]:
 			resources.append(str(item.id)+":"+slot)
 	else:
 		resources.append(str(item.id))
-	if str(item.kind) in ["desk","computer"]:
-		var chair:Dictionary=closest_item("chair",item.node.to_global(Vector3(0,0,.88)),1.25)
+	if str(item.kind) in LifeCatalog.WORK_DESKS:
+		var chair:Dictionary=desk_chair(item)
 		if not chair.is_empty():resources.append(str(chair.id))
 	return resources
 
 func supported_homework_plan(item:Dictionary,learner_from:Vector3,helper_from:Vector3) -> Dictionary:
-	if str(item.get("kind","")) not in ["desk","computer"]:
+	if str(item.get("kind","")) not in LifeCatalog.WORK_DESKS:
 		return {"ok":false,"error":"Choose a desk for homework together."}
 	var node:Node3D=item.node
 	var level:int=item_level(item)
 	var learner_destination:Vector3=approach(item)
 	if path_to(learner_from,learner_destination).is_empty():
 		return {"ok":false,"error":"The learner cannot reach this desk."}
-	var seat:Dictionary=closest_item("chair",node.to_global(Vector3(0,0,.88)),1.25)
+	var seat:Dictionary=desk_chair(item)
 	if seat.is_empty():return {"ok":false,"error":"Place a chair at the desk before doing homework together."}
 	var options:Array[Vector3]=[]
 	for side:float in [-1.0,1.0]:
@@ -3077,7 +3094,7 @@ func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -
 			local=Vector3(0,.41,.10) if str(item.kind)=="book_nook" else Vector3(0,.522,.05);yaw=node.rotation.y;kind="seat"
 		"sofa":
 			local=Vector3(0,.66,.08);yaw=node.rotation.y;kind="seat"
-		"chair":
+		"chair","desk_chair":
 			local=Vector3(0,.52,.02);yaw=node.rotation.y;kind="seat"
 		"toilet":
 			local=Vector3(0,.615,.12);yaw=node.rotation.y;kind="seat"
@@ -3111,11 +3128,12 @@ func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -
 			local=Vector3(0,.16,.30);yaw=node.rotation.y+PI
 		"yoga_mat":
 			local=Vector3(0,.02,0);yaw=node.rotation.y
-		"desk","computer":
-			var chair:Dictionary=closest_item("chair",node.to_global(Vector3(0,0,.88)),1.25)
+		"desk","computer","study_desk","office_desk":
+			var chair:Dictionary=desk_chair(item)
 			if not chair.is_empty():
 				var seat:Vector3=chair.node.to_global(Vector3(0,.52,.02))
-				var keyboard:Vector3=node.to_global(Vector3(0,.915,.105))
+				var desk_scale:float=_desk_scale(str(item.kind))
+				var keyboard:Vector3=node.to_global(Vector3(0,.915*desk_scale,.105*desk_scale))
 				if str(landmarks.get("age_stage",""))=="child":
 					# A visible booster and a forward seat position put short arms
 					# within reach. Keep support inside the actual cushion footprint.
@@ -3123,16 +3141,18 @@ func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -
 					var child_seat:Vector3=chair.node.to_local(seat+forward*.23)
 					child_seat.x=clampf(child_seat.x,-.24,.24)
 					child_seat.z=clampf(child_seat.z,-.25,.26)
-					child_seat.y+=.18
-					_show_desk_booster(chair.node)
+					# The low study desk (top .715 m) is within a child's reach as it is.
+					if desk_scale>=.9:
+						child_seat.y+=.18
+						_show_desk_booster(chair.node)
 					seat=chair.node.to_global(child_seat)
 				var seated:Dictionary={"position":seat,"yaw":node.rotation.y+PI,"kind":"seat"}
-				seated.merge(_desk_surface(node))
+				seated.merge(_desk_surface(node,desk_scale))
 				return seated
 			local=Vector3(0,0,.75)
 	var anchor: Dictionary={"position":node.to_global(local),"yaw":yaw,"kind":kind}
-	if str(item.kind) in ["desk","computer"]:
-		anchor.merge(_desk_surface(node))
+	if str(item.kind) in LifeCatalog.WORK_DESKS:
+		anchor.merge(_desk_surface(node,_desk_scale(str(item.kind))))
 	elif kind=="seat" and seat_capacity(item)>1:
 		# Every seated place on a multi-seat furnishing holds its own spot along
 		# the model's width, so three people share one couch without stacking.

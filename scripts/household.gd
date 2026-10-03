@@ -1557,7 +1557,7 @@ func _homework_pair_error(learner_id: String, helper_id: String, furniture_id: S
 	if str(learner.character.age_stage) not in LifeEducation.SCHOOL_STAGES: return "Only children and teens have homework."
 	if str(helper.character.age_stage) not in ["young_adult","adult","elder"] or str(helper.character.life_stage) != "adult": return "Choose an adult caregiver."
 	if _target_kind(learner_id) != "neighbor" or _target_kind(helper_id) != "neighbor": return "Both Lifelets must be present at this destination."
-	if _target_kind(furniture_id) not in ["desk","computer"]: return "Choose a desk or computer for homework together."
+	if _target_kind(furniture_id) not in LifeCatalog.WORK_DESKS: return "Choose a study desk, home office desk, desk or computer for homework together."
 	if minf(float(learner.relationships[helper_id].friendship),float(helper.relationships[learner_id].friendship)) < 20.0: return "Build at least 20 friendship in both directions before studying together."
 	if require_idle:
 		if not learner.action_queue.is_empty() or not helper.action_queue.is_empty(): return "Both Lifelets must finish or cancel their current plans first."
@@ -2221,7 +2221,7 @@ func _validate_saved_cooperations(data: Dictionary) -> String:
 			var state: Dictionary = learner if role == "learner" else helper
 			if not state.get("action_queue") is Array or state.action_queue.is_empty() or not state.action_queue[0] is Dictionary: return "Save is missing a paired homework action."
 			var action: Dictionary = state.action_queue[0]
-			if str(action.get("id","")) != ("homework" if role == "learner" else "help_homework") or action.get("cooperation_id") != token or action.get("cooperation_role") != role or action.get("target_id") != session.furniture_id or str(action.get("target_kind","")) not in ["desk","computer"]: return "Save links a homework session to the wrong action or furniture."
+			if str(action.get("id","")) != ("homework" if role == "learner" else "help_homework") or action.get("cooperation_id") != token or action.get("cooperation_role") != role or action.get("target_id") != session.furniture_id or str(action.get("target_kind","")) not in LifeCatalog.WORK_DESKS: return "Save links a homework session to the wrong action or furniture."
 			if not _cooperation_position(action.get("target_position")) or not _cooperation_vector(action.target_position).is_equal_approx(_cooperation_vector(session[role+"_position"])): return "Save contains mismatched homework approach positions."
 			if not _cooperation_number(action.get("duration"),45,45) or not _cooperation_number(action.get("elapsed"),0,45-.000001) or not action.get("paid") is bool or bool(action.get("autonomous",false)): return "Save contains invalid paired homework progress."
 			if str(action.get("phase","")) != ("active" if str(session.phase) == "active" else "approach"): return "Save contains inconsistent paired action phases."

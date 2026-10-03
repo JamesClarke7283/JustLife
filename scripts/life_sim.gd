@@ -591,14 +591,16 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 			ids = ["board_school_bus"] if str(character.age_stage) in ["child", "teen"] else []
 		"shower", "bath": ids = ["shower"]
 		"toilet": ids = ["toilet"]
-		"sofa", "chair", "armchair", "loveseat", "stool": ids = ["relax", "nap", "host_a_chat"]
+		"sofa", "chair", "desk_chair", "armchair", "loveseat", "stool": ids = ["relax", "nap", "host_a_chat"]
 		"bench": ids = ["relax", "read", "nap", "host_a_chat"]
 		"tv": ids = ["watch", "watch_together"]
 		"guitar", "violin": ids = ["practice_instrument"]
 		"bookshelf", "book_nook": ids = ["read", "study", "study_book", "buy_book", "deep_read"]
 		"easel": ids = ["paint", "paint_masterpiece", "sketch_for_fun"]
-		"desk": ids = ["work", "study", "job", "study_hard"]
-		"computer": ids = ["order_groceries", "work", "study", "job", "play_games", "study_hard"] + COMPUTER_MASTERY_ACTIONS
+		# The study desk with its laptop joins the plain desk, and the home office
+		# desk is the computer: each pair answers with the same choices.
+		"desk", "study_desk": ids = ["work", "study", "job", "study_hard"] + (["play_games"] if kind == "study_desk" else [])
+		"computer", "office_desk": ids = ["order_groceries", "work", "study", "job", "play_games", "study_hard"] + COMPUTER_MASTERY_ACTIONS
 		"plant": ids = ["water","plant_wee"] if float(needs.bladder)<=BLADDER_DESPERATE else ["water"]
 		"puddle": ids = ["mop_puddle"]
 		"towel_rack", "beach_towel": ids = [LifeWetness.DRY_OFF_ID]
@@ -676,19 +678,19 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		# the brief's own equivalent already has, rather than a second rule.
 		ids = LifeOutdoorActs.leisure_actions(kind, float(needs.bladder) <= BLADDER_DESPERATE)
 	if str(character.age_stage) in LifeEducation.SCHOOL_STAGES:
-		if kind in ["desk","computer"]: ids = ["school","homework","study","study_hard"] + (["play_games"] if kind == "computer" else [])
+		if kind in LifeCatalog.WORK_DESKS: ids = ["school","homework","study","study_hard"] + (["play_games"] if kind != "desk" else [])
 		elif kind == "bookshelf": ids = ["read","homework","study","study_book","buy_book","deep_read"]
 	if kind in ["car", "car_electric", "electric_car"] and str(character.life_stage) == "adult" and not ids.has("drive_to_work"):
 		ids.append("drive_to_work")
-	if str(character.age_stage) == "child" and kind in ["desk", "dining", "table", "coffee_table"]:
+	if str(character.age_stage) == "child" and kind in ["desk", "study_desk", "dining", "table", "coffee_table"]:
 		var study: Array = ["child_desk_study", "read"]
 		# Homework is done sitting down: at the study desk or a dining table. A
 		# low table or coffee table has nowhere to sit, so it offers none.
-		if kind in ["desk", "dining"] and (minutes >= 900.0 or int(education.get("last_attendance_day", 0)) == day):
+		if kind in ["desk", "study_desk", "dining"] and (minutes >= 900.0 or int(education.get("last_attendance_day", 0)) == day):
 			study.push_front("homework")
 		# A child at the study desk keeps its online classes and skill study and
 		# gains the children's choices; elsewhere the table offers only those.
-		if kind == "desk":
+		if kind in ["desk", "study_desk"]:
 			for extra: String in study:
 				if not ids.has(extra): ids.append(extra)
 		else:
@@ -1152,6 +1154,7 @@ func complete_away_return() -> bool:
 	# A trip that already lost its action still has to end, or the curb loop
 	# assigns nil into a Dictionary every frame and the household clock dies.
 	var earned: bool = bool(away_state.get("completed", false))
+	var from_school: bool = str(away_state.get("activity", "")) == "school"
 	var action: Dictionary = {}
 	if not action_queue.is_empty():
 		action = action_queue.pop_front()
@@ -1161,8 +1164,24 @@ func complete_away_return() -> bool:
 	_idle_minutes = 0.0
 	_publish("away_changed",[{}])
 	if earned and not action.is_empty(): _emit_action_finished(action)
+	# Getting home from school: a pupil with homework due goes straight to a desk, a
+	# child when autonomy is on and always a teenager, unless a plan is already waiting.
+	if from_school and _queue_homework_on_return():
+		_emit_changed()
+		return true
 	_start_front()
 	_emit_changed()
+	return true
+
+
+## The first thing a pupil does indoors after school when homework is due today.
+## True when it was queued (and so has already begun).
+func _queue_homework_on_return() -> bool:
+	if not action_queue.is_empty() or not (autonomy or str(character.age_stage) == "teen"): return false
+	if _autonomy_duty_id() != "homework": return false
+	var station: Dictionary = homework_station()
+	if station.is_empty() or not queue_action("homework", str(station.target_id), station.position): return false
+	action_queue[0]["autonomous"] = true
 	return true
 
 
@@ -1737,6 +1756,7 @@ func _step(game_minutes: float) -> void:
 		_update_wants()
 		return
 	if is_instance_valid(stroller_service) and stroller_service.passenger(self):return
+	_enforce_mandatory_homework()
 	_reconsider_active_autonomy()
 	if not action_queue.is_empty() and str(action_queue[0]["phase"]) == "active" and str(action_queue[0].id) != "help_homework" and not (str(action_queue[0].id) == LifeBabyPlan.ACTION_ID and not bool(action_queue[0].get("cooperation_primary",false))):
 		var action: Dictionary = action_queue[0]
@@ -3420,6 +3440,10 @@ func retry_autonomy_soon() -> void:
 
 func defer_autonomous_responsibility(id:String,for_minutes:float=120.0) -> void:
 	if id not in ["school","school_day","career_day","homework","job"] or not is_finite(for_minutes):return
+	# A teenager can put required homework off for half an hour at a time, no longer.
+	if id=="homework" and homework_mandatory():
+		if for_minutes>TEEN_HOMEWORK_SNOOZE:_emit_notice("%s can put homework off for half an hour, no longer." % str(character.name))
+		for_minutes=minf(for_minutes,TEEN_HOMEWORK_SNOOZE)
 	autonomy_state.deferred[id]=_autonomy_now()+clampf(for_minutes,0.0,1440.0)
 
 func _autonomy_decay(need:String) -> float:
@@ -3453,6 +3477,8 @@ func _autonomy_projection_need(id:String,travel_minutes:float=60.0,include_fun:b
 		# boredom or untidiness affects mood, but should not consume the day
 		# in optional home activities before a physically safe departure.
 		if id in ["school_day","career_day"] and need not in ["hunger","energy","bladder","fun"]:continue
+		# A teenager's required homework ranks above boredom, loneliness and untidiness.
+		if id=="homework" and need not in ["hunger","energy","bladder"] and homework_mandatory():continue
 		if need=="fun" and id in ["school_day","career_day"] and not include_fun:continue
 		var projected:float=float(needs[need])-_autonomy_decay(need)*duration/60.0+float(changes.get(need,0.0))
 		# While a day away is still being prepared, a Fun projection under 20 at
@@ -3498,10 +3524,11 @@ func _autonomy_target_for(id:String,excluded_target_ids:Array=[]) -> Dictionary:
 				available=_school_availability(id,str(target.id),true).is_empty()
 		if not available:continue
 		var cost:float=_autonomy_target_load(str(target.id))
-		# Homework is done sitting down. The child's own desk and chair, a table
-		# with a chair, or a desk come first, in that order, and a busy one is
-		# still preferred to standing at a shelf: the bookshelf (or a child desk
-		# with no chair) is only the fallback when nowhere to sit exists.
+		# Homework is done sitting down. The study desk with laptop, the home office
+		# desk, the child's own desk and chair and a table with a chair come first
+		# (HOMEWORK_PLACE_BIAS), and a busy one is still preferred to standing at a
+		# shelf: the bookshelf (or a desk with no chair) is only the fallback when
+		# nowhere to sit exists.
 		var fallback:float=0.0
 		if id=="homework":
 			cost+=_homework_bias(target)
@@ -3766,6 +3793,8 @@ func _novelty_score(target_id:String) -> float:
 func _autonomous_choice(excluded_target_ids:Array=[]) -> Dictionary:
 	var duty:String=_autonomy_duty_id()
 	var leaving:bool=duty in ["school_day","career_day"] and _autonomy_projection_need(duty).is_empty() and not _autonomy_target_for(duty,excluded_target_ids).is_empty()
+	# Required teenage homework with a place to do it is treated like leaving for school.
+	if duty=="homework" and homework_mandatory() and not _autonomy_target_for(duty,excluded_target_ids).is_empty():leaving=true
 	var priorities:Array[String]=NEED_NAMES.duplicate()
 	priorities.sort_custom(func(a:String,b:String)->bool:
 		if not is_equal_approx(float(needs[a]),float(needs[b])):return float(needs[a])<float(needs[b])
@@ -5331,7 +5360,7 @@ func _school_availability(id: String, target_id: String, ignore_queue: bool = fa
 		return "Online classes and homework are for children and teens."
 	var kind: String = _education_target_kind(target_id)
 	if not target_id.is_empty() and not _school_target_allowed(id,kind):
-		return "Choose a desk or computer for online classes." if id == "school" else "Choose a desk, child desk, computer, dining table, or bookshelf for homework."
+		return "Choose a study desk, home office desk, desk or computer for online classes." if id == "school" else "Choose a desk (study desk, home office desk, desk or computer), a child desk, a table with a chair or a bookcase for homework."
 	var station: String = _study_station_reason(id, target_id, kind)
 	if not station.is_empty(): return station
 	if not ignore_queue:
@@ -5360,24 +5389,101 @@ func _study_station_reason(id: String, target_id: String, kind: String) -> Strin
 ## desk or table can be, so waiting for a seat never sends a pupil to the shelf.
 const HOMEWORK_STANDING_TIER: float = 1000.0
 
-## How much a station costs in the autonomy ranking for homework: lower is
-## chosen first. The pupil's own child desk and chair beat everything, then a
-## table with a chair, then a desk or computer.
+## What each kind of homework place costs in the ranking before any queue is
+## added: lower is chosen first. The study desk with its laptop leads, then the
+## older laptop desk, the home office desk and the older computer, then the child's
+## own desk and chair and a table with a chair. The bookcase is last of all.
+const HOMEWORK_PLACE_BIAS: Dictionary = {"study_desk": 0.0, "desk": 2.0, "office_desk": 5.0, "computer": 7.0, "child_desk": 10.0, "dining": 12.0, "bookshelf": 20.0}
+## A teenager likes the family table least, so it ranks a little lower for them.
+const HOMEWORK_TEEN_TABLE_EXTRA: float = 4.0
+
 func _homework_bias(target: Dictionary) -> float:
-	match str(target.kind):
-		"child_desk": return 0.0
-		"dining": return 20.0 if str(character.age_stage) == "teen" else 10.0
-		"desk", "computer": return 15.0
-		"bookshelf": return 10.0
-	return 0.0
+	var kind: String = str(target.kind)
+	return float(HOMEWORK_PLACE_BIAS.get(kind, 0.0)) + (HOMEWORK_TEEN_TABLE_EXTRA if kind == "dining" and str(character.age_stage) == "teen" else 0.0)
 
 
 ## Where this pupil would do their homework right now, as the autonomy ranking
-## orders it: the child desk and chair, a table with a chair, a desk or computer,
-## and a shelf or chairless child desk only when nowhere to sit exists. {} when no
-## station is open to them.
+## orders it: the study desk with laptop, the home office desk, the child desk and
+## chair, a table with a chair, and a bookcase (or a desk with no chair) only when
+## nowhere to sit exists. A busy place still outranks standing at the shelf. {} when
+## no station is open to them.
 func homework_station() -> Dictionary:
 	return _autonomy_target_for("homework")
+
+
+## How far down the list a homework place stands, without the queue at it: lower is
+## chosen first, and a place done standing sits a whole tier behind every seat.
+## INF for an id this pupil has no target for.
+func homework_place_rank(target_id: String) -> float:
+	for target: Dictionary in _targets:
+		if str(target.id) == target_id: return _homework_bias(target) + (HOMEWORK_STANDING_TIER if _homework_standing(target) else 0.0)
+	return INF
+
+
+## A teenager hands homework in on every school day they attend. Required homework
+## can be put off half an hour at a time, and from 20:00 it goes ahead of the
+## player's plans (never ahead of the fronts listed below).
+const TEEN_HOMEWORK_SNOOZE: float = 30.0
+const TEEN_HOMEWORK_CURFEW: float = 1200.0
+## Actions the homework curfew never pushes aside. Anything carrying a cooperation_id
+## (a shared ritual or lesson) yields too. Later features add their ids here.
+const HOMEWORK_YIELDS: Array[String] = ["school", "school_day", "career_day", "homework", "job", "drive_to_work", "board_school_bus", "birthday", "sing_birthday", "blow_candles", "driving_lesson"]
+## Short recoveries that finish first while their own need is low.
+const HOMEWORK_NEED_BREAKS: Dictionary = {"toilet": "bladder", "shower": "hygiene", "snack": "hunger", "eat_meal": "hunger", "nap": "energy"}
+var _homework_nowhere_day: int = 0  # the day the "nowhere to do it" notice was last given
+
+
+## Whether this Lifelet has required homework still to hand in today: a teenager,
+## on a school day they attended, who has not done it, and is at home.
+func homework_mandatory() -> bool:
+	return str(character.age_stage) == "teen" and LifeEducation.weekday(day) and int(education.last_attendance_day) == day and int(education.last_homework_day) != day and not is_away()
+
+
+## Whether the homework curfew must leave this front action alone. `front` is the
+## whole action when the caller has it, so a shared (cooperative) one yields too.
+func homework_enforcement_blocked(front_id: String, front: Dictionary = {}) -> bool:
+	return front_id in HOMEWORK_YIELDS or front.has("cooperation_id")
+
+
+## From 20:00 a teenager's required homework goes ahead of the plans the player
+## queued; they wait behind it, in order. It leaves alone anything in HOMEWORK_YIELDS,
+## an active short need break, a snoozed duty, and an all-automatic queue (the
+## ordinary autonomy already puts due homework first there).
+func _enforce_mandatory_homework() -> void:
+	if not autonomy or action_queue.is_empty() or minutes < TEEN_HOMEWORK_CURFEW or minutes > 1380.0 or not homework_mandatory(): return
+	if float(autonomy_state.deferred.get("homework",-1.0)) > _autonomy_now(): return
+	var player_plans: bool = false
+	for queued: Dictionary in action_queue:
+		if str(queued.id) == "homework": return
+		if not bool(queued.get("autonomous",false)): player_plans = true
+	var front: Dictionary = action_queue[0]
+	if not player_plans or homework_enforcement_blocked(str(front.id),front) or str(front.get("phase","")) not in ["queued","approach","active"]: return
+	var need: String = str(HOMEWORK_NEED_BREAKS.get(str(front.id),""))
+	if not need.is_empty() and float(needs[need]) < 20.0: return
+	var station: Dictionary = _autonomy_target_for("homework")
+	if station.is_empty():
+		if _homework_nowhere_day != day:
+			_homework_nowhere_day = day
+			_emit_notice("%s has homework due but nowhere to do it. Add a study desk, a home office desk or a bookcase." % str(character.name))
+		return
+	var held: Array = []
+	for action: Dictionary in action_queue:
+		var copy: Dictionary = action.duplicate(true)
+		copy.phase = "queued"
+		held.append(copy)
+	if is_instance_valid(meal_service):
+		for action: Dictionary in action_queue:
+			meal_service.canceled(self, action)
+	action_queue.clear()
+	if not queue_action("homework", str(station.target_id), station.position):
+		for copy: Dictionary in held:
+			action_queue.append(copy)
+		_start_front()
+		return
+	action_queue[0]["autonomous"] = true
+	for copy: Dictionary in held:
+		action_queue.append(copy)
+	_emit_notice("Homework time: %s puts other plans aside until it is done." % str(character.name))
 
 
 ## Whether homework at the station with this id is done standing (see below).
@@ -5387,12 +5493,15 @@ func homework_is_standing(target_id: String) -> bool:
 	return false
 
 
-## Whether homework at this station is done standing: a bookshelf, or a child desk
-## that has no chair facing it. Those are the fallback when there is nowhere to sit.
+## Whether homework at this station is done standing: a bookshelf, a child desk that
+## has no chair facing it, or a study or office desk with no chair beside it. Those
+## are the fallback when there is nowhere to sit. A desk that does not say which
+## chair it has (a fixture, an older caller) is taken as seated.
 func _homework_standing(target: Dictionary) -> bool:
-	match str(target.kind):
-		"bookshelf": return true
-		"child_desk": return str(target.get("study_seat", "")).is_empty()
+	var kind: String = str(target.kind)
+	if kind == "bookshelf": return true
+	if kind == "child_desk": return str(target.get("study_seat", "")).is_empty()
+	if kind in LifeCatalog.WORK_DESKS: return target.has("study_seat") and str(target.study_seat).is_empty()
 	return false
 
 
@@ -5412,7 +5521,7 @@ func _school_action_error(action: Dictionary) -> String:
 ## pupil's: this Lifelet's own unless a saved one is being checked.
 func _school_target_allowed(id: String, kind: String, stage: String = "") -> bool:
 	var pupil: String = stage if not stage.is_empty() else str(character.age_stage)
-	return kind in ["desk","computer"] or (id == "homework" and (kind in ["bookshelf","dining"] or (kind == "child_desk" and pupil == "child")))
+	return kind in LifeCatalog.WORK_DESKS or (id == "homework" and (kind in ["bookshelf","dining"] or (kind == "child_desk" and pupil == "child")))
 
 
 func _apply_education_result(result: Dictionary) -> void:
@@ -5423,7 +5532,8 @@ func _apply_education_result(result: Dictionary) -> void:
 		needs[key] = clampf(float(needs[key])+float(effects.needs[key]),0.0,100.0)
 	for key: String in effects.get("skill_xp",{}):
 		_gain_skill(key,float(effects.skill_xp[key]))
-	for message: String in result.get("notices",[]): _emit_notice(message)
+	for message: String in result.get("notices",[]):
+		_emit_notice(("%s: %s" % [str(character.name),message]) if message.begins_with(LifeEducation.MISSED_HOMEWORK_NOTICE) else message)
 	for record: Dictionary in education.records:
 		if int(record.day) == day and str(record.stage) in LifeEducation.SCHOOL_STAGES:
 			var label: String = "School graduation" if str(record.outcome) == "graduated" else "School report"
@@ -5435,8 +5545,12 @@ func _apply_education_result(result: Dictionary) -> void:
 
 
 func _advance_education() -> void:
+	var missed_before: int = int(education.get("missed_homework",0))
 	var result: Dictionary = LifeEducation.advance(education,str(character.age_stage),day,minutes)
-	if bool(result.ok): _apply_education_result(result)
+	if bool(result.ok):
+		_apply_education_result(result)
+		if int(education.get("missed_homework",0)) > missed_before:
+			add_moodlet("Behind on homework","Tense","Turned up without the assignment. Tonight's homework comes first.",720.0,2)
 	else: _emit_notice(str(result.error))
 
 

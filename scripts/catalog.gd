@@ -366,6 +366,16 @@ const CATEGORIES: Array[String] = ["All", "Comfort", "Bedroom", "Baby & Kids", "
 # Instruments share one practice action; the authored model is the difference.
 const INSTRUMENTS: Array[String] = ["guitar", "violin"]
 
+## Where a Lifelet of any age from child up works at a screen. The study desk and
+## the older "A little ambition" desk both carry a laptop, and the home office desk
+## and the older home office computer are the same model, so each pair is one family.
+## Pupils do their homework and online classes at any of them, laptop desks first.
+const LAPTOP_DESKS: Array[String] = ["study_desk", "desk"]
+const OFFICE_DESKS: Array[String] = ["office_desk", "computer"]
+const WORK_DESKS: Array[String] = ["study_desk", "desk", "office_desk", "computer"]
+## The seats a desk or computer is used from: the everyday chair and the desk chair.
+const DESK_CHAIRS: Array[String] = ["chair", "desk_chair"]
+
 # Floor coverings and wall decor, the telephone and the alarm keypad included: they
 # hang above the furniture and never block routes, walls or other furnishings.
 const PASSABLE: Array[String] = ["rug", "child_rug", "bath_mat", "painting", "framed_picture", "children_picture", "wall_clock", "shelf", "home_phone", "burglar_alarm", "yoga_mat", "beach_towel", "room_light", "memorial", "curtains", "house_door", "house_window", "pet_toy_cat", "pet_toy_dog", "kids_toy", "garden_gate", "garden_gate_double", "garden_gate_drive"]
