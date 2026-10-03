@@ -1,5 +1,6 @@
 extends Node3D
 class_name LifeWorld
+const ToyFlow = preload("res://scripts/toy_flow.gd")
 const Building=preload("res://scripts/building_state.gd")
 const RoofRules=preload("res://scripts/roof_rules.gd")
 const Variants=preload("res://scripts/catalog_variants.gd")
@@ -8,7 +9,9 @@ const LotNavigation=preload("res://scripts/lot_navigation.gd")
 const ActorMotion=preload("res://scripts/actor_motion.gd")
 const GardenSwing=preload("res://scripts/garden_swing.gd")
 const GateFlow=preload("res://scripts/gate_flow.gd")
+const Road=preload("res://scripts/road.gd")
 const WindowGeometry=preload("res://scripts/window_geometry.gd")
+const MAX_FURNISHINGS:int=512
 const VIEW_ENVIRONMENT:int=1
 const VIEW_GROUND:int=2
 const VIEW_UPPER:int=4
@@ -56,6 +59,8 @@ var furniture: Node3D
 var ground_node: Node3D
 var walls: Array[Node3D] = []
 var items: Array[Dictionary] = []
+## Household cleaning stations (chore_flow.gd), published so queued chores keep their target.
+var chore_targets: Array = []
 var _furnishing_volume_cache:Dictionary={}
 var gate_flow=GateFlow.new(self)
 var actors: Dictionary = {}
@@ -317,6 +322,33 @@ func _build_framed_picture(parent: Node3D, variant: Dictionary) -> void:
 		box(parent, Vector3(0, -0.06, 0.035), Vector3(0.46, 0.12, 0.01), "4a6b5c")
 
 
+## A small soft toy built from plain shapes, so a toy a child leaves out needs no
+## shipped mesh. Every style stands within a 0.2 m footprint and is under 0.16 m high.
+func _build_kids_toy(parent: Node3D, variant: Dictionary) -> void:
+	match str(variant.get("style", "block")):
+		"ball":
+			sphere(parent, Vector3(0, .07, 0), Vector3(.14, .14, .14), "c9604f")
+			box(parent, Vector3(0, .07, 0), Vector3(.145, .03, .145), "f2ead8")
+		"bear":
+			sphere(parent, Vector3(0, .06, 0), Vector3(.12, .11, .10), "a77a52")
+			sphere(parent, Vector3(0, .15, .01), Vector3(.085, .08, .08), "b58a60")
+			sphere(parent, Vector3(-.035, .205, .01), Vector3(.03, .03, .03), "a77a52")
+			sphere(parent, Vector3(.035, .205, .01), Vector3(.03, .03, .03), "a77a52")
+			sphere(parent, Vector3(0, .14, .06), Vector3(.035, .03, .03), "e0c9a6")
+		"rattle":
+			cylinder(parent, Vector3(0, .07, 0), .012, .14, "d7ae7e")
+			sphere(parent, Vector3(0, .145, 0), Vector3(.09, .09, .09), "c97c66")
+			sphere(parent, Vector3(0, .0, 0), Vector3(.04, .04, .04), "d7ae7e")
+		"duck":
+			sphere(parent, Vector3(0, .05, 0), Vector3(.13, .09, .16), "e8c547")
+			sphere(parent, Vector3(0, .115, .06), Vector3(.075, .075, .075), "ecd05b")
+			box(parent, Vector3(0, .105, .105), Vector3(.045, .018, .04), "d8803a")
+		_:
+			box(parent, Vector3(-.04, .035, 0), Vector3(.07, .07, .07), "c9604f")
+			box(parent, Vector3(.04, .035, .01), Vector3(.07, .07, .07), "6f8fa8")
+			box(parent, Vector3(0, .105, 0), Vector3(.07, .07, .07), "e8c547")
+
+
 func _build_memorial(parent: Node3D) -> void:
 	# Original garden stone: a low tablet and a small offering dish. Built here
 	# so a household can remember someone without a shipped mesh.
@@ -360,7 +392,7 @@ func cylinder(parent: Node3D, at: Vector3, radius: float, height: float, color: 
 	return n
 
 func create_home(layout: Array = []) -> void:
-	layout=normalize_layout_rotations(layout)
+	layout=ToyFlow.normalize_layout(normalize_layout_rotations(layout))
 	last_layout_error=validate_home_layout(layout)
 	if not last_layout_error.is_empty():return
 	if house: house.queue_free()
@@ -437,6 +469,9 @@ func create_home(layout: Array = []) -> void:
 	side_skirting.set_meta("wall_decoration",true);side_skirting.set_meta("wall_support_normal",Vector3.LEFT)
 	box(house,Vector3(0,.02,5.72),Vector3(2.4,.2,1.35),"c7bea9")
 	box(house,Vector3(0,-.025,7.1),Vector3(1.75,.08,1.8),"dcd5be")
+	# Two low steps from the porch down to the path: a front entry worth sweeping.
+	box(house,Vector3(0,.04,6.58),Vector3(2.1,.09,.38),"d3ccb6")
+	box(house,Vector3(0,.03,6.94),Vector3(1.9,.06,.34),"cfc8b1")
 	# The house's own foundation beds and doorstep flowers stay beside the
 	# building; the lawn, hedges, street and trees belong to draw_ground(), which
 	# is redrawn whenever the household buys a neighbouring plot.
@@ -497,7 +532,7 @@ func validate_home_layout(layout:Variant) -> String:
 		if not Building.lot().encloses(furnishing_rect(entry)):return "A furnishing extends beyond the navigable lot."
 	# Align ingress with the detached graph's obstacle bound so a valid layout
 	# cannot replace the live scene and only then fail graph construction.
-	if ids.size()>512:return "Too many furnishings for this lot."
+	if ids.size()>MAX_FURNISHINGS:return "Too many furnishings for this lot."
 	for entry:Dictionary in layout:
 		if str(entry.get("kind",""))=="__construction":continue
 		var level:int=int(entry.get("level",0))
@@ -882,9 +917,9 @@ func draw_ground() -> void:
 			var z:float=back_edge+1.0+float(step)
 			_register_vegetation(sphere(parent,Vector3(side_x,.25,z),Vector3(.9,.5,.80),"71945e"),"hedge")
 	# The street stays where it is: the lot grows away from the frontage.
-	box(parent,Vector3(0,-.02,8.5),Vector3(75,.10,1.25),"e0d9c7")
-	box(parent,Vector3(0,-.07,11.0),Vector3(100,.12,3.7),"798781")
-	for x in range(-30,31,5): box(parent,Vector3(x,.003,11),Vector3(2,.009,.08),"e6ddbc")
+	box(parent,Vector3(0,-.02,Road.SIDEWALK_Z),Vector3(Road.SIDEWALK_LENGTH,.10,Road.SIDEWALK_WIDTH),"e0d9c7")
+	box(parent,Vector3(0,-.07,Road.ROAD_CENTER_Z),Vector3(Road.ROAD_LENGTH,.12,Road.ROAD_WIDTH),"798781")
+	for x in range(-30,31,5): box(parent,Vector3(x,.003,Road.ROAD_CENTER_Z),Vector3(2,.009,.08),"e6ddbc")
 	for x in [-23,25]: neighbor_home(Vector3(x,0,-1))
 	# A simple open mailbox with a brass house number plate.
 	box(parent,Vector3(2,.52,7.8),Vector3(.10,1.1,.10),"ab7951")
@@ -995,7 +1030,7 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	var path:String=Variants.model_path(kind,str(variant.style))
 	var has_model:bool=ResourceLoader.exists(path)
 	var kitchen_cabinet:bool=Kitchen.cabinet(kind)
-	if not has_model and not kitchen_cabinet and kind not in ["memorial","bath_mat","framed_picture","garden_gate","garden_gate_double","garden_gate_drive","burglar_alarm","home_phone"]:return
+	if not has_model and not kitchen_cabinet and kind not in ["memorial","bath_mat","framed_picture","kids_toy","garden_gate","garden_gate_double","garden_gate_drive","burglar_alarm","home_phone"]:return
 	var node=Node3D.new()
 	node.name=str(entry.get("id","item_%d" % Time.get_ticks_usec()))
 	furniture.add_child(node)
@@ -1020,6 +1055,7 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 		elif kind=="burglar_alarm":_build_burglar_alarm(node)
 		elif kind=="bath_mat":_build_bath_mat(node,variant)
 		elif kind=="framed_picture":_build_framed_picture(node,variant)
+		elif kind=="kids_toy":_build_kids_toy(node,variant)
 		elif LifeCatalog.is_gate(kind):
 			_build_garden_gate(node,float(data.size.x)>1.5,str(variant.color),float(data.size.x))
 			model=node # the recolour finds the leaves' Tint surfaces beneath it
@@ -1094,6 +1130,10 @@ func add_item(entry: Dictionary, rebuild: bool = true) -> void:
 	var body=StaticBody3D.new()
 	body.collision_layer=PICK_GROUND if level==0 else PICK_UPPER
 	node.add_child(body)
+	# A toy nested in a box is out of sight and cannot be clicked.
+	if str(entry.get("box_id",""))!="":
+		node.visible=false
+		body.collision_layer=0
 	# One box per solid band, from the same catalogue data the placement, the
 	# navigation obstacle and the build quote read. The bands are local metres
 	# and the node already carries the placement's position and yaw, so an
@@ -1345,6 +1385,13 @@ func item_colour(entry:Dictionary) -> Color:
 func variant_model_path(kind:String,style:String="") -> String:
 	return Variants.model_path(kind,style)
 
+## Whether a furnishing can be picked with the mouse. A toy in a box, or one a
+## Lifelet is carrying, cannot be: it is not on the floor.
+func set_item_pickable(item:Dictionary,on:bool) -> void:
+	if not is_instance_valid(item.get("node")):return
+	for body:Node in item.node.find_children("*","StaticBody3D",false,false):
+		(body as StaticBody3D).collision_layer=(PICK_GROUND if item_level(item)==0 else PICK_UPPER) if on else 0
+
 func remove_item(id: String, keep_supported:bool=false) -> Dictionary:
 	for i in range(items.size()):
 		if items[i].id==id:
@@ -1385,6 +1432,8 @@ func serialize_items() -> Array:
 		for key:String in variant:
 			entry[key]=variant[key]
 		if str(item.kind)=="floor_lamp" and not bool(item.get("lit",true)):entry["lit"]=false
+		# A toy nested in its box stays nested through a save, an undo and a trip.
+		if str(item.get("box_id",""))!="":entry["box_id"]=str(item.box_id)
 		if str(item.kind)=="memorial" and str(item.get("for",""))!="":entry["for"]=str(item.get("for"))
 		if LifeCatalog.paints(str(item.kind)):entry["paint"]=LifeCatalog.paint_of(item)
 		out.append(entry)
@@ -1568,10 +1617,79 @@ func approach(item:Dictionary) -> Vector3:
 		return Vector3.INF
 	var variant:Dictionary=item.get("variant",{}) if item.get("variant",{}) is Dictionary else {}
 	var reach:float=maxf(float(item.size.y)*.5,front_extent(str(item.kind),str(variant.get("size","")),str(variant.get("style",""))))
-	var p:Vector3=n.to_global(Vector3(0,0,reach+.55))
-	if not construction.building_state.is_empty():return nearest_clear_point(p,item_level(item))
+	# Something small on the floor is stood right beside, not at arm's length, so it can be bent down to.
+	var standoff:float=.55
+	if ToyFlow.is_toy(str(item.kind)):standoff=.32
+	elif ToyFlow.is_container(str(item.kind)):standoff=.44
+	var p:Vector3=n.to_global(Vector3(0,0,reach+standoff))
+	if not construction.building_state.is_empty():
+		var at:Vector3=nearest_clear_point(p,item_level(item))
+		if standoff<.5:at=_stand_beside_small(item,at,reach+standoff)
+		# A child's bed is often pushed up against a wall: its foot may then only
+		# be reachable from the next room, so check, and use a side if need be.
+		return child_bed_approach(item,at) if str(item.kind)=="child_bed" else at
 	var c=nearest_free(p)
 	return Vector3(c.x*.25,.16,c.y*.25)
+
+## Where somebody stands to reach something small (a toy, a toy box): in front of it
+## when that spot is on its own side of every wall and can be walked to, otherwise at
+## one of its other sides that is. The spot snapped to the grid is never taken from
+## across a wall, so a chest with its front to a wall is used from the side.
+func _stand_beside_small(item:Dictionary,front:Vector3,gap:float) -> Vector3:
+	var n:Node3D=item.node
+	var level:int=item_level(item)
+	var flood:Dictionary=_reachable_from_front(level)
+	var wanted_front:Vector3=n.to_global(Vector3(0,0,gap))
+	var sideways:float=maxf(float(item.size.x)*.5,.1)+(gap-maxf(float(item.size.y)*.5,.1))
+	var candidates:Array[Vector3]=[front,n.to_global(Vector3(sideways,0,0)),n.to_global(Vector3(-sideways,0,0)),n.to_global(Vector3(0,0,-gap))]
+	for index:int in range(candidates.size()):
+		var at:Vector3=candidates[index]
+		if index>0:
+			at=nearest_clear_point(at,level,1)
+			if not at.is_finite():continue
+		elif not at.is_finite() or Vector2(at.x-wanted_front.x,at.z-wanted_front.z).length()>.3:continue
+		if not sight_line_clear(at,n.global_position):continue
+		if not flood.is_empty() and not lot_navigation.point_reachable(flood,level,at):continue
+		return at
+	return front
+
+## Where a child stands to get into their own bed: its foot when that is clear,
+## on the bed's side of any wall and reachable from the front door, otherwise a
+## free spot beside it that is. Nothing better than the foot is ever returned
+## when no candidate qualifies, so the old behaviour is the floor.
+func child_bed_approach(item:Dictionary,foot:Vector3) -> Vector3:
+	var level:int=item_level(item)
+	var n:Node3D=item.node
+	var size:Vector2=item.size
+	var flood:Dictionary=_reachable_from_front(level)
+	var candidates:Array[Vector3]=[foot]
+	for side:float in [1.0,-1.0]:
+		for along:float in [.3,.65,-.1,-.5]:
+			candidates.append(n.to_global(Vector3(side*(size.x*.5+.4),0,along)))
+	for index:int in range(candidates.size()):
+		var at:Vector3=candidates[index]
+		if index>0:
+			var snapped:Vector3=nearest_clear_point(at,level,1)
+			if not snapped.is_finite() or Vector2(snapped.x-at.x,snapped.z-at.z).length()>=.3:continue
+			at=snapped
+		if not at.is_finite():continue
+		var local:Vector3=n.to_local(at)
+		var edge:Vector3=n.to_global(Vector3(clampf(local.x,-size.x*.5,size.x*.5),0,clampf(local.z,-size.y*.5,size.y*.5)))
+		edge.y=at.y
+		if not sight_line_clear(at,edge):continue
+		if not flood.is_empty() and not lot_navigation.point_reachable(flood,level,at):continue
+		return at
+	return foot
+
+var _front_flood:Dictionary={}
+var _front_flood_generation:int=-1
+## Every walkable point the front door reaches, kept for as long as the lot's
+## navigation is the one it was computed from.
+func _reachable_from_front(level:int) -> Dictionary:
+	if _front_flood_generation!=lot_navigation.generation:
+		_front_flood=lot_navigation.reachable_from(0,lot_exit_position(),{})
+		_front_flood_generation=lot_navigation.generation
+	return _front_flood
 
 func lot_exit_position(member_index:int=0) -> Vector3:
 	# The front sidewalk belongs to the navigable lot, beyond the front door.
@@ -1719,9 +1837,13 @@ func simulation_targets() -> Array:
 			var target:Dictionary={"id":item.id,"kind":item.kind,"position":at,"level":item_level(item)}
 			if str(item.kind)=="towel_rack":target["towels"]=int(item.get("towels",0))
 			if bool(item.get("carried",false)):target["carried"]=true
+			# Which chair a child desk or table offers, so homework can be ranked
+			# and refused by what there is to sit on ("" when nothing faces it).
+			if str(item.kind) in STUDY_KINDS:target["study_seat"]=str(study_chair(item).get("id",""))
 			a.append(target)
 	for identity:int in _target_approaches.keys():
 		if not present.has(identity):_target_approaches.erase(identity)
+	a.append_array(chore_targets)
 	# People move independently of the static navigation geometry.
 	for id in actors:
 		if bool(actors[id].get_meta("away",false)):continue
@@ -1784,7 +1906,7 @@ func begin_placement(kind:String,style:String="",size:String="",color:String="")
 	if not ResourceLoader.exists(path):
 		for candidate:String in Variants.model_paths(kind,LifeCatalog.get_item(kind)):
 			if ResourceLoader.exists(candidate):path=candidate;break
-	if not ResourceLoader.exists(path) and kind in ["bath_mat","framed_picture","garden_gate","garden_gate_double","garden_gate_drive","burglar_alarm","home_phone"]:
+	if not ResourceLoader.exists(path) and kind in ["bath_mat","framed_picture","kids_toy","garden_gate","garden_gate_double","garden_gate_drive","burglar_alarm","home_phone"]:
 		ghost=Node3D.new()
 		add_child(ghost)
 		var preview:Dictionary=Variants.resolve(LifeCatalog.get_item(kind),{"style":style,"size":size,"color":color})
@@ -1792,6 +1914,7 @@ func begin_placement(kind:String,style:String="",size:String="",color:String="")
 		elif kind=="burglar_alarm":_build_burglar_alarm(ghost)
 		elif kind=="bath_mat":_build_bath_mat(ghost,preview)
 		elif kind=="framed_picture":_build_framed_picture(ghost,preview)
+		elif kind=="kids_toy":_build_kids_toy(ghost,preview)
 		else:_build_garden_gate(ghost,float(bought.size.x)>1.5,str(preview.color),float(bought.size.x))
 		_ghost_materials(ghost)
 		return
@@ -2654,6 +2777,83 @@ func outdoor_water_anchor(item:Dictionary,landmarks:Dictionary={}) -> Dictionary
 	# A ring is sat in: its anchor is the hips, so the body tips about them.
 	return {"position":from,"yaw":atan2(to.x-from.x,to.z-from.z),"kind":"seat" if kind=="pool_ring" else "swim","outdoor_kind":kind,"swim_from":from,"swim_to":to,"swim_span":half_width,"swim_lane_offset":lane_z}
 
+## What is done sitting down at a child desk or dining table, and where.
+const STUDY_ACTIONS: Array[String] = ["homework", "child_desk_study", "child_draw", "child_colour"]
+const STUDY_KINDS: Array[String] = ["child_desk", "dining"]
+
+## The chair a pupil sits on to study at a furnishing, or {}: a child chair that
+## faces a child desk, an ordinary chair pulled up to a dining table. Chairs named
+## in `taken` are somebody else's. A chair that faces away from the table is no
+## seat at it, as at mealtimes.
+func study_chair(item:Dictionary,taken:Array=[]) -> Dictionary:
+	var kind:String=str(item.get("kind",""))
+	if kind not in STUDY_KINDS or not is_instance_valid(item.get("node")):return {}
+	var chair_kind:String="child_chair" if kind=="child_desk" else "chair"
+	var level:int=item_level(item)
+	var best:Dictionary={}
+	var nearest:float=1.1 if kind=="child_desk" else 1.6
+	for candidate:Dictionary in items:
+		if str(candidate.kind)!=chair_kind or item_level(candidate)!=level or taken.has(str(candidate.id)):continue
+		var distance:float=candidate.node.position.distance_to(item.node.position)
+		if distance>=nearest:continue
+		var toward:Vector3=item.node.position-candidate.node.position
+		toward.y=0.0
+		if toward.length()<.01 or candidate.node.global_basis.z.dot(toward.normalized())<.65:continue
+		best=candidate;nearest=distance
+	return best
+
+## Where a pupil sits at a child desk or table, facing it with their hands on its
+## top, and where they stand before sitting down (a free spot behind the chair).
+func study_anchor(item:Dictionary,chair:Dictionary,age_stage:String="") -> Dictionary:
+	var table:Node3D=item.node
+	var seat_node:Node3D=chair.node
+	var toward:Vector3=table.global_position-seat_node.global_position
+	toward.y=0.0
+	var dir:Vector3=toward.normalized()
+	var child_desk:bool=str(item.kind)=="child_desk"
+	var seat:Vector3
+	var top_y:float
+	var inset:float
+	if child_desk:
+		# A child chair is the child's own height: no booster, and a little
+		# forward on the cushion so short arms reach the top.
+		seat=seat_node.to_global(Vector3(0,.34,.02))+dir*.17
+		top_y=table.global_position.y+float(item.get("height",.72))
+		inset=.03
+	else:
+		seat=seat_node.to_global(Vector3(0,.52,.02))
+		if age_stage=="child":
+			_show_desk_booster(seat_node)
+			seat+=Vector3(0,.18,0)+dir*.10
+		top_y=table.global_position.y+.847
+		inset=.10
+	var local_out:Vector3=table.global_basis.inverse()*(-dir)
+	var half:Vector2=(item.size as Vector2)*.5
+	var edge:float=INF
+	if absf(local_out.x)>.001:edge=minf(edge,half.x/absf(local_out.x))
+	if absf(local_out.z)>.001:edge=minf(edge,half.y/absf(local_out.z))
+	if not is_finite(edge):edge=half.y
+	var hand:Vector3=table.global_position-dir*(edge-inset)
+	hand.y=top_y
+	var front:Vector3=table.global_position-dir*edge
+	front.y=top_y
+	return {"position":seat,"yaw":atan2(dir.x,dir.z),"kind":"seat","hand_center":hand,"hand_spread":.10,"desk_surface_y":top_y,"desk_front_edge":front,"desk_forward":dir,"study_surface":"book"}
+
+## Where a pupil waits before sitting: a clear spot behind the chair, within a
+## short step of its seat.
+func study_stand_point(chair:Dictionary) -> Vector3:
+	var level:int=item_level(chair)
+	var flood:Dictionary=_reachable_from_front(level) if not construction.building_state.is_empty() else {}
+	# Behind the chair first, then to either side: a spot on the chair's own side of every
+	# wall that somebody can walk to from the front door.
+	for offset:Vector3 in [Vector3(0,0,-.55),Vector3(.7,0,-.2),Vector3(-.7,0,-.2),Vector3(0,0,-.95)]:
+		var at:Vector3=nearest_clear_point(chair.node.to_global(offset),level,3)
+		if not at.is_finite() or at.distance_to(chair.node.global_position)>1.2:continue
+		if not sight_line_clear(at,chair.node.global_position):continue
+		if not flood.is_empty() and not lot_navigation.point_reachable(flood,level,at):continue
+		return at
+	return Vector3.INF
+
 ## Where a toddler or child stands to use their own desk: the clear spot the
 ## household walked to, closed up to an arm's length from the desk when that spot
 ## is free, facing the desk, with their hands on its top.
@@ -2691,6 +2891,9 @@ func child_desk_anchor(item:Dictionary,landmarks:Dictionary={}) -> Dictionary:
 
 func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -> Dictionary:
 	var node:Node3D=item.node
+	if action_id in STUDY_ACTIONS and str(item.kind) in STUDY_KINDS and not str(landmarks.get("study_seat","")).is_empty():
+		for chair:Dictionary in items:
+			if str(chair.id)==str(landmarks.study_seat):return study_anchor(item,chair,str(landmarks.get("age_stage","")))
 	if str(item.kind)=="child_desk" and action_id in ["child_desk_study","child_draw","child_colour","homework"]:
 		return child_desk_anchor(item,landmarks)
 	var local:Vector3=Vector3(0,0,float(item.size.y)*.5+.36)
@@ -2750,7 +2953,12 @@ func activity_anchor(item:Dictionary,action_id:String,landmarks:Dictionary={}) -
 		"bed":
 			local=Vector3(0,.80,.015)+seat_slot_offset(item,str(landmarks.get("seat_slot","left")));yaw=node.rotation.y;kind="bed"
 		"child_bed":
-			local=Vector3(0,.46,.02);yaw=node.rotation.y;kind="bed"
+			# Lying, the body rests on the mattress rather than sinking into it;
+			# relaxing, the child sits on the foot end with the shins over it.
+			if action_id=="relax":
+				local=Vector3(0,.62,.85);yaw=node.rotation.y;kind="seat"
+			else:
+				local=Vector3(0,.57,-.18);yaw=node.rotation.y;kind="bed"
 		"cot":
 			local=Vector3(0,.36,0);yaw=node.rotation.y;kind="bed"
 		"shower":

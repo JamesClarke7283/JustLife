@@ -104,9 +104,9 @@ func _art_exists() -> void:
 	var missing: Array[String] = []
 	var checked: int = 0
 	for kind: String in LifeCatalog.ITEMS:
-		# A memorial is built from code rather than authored art, which the
-		# catalogue entry and the world both know.
-		if kind == "memorial": continue
+		# A memorial, and the toys play leaves on the floor, are built from code
+		# rather than authored art, which the catalogue entry and the world both know.
+		if kind == "memorial" or kind == "kids_toy": continue
 		var data: Dictionary = LifeCatalog.ITEMS[kind]
 		for path: String in LifeCatalogVariants.model_paths(kind, data):
 			checked += 1

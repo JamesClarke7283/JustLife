@@ -4,6 +4,7 @@ class_name LifeResidents
 const Building=preload("res://scripts/building_state.gd")
 const CarEntry=preload("res://scripts/car_entry.gd")
 const GateFlow=preload("res://scripts/gate_flow.gd")
+const Drive=preload("res://scripts/vehicle_drive.gd")
 const Variants=preload("res://scripts/catalog_variants.gd")
 const PEOPLE=LifeResidentCatalogue.PEOPLE
 ## Catalogue kinds a household can park on the lot and then drive.
@@ -570,6 +571,8 @@ func begin_trip(destination:String, party: Array = []) -> bool:
  var owned:Dictionary=_find_owned_vehicle()
  var vehicle_before:Dictionary=trip_vehicle.duplicate(true)
  var car_at:Transform3D=_trip_car_transform(owned)
+ var drive:Dictionary=Drive.trip_departure(app,owned,car_at)
+ if not bool(drive.ok):app.show_notice(str(drive.error));return false
  # Preflight against the existing scene; a refusal changes no queue, body,
  # stair owner, dish, selection, clock, resident state or saved home layout.
  for index:int in range(travellers.size()):
@@ -654,14 +657,17 @@ func begin_trip(destination:String, party: Array = []) -> bool:
  for member:Dictionary in travellers:seating.append({"id":str(member.id),"stage":str(member.sim.character.get("age_stage","adult"))})
  car_entry=CarEntry.new(car,seating)
  trip={"destination":destination,"resume":resume,"phase":"boarding","time":0.0,"boarding":boarding,"canonical":canonical,"party":boarding.keys(),"own_car":using_own,"visibility_before":visibility,"contexts_before":contexts,"vehicle_before":vehicle_before,"reused_venue_car":reused_venue_car,"camera_before":camera_before}
+ if drive.has("path"):trip["drive"]=drive;trip["cam"]=app.world.camera_target
  return true
 
 ## The parked vehicle on this lot the trip should use: the one Drive… named,
 ## otherwise the first household car/electric car found.
 func _find_owned_vehicle() -> Dictionary:
- if not preferred_vehicle_id.is_empty():
+ # The car the trip left in comes home to its own spot: its id is remembered with the trip.
+ var wanted:String=preferred_vehicle_id if not preferred_vehicle_id.is_empty() else str(trip_vehicle.get("id",""))
+ if not wanted.is_empty():
   for item:Dictionary in app.world.items:
-   if str(item.id)==preferred_vehicle_id and str(item.kind) in VEHICLE_KINDS:return item
+   if str(item.id)==wanted and str(item.kind) in VEHICLE_KINDS:return item
  for item:Dictionary in app.world.items:
   if str(item.kind) in VEHICLE_KINDS:return item
  return {}
@@ -671,6 +677,7 @@ func _remember_vehicle(item:Dictionary) -> void:
  var data:Dictionary=LifeCatalog.get_item(kind)
  var variant:Dictionary=item.get("variant",Variants.resolve(data,item))
  trip_vehicle={
+  "id":str(item.get("id","")),
   "kind":kind,
   "style":str(variant.get("style","")),
   "color":str(variant.get("color","")),
@@ -730,7 +737,7 @@ func _spawn_trip_car(owned:Dictionary,at:Transform3D) -> Node3D:
   return parked
  var body:Node3D=_make_car()
  app.world.house.add_child(body)
- body.global_transform=at
+ body.global_transform=Transform3D(at.basis*Basis.from_scale(body.scale),at.origin)
  if not owned.is_empty() and is_instance_valid(owned.get("node")):
   var parked:Node3D=owned.node
   parked.visible=false
@@ -869,16 +876,17 @@ func tick_trip(delta:float) -> void:
    app.world.camera_target.x=look.x
    app.world.camera_target.z=look.z-2.2
    app.world.update_camera()
+   if trip.has("drive"):Drive.trip_place(self,"departure",delta)
   # The quarter-hour the drive represents is stepped across these frames,
   # so the lot change is not one frozen tick of the whole household.
   var travelled:float=float(trip.get("travel_sim",0.0))
-  if travelled<TRAVEL_MINUTES and delta>0.0:
-   var slice:float=minf(TRAVEL_MINUTES-travelled,delta/DEPARTURE_SECONDS*TRAVEL_MINUTES)
+  var slice:float=Drive.trip_slice(trip,travelled,delta,TRAVEL_MINUTES,DEPARTURE_SECONDS) if travelled<TRAVEL_MINUTES and delta>0.0 else 0.0
+  if slice>0.0:
    app.household.set_speed(1)
    app.household.tick(slice/LifeSim.GAME_MINUTES_PER_SECOND)
    app.household.set_speed(0)
    trip["travel_sim"]=travelled+slice
-  if float(trip.time)>=DEPARTURE_SECONDS:_arrive()
+  if float(trip.time)>=Drive.trip_seconds(trip,DEPARTURE_SECONDS):_arrive()
  elif phase=="arrival":
   if is_instance_valid(car):
    car.add_to_group(GateFlow.DRIVING_GROUP)
@@ -888,7 +896,9 @@ func tick_trip(delta:float) -> void:
    var start:=Vector3(-DRIVE_DISTANCE+2.0,0,10.25)
    car.rotation.y=PI*.5
    car.global_position=start.lerp(park,t)
-  if float(trip.time)>=ARRIVAL_SECONDS:
+   if trip.has("drive"):Drive.trip_place(self,"arrival",delta)
+  if float(trip.time)>=Drive.trip_seconds(trip,ARRIVAL_SECONDS):
+   Drive.trip_finish(self)
    var party:Array=trip.get("party",[])
    for member:Dictionary in app.household.members:
     if not party.is_empty() and not party.has(str(member.id)):continue
@@ -1102,7 +1112,7 @@ func _arrive() -> void:
   var member:Dictionary=app.household.members[index]
   if left_behind.has(str(member.id)):continue
   var actor:LifeActor=app.world.actors[member.id]
-  var spot:Vector3=_curb(spot_index,taken_spots)
+  var spot:Vector3=Drive.exit_spot(self,spot_index,str(member.id),taken_spots)
   actor.position=spot;actor.visible=false
   taken_spots.append(spot)
   spot_index+=1
@@ -1118,6 +1128,7 @@ func _arrive() -> void:
  app.paragraph("Pulling up outside · Saving is available when everyone steps out.",Vector2(464,791),Vector2(515,47),14,app.P.MUTED,app.overlay)
  trip.phase="arrival";trip.time=0.0
  trip["drive_from"]=[-DRIVE_DISTANCE+2.0,0.0,10.25]
+ Drive.trip_arrival(self,destination)
  if destination=="home":
   # Back on the lot: the parked body is in the layout again, and the outing's
   # remembered car is done.

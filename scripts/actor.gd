@@ -3,6 +3,8 @@ class_name LifeActor
 ## Articulated original character. The parent world owns all navigation/movement.
 const ActorMotion = preload("res://scripts/actor_motion.gd")
 const CareProps = preload("res://scripts/care_props.gd")
+const ChoreMotion = preload("res://scripts/chore_motion.gd")
+const ChoreProps = preload("res://scripts/chore_props.gd")
 
 const JOINT_NAMES: Array[String] = ["Head", "Arm_L", "Arm_R", "Forearm_L", "Forearm_R", "Leg_L", "Leg_R", "Shin_L", "Shin_R"]
 const HAIR_NAMES: Array[String] = ["Hair_Crop", "Hair_Bob", "Hair_Curls", "Hair_Pony", "Hair_Long", "Hair_Buzz", "Hair_Waves", "Hair_Bun", "Hair_Braids", "Hair_Topknot"]
@@ -140,6 +142,11 @@ var door_presentation: Dictionary = {}
 ## "enter"), the `toy` being handled, `t` seconds into the stage and the world
 ## points the pose reaches for. Visual only, like `meal_presentation`.
 var water_presentation: Dictionary = {}
+## The controller's account of a small toy being tidied away or taken out of its
+## box: `stage` ("pickup", "carry", "place", "draw"), `t` seconds into it, and the
+## world points the pose reaches for. Visual only, like `water_presentation`.
+var toy_presentation: Dictionary = {}
+var _toy_plan: Dictionary = {}
 ## Where the pool toy this Lifelet is holding, riding or lying on is, in the
 ## world, and whether that is currently a real answer. The water flow sets the
 ## toy's own node from these every frame.
@@ -176,6 +183,7 @@ var _preparation_tip: Vector3 = Vector3.ZERO
 var _seasoning_axis: Vector3 = Vector3.DOWN
 var _meal_fork: Node3D
 var _care_props: CareProps
+var _chore_props: Node3D
 var _meal_tip: Vector3 = Vector3.ZERO
 
 
@@ -623,6 +631,7 @@ func _discover_deformation(node: Node) -> void:
 func set_activity_anchor(world_position: Vector3,world_yaw: float,anchor_kind: String = "standing",action_id: String = "",details: Dictionary = {}) -> void:
 	## seat: cushion top center; bed: mattress top center; standing: foot position.
 	## The anchor's +Z faces forward; a lying Lifelet's head points toward its -Z.
+	if action_id=="chore_mop":action_id="mop_puddle" # a mopped patch of floor is mopped like a puddle
 	_activity_anchor = {"position":world_position,"yaw":world_yaw,"kind":anchor_kind,"action":action_id}
 	if details.get("hand_center") is Vector3 and details.hand_center.is_finite(): _activity_anchor["hand_center"] = details.hand_center
 	if details.get("hand_spread") is float or details.get("hand_spread") is int:
@@ -632,11 +641,13 @@ func set_activity_anchor(world_position: Vector3,world_yaw: float,anchor_kind: S
 		if is_finite(float(details.desk_surface_y)): _activity_anchor["desk_surface_y"] = float(details.desk_surface_y)
 	for key: String in ["desk_front_edge","desk_forward","attention_target","tv_target","plate_position","mop_contact","swim_from","swim_to","care_target","care_forward","care_collar"]:
 		if details.get(key) is Vector3 and details[key].is_finite(): _activity_anchor[key] = details[key]
+	for key:String in details:
+		if key.begins_with("chore_"):_activity_anchor[key]=details[key]
 	if details.get("tv_water") is bool:_activity_anchor["tv_water"]=details.tv_water
 	if is_instance_valid(details.get("oven")):_activity_anchor["oven"]=details.oven
 	# Facts for ActorMotion: which garden piece, and the controller's clock
 	# and phase for a pet-care or car beat.
-	for key: String in ["outdoor_kind","care_phase"]:
+	for key: String in ["outdoor_kind","care_phase","study_surface"]:
 		if details.get(key) is String: _activity_anchor[key] = details[key]
 	for key: String in ["care_time","care_progress","swim_span","swim_lane_offset","swing_angle","swing_phase"]:
 		if (details.get(key) is float or details.get(key) is int) and is_finite(float(details[key])): _activity_anchor[key] = float(details[key])
@@ -1309,6 +1320,7 @@ func _grip_offset(side: String) -> Vector3:
 func _update_grips(delta: float, moving: bool, action_id: String) -> void:
 	var targets: Dictionary = {"L":0.0,"R":0.0}
 	if not moving:
+		if ChoreMotion.handles(action_id):targets=ChoreMotion.grips(action_id)
 		match action_id:
 			"cook":
 				targets = {"L":.25,"R":.95}
@@ -1617,7 +1629,8 @@ func reconstruct_guest_pose(action_id:String,elapsed_seconds:float)->void:
 	_reconstructing_rest=false
 
 func reconstruct_sanitation_pose(action_id:String)->void:
-	if action_id not in ["plant_wee","mop_puddle"]:return
+	if action_id=="chore_mop":action_id="mop_puddle"
+	if action_id not in ["plant_wee","mop_puddle"] and not ChoreMotion.handles(action_id):return
 	_reconstructing_sanitation=true
 	animate(0.0,0.0,false,action_id)
 	_reconstructing_sanitation=false
@@ -1634,6 +1647,7 @@ func _can_react_to_accident(moving:bool,action_id:String) -> bool:
 
 func animate(delta: float, speed_factor: float, moving: bool, action_id: String) -> void:
 	if action_id=="go_on_date":action_id="flirt"
+	if action_id=="chore_mop":action_id="mop_puddle"
 	if _model == null or (delta <= 0.0 and not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation and not _reconstructing_meal and not _reconstructing_rest):
 		return
 	if not _reconstructing_cooking and not _reconstructing_stair and not _reconstructing_sanitation and not _reconstructing_meal and not _reconstructing_rest:_update_voice(delta, speed_factor, moving, action_id)
@@ -1766,7 +1780,14 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 					pose["Head"] = Vector3(0.16, sin(t * 0.7) * 0.035, 0)
 					if action_id in ["school","homework"] or _activity_anchor.has("hand_center"):
 						_typing_pose(pose,t,anchor_kind)
-					if anchor_kind == "standing" and action_id in ["study","homework"]:
+					if action_id == "homework" and _activity_anchor.has("hand_center") and str(_activity_anchor.get("study_surface", "")) == "book":
+						# A pupil at their own desk or the table writes with both
+						# hands on its top, a book open before them.
+						_child_desk_pose(pose, t, "child_desk_study")
+						pose["Head"] = Vector3(0.34 + sin(t * 0.9) * 0.05, sin(t * 0.6) * 0.06, 0)
+						if anchor_kind == "standing": lean.x = 0.10
+						_book.visible = true
+					elif anchor_kind == "standing" and action_id in ["study","homework"]:
 						pose["Arm_L"] = Vector3(-.43,0,.17)
 						pose["Arm_R"] = Vector3(-.43,0,-.17)
 						pose["Forearm_L"] = Vector3(-1.05,0,.06)
@@ -1839,6 +1860,9 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 			"child_desk_study", "child_draw", "child_colour":
 				# A small body leaning over its own desk: both hands on the top,
 				# one steadying the page while the other works.
+				if anchor_kind == "seat":
+					_seated_pose(pose)
+					offset.y -= 0.43 * _height * _proportion
 				_child_desk_pose(pose, t, action_id)
 				pose["Head"] = Vector3(0.34 + sin(t * 0.9) * 0.05, sin(t * 0.6) * 0.06, 0)
 				lean.x = 0.10
@@ -2078,6 +2102,12 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		if water_shape.has("lean"): lean = water_shape.lean
 		offset.y -= float(water_shape.get("drop", 0.0))
 		offset += global_basis.inverse() * (water_shape.get("shift", Vector3.ZERO) as Vector3)
+	if not toy_presentation.is_empty() and not anchored:
+		var toy_shape: Dictionary = _toy_pose(pose)
+		if toy_shape.has("lean"): lean = toy_shape.lean
+		offset.y -= float(toy_shape.get("drop", 0.0))
+		offset += toy_shape.get("offset", Vector3.ZERO) as Vector3
+		offset += global_basis.inverse() * (toy_shape.get("shift", Vector3.ZERO) as Vector3)
 	if anchored and _activity_anchor.has("tv_target"):
 		var direction:Vector3=_model.to_local(_activity_anchor.tv_target)-_model.to_local(_joints.Head.global_position)
 		pose["Head"]=Vector3(clampf(-atan2(direction.y,Vector2(direction.x,direction.z).length()),-.3,.3),clampf(atan2(direction.x,direction.z),-.75,.75),0)
@@ -2086,7 +2116,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		var direction:Vector3=_model.to_local(_activity_anchor.attention_target)-_model.to_local(_joints.Head.global_position)
 		var gaze:Vector3=Vector3(clampf(-atan2(direction.y,Vector2(direction.x,direction.z).length()),-.38,.4),clampf(atan2(direction.x,direction.z),-.72,.72),0)
 		pose["Head"]=Vector3(pose.Head).lerp(gaze,attention_weight)
-	if anchored and anchor_kind == "seat" and _activity_anchor.has("hand_center") and action_id in ["work","study","job","school","homework","play_games","study_hard"]:
+	if anchored and anchor_kind == "seat" and _activity_anchor.has("hand_center") and action_id in ["work","study","job","school","homework","play_games","study_hard","child_desk_study","child_draw","child_colour"]:
 		lean.x = _desk_lean()
 		# Keep thighs horizontal while the torso leans from its supported hips.
 		pose["Leg_L"].x -= lean.x
@@ -2096,6 +2126,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		lean.x=.18 if _model_age=="child" else .045
 		pose["Leg_L"].x-=lean.x
 		pose["Leg_R"].x-=lean.x
+	var chore_posed:bool=anchored and ChoreMotion.handles(action_id) and shaped.has("chore_body")
 	if anchored:
 		var world_orientation: Basis = Basis(Vector3.UP,float(_activity_anchor.yaw)) * Basis.from_euler(lean)
 		var reference: Vector3 = Vector3.ZERO
@@ -2130,12 +2161,13 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 			var reach_shift:Vector3=upright.inverse()*(contact-Vector3(_activity_anchor.position))-Vector3(.035,0,.68)
 			reach_shift.y=-Vector2(reach_shift.x,reach_shift.z).length()*.55
 			world_origin=_activity_anchor.position+upright*(hips+Vector3(0,-.09*_height*_proportion,.04+.50*(1.0-_proportion))+reach_shift)-world_orientation*hips
+		if chore_posed:world_origin=ChoreMotion.body_origin(self,_activity_anchor,shaped.chore_body)
 		offset = to_local(world_origin) + interaction_offset
 		lean = (global_basis.orthonormalized().inverse() * world_orientation).get_euler()
 	# Once settled, follow a moving cushion exactly. Repeated interpolation
 	# trails the seat and draws the pelvis through it on every return stroke.
 	var moving_seat:bool=anchored and str(_activity_anchor.get("outdoor_kind",""))=="outdoor_swing" and _action_time>1.0
-	var body_blend:float=1.0 if (anchored and action_id=="mop_puddle") or moving_seat else blend
+	var body_blend:float=1.0 if (anchored and action_id=="mop_puddle") or moving_seat or chore_posed else blend
 	visual.position = offset if _reconstructing_rest else visual.position.lerp(offset, body_blend)
 	visual.rotation = _angle_lerp(visual.rotation, lean, body_blend)
 	_update_visual_followers(anchored,action_id)
@@ -2147,6 +2179,9 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		_oven_cooking_pose(pose)
 		_oven_leg_pose(pose)
 	if anchored and action_id in ["plant_wee","mop_puddle"]:_sanitation_leg_pose(pose)
+	if chore_posed:
+		_sanitation_leg_pose(pose)
+		ChoreMotion.reach(self,pose)
 	if anchored and action_id=="mop_puddle":_mopping_pose(pose)
 	if door_presentation.has("target"):
 		var side:String=str(door_presentation.side)
@@ -2159,7 +2194,7 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 	for joint_name: String in _joints:
 		var joint: Node3D = _joints[joint_name]
 		var goal_rotation: Vector3 = _rest_rotations[joint_name] + pose[joint_name]
-		var joint_blend:float=1.0 if (action_id=="cook" and _has_oven() and joint_name!="Head") or (anchored and action_id=="plant_wee" and (joint_name.begins_with("Leg_") or joint_name.begins_with("Shin_"))) or (anchored and action_id=="mop_puddle" and joint_name!="Head") else blend
+		var joint_blend:float=1.0 if (action_id=="cook" and _has_oven() and joint_name!="Head") or (anchored and action_id=="plant_wee" and (joint_name.begins_with("Leg_") or joint_name.begins_with("Shin_"))) or (anchored and action_id=="mop_puddle" and joint_name!="Head") or (chore_posed and joint_name!="Head") else blend
 		if care_reach and joint_name in ["Arm_R","Forearm_R"]:joint_blend=1.0
 		joint.quaternion = joint.quaternion.slerp(Quaternion.from_euler(goal_rotation),joint_blend)
 	for entry: Dictionary in _rig_bones:
@@ -2167,14 +2202,15 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 		var bone_index: int = int(entry.index)
 		var rest: Quaternion = entry.rest
 		var target_rotation: Quaternion = rest.inverse() * Quaternion.from_euler(pose[entry.name]) * rest
-		var joint_blend:float=1.0 if (action_id=="cook" and _has_oven() and entry.name!="Head") or (anchored and action_id=="plant_wee" and (str(entry.name).begins_with("Leg_") or str(entry.name).begins_with("Shin_"))) or (anchored and action_id=="mop_puddle" and entry.name!="Head") else blend
+		var joint_blend:float=1.0 if (action_id=="cook" and _has_oven() and entry.name!="Head") or (anchored and action_id=="plant_wee" and (str(entry.name).begins_with("Leg_") or str(entry.name).begins_with("Shin_"))) or (anchored and action_id=="mop_puddle" and entry.name!="Head") or (chore_posed and entry.name!="Head") else blend
 		if care_reach and str(entry.name) in ["Arm_R","Forearm_R"]:joint_blend=1.0
 		skeleton.set_bone_pose_rotation(bone_index,skeleton.get_bone_pose_rotation(bone_index).slerp(target_rotation,joint_blend))
 	for rest:Dictionary in _leg_rest.values():
 		var shoe:Node3D=rest.shoe
-		if not moving and ((action_id=="cook" and _has_oven()) or (anchored and action_id in ["plant_wee","mop_puddle"])):shoe.global_basis=Basis(Vector3.UP,float(_activity_anchor.yaw))*Basis(rest.shoe_basis)
+		if not moving and not anchored and not toy_presentation.is_empty() and str(toy_presentation.get("stage","")) in ["pickup","place","draw"]:shoe.global_basis=Basis(Vector3.UP,global_rotation.y)*Basis(rest.shoe_basis)
+		elif not moving and ((action_id=="cook" and _has_oven()) or (anchored and action_id in ["plant_wee","mop_puddle"]) or chore_posed):shoe.global_basis=Basis(Vector3.UP,float(_activity_anchor.yaw))*Basis(rest.shoe_basis)
 		else:shoe.basis=Basis.IDENTITY
-	var seated: bool = not moving and ((action_id in ["relax", "watch", "watch_together", "toilet", "work", "study", "job", "school", "homework", "play_games", "homework_wait", "eat_meal", "bath", "play_piano", "play_chess", "study_hard", "deep_read", "host_a_chat", "dry_sit"] and anchor_kind != "standing") or (action_id in ["sleep", "nap"] and anchor_kind == "seat") or bool(shaped.get("seated", false)))
+	var seated: bool = not moving and ((action_id in ["relax", "watch", "watch_together", "toilet", "work", "study", "job", "school", "homework", "play_games", "homework_wait", "eat_meal", "bath", "play_piano", "play_chess", "study_hard", "deep_read", "host_a_chat", "dry_sit", "child_desk_study", "child_draw", "child_colour"] and anchor_kind != "standing") or (action_id in ["sleep", "nap"] and anchor_kind == "seat") or bool(shaped.get("seated", false)))
 	_sit_amount = lerpf(_sit_amount, 1.0 if seated else 0.0, blend)
 	for entry: Dictionary in _sit_shapes:
 		entry.mesh.set_blend_shape_value(int(entry.index), _sit_amount)
@@ -2187,6 +2223,8 @@ func animate(delta: float, speed_factor: float, moving: bool, action_id: String)
 	if not stair_presentation.is_empty():_apply_stair_pose()
 	_update_held_props(animation_delta,moving,action_id)
 	_present_care_props(shaped.get("props", {}))
+	if not toy_presentation.is_empty() and not anchored:_place_toy()
+	_present_chore_props(_activity_anchor.get("chore_plan", {}).get("tools", {}) if chore_posed else {})
 
 
 ## The bag, rope or lead a care pose is holding, built the first time one is
@@ -2199,6 +2237,20 @@ func _present_care_props(props: Dictionary) -> void:
 		_care_props = CareProps.new()
 		add_child(_care_props)
 	_care_props.present(props)
+
+
+## The vacuum cleaner, duster, broom and the rest, built the first time a chore asks
+## for one so a household that never cleans carries none of them.
+func _present_chore_props(tools: Dictionary) -> void:
+	if tools.is_empty():
+		if is_instance_valid(_chore_props): _chore_props.hide_all()
+		return
+	if not is_instance_valid(_chore_props):
+		_chore_props = ChoreProps.new()
+		add_child(_chore_props)
+		# The tools are new nodes of this body: have its floor's view layers given to them too.
+		if has_meta("layer_cache"): remove_meta("layer_cache")
+	_chore_props.present(tools)
 
 
 ## Fetching, carrying and wading in with a pool toy. Returns what the caller folds
@@ -2270,6 +2322,135 @@ func _water_pose(pose: Dictionary) -> Dictionary:
 			toy_world_transform = Transform3D(held_basis.slerp(basis_to, release), held_origin.lerp(goal_origin, release))
 			toy_world_valid = true
 	return shaped
+
+
+## Stooping for a small toy, carrying it in one hand and setting it into (or
+## drawing it out of) a toy box. Shapes the arm, legs and head, returns what the
+## caller folds into the body, and records a plan the toy is placed from once the
+## body has settled this frame (`_place_toy`): while it is in the hand it follows the
+## palm itself, so the toy and the hand cannot part.
+func _toy_pose(pose: Dictionary) -> Dictionary:
+	var stage: String = str(toy_presentation.get("stage", ""))
+	var clock: float = float(toy_presentation.get("t", 0.0))
+	var length: float = maxf(.1, float(toy_presentation.get("duration", 1.5)))
+	var u: float = clampf(clock / length, 0.0, 1.0)
+	var elbow := Vector3(.5, -.6, -.3)
+	var shaped: Dictionary = {}
+	_toy_plan = {"stage": stage, "hold": 0.0, "free_origin": Vector3.INF, "free_basis": Basis.IDENTITY}
+	match stage:
+		"pickup":
+			# Down to it, a moment to take hold, and back up with it in the hand.
+			var dip: float = smoothstep(0.0, .4, u) if u < .5 else (1.0 if u < .6 else 1.0 - smoothstep(.6, 1.0, u))
+			var lift: float = smoothstep(.55, .95, u)
+			var rest_origin: Vector3 = toy_presentation.get("toy_position", global_position) as Vector3
+			var rest_basis: Basis = toy_presentation.get("toy_basis", Basis.IDENTITY) as Basis
+			var toy_origin: Vector3 = rest_origin.lerp(_toy_held_origin(), lift)
+			_reach_hand(pose, "R", _model.to_local(toy_origin + Vector3(0, .05 + .01 * lift, 0)), elbow)
+			shaped = _stoop(pose, dip)
+			_toy_plan.merge({"hold": smoothstep(.45, .62, u), "free_origin": rest_origin, "free_basis": rest_basis}, true)
+		"carry":
+			_reach_hand(pose, "R", _toy_hold(), elbow)
+			pose["Arm_L"] = Vector3(-.10, 0, -.10)
+			pose["Forearm_L"] = Vector3(-.25, 0, 0)
+			pose["Head"] = Vector3(.10, 0, 0)
+			_toy_plan["hold"] = 1.0
+		"place":
+			# Lean over the box, hand to its rim, let go, and straighten.
+			var box_point: Vector3 = toy_presentation.get("box_point", global_position) as Vector3
+			var inside: Vector3 = box_point - Vector3(0, .12, 0)
+			var reach: float = smoothstep(0.0, .35, u)
+			var let_go: float = smoothstep(.45, .7, u)
+			var hand_world: Vector3 = _toy_held_origin().lerp(box_point, reach) if u <= .55 else box_point.lerp(_toy_held_origin() + Vector3(0, .06, 0), smoothstep(.7, 1.0, u))
+			var dip_place: float = _stoop_depth(box_point) * (smoothstep(0.0, .3, u) if u < .5 else 1.0 - smoothstep(.65, 1.0, u))
+			_reach_hand(pose, "R", _model.to_local(hand_world + Vector3(0, .02, 0)), elbow)
+			shaped = _stoop(pose, dip_place)
+			_toy_plan.merge({"hold": 1.0 - let_go, "free_origin": box_point.lerp(inside, let_go)}, true)
+		"draw":
+			# Reach into the box, lift a toy out and lower it to the floor: one continuous
+			# movement of the hand, with the body stooping as far as the hand is low.
+			var from_point: Vector3 = toy_presentation.get("from_point", global_position) as Vector3
+			var box_top: Vector3 = toy_presentation.get("box_point", global_position) as Vector3
+			var floor_goal: Vector3 = toy_presentation.get("floor_point", global_position) as Vector3
+			var hand_up: Vector3 = from_point.lerp(box_top, smoothstep(0.0, .4, u))
+			var hand_world_draw: Vector3 = hand_up.lerp(floor_goal + Vector3(0, .07, 0), smoothstep(.5, .9, u))
+			_reach_hand(pose, "R", _model.to_local(hand_world_draw), elbow)
+			var rest_ease: float = 1.0 - smoothstep(.9, 1.0, u)
+			shaped = _stoop(pose, _stoop_depth(hand_world_draw) * rest_ease)
+			_toy_plan.merge({"hold": smoothstep(.2, .38, u) * (1.0 - smoothstep(.88, .98, u)), "free_origin": from_point.lerp(floor_goal, smoothstep(.6, .98, u)), "free_basis": toy_presentation.get("toy_basis", Basis.IDENTITY)}, true)
+	return shaped
+
+
+## How far down a body has to stoop to put a hand at this world point: the lower
+## it is, the deeper, up to a full squat for something on the floor.
+func _stoop_depth(point: Vector3) -> float:
+	var above: float = point.y - global_position.y
+	return clampf(1.0 - above / (1.05 * _proportion) + .12, .3, 1.0)
+
+
+## Where a toy rests in the hand, in the model's own frame and in the world.
+func _toy_hold() -> Vector3:
+	return Vector3(.20 * _proportion, _hip_height + .02 * _proportion, .30 * _proportion)
+
+
+func _toy_held_origin() -> Vector3:
+	return _model.to_global(_toy_hold()) - _model.global_basis.orthonormalized().y * .06
+
+
+## Place the toy this body is handling, once the pose has settled for the frame so
+## the toy and the hand cannot be a frame apart: in the hand it is at the palm
+## itself (kept upright, whatever the body is doing); otherwise where the plan says.
+func _place_toy() -> void:
+	toy_world_valid = false
+	if toy_presentation.is_empty() or _toy_plan.is_empty(): return
+	var hold: float = float(_toy_plan.get("hold", 0.0))
+	var upright: Basis = Basis(Vector3.UP, global_rotation.y)
+	var palm: Vector3 = _joints["Forearm_R"].to_global(_palm_offset("R")) - Vector3(0, .05, 0)
+	var free_origin: Vector3 = _toy_plan.get("free_origin", Vector3.INF) as Vector3
+	var origin: Vector3 = palm if not free_origin.is_finite() else free_origin.lerp(palm, hold)
+	var free_basis: Basis = _toy_plan.get("free_basis", Basis.IDENTITY) as Basis
+	toy_world_transform = Transform3D(free_basis.slerp(upright, hold), origin)
+	toy_world_valid = true
+	var node: Variant = toy_presentation.get("node")
+	if node is Node3D and is_instance_valid(node): (node as Node3D).global_transform = toy_world_transform
+
+
+## How deep a full stoop goes: the thigh's forward angle from vertical, the knee's
+## bend, and the torso's lean from the hips (radians). A dictionary so a tool can
+## try values without editing the script.
+static var toy_stoop: Dictionary = {"thigh": 1.45, "knee": 2.45, "lean": 1.25, "head": -.45}
+
+
+## A stoop `amount` of the way down (0 upright, 1 down on the haunches) for a body
+## that keeps its feet where they are: thigh and shin fold, the torso leans from
+## the hips, and the hips drop and shift back exactly as far as the folded legs
+## need for the ankles to stay on the ground, whatever the body's scale. Fills the
+## leg, head and left-arm joints of `pose` and returns the lean and the offset of
+## the visual.
+func _stoop(pose: Dictionary, amount: float) -> Dictionary:
+	var thigh: float = float(toy_stoop.thigh) * amount
+	var knee: float = float(toy_stoop.knee) * amount
+	var tilt: float = float(toy_stoop.lean) * amount
+	# The torso's lean carries the legs with it, so the joints add it back to leave
+	# the thigh and shin at the angles asked for.
+	pose["Leg_L"] = Vector3(-(thigh + tilt), 0, .05)
+	pose["Leg_R"] = Vector3(-(thigh + tilt), 0, -.05)
+	pose["Shin_L"] = Vector3(knee, 0, 0)
+	pose["Shin_R"] = Vector3(knee, 0, 0)
+	pose["Arm_L"] = Vector3(-.35 * amount, 0, -.14)
+	pose["Forearm_L"] = Vector3(-.45 * amount, 0, 0)
+	pose["Head"] = Vector3(float(toy_stoop.head) * amount, 0, 0)
+	var rest: Dictionary = _leg_rest.get("R", {})
+	if rest.is_empty():
+		return {"lean": Vector3(tilt, 0, 0), "drop": .4 * amount * _proportion}
+	var sy: float = visual.scale.y
+	var sz: float = visual.scale.z
+	var upper: float = Vector3(rest.upper).length() * sy
+	var lower: float = Vector3(rest.lower).length() * sy
+	var folded: float = upper * cos(thigh) + lower * cos(thigh - knee)
+	var ahead: float = (Vector3(rest.upper).length() * sin(thigh) + Vector3(rest.lower).length() * sin(thigh - knee)) * sz
+	var hips: Vector3 = Vector3(0, float(Vector3(rest.hip).y) * sy, float(Vector3(rest.hip).z) * sz)
+	var held_still: Vector3 = hips - Basis.from_euler(Vector3(tilt, 0, 0)) * hips
+	return {"lean": Vector3(tilt, 0, 0), "offset": held_still + Vector3(0, -(upper + lower - folded), -ahead)}
 
 
 func _baby_kneel_pose(pose: Dictionary, t: float) -> void:

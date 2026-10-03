@@ -7,6 +7,7 @@ extends RefCounted
 ## the car's door handle or seat. `care_time` is the controller's clock for that
 ## activity, so a pose and the pet or door it touches agree on the moment.
 
+const ChoreMotion = preload("res://scripts/chore_motion.gd")
 const POOL_KINDS: Array[String] = ["pool", "pool_slide", "pool_ladder", "pool_light", "pool_ring", "pool_noodle"]
 const FLOAT_KINDS: Array[String] = ["pool_ring", "pool_noodle"]
 const DRY_ACTIONS: Array[String] = [LifeWetness.DRY_OFF_ID, LifeWetness.DRY_SIT_ID]
@@ -25,12 +26,13 @@ const NOODLE_CENTRE: float = .60
 const NOODLE_AXIS_HEIGHT: float = .086
 
 static func handles(action_id: String) -> bool:
-	return action_id == "play_garden_game" or action_id == "clean_litter_tray" or action_id == LifeOutdoorActs.ACTION_ID or action_id in CARE_ACTIONS or action_id in CAR_ACTIONS or action_id in DRY_ACTIONS
+	return ChoreMotion.handles(action_id) or action_id == "play_garden_game" or action_id == "clean_litter_tray" or action_id == LifeOutdoorActs.ACTION_ID or action_id in CARE_ACTIONS or action_id in CAR_ACTIONS or action_id in DRY_ACTIONS
 
 ## Shape `pose` for this activity. Returns what the caller folds into the body:
 ## `lean` (Vector3), `drop` (metres the hips sink), `seated` (sit blend) and
 ## `props` (world transforms for the held bag, kibble, rope or leash).
 static func apply(actor, pose: Dictionary, action_id: String, t: float) -> Dictionary:
+	if ChoreMotion.handles(action_id): return ChoreMotion.apply(actor, pose, action_id, t)
 	var anchor: Dictionary = actor._activity_anchor
 	var ct: float = float(anchor.get("care_time", actor._action_time))
 	match action_id:

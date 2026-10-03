@@ -95,7 +95,8 @@ only while it moves), or a household Lifelet or visitor, within reach of a gate
 opens it away from that side, and it closes on its own `0.9` seconds after the
 last of them has gone. Time is the game's own step, so a paused game holds a gate
 where it was. The leaves are the gate's `Tint` surfaces, so a gate is coloured
-and repainted exactly like a fence.
+and repainted exactly like a fence. A car's planned route crosses a fence line
+only through a gate's gap, square to its leaf: see [vehicle routing](VEHICLE_ROUTING.md).
 
 ### Seats
 

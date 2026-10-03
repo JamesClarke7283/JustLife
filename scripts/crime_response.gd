@@ -230,9 +230,11 @@ func tick(delta: float, _game_minutes: float = 0.0) -> void:
 				Visuals.pose(officers[i],"seated" if phase_time > 2.3 else "walk",step,phase_time < 2.3,elapsed)
 			if phase_time >= 4.3: _set_phase("departing")
 		"departing":
-			var waypoint: Vector3 = Vector3(STATION_PARK.x,.16,CURB.z) if police_car.position.x > STATION_PARK.x+.02 else STATION_PARK
+			# The corner at the station is turned into early and the heading follows the
+			# way the car is going at a bounded rate, so it never snaps round.
+			var waypoint: Vector3 = Vector3(STATION_PARK.x,.16,CURB.z) if police_car.position.x > STATION_PARK.x+3.7 else STATION_PARK
 			var direction: Vector3 = waypoint-police_car.position
-			if direction.length() > .01: police_car.rotation.y = atan2(direction.x,direction.z)
+			if direction.length() > .01: police_car.rotation.y = rotate_toward(police_car.rotation.y,PI if waypoint == STATION_PARK and direction.length() < 2.2 else atan2(direction.x,direction.z),2.6*step)
 			police_car.position = police_car.position.move_toward(waypoint,4.5*step)
 			_seat_party(step)
 			if police_car.position.distance_to(STATION_PARK) < .03:

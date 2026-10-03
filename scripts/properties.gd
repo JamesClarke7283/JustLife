@@ -306,12 +306,27 @@ static func merge_move_layout(carried: Array, starter: Array) -> Array:
 	var result: Array = []
 	var seen: Dictionary = {}
 	var next_id: int = 0
+	# Every carried piece gets a new id; whatever points at another piece by its old id (a
+	# toy in its box, a plate on a table) is pointed at the new one, and loses the link
+	# when the piece it names did not come along.
+	var renamed: Dictionary = {}
+	var serial: int = 0
+	for entry: Variant in carried:
+		if not entry is Dictionary: continue
+		var named: String = str((entry as Dictionary).get("kind", ""))
+		if named.is_empty() or named.begins_with("__"): continue
+		renamed[str((entry as Dictionary).get("id", ""))] = "move_%d" % serial
+		serial += 1
 	for entry: Variant in carried:
 		if not entry is Dictionary: continue
 		var item: Dictionary = (entry as Dictionary).duplicate(true)
 		var kind: String = str(item.get("kind", ""))
 		if kind.is_empty() or kind.begins_with("__"): continue
 		item["id"] = "move_%d" % next_id
+		for link: String in ["box_id", "support_id"]:
+			if item.has(link):
+				if renamed.has(str(item[link])): item[link] = renamed[str(item[link])]
+				else: item.erase(link)
 		next_id += 1
 		result.append(item)
 		seen[kind] = true

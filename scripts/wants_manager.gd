@@ -86,10 +86,10 @@ const WHIMS := {
 	"neat_cleaning": {
 		"id": "neat_cleaning",
 		"label": "Tidy up",
-		"description": "Mop puddles or wash plates to keep the home spotless.",
+		"description": "Mop, dust, vacuum or wash something to keep the home spotless.",
 		"type": "trait",
 		"trait": "Neat",
-		"action_tags": ["mop_puddle", "clean_plate", "deep_clean", "plant_wee"],
+		"action_tags": ["mop_puddle", "clean_plate", "deep_clean", "plant_wee", "chore_vacuum", "chore_vacuum_curtains", "chore_dust", "chore_mop", "chore_wipe_sink", "chore_scrub_toilet", "chore_fluff", "put_pet_toy", "chore_sweep_entry", "chore_wipe_door", "chore_wash_window"],
 		"reward": 35
 	},
 	"outgoing_mingle": {

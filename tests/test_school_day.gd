@@ -333,7 +333,13 @@ func _corrupt_saves() -> void:
 	var restored: LifeSim = setup()
 	check(restored.restore_state(valid).ok,"The unmodified away snapshot is valid before corruption adversaries.")
 	var stable: Dictionary = restored.get_state()
-	for mutation: String in ["wrong_type","future_version","boolean_version","wrong_activity","wrong_phase","orphan","missing_away","duplicate","future_departure","weekend","wrong_return","wrong_stage","wrong_exit","wrong_position","nonfinite_position","false_paid","wrong_elapsed","wrong_duration","future_end","early_reward","past_bell","boolean_completed"]:
+	# A school absence with no school day on the queue is what the earlier build saved for a
+	# pupil who boarded the bus; it is mended on load rather than refused (tests/test_school_bus_day.gd).
+	var mended_state: Dictionary = valid.duplicate(true)
+	mended_state.action_queue.clear()
+	var mended: Dictionary = setup().restore_state(mended_state)
+	check(bool(mended.ok),"A school absence saved without its school day is mended and loads (%s)." % str(mended.get("error","")))
+	for mutation: String in ["wrong_type","future_version","boolean_version","wrong_activity","wrong_phase","orphan_job","missing_away","duplicate","future_departure","weekend","wrong_return","wrong_stage","wrong_exit","wrong_position","nonfinite_position","false_paid","wrong_elapsed","wrong_duration","future_end","early_reward","past_bell","boolean_completed"]:
 		var bad: Dictionary = valid.duplicate(true)
 		match mutation:
 			"wrong_type":bad.away_state = []
@@ -341,7 +347,9 @@ func _corrupt_saves() -> void:
 			"boolean_version":bad.away_state.version = true
 			"wrong_activity":bad.away_state.activity = "job"
 			"wrong_phase":bad.away_state.phase = "home"
-			"orphan":bad.action_queue.clear()
+			"orphan_job":
+				bad.action_queue.clear()
+				bad.away_state.activity = "job"
 			"missing_away":bad.away_state.clear()
 			"duplicate":bad.action_queue.append(bad.action_queue[0].duplicate(true))
 			"future_departure":bad.away_state.departure_minutes = 540.001

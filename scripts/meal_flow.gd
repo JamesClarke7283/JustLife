@@ -73,7 +73,7 @@ func guest_place_valid(action:Dictionary,restoring:bool=false)->bool:
 		if table.is_empty() or not _surface_clear(table,_plate_offset(chair,table),LifeMeals.PLATE_HALF_SIZE,str(action.get("meal_plate",""))):return false
 		for member:Dictionary in app.household.members:
 			var other:Dictionary=member.sim.get_current_action()
-			if str(other.get("meal_seat",""))==str(chair.id):return false
+			if str(other.get("meal_seat",""))==str(chair.id) or (str(other.get("study_seat",""))==str(chair.id) and str(other.get("phase",""))=="active"):return false
 			if str(other.get("target_id",""))==str(chair.id) and (str(other.get("phase",""))=="active" or bool(app.motion_states.get(str(member.id),{}).get("resume_active",false))):return false
 	if not restoring and actor(person).position.distance_to(action.target_position)>.02:return false
 	return true
@@ -702,7 +702,7 @@ func _choose_seat(person:String,action:Dictionary) -> bool:
 		for member:Dictionary in activity_records():
 			if member.id==person:continue
 			var other:Dictionary=member.action
-			if str(other.get("meal_seat",""))==str(candidate.id) or str(other.get("target_id",""))==str(candidate.id):occupied=true
+			if str(other.get("meal_seat",""))==str(candidate.id) or str(other.get("target_id",""))==str(candidate.id) or str(other.get("study_seat",""))==str(candidate.id):occupied=true
 		for plate:Dictionary in food().portions:
 			if str(plate.seat)==str(candidate.id) and str(plate.owner)!=person:occupied=true
 		var table:Dictionary=_chair_table(candidate)

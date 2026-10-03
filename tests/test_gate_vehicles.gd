@@ -24,11 +24,14 @@ func fresh() -> void:
 	app.set_process(false); app.household.set_speed(1)
 	app.sim.autonomy = false; app.household.minutes = 540.0; app.sim.minutes = 540.0
 	for need: String in LifeSim.NEED_NAMES: app.sim.needs[need] = 100.0
-	# The car faces east along the front garden. The drive to work goes west, away
-	# from the house wall, and a household trip goes east: a gate stands across each.
-	app.world.add_item({"id": "gate_car", "kind": "car", "x": -9.0, "z": 6.0, "rotation": 90})
-	app.world.add_item({"id": "drive_gate", "kind": "garden_gate_drive", "x": 3.0, "z": 6.0, "rotation": 90.0})
-	app.world.add_item({"id": "west_gate", "kind": "garden_gate_drive", "x": -15.0, "z": 6.0, "rotation": 90.0})
+	# The frontage is fenced along z 8.4 with a driveway gate in it. The car stands
+	# in line with the gate facing the street, so its planned route leaves through
+	# the gate (and comes home back through it): a car crosses a fence line only
+	# through a gate. The gate no longer has to stand across a straight line.
+	app.world.add_item({"id": "gate_car", "kind": "car", "x": -12.0, "z": 3.0, "rotation": 0})
+	app.world.add_item({"id": "fence_west", "kind": "fence", "x": -15.75, "z": 8.4, "rotation": 0, "style": "01", "size": "L450H120"})
+	app.world.add_item({"id": "fence_east", "kind": "fence", "x": 3.75, "z": 8.4, "rotation": 0, "style": "01", "size": "L2850H120"})
+	app.world.add_item({"id": "drive_gate", "kind": "garden_gate_drive", "x": -12.0, "z": 8.4, "rotation": 0.0})
 	app.world.rebuild_navigation(); app._refresh_sim_targets()
 
 func gate(id: String = "drive_gate") -> Node3D:
@@ -42,7 +45,7 @@ func car_node() -> Node3D:
 ## Follow a drive: the gate's openness whenever a car is on the move, and whether
 ## it was open as the car's nose reached it.
 func follow(frames: int, running: Callable) -> Dictionary:
-	var watched: Node3D = gate("west_gate")
+	var watched: Node3D = gate("drive_gate")
 	var out: Dictionary = {"closed_at_start": GateFlow.openness(watched) == 0.0, "open_at_nose": -1.0, "max": 0.0, "driving_frames": 0}
 	for frame: int in frames:
 		running.call()
@@ -58,16 +61,21 @@ func follow(frames: int, running: Callable) -> Dictionary:
 func run() -> void:
 	# ---- the drive to work
 	await fresh()
-	check(GateFlow.openness(gate("west_gate")) == 0.0, "The gate starts shut")
-	check(not app._find_item("west_gate").is_empty() and not app._find_item("drive_gate").is_empty(), "A driveway gate stands across each drive")
+	check(GateFlow.openness(gate("drive_gate")) == 0.0, "The gate starts shut")
+	check(not app._find_item("drive_gate").is_empty() and not app._find_item("fence_west").is_empty(), "A driveway gate stands in the fenced frontage")
 	app._go_to_work()
-	var seen: Dictionary = follow(2400, func() -> void: app._process(DT))
+	var crossings: Array[float] = []
+	var seen: Dictionary = follow(2400, func() -> void:
+		app._process(DT)
+		var mover: Node3D = car_node()
+		if mover != null and absf(mover.global_position.z - 8.4) < .08: crossings.append(mover.global_position.x))
 	check(seen.closed_at_start, "The gate is shut before the car moves")
 	check(int(seen.driving_frames) > 30, "The car really drives (%d frames)" % int(seen.driving_frames))
 	check(float(seen.max) > .99, "The gate swings fully open for the car")
 	check(float(seen.open_at_nose) > .9, "The gate is already open when the car's nose reaches it (%.2f)" % float(seen.open_at_nose))
+	check(not crossings.is_empty() and crossings.all(func(x: float) -> bool: return x > -13.5 and x < -10.5), "The car crosses the fence line only inside the gate (%s)" % str(crossings))
 	for frame: int in 200: app._process(DT)
-	check(GateFlow.openness(gate("west_gate")) == 0.0, "The gate has shut behind the car")
+	check(GateFlow.openness(gate("drive_gate")) == 0.0, "The gate has shut behind the car")
 	check(car_node() == null, "A car that has gone leaves the gate alone")
 
 	# ---- and the same car coming home
@@ -78,11 +86,11 @@ func run() -> void:
 		app._process(DT)
 		if car_node() != null:
 			homeward.driving += 1
-			homeward.max = maxf(float(homeward.max), GateFlow.openness(gate("west_gate")))
+			homeward.max = maxf(float(homeward.max), GateFlow.openness(gate("drive_gate")))
 		if not app.sim.is_away(): break
 	check(int(homeward.driving) > 30 and float(homeward.max) > .99, "The gate opens for the car driving home")
 	for frame: int in 200: app._process(DT)
-	check(GateFlow.openness(gate("west_gate")) == 0.0, "The gate shuts once the car is home")
+	check(GateFlow.openness(gate("drive_gate")) == 0.0, "The gate shuts once the car is home")
 
 	# ---- a trip with the household
 	await fresh()

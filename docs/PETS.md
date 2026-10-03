@@ -51,6 +51,22 @@ An indoor bed is sold for each species, and the two toys are the single pieces a
 
 The shop only offers what the household can use and refuses the rest with a reason (`LifePets.accessory_kind_error`).
 
+## Toys: in the box, in a hand, or on the floor
+
+A toy is always in exactly one of three states, and `LifeToyFlow` (`scripts/toy_flow.gd`) is the only code that changes it:
+
+* **boxed** — the layout record carries `box_id`, the node is hidden and cannot be clicked;
+* **carried** — `carried` is set and `rest` holds the floor pose it was lifted from (a Lifelet's hand or a dog's mouth); a save writes the rest pose, so nothing is ever saved floating;
+* **floor** — neither: it lies where its record says and is clickable.
+
+`nest()` and `unnest()` are the two writers, each atomic; `reconcile()` mends anything a load, an undo or an edit left behind (a box that is gone, does not take the toy, is on another floor or is over capacity lets its toys out onto clear floor); `invariant_errors()` reports what is wrong so a test can assert it after every step. `box_id` is saved with the layout, so a save, an undo, a trip away and a layout rebuild all keep toys nested; saves from older builds are migrated (a loose `toy_<box>_<n>` lying within 0.3 m of its box goes back into it). Selling or storing a box takes its toys with it (storage records how many and restocks them when the box comes out); moving a box carries them.
+
+**Putting a toy away** is a real action (`put_pet_toy`, `toy_stage`: fetch → pickup → carry → place → done). The Lifelet walks to the toy and stands beside it, bends right down (a foot-planted squat: thighs and knees fold, the torso leans from the hips and the hips drop exactly as far as the legs need for the ankles to stay on the ground), takes hold in the right hand, stands, carries it to the nearest box on the same floor that takes it and has room, leans over the rim, lets go, and only then does the toy become boxed. Children and everybody older can do it; babies and toddlers can play with toys but are refused with a reason. **Taking a toy out** (`take_pet_toy`: fetch → draw) is the same in reverse. Cancelling at any stage puts the toy on the floor, level, clickable, with nothing left in flight; a save in the middle is written at the toy's resting place and the action begins again after the load. The idle Lifelet picks up after play as a housekeeping choice (after needs, duties and meal clean-up), a person card lists them as chores (`LifeToyFlow.chores()`), and a pet's card has **Tidy toys (N)**, one cancellable action per toy, nearest first.
+
+**Children's and babies' toys.** Play (`play_toys`, `play_dollhouse`, `play_with_baby`, `play_baby_mat`) now leaves one to three small toys (`kids_toy`: block, ball, bear, rattle, duck — built procedurally, not for sale) on the floor near where the child played, never more than eight out in a home, and only when there is a **toy chest** or **toybox** to put them in (capacity 12). They use exactly the same state, flow and chores.
+
+**Pets.** A dog or cat that has played leaves its toy on the floor for somebody to tidy. Fetch carries the toy in the mouth (saved at its rest pose) and drops it in front of the dog, not under it. A toy a housemate is on the way to tidy, a toy that is carried and a toy whose box is gone are never chosen for play.
+
 ## Collar and leash colours
 
 A pet's collar and leash are its own, chosen in the picker beside the coat and kept in the save, so a household can tell two animals apart at a glance. The collar draws from a 16-tone set; the leash from a shorter, calmer 10-tone set that always contrasts with the collar it hangs beside. Both tint the pet's authored `Collar` accessory surface, so the choice is visible on the model rather than only in the record. Older saves without the fields load with the authored defaults (`LifePets.DEFAULT_COLLAR`, `DEFAULT_LEASH`).
@@ -104,7 +120,7 @@ A cat keeps its own coat up by grooming (`LifePets.CAT_GROOM_PER_HOUR` outpaces 
 
 A pet with nothing to walk to simply waits: the need stays low until the household places a bowl or a bed, and its card says so. The card also offers teaching a trick; a trick is learned across several sessions (`LifePets.TRICK_SESSIONS`), and progress toward the next one is kept on the record.
 
-Cats can use a litter tray autonomously or through its **Use** option; the pet card also offers an outdoor toilet trip. Dogs always go outdoors and lift a hind leg. A tray needs cleaning after four uses, and only Teen, Young Adult and Adult Lifelets can clean it. Tray cleanliness survives saving and loading.
+Cats can use a litter tray autonomously or through its **Use** option; the pet card also offers an outdoor toilet trip. Dogs always go outdoors and lift a hind leg. A tray needs cleaning after four uses, and only Teen, Young Adult, Adult and Elder Lifelets can clean it. Tray cleanliness survives saving and loading.
 
 **Free Will** releases a selected pet to its own routines, finishing a stair crossing first if needed. A dog walk begins with the Lifelet attaching the lead, then both walk through the front door, along the street and home. Loading a walk resumes from the current positions and ends inside the front door; it does not restore the exact transient lead route.
 

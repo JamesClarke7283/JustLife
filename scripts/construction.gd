@@ -69,6 +69,23 @@ func add_wall(entry: Dictionary) -> void:
 	wall_nodes[e.id]=node
 	_rebuild_wall(e,{})
 
+## Each window and whether a wall still holds it up, judged on the walls at their full height so
+## that lowering the walls (which hides every window) does not look like losing them.
+func windows_with_walls()->Dictionary:
+	var descriptors:Array=[]
+	for entry:Dictionary in records:
+		var d:Dictionary=entry.duplicate(true)
+		d["base_y"]=Building.level_y(int(entry.get("level",0)))
+		d["display_height"]=float(entry.height)
+		descriptors.append(d)
+	var out:Dictionary={}
+	for window:Node3D in world.house.get_children():
+		if window.has_meta("window_aperture"):out[window]=not WindowGeometry.supported_wall_ids(window,descriptors).is_empty()
+	for item:Dictionary in world.items:
+		var window:Node3D=item.node
+		if is_instance_valid(window) and window.has_meta("window_aperture"):out[window]=not WindowGeometry.supported_wall_ids(window,descriptors).is_empty()
+	return out
+
 func _window_supports()->Dictionary:
 	var descriptors:Array=[]
 	for entry:Dictionary in records:

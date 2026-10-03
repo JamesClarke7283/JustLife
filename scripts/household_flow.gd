@@ -47,6 +47,8 @@ var safety_restored: bool = false
 var storage: Array = []                     # [{"id":"placed_1","kind":"bed","x":..,"z":..,"rotation":..,"level":..}]
 var serial: int = 0
 var _full_notice_day: int = -1
+## How dirty each part of the home is (chores.gd); the household's own additive record.
+var chores: RefCounted = preload("res://scripts/chores.gd").new()
 
 
 func _init(owner_app: Node = null) -> void:
@@ -73,7 +75,7 @@ func helmet_ids() -> Array[String]:
 # ---------------------------------------------------------------- persistence
 
 func get_state() -> Dictionary:
-	return {"version":1, "serial":serial, "books":books.duplicate(true), "fill":fill.duplicate(true), "litter":_saved_litter(), "storage":storage.duplicate(true), "truck":_truck_state(), "safety":app.safety.snapshot() if is_instance_valid(app.safety) else safety_data.duplicate(true)}
+	return {"version":1, "serial":serial, "books":books.duplicate(true), "fill":fill.duplicate(true), "litter":_saved_litter(), "storage":storage.duplicate(true), "truck":_truck_state(), "safety":app.safety.snapshot() if is_instance_valid(app.safety) else safety_data.duplicate(true), "chores":chores.get_state()}
 
 
 ## The weekly food truck's own small record rides here rather than in a system
@@ -94,8 +96,10 @@ func restore(data: Variant) -> void:
 	litter = {}
 	storage = []
 	serial = 0
+	chores.restore(null)
 	if not data is Dictionary:
 		return
+	chores.restore(data.get("chores"))
 	if data.get("safety") is Dictionary:safety_data=data.safety.duplicate(true)
 	serial = int(data.get("serial", 0))
 	if data.get("litter", {}) is Dictionary:
@@ -125,6 +129,8 @@ static func validate(data: Variant, layout: Array, day: int = 0) -> String:
 		return "The saved household extras are invalid."
 	var safety_error:String=LifeSafety.validate(data.get("safety"))
 	if not safety_error.is_empty():return safety_error
+	var chores_error:String=preload("res://scripts/chores.gd").validate(data.get("chores"),_layout_kinds(layout),float(day)*1440.0+1440.0,[])
+	if not chores_error.is_empty():return chores_error
 	if not LifeBuildingState.number(data.get("serial", 0), 0, 1000000000, true):
 		return "The saved household extras have an invalid counter."
 	var kinds: Dictionary = {}
@@ -169,6 +175,12 @@ static func validate(data: Variant, layout: Array, day: int = 0) -> String:
 		stored_ids[stored_id] = true
 	return LifeFoodTruck.validate(data.get("truck", null), day)
 
+static func _layout_kinds(layout: Array) -> Dictionary:
+	var kinds: Dictionary = {}
+	for entry: Variant in layout:
+		if entry is Dictionary and str(entry.get("kind", "")) != "__construction": kinds[str(entry.get("id", ""))] = str(entry.get("kind", ""))
+	return kinds
+
 ## A stored record is a detached layout entry: the same identity, kind and
 ## transform a placed furnishing carries, with no live node. It must name a real
 ## catalogue item at a supported level and stay inside the lot.
@@ -186,6 +198,8 @@ static func _stored_record_valid(entry: Variant) -> bool:
 			return false
 	if entry.has("lit") and not entry.get("lit") is bool:
 		return false
+	if entry.has("toys") and not LifeBuildingState.number(entry.get("toys"), 0, 64, true):
+		return false
 	if entry.has("paint") and not LifeCatalog._shade(str(entry.get("paint",""))):
 		return false
 	return true
@@ -194,6 +208,8 @@ static func _stored_record(entry: Dictionary) -> Dictionary:
 	var record: Dictionary = {"id":str(entry.get("id", "")), "kind":str(entry.get("kind", "")), "x":float(entry.get("x", 0.0)), "z":float(entry.get("z", 0.0)), "rotation":float(entry.get("rotation", 0.0)), "level":int(entry.get("level", 0))}
 	if entry.has("lit"):
 		record["lit"] = bool(entry.lit)
+	if entry.has("toys"):
+		record["toys"] = int(entry.toys)
 	if entry.has("paint"):
 		record["paint"] = str(entry.get("paint",""))
 	# Style, colour and size are what a stored piece is when it comes out again;
@@ -413,7 +429,7 @@ func action_availability(sim: LifeSim, id: String, target_id: String) -> String:
 				return ""
 			return "Every skill book on this shelf is already at level %d. Mastery at level 10 needs the computer." % BOOK_MAX_LEVEL
 		"clean_litter_tray":
-			if str(sim.character.age_stage) not in ["teen", "young_adult", "adult"]: return "Only teens, young adults and adults can clean litter trays."
+			if str(sim.character.age_stage) not in ["teen", "young_adult", "adult", "elder"]: return "Only teens, adults and elders can clean litter trays."
 			if kind != "litter_tray": return "Choose a litter tray."
 			for errand:Dictionary in app.pet_errands.values():
 				if str(errand.get("target",""))==target_id: return "Wait until the cat has finished using this tray."

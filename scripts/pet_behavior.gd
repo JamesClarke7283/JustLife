@@ -190,8 +190,11 @@ func _target(id: String, action: String) -> Dictionary:
 	for item: Dictionary in app.world.items:
 		if not is_instance_valid(item.get("node")): continue
 		if action == "pet_play_toys":
-			if str(item.kind) != "pet_toy_" + _species(id) or bool(item.get("held", false)): continue
+			if str(item.kind) != "pet_toy_" + _species(id) or bool(item.get("carried", false)): continue
 			if toy_claims.has(str(item.id)) and str(toy_claims[str(item.id)]) != id: continue
+			# A housemate on their way to tidy it away, or a toy whose box is gone, is not for playing.
+			if not app.toy_flow.claimed_by(str(item.id)).is_empty(): continue
+			if not str(item.get("box_id", "")).is_empty() and _item(str(item.box_id)).is_empty(): continue
 		elif str(item.kind) != kind: continue
 		if action == "relieve":
 			if app.household_flow.litter_full(str(item.id)): continue
@@ -675,12 +678,9 @@ func _play(id: String, actor: LifePetActor, errand: Dictionary, toy: Dictionary,
 		actor.set_behavior("retrieve", elapsed)
 		errand.label = "Pulling a toy out of the toy box"
 		if elapsed < 3.0: return
-		toy.erase("box_id")
 		var at: Vector3 = actor.position + actor.basis.z * .23
 		at.y = LifeBuildingState.level_y(app.world.item_level(toy))
-		toy.x = at.x; toy.z = at.z
-		toy.node.position = at
-		toy.node.visible = true
+		app.toy_flow.unnest(toy, at)
 		errand.toy_origin = at
 	if not errand.has("toy_origin"): errand.toy_origin = toy.node.position
 	actor.set_behavior("toy_play", elapsed)
@@ -720,7 +720,12 @@ func _release_toy(id: String) -> void:
 			var errand: Dictionary = app.pet_errands.get(id, {})
 			var actor: LifePetActor = app.pet_actors.get(id)
 			if bool(errand.get("carrying", false)) and is_instance_valid(actor):
-				toy.x = actor.position.x; toy.z = actor.position.z; toy.level = actor.floor_level
+				var dropped: Vector3 = actor.position + actor.basis.z * .25
+				toy.x = dropped.x; toy.z = dropped.z; toy.level = actor.floor_level
+			if bool(toy.get("carried", false)):
+				toy.erase("carried"); toy.erase("rest")
+				toy.node.rotation = Vector3(0.0, toy.node.rotation.y, 0.0)
+				if str(toy.get("box_id", "")).is_empty(): app.world.set_item_pickable(toy, true)
 			toy.node.position = Vector3(float(toy.x), LifeBuildingState.level_y(app.world.item_level(toy)), float(toy.z))
 		toy_claims.erase(toy_id)
 
@@ -739,8 +744,9 @@ func _start_trick(id: String, command_id: String) -> bool:
 	var course: Array[Vector3] = []
 	if trick == "fetch":
 		target = _item(spec.get_slice("@", 1)) if spec.contains("@") else _target(id, "pet_play_toys")
-		if target.is_empty() or str(target.kind) != "pet_toy_" + _species(id) or bool(target.get("held", false)): return false
+		if target.is_empty() or str(target.kind) != "pet_toy_" + _species(id) or bool(target.get("carried", false)): return false
 		if toy_claims.has(str(target.id)) and str(toy_claims[str(target.id)]) != id: return false
+		if not app.toy_flow.claimed_by(str(target.id)).is_empty(): return false
 		var access: Dictionary = _item(str(target.box_id)) if not str(target.get("box_id", "")).is_empty() else target
 		if access.is_empty(): return false
 		at = _approach(id, access, "pet_play_toys", actor.position)
@@ -768,8 +774,15 @@ func _perform_trick(id: String, actor: LifePetActor, errand: Dictionary, minutes
 		if toy.is_empty(): _finish(id, actor, {}); return false
 		var route: Dictionary = _route(id, actor.position, Vector3(errand.origin))
 		if not bool(route.get("ok", false)): _finish(id, actor, {}); return false
+		# Carried in the mouth, a toy is saved at the pose it was lifted from, so a save
+		# made now neither floats it in the air nor leaves it on the dog.
+		var lifted_from: Dictionary = _item(str(toy.get("box_id", "")))
+		var rest_at: Vector3 = lifted_from.node.position if not lifted_from.is_empty() else toy.node.position
 		toy.erase("box_id")
 		toy.node.visible = true
+		toy["carried"] = true
+		toy["rest"] = {"x": rest_at.x, "y": LifeBuildingState.level_y(app.world.item_level(toy)), "z": rest_at.z, "rotation": toy.node.rotation_degrees.y}
+		app.world.set_item_pickable(toy, false)
 		errand.carrying = true; errand.phase = "walking"; errand.walking = true
 		errand.path = route.points; errand.segments = route.segments; errand.index = 0; errand.at = errand.origin
 		toy.node.position = actor.mouth_point()
@@ -779,7 +792,14 @@ func _perform_trick(id: String, actor: LifePetActor, errand: Dictionary, minutes
 		if not toy.is_empty():
 			var drop: Vector3 = actor.position + actor.basis.z * .25
 			drop.y = LifeBuildingState.level_y(actor.floor_level)
+			toy.erase("carried"); toy.erase("rest")
+			toy["level"] = actor.floor_level
 			toy.x = drop.x; toy.z = drop.z; toy.node.position = drop
+			toy.node.rotation = Vector3(0.0, toy.node.rotation.y, 0.0)
+			app.world.set_item_pickable(toy, true)
+		# The toy is on the floor where it was dropped: let go of it before finishing,
+		# so the release does not move it back under the dog.
+		errand.carrying = false
 		_finish(id, actor, {})
 		return false
 	if trick == "weave":

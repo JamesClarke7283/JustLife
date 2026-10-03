@@ -3,6 +3,8 @@ extends RefCounted
 ## return. Its small phase record lives on the ordinary saved work action.
 const Entry = preload("res://scripts/car_entry.gd")
 const GateFlow = preload("res://scripts/gate_flow.gd")
+const Drive = preload("res://scripts/vehicle_drive.gd")
+const Rig = preload("res://scripts/vehicle_rig.gd")
 const DRIVE_SECONDS: float = 4.0
 const DRIVE_DISTANCE: float = 22.0
 ## A walk to the car, or home from it, that has made no progress in this many
@@ -29,6 +31,8 @@ func prepare(action: Dictionary) -> void:
 	app.pending_action = action
 
 func caption(action: Dictionary) -> String:
+	var commute: Dictionary = action.get("commute", {})
+	if str(commute.get("phase", "")) == "depart" and Drive.waiting(commute, "depart"): return Drive.WAITING
 	return str({"walk": "Walking to the car", "board": "Opening the door and getting in", "depart": "Driving to work", "away": "", "return": "Driving home and parking", "exit": "Getting out and closing the door", "back": "Walking home through the back entrance"}.get(str(action.get("commute", {}).get("phase", "")), ""))
 
 func cleanup() -> void:
@@ -69,7 +73,8 @@ func _view(id: String, action: Dictionary) -> Dictionary:
 		body.collision_layer = 0; body.collision_mask = 0
 	var rig: RefCounted = Entry.new(car, [{"id": id, "stage": "adult"}], LifeCatalogVariants.size_scale(str(item.get("variant", {}).get("size", ""))))
 	var view: Dictionary = {"car": car, "parked": parked, "home": parked.global_transform,
-		"entry": rig, "vehicle": str(item.id), "body": app.player, "action": action}
+		"entry": rig, "vehicle": str(item.id), "body": app.player, "action": action,
+		"scale": LifeCatalogVariants.size_scale(str(item.get("variant", {}).get("size", ""))), "wheels": Rig.attach(car)}
 	views[id] = view
 	parked.visible = false
 	return view
@@ -103,20 +108,17 @@ func tick(delta: float) -> void:
 	var time: float = float(state.time)
 	if phase == "away" and str(app.sim.away_state.get("phase", "")) == "returning":
 		_phase(state, "return"); phase = "return"; time = 0.0
+		Drive.begin_arrival(self, id, view, state, home)
 	if phase in ["board", "depart", "away", "return", "exit"]: app.player.set_meta("commute_inside", true)
 	else: app.player.remove_meta("commute_inside")
 	var visible_body: bool = phase in ["walk", "board", "exit", "back"]
 	app.world.set_actor_away(id, not visible_body, app.sim.is_away())
-	car.visible = phase != "away"
+	car.visible = phase != "away" and not Drive.hidden(state, phase)
 	# A car on the move holds any gate in its way open; a parked one never does.
-	if phase in ["depart", "return"]: car.add_to_group(GateFlow.DRIVING_GROUP)
+	if Drive.moving(state, phase): car.add_to_group(GateFlow.DRIVING_GROUP)
 	else: car.remove_from_group(GateFlow.DRIVING_GROUP)
 	# Rebuild even paused snapshots at their actual saved position.
-	var sign: float = float(state.get("drive_sign", 1.0))
-	if phase == "depart":
-		car.global_position = home.origin + home.basis.z.normalized() * sign * DRIVE_DISTANCE * smoothstep(0.0, 1.0, time / DRIVE_SECONDS)
-	elif phase == "return":
-		car.global_position = home.origin + home.basis.z.normalized() * sign * DRIVE_DISTANCE * (1.0 - smoothstep(0.0, 1.0, time / DRIVE_SECONDS))
+	if phase in ["depart", "return"]: Drive.place(view, state, phase, time)
 	else: car.global_transform = home
 	if step <= 0.0:
 		if phase == "board": rig.time = time; rig.tick(0.0, {id: app.player})
@@ -143,7 +145,7 @@ func tick(delta: float) -> void:
 				app._clear_motion(); app.sim.cancel_action(); app.show_notice("The way to the car is blocked. Clear a path to it and try again."); return
 			if arrived:
 				app._clear_motion()
-				var direction: float = drive_direction(app.world, home, str(state.vehicle))
+				var direction: float = Drive.begin_departure(self, view, state, home, drive_direction(app.world, home, str(state.vehicle)))
 				if is_zero_approx(direction):
 					app.sim.cancel_action(); app.show_notice("Clear the driveway so the car can reach the road."); return
 				state["drive_sign"] = direction
@@ -154,10 +156,10 @@ func tick(delta: float) -> void:
 			# driving may start. No timeout ever boards a distant walker.
 			rig.time = float(state.time); rig.total = 0.0
 			if rig.tick(0.0, {id: app.player}):
-				_phase(state, "depart")
+				_phase(state, "depart"); Drive.queue(self, id, view, state, "depart")
 		"depart":
-			car.global_position = home.origin + home.basis.z.normalized() * sign * DRIVE_DISTANCE * smoothstep(0.0, 1.0, float(state.time) / DRIVE_SECONDS)
-			if float(state.time) >= DRIVE_SECONDS:
+			Drive.place(view, state, phase, float(state.time))
+			if float(state.time) >= Drive.seconds(state, phase):
 				# The actual work action starts only once the closed car has left.
 				var commute: Dictionary = state
 				action.merge(app.sim._actions.career_day.duplicate(true), true)
@@ -168,9 +170,9 @@ func tick(delta: float) -> void:
 		"away":
 			car.visible = false
 		"return":
-			car.global_position = home.origin + home.basis.z.normalized() * sign * DRIVE_DISTANCE * (1.0 - smoothstep(0.0, 1.0, float(state.time) / DRIVE_SECONDS))
-			if float(state.time) >= DRIVE_SECONDS:
-				car.global_transform = home; _phase(state, "exit")
+			Drive.place(view, state, phase, float(state.time))
+			if float(state.time) >= Drive.seconds(state, phase):
+				car.global_transform = home; Drive.park(view); _phase(state, "exit")
 		"exit":
 			car.global_transform = home
 			if rig.tick_exit(float(state.time), app.player, delta):
@@ -386,7 +388,9 @@ static func save_error(value: Variant, action: Dictionary = {}, away: Dictionary
 	if not value is Dictionary or not value.get("vehicle") is String or str(value.vehicle).is_empty() or str(value.get("phase", "")) not in PHASES: return "Invalid work commute."
 	if not LifeBuildingState.number(value.get("time"), 0.0, 100000000.0) or not LifeBuildingState.number(value.get("leg"), 0, 4, true): return "Invalid work commute progress."
 	var phase: String = str(value.phase)
-	var phase_limit: float = float({"board": 3.2, "depart": DRIVE_SECONDS, "return": DRIVE_SECONDS, "exit": 2.6}.get(phase, 100000000.0))
+	var drive_error: String = Drive.save_error(value)
+	if not drive_error.is_empty(): return drive_error
+	var phase_limit: float = Drive.phase_limit(value, phase, float({"board": 3.2, "depart": DRIVE_SECONDS, "return": DRIVE_SECONDS, "exit": 2.6}.get(phase, 100000000.0)))
 	if float(value.time) > phase_limit: return "Saved car choreography exceeds its phase."
 	if not action.is_empty():
 		if str(action.id) == "drive_to_work":

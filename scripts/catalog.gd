@@ -100,6 +100,10 @@ const ITEMS = {
 		"wall_mounted":true},
 	"toy_chest": {"label":"Toy chest", "category":"Baby & Kids", "price":40, "size":Vector2(.9,.55), "height":.7, "color":"ab7951", "tint":true,
 		"colors":["ab7951","c97c66","6f8fa8","417a71","c9a05a"]},
+	# A child's or baby's toy left on the floor after play. Not sold: play scatters
+	# these and the household tidies them into a toy chest (`LifeToyFlow`).
+	"kids_toy": {"label":"Child's toy", "category":"Baby & Kids", "price":0, "for_sale":false, "size":Vector2(.2,.2), "height":.14, "color":"d2a24b",
+		"styles":["block","ball","bear","rattle","duck"]},
 	"nursery_room_pack": {"label":"Nursery room pack", "category":"Baby & Kids", "price":2000, "size":Vector2(4.5,4.0), "height":2.2, "color":"8faf9f", "room_pack":true,
 		"description":"Builds a carpeted 4.5 × 4 m nursery with its own doorway, sharing any wall it meets, then furnishes it: cot, mobile, changing table, rocking chair, play mat, pictures and curtains. ℒ2000 all in."},
 	"child_bedroom_pack": {"label":"Child bedroom pack", "category":"Baby & Kids", "price":2000, "size":Vector2(4.5,4.0), "height":2.2, "color":"d7ae7e", "room_pack":true,
@@ -364,7 +368,7 @@ const INSTRUMENTS: Array[String] = ["guitar", "violin"]
 
 # Floor coverings and wall decor, the telephone and the alarm keypad included: they
 # hang above the furniture and never block routes, walls or other furnishings.
-const PASSABLE: Array[String] = ["rug", "child_rug", "bath_mat", "painting", "framed_picture", "children_picture", "wall_clock", "shelf", "home_phone", "burglar_alarm", "yoga_mat", "beach_towel", "room_light", "memorial", "curtains", "house_door", "house_window", "pet_toy_cat", "pet_toy_dog", "garden_gate", "garden_gate_double", "garden_gate_drive"]
+const PASSABLE: Array[String] = ["rug", "child_rug", "bath_mat", "painting", "framed_picture", "children_picture", "wall_clock", "shelf", "home_phone", "burglar_alarm", "yoga_mat", "beach_towel", "room_light", "memorial", "curtains", "house_door", "house_window", "pet_toy_cat", "pet_toy_dog", "kids_toy", "garden_gate", "garden_gate_double", "garden_gate_drive"]
 
 ## Fence runs and gates share one edge. Their footprints may touch; a gap is
 ## only the overlap of the panels themselves.
@@ -637,9 +641,9 @@ static func _lumen_entries() -> Array:
 		["fridge",-5.28,-4.3,0],["counter",-4.18,-4.4,0],["stove",-3.1,-4.4,0],["sink",-2.02,-4.4,0],
 		["dining",-3.5,-1.6,0],["sofa",-3.4,3.4,180],["table",-3.0,2.2,0],
 		["bed",4.6,1.6,0],["nightstand",3.4,1.6,0],["wardrobe",5.3,3.2,-90],
-		["child_bed",2.2,-2.6,0],["child_desk",3.4,-3.8,180],["child_chair",3.4,-3.0,0],["toy_chest",1.4,-3.6,0],
+		["child_bed",2.2,-2.1,90],["child_desk",3.4,-3.3,180],["child_chair",3.4,-2.5,180],["toy_chest",1.55,-2.9,0],
 		["shower",5.1,-4.1,0],["toilet",3.6,-4.1,0],["sink",5.15,-2.4,-90],
-		["bathtub",1.2,-4.2,90],["toilet",-.2,-4.1,0],["sink",-.2,-2.8,0],
+		["bathtub",1.55,-4.05,90],["toilet",-.2,-4.1,0],["sink",-.2,-2.8,0],
 		["pool",-8.4,1.6,0],["plant",-.2,4.2,0],
 	]
 
@@ -648,9 +652,9 @@ static func _haven_entries() -> Array:
 	return [
 		["fridge",-5.0,-4.2,0],["stove",-3.4,-4.2,0],["sink",-2.2,-4.2,0],
 		["bed",4.6,1.4,0],["nightstand",3.4,1.4,0],
-		["child_bed",2.0,-1.6,0],["child_desk",3.2,-3.2,180],["toy_chest",1.2,-3.2,0],["dollhouse",1.2,-1.2,0],
+		["child_bed",2.1,-2.1,90],["child_desk",3.2,-3.2,180],["child_chair",3.35,-2.4,180],["toy_chest",1.55,-3.2,0],["dollhouse",1.2,-.8,0],
 		["cot",4.4,-2.6,0],["changing_table",5.2,-3.8,0],["rocking_chair",3.2,-4.0,0],["baby_mat",4.2,-4.2,0],
-		["shower",5.1,4.0,0],["toilet",3.4,4.0,0],["bathtub",1.0,4.1,90],["toilet",-.4,4.0,0],
+		["shower",5.1,4.0,0],["toilet",3.4,4.0,0],["bathtub",.45,4.1,90],["toilet",-.4,4.0,0],
 		["sofa",-3.2,2.8,180],
 	]
 
@@ -679,8 +683,8 @@ static func _large_entries() -> Array:
 		["bed",4.9,3.4,90],["nightstand",4.9,4.5,0],
 		["shower",5.2,-4.2,0],["bathtub",3.0,4.5,0],["toilet",.2,.6,0],["sink",.2,1.6,180],
 		["toilet",1.4,-.2,0],["sink",1.4,-1.2,180],["shower",5.2,1.8,0],
-		["pool",-9.5,1.5,0],["hot_tub",-9.5,-2.2,0],["garden_table",-7.0,-3.5,0],["bbq",-11.0,-3.0,90],
-		["car_garage",-9.0,8.5,180],["plant",.6,4.5,0],["rubbish_bin",.9,-4.45,0],
+		["pool",-9.5,1.2,0],["hot_tub",-9.5,-2.5,0],["garden_table",-7.0,-3.5,0],["bbq",-11.0,-3.0,90],
+		["car_garage",-11.2,6.1,0],["plant",.6,4.5,0],["rubbish_bin",.9,-4.45,0],
 	]
 
 ## Ultra-Modern Residence: open living, garden seating, barbecue.
@@ -730,7 +734,7 @@ static func nursery_room_preset() -> Array:
 static func child_bedroom_preset() -> Array:
 	return [
 		["child_bed",3.6,1.5,0],["nightstand",2.5,1.5,0],["floor_lamp",2.5,2.4,0],
-		["child_desk",5.0,3.2,-90],["child_chair",4.4,3.2,0],["computer",5.0,1.6,-90],
+		["child_desk",5.0,3.2,-90],["child_chair",4.4,3.2,90],["computer",5.0,1.6,-90],
 		["child_rug",3.0,2.6,0],["painting",5.0,4.91,180],["curtains",3.4,4.85,180],
 	]
 

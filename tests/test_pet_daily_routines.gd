@@ -94,7 +94,7 @@ func run() -> void:
 	for stage: String in ["baby","child","teen","young_adult","adult","elder"]:
 		var sim:=LifeSim.new();root.add_child(sim);sim.new_household({"name":"Cleaner","age_stage":stage});sim.household_service=app.household_flow
 		sim.register_targets(app.world.simulation_targets())
-		var allowed: bool = stage in ["teen","young_adult","adult"]
+		var allowed: bool = stage in ["teen","young_adult","adult","elder"]
 		check(bool(sim.get_action_availability("clean_litter_tray",str(tray.id)).available)==allowed,"Cleaning admission matches exact age "+stage)
 		if not allowed:check(not sim.queue_action("clean_litter_tray",str(tray.id),app.world.approach(tray)),"Direct queue cannot bypass cleaning age "+stage)
 		sim.free()

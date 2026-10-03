@@ -25,6 +25,8 @@ static func action_error(age_stage: String, life_stage: String, action_id: Strin
 		return ""
 	if action_id in BABY_ACTIONS:
 		return ""
+	if action_id in ["put_pet_toy", "take_pet_toy"]:
+		return "Babies and toddlers can play with toys, but cannot put them away yet."
 	if action_id in ["job", "work", "career_day", "study", "school", "school_day", "homework", "help_homework"]:
 		return BABY_WORK_REASON
 	if action_id in ["friendly", "joke", "deep_talk", "hug", "share_interests", "sympathize",

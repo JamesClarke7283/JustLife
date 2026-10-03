@@ -4,14 +4,21 @@ func _uncached()->Array:
 	var expected:Array=[{"id":"lot_exit","kind":"lot_exit","position":app.world.lot_exit_position()}]
 	for item:Dictionary in app.world.items:
 		var at:Vector3=app.world.approach(item)
-		if at.is_finite():expected.append({"id":item.id,"kind":item.kind,"position":at,"level":app.world.item_level(item)})
+		if at.is_finite():
+			var target:Dictionary={"id":item.id,"kind":item.kind,"position":at,"level":app.world.item_level(item)}
+			if str(item.kind)=="towel_rack":target["towels"]=int(item.get("towels",0))
+			if bool(item.get("carried",false)):target["carried"]=true
+			# Which chair a desk or table offers a pupil rides along with it.
+			if str(item.kind) in LifeWorld.STUDY_KINDS:target["study_seat"]=str(app.world.study_chair(item).get("id",""))
+			expected.append(target)
 	for id:String in app.world.actors:
 		if bool(app.world.actors[id].get_meta("away",false)):continue
 		expected.append({"id":id,"kind":"neighbor","position":app.world.actors[id].position+Vector3(0,0,.8)})
 	return expected
 func _verify(label:String)->void:
 	var before:Dictionary=_facts()
-	var actual:Array=app.world.simulation_targets()
+	# Cleaning stations are published alongside the furnishings and are not what the cache memoises.
+	var actual:Array=app.world.simulation_targets().filter(func(target:Dictionary)->bool:return str(target.kind)!="chore_station")
 	check(_same_value(actual,_uncached()),label+": exact cached versus original uncached targets")
 	check(_same_value(before,_facts()),label+": target reads preserve layout, household, queues, clocks and physical state")
 func _position(id:String)->Vector3:

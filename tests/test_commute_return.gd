@@ -28,6 +28,8 @@ func fresh(plug_rear: bool = false, lot: int = 0, family: bool = false, car: Dic
 	for frame: int in 4: await process_frame
 	app.set_process(false); app.household.set_speed(1)
 	app.sim.autonomy = false; app.household.minutes = 540.0; app.sim.minutes = 540.0
+	# Only the commuter drives: a housemate with a will of their own would race them for the one car.
+	for member: Dictionary in app.household.members: member.sim.autonomy = false
 	for need: String in LifeSim.NEED_NAMES: app.sim.needs[need] = 100.0
 	app.world.add_item({"id": "commute_car", "kind": "car", "x": float(car.get("x", -9.0)), "z": float(car.get("z", 6.0)), "rotation": float(car.get("rotation", 90.0))})
 	var snapshot: Dictionary = app.world.construction.snapshot()

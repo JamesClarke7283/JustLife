@@ -9,6 +9,7 @@ const Kitchen = preload("res://scripts/kitchen_furnishings.gd")
 const LifeLog = preload("res://scripts/logger.gd")
 const LifeWantsManager = preload("res://scripts/wants_manager.gd")
 const CareMotion = preload("res://scripts/care_motion.gd")
+const ChoreUI = preload("res://scripts/chore_ui.gd")
 const RoomPack = preload("res://scripts/room_pack.gd")
 const CREATOR_FACE_GROUPS: Dictionary = {
 	"Shape":["face_round","jaw_strong","chin_length","face_length"],
@@ -75,6 +76,8 @@ var action_label: Label
 var action_context: Label
 var action_bar: ProgressBar
 var cancel_action_button: Button
+## The compact "Clean Home · 64%" button beside Cancel action (chore_ui.gd).
+var chore_hud_button: Button
 var household_chips: Dictionary = {}
 ## The household's pets in the life box, by pet id, so a chip can be refreshed in
 ## place the way a person's chip is.
@@ -232,7 +235,10 @@ var stroller_flow:LifeStrollerFlow
 var relationship_flow:LifeRelationshipFlow
 var tv_group:LifeTVGroup
 var water_flow:LifeWaterFlow
+var toy_flow:LifeToyFlow
 var household_flow:LifeHouseholdFlow
+## Household cleaning (chore_flow.gd): dirt, stations and rounds of chores.
+var chore_flow:Node
 var idle_space:RefCounted
 var guest_status_card:Control
 ## The doorstep card: somebody has rung the bell and is waiting outside.
@@ -257,11 +263,13 @@ func setup_services() -> void:
 	add_child(world)
 	meal_flow=LifeMealFlow.new();meal_flow.app=self;add_child(meal_flow)
 	water_flow=LifeWaterFlow.new();water_flow.app=self;add_child(water_flow)
+	toy_flow=LifeToyFlow.new();toy_flow.app=self;add_child(toy_flow)
 	stroller_flow=LifeStrollerFlow.new();stroller_flow.app=self;add_child(stroller_flow)
 	relationship_flow=LifeRelationshipFlow.new();relationship_flow.app=self;add_child(relationship_flow)
 	tv_group=LifeTVGroup.new();tv_group.app=self;add_child(tv_group)
 	household_flow=LifeHouseholdFlow.new(self);add_child(household_flow)
 	sanitation_flow=LifeSanitationFlow.new();sanitation_flow.app=self;add_child(sanitation_flow)
+	chore_flow=preload("res://scripts/chore_flow.gd").new();chore_flow.app=self;add_child(chore_flow)
 	# The weekly food truck owns its own schedule, wallet charge and delivery
 	# receipt; the controller owns only the van's presentation in the world.
 	food_truck=LifeFoodTruck.new(self);add_child(food_truck)
@@ -1102,7 +1110,7 @@ func _begin_birth_arrival_cinematic(party:Array) -> void:
 	_end_birth_arrival_cinematic()
 	var car:Node3D=load("res://assets/models/juniper_car.glb").instantiate()
 	world.house.add_child(car)
-	car.position=Vector3(0,0,12.5)
+	car.position=Vector3(-26,0,10.8)
 	car.rotation.y=PI*.5
 	world.camera_target=Vector3(0,0,6.5)
 	world.update_camera()
@@ -1116,6 +1124,7 @@ func _begin_birth_arrival_cinematic(party:Array) -> void:
 		actor.set_meta("away",false)
 		actor.visible=false
 	birth_arrival={"phase":"drive","time":0.0,"car":car,"party":party.duplicate(),"mother_id":mother_id,"baby_id":baby_id,"exit_at":world.lot_exit_position(0)}
+	birth_arrival["drive"]=preload("res://scripts/vehicle_drive.gd").birth_start(car)
 	show_notice("The household car is bringing mom and baby home.")
 
 func _end_birth_arrival_cinematic() -> void:
@@ -1133,6 +1142,10 @@ func _tick_birth_arrival(delta:float) -> void:
 	var car:Node3D=birth_arrival.get("car")
 	var phase:String=str(birth_arrival.phase)
 	var curb:Vector3=Vector3(0,0,10.25)
+	if phase=="drive" and birth_arrival.has("drive") and is_instance_valid(car):
+		# Along the road, in the lane, and eased onto the kerb: no sideways slide.
+		if preload("res://scripts/vehicle_drive.gd").birth_drive(birth_arrival,car):birth_arrival.phase="exit";birth_arrival.time=0.0
+		return
 	if phase=="drive":
 		if is_instance_valid(car):
 			car.position=car.position.move_toward(curb,delta*speed_scale*2.4)
@@ -1443,14 +1456,19 @@ func show_lot_selection() -> void:
 	text_label("Juniper Bay",Vector2(54,171),Vector2(300,58),39,P.INK,true)
 	paragraph("Tree-lined streets. Friendly faces.\nA little space to make your own.",Vector2(58,242),Vector2(274,57),16)
 	var starter_ids:Array[String]=Properties.starters_for(household_profiles)
-	var pitch:float=78.0 if starter_ids.size()>3 else 95.0
+	# A household with a child is offered five homes: the rows close up to fit, and the line about the
+	# chosen home moves down with the last of them.
+	var pitch:float=95.0 if starter_ids.size()<=3 else (78.0 if starter_ids.size()==4 else 64.0)
 	for i in range(starter_ids.size()):
 		var info:Dictionary=Properties.type_info(starter_ids[i])
 		var b=button(str(info.label),Vector2(54,331+i*pitch),Vector2(292,46),func():selected_lot=i;show_lot_selection(),selected_lot==i)
 		b.alignment=HORIZONTAL_ALIGNMENT_LEFT
-		text_label(str(info.tagline),Vector2(61,376+i*pitch),Vector2(282,24),12,P.MUTED)
+		var tagline:Label=text_label(str(info.tagline),Vector2(61,376+i*pitch if starter_ids.size()<=4 else 374+i*pitch),Vector2(282,20 if starter_ids.size()>4 else 24),12,P.MUTED)
+		tagline.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+		tagline.tooltip_text=str(info.tagline)
 	var chosen:Dictionary=Properties.type_info(starter_ids[selected_lot])
-	text_label("%d BED  /  %d BATH  /  %d ROOMS  /  GARDEN" % [int(chosen.beds),int(chosen.baths),int(chosen.rooms)],Vector2(57,640),Vector2(280,27),11,P.MUTED)
+	var stats_y:float=640.0 if starter_ids.size()<=4 else 331.0+float(starter_ids.size())*pitch+4.0
+	text_label("%d BED  /  %d BATH  /  %d ROOMS  /  GARDEN" % [int(chosen.beds),int(chosen.baths),int(chosen.rooms)],Vector2(57,stats_y),Vector2(280,27),11,P.MUTED)
 	card(Vector2(476,750),Vector2(920,118),Color("f9faf2"))
 	small_caps("Move-in ready",Vector2(500,764))
 	text_label(str(chosen.label),Vector2(498,795),Vector2(360,43),30,P.INK,true)
@@ -1729,6 +1747,7 @@ func start_household() -> void:
 	if is_instance_valid(safety):safety.free()
 	safety=null
 	household_flow.safety_data={}
+	household_flow.chores.reset()
 	residents.reset()
 	load_epoch+=1
 	has_active_game=true
@@ -1738,7 +1757,9 @@ func start_household() -> void:
 	current_venue="home"
 	# The house the household starts in becomes its first property, so moving
 	# later has somewhere to move back to.
-	var starter_ids:Array[String]=Properties.starters()
+	# The picker offers `starters_for` this household (a family is also offered
+	# Haven), so the chosen index must be read from the same list.
+	var starter_ids:Array[String]=Properties.starters_for(household_profiles)
 	var starter_type:String=starter_ids[clampi(selected_lot,0,starter_ids.size()-1)]
 	properties=Properties.fresh()
 	var granted:Dictionary=Properties.grant(properties,starter_type,starter_type,Land.fresh())
@@ -1758,6 +1779,8 @@ func start_household() -> void:
 	show_notice("Welcome home, %s. Click a furnishing to choose what happens next." % str(sim.character.name).split(" ")[0])
 
 func setup_live(layout:Array) -> void:
+	# Nothing in somebody's hands belongs to the world that is being replaced.
+	if is_instance_valid(toy_flow):toy_flow.reset()
 	if is_instance_valid(stroller_flow):stroller_flow.reset()
 	if is_instance_valid(tv_group):tv_group.reset()
 	_set_studio_render_quality(false)
@@ -1822,6 +1845,7 @@ func setup_live(layout:Array) -> void:
 		var away:Dictionary=member.sim.get_away_state()
 		world.set_actor_away(str(member.id),str(away.get("phase",""))=="away",not away.is_empty())
 	sanitation_flow.sync_world(household.journeys.is_empty())
+	chore_flow.reset();chore_flow.rebuild_stations(true)
 	household.register_targets(world.simulation_targets(),household.journeys.is_empty())
 	for member:Dictionary in household.members:
 		var member_actor:LifeActor=world.actors[member.id]
@@ -2333,7 +2357,7 @@ func _pet_play_toy(record:Dictionary) -> Dictionary:
 	var toy_kind:String="pet_toy_cat" if str(record.get("species","cat"))=="cat" else "pet_toy_dog"
 	for item:Dictionary in world.items:
 		if str(item.kind)!=toy_kind:continue
-		if bool(item.get("held",false)):continue
+		if bool(item.get("carried",false)):continue
 		return item
 	return {}
 
@@ -2432,19 +2456,10 @@ func _start_pet_errand(id:String,actor:LifePetActor,record:Dictionary,needs:Dict
 	pet_errands[id]={"need":need,"kind":kind,"target":str(target.id),"at":at,"path":walk,"index":0,"phase":"walking","elapsed":0.0,"walking":true}
 	return true
 
-## Pull a boxed toy onto the floor next to its box so a pet (or Lifelet) can use it.
+## Pull a boxed toy onto the floor in front of its box so a pet (or Lifelet) can use it.
 func _pet_take_toy_from_box(toy:Dictionary) -> void:
-	var box_id:String=str(toy.get("box_id",""))
-	if box_id.is_empty():return
-	var box:Dictionary=_find_item(box_id)
-	if box.is_empty() or not is_instance_valid(box.get("node")):return
-	var offset:=Vector3(0.45,0,0.1)
-	toy.erase("box_id")
-	toy["x"]=float(box.node.position.x)+offset.x
-	toy["z"]=float(box.node.position.z)+offset.z
-	if is_instance_valid(toy.get("node")):
-		toy.node.position=Vector3(toy.x,LifeBuildingState.level_y(world.item_level(toy)),toy.z)
-		toy.node.visible=true
+	if str(toy.get("box_id","")).is_empty():return
+	toy_flow.unnest(toy)
 
 ## The bed a species sleeps in. A cat has its own cosy bed and a dog its own
 ## cushioned one, so an animal always goes to the bed bought for it.
@@ -2666,12 +2681,17 @@ func show_pet_card(id:String,with_lifelet:bool=false) -> void:
 		var command:=button(label,Vector2.ZERO,Vector2(328,35),_direct_pet_command.bind(id,action_id),false,list)
 		command.name=action_id;command.custom_minimum_size=Vector2(320,35);command.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		command.disabled=bool(action.get("disabled",false));command.tooltip_text=str(action.get("unavailable_reason",action.get("reason","")))
+	var loose_toys:int=toy_flow.loose_toys("pet_toy_"+str(record.species)).size()
+	if loose_toys>0:
+		var tidy:=button("Tidy toys (%d)" % loose_toys,Vector2.ZERO,Vector2(328,35),_tidy_loose_toys.bind("pet_toy_"+str(record.species)),false,list)
+		tidy.name="PetTidyToys";tidy.custom_minimum_size=Vector2(320,35);tidy.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		tidy.tooltip_text="Put the toys lying around back into their box."
 	var tricks:=Label.new();tricks.text="Knows: "+", ".join(LifePetCare.known_tricks(care).map(func(key:String):return LifePetCare.trick_label(key)));tricks.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;list.add_child(tricks)
 	for trick:String in LifePetCare.known_tricks(care):
 		if trick=="fetch":
 			var toy_number:int=0
 			for toy:Dictionary in world.items:
-				if str(toy.kind)!="pet_toy_"+str(record.species) or bool(toy.get("held",false)):continue
+				if str(toy.kind)!="pet_toy_"+str(record.species) or bool(toy.get("carried",false)):continue
 				toy_number+=1
 				var fetch:=button("Fetch "+str(LifePets.ACCESSORY_LABELS.get(str(toy.kind),"toy"))+" "+str(toy_number),Vector2.ZERO,Vector2(328,35),_direct_pet_command.bind(id,"pet_trick:fetch@"+str(toy.id)),false,list)
 				fetch.custom_minimum_size=Vector2(320,35)
@@ -2680,6 +2700,14 @@ func show_pet_card(id:String,with_lifelet:bool=false) -> void:
 			perform.custom_minimum_size=Vector2(320,35)
 	button("Move on the floor",p+Vector2(22,651),Vector2(293,36),func():close_overlay();show_notice("Click the floor to move "+str(record.name)+"."),true,overlay).name="PetMoveOnFloor"
 	button("Free Will",p+Vector2(330,651),Vector2(296,36),_free_pet.bind(id),false,overlay).name="PetFreeWill"
+	refresh_hud()
+
+## The selected Lifelet tidies the loose toys of one kind away, one cancellable
+## action for each, nearest first.
+func _tidy_loose_toys(kind:String) -> void:
+	var result:Dictionary=toy_flow.queue_tidy_all(bound_member_id,kind)
+	if bool(result.ok):show_notice("Tidying %d toy%s away." % [int(result.queued),"" if int(result.queued)==1 else "s"])
+	else:show_notice(str(result.error))
 	refresh_hud()
 
 func _free_pet(id:String) -> void:
@@ -3117,6 +3145,7 @@ func draw_household_bar() -> void:
 	action_bar.show_percentage=false
 	rect(action_bar,Vector2(328,818),Vector2(274,7))
 	cancel_action_button=button("Cancel action",Vector2(326,842),Vector2(144,26),cancel_current_action)
+	chore_hud_button=ChoreUI.hud_button(self)
 	time_label=text_label(sim.get_clock_text(),Vector2(652,736),Vector2(280,33),18,P.INK)
 	time_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	time_label.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -3404,6 +3433,7 @@ func refresh_hud() -> void:
 	if is_instance_valid(cancel_action_button):
 		cancel_action_button.text="Come home early" if str(away.get("phase",""))=="away" else "Cancel action"
 		cancel_action_button.disabled=str(away.get("phase",""))=="returning"
+	ChoreUI.refresh_hud(self)
 	var action=sim.get_current_action()
 	var together:Dictionary=household.cooperative_presentation(bound_member_id) if not str(action.get("cooperation_id","")).is_empty() else {}
 	var partner:LifeSim=household.member_sim(str(together.get("partner_id","")))
@@ -3415,6 +3445,8 @@ func refresh_hud() -> void:
 		action_context.text=("DANCING WITH %d OTHERS" % maxi(0,dancer_count-1)) if dancing else ("WITH "+str(partner.character.name).to_upper() if partner else "TODAY IS YOURS")
 		var meal_company:String=meal_flow.company_label(bound_member_id)
 		if not meal_company.is_empty():action_context.text=meal_company
+		var chore_context:String=chore_flow.status_text(action)
+		if not chore_context.is_empty():action_context.text=chore_context
 		action_context.tooltip_text=("Dancing with %d Lifelets at the record player" % dancer_count) if dancing else ("Learning with "+str(partner.character.name) if partner else "")
 	if action_label:
 		action_label.text="Enjoying a moment" if action.is_empty() else ((("Waiting for " if waiting_for_target else "Walking to ") if action.phase=="approach" else "")+str(action.label))
@@ -3707,6 +3739,7 @@ func draw_build_catalog() -> void:
 	for kind in LifeCatalog.ITEMS:
 		var data:Dictionary=LifeCatalog.ITEMS[kind]
 		if catalog_category!="All" and data.category!=catalog_category:continue
+		if not bool(data.get("for_sale",true)):continue
 		if not catalog_search.strip_edges().is_empty() and not (str(data.label).to_lower().contains(catalog_search.strip_edges().to_lower()) or str(kind).contains(catalog_search.strip_edges().to_lower())):continue
 		var cell=Control.new();cell.custom_minimum_size=Vector2(152,140);row.add_child(cell)
 		# A family with choices asks the player which one they want before the
@@ -4109,8 +4142,13 @@ func on_placement(kind:String,p:Vector3,angle:float,style:String="",size:String=
 	if _find_item(str(entry.id)).is_empty():return
 	if bool(data.get("cuts_doorway",false)):
 		_open_doorway_behind_leaf(entry)
-	if LifePets.TOY_BOX_TOYS.has(kind) and not moving:
-		_stock_toy_box(entry)
+	# A new toy box comes stocked; one taken out of storage gets back the toys it
+	# went in with; a moved one carries what is in it.
+	if LifeToyFlow.is_container(kind):
+		var placed_box:Dictionary=_find_item(str(entry.id))
+		if moving and not bool(pending_move.get("from_storage",false)):toy_flow.container_moved(placed_box)
+		elif moving:_stock_toy_box(placed_box,int(pending_move.entry.get("toys",0)))
+		elif LifePets.TOY_BOX_TOYS.has(kind):_stock_toy_box(placed_box)
 	build_undo.append(snapshot)
 	household.set_funds(sim.funds-price)
 	build_transactions.furnishing_rebuilt(protection)
@@ -4152,27 +4190,8 @@ func _open_doorway_behind_leaf(entry: Dictionary) -> void:
 
 ## Fill a newly bought toy box with its six matching toys, nested until a pet
 ## or Lifelet takes one out to play.
-func _stock_toy_box(box: Dictionary) -> void:
-	var toy_kind: String = str(LifePets.TOY_BOX_TOYS.get(str(box.kind), ""))
-	if toy_kind.is_empty() or not LifeCatalog.ITEMS.has(toy_kind): return
-	var base := Vector3(float(box.x), LifeBuildingState.level_y(int(box.get("level", 0))), float(box.z))
-	for index: int in LifePets.TOYS_PER_BOX:
-		var angle: float = float(index) * TAU / float(LifePets.TOYS_PER_BOX)
-		var toy: Dictionary = {
-			"id": "toy_%s_%d" % [str(box.id), index],
-			"kind": toy_kind,
-			"x": base.x + cos(angle) * 0.12,
-			"z": base.z + sin(angle) * 0.12,
-			"rotation": float(index * 30),
-			"box_id": str(box.id),
-		}
-		if int(box.get("level", 0)) == 1: toy["level"] = 1
-		world.add_item(toy, false)
-		var placed: Dictionary = _find_item(str(toy.id))
-		if not placed.is_empty() and is_instance_valid(placed.get("node")):
-			placed.node.visible = false
-			placed["box_id"] = str(box.id)
-	world.rebuild_navigation()
+func _stock_toy_box(box: Dictionary, count: int = -1) -> void:
+	toy_flow.stock(_find_item(str(box.id)) if not _find_item(str(box.id)).is_empty() else box, count)
 
 ## Place a ready room pack. The room itself is one structure transaction —
 ## walls that share whatever wall they meet, a standard doorway and a carpet
@@ -4546,6 +4565,8 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 	if str(item.kind)=="neighbor" and household.member_sim(str(item.id))!=null:
 		var toy_entry:Dictionary=_pool_toy_action(str(item.id))
 		if not toy_entry.is_empty():actions.insert(mini(1,actions.size()),toy_entry)
+		var clean_entry:Dictionary=ChoreUI.wheel_entry(self,str(item.id))
+		if not clean_entry.is_empty():actions.append(clean_entry)
 	if LifeOutdoorActs.can_ask_to_join(str(item.kind)) and not _find_item(str(item.id)).is_empty():
 		# Ask to Join only when another household Lifelet is on the lot.
 		var partners:Array=household.outdoor_join_partners(str(item.id),bound_member_id)
@@ -4610,9 +4631,10 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 	if actions.is_empty():paragraph("A little detail that makes this place home.",pos+Vector2(18,80),Vector2(304,55),13,P.MUTED,overlay)
 
 ## The ring a person's interactions belong to.
-const WHEEL_CATEGORIES:Array=[["social","Social"],["fun","Fun"],["romantic","Romantic"]]
+const WHEEL_CATEGORIES:Array=[["social","Social"],["fun","Fun"],["romantic","Romantic"],["household","Household"]]
 
 func wheel_category(id:String) -> String:
+	if id=="clean_home":return "household"
 	if id in ["flirt","ask_partner","go_on_date","commit","break_up","invite_home_date","hug","make_baby"] or id==LifeBabyPlan.ACTION_ID:return "romantic"
 	if id in ["joke","playful_prank","bold_introduction","guest_join","guest_activity","play_with_pet_toy"] or id==LifeOutdoorActs.POOL_TOY_ACTION:return "fun"
 	return "social"
@@ -4716,6 +4738,7 @@ func _run_interaction(item:Dictionary,a:Dictionary) -> void:
 	elif str(a.id)==LifeDancePlan.ACTION_ID:show_dance_partners(item)
 	elif str(a.id)==LifeOutdoorActs.JOIN_ACTION:show_outdoor_join_partners(item)
 	elif str(a.id)==LifeOutdoorActs.POOL_TOY_ACTION:show_pool_toys(str(item.id))
+	elif str(a.id)=="clean_home":ChoreUI.show_panel(self,str(item.id))
 	elif str(a.id)==LifeOutdoorActs.CALL_FRIEND_ACTION:show_call_friend_over()
 	elif str(a.id)==LifeOutdoorActs.STAY_OVER_ACTION:
 		residents.home_visit.ask_to_stay_over();close_overlay()
@@ -5610,10 +5633,13 @@ func store_item(item:Dictionary) -> void:
 	# Stored, it keeps its style, colour and size, and a rack the towels on it.
 	if existing.get("variant") is Dictionary:entry.merge(existing.variant,false)
 	if str(existing.kind)=="towel_rack":entry["towels"]=int(existing.get("towels",0))
+	# What is in a toy box is stored with it, and put back when it comes out.
+	if LifeToyFlow.is_container(str(existing.kind)):entry["toys"]=toy_flow.contents(str(existing.id)).size()
 	var result:Dictionary=household_flow.store_furnishing(entry)
 	if not bool(result.ok):show_notice(str(result.error));return
 	var protection:Dictionary=build_protection_context()
 	_cancel_all_cooperative_actions()
+	if LifeToyFlow.is_container(str(existing.kind)):toy_flow.take_contents_away(str(existing.id))
 	world.remove_item(str(existing.id))
 	build_transactions.furnishing_rebuilt(protection)
 	_refresh_sim_targets()
@@ -5632,6 +5658,8 @@ func sell_item(item:Dictionary) -> void:
 	var credit:int=Variants.resale_value(existing)
 	build_undo.append(_build_snapshot(-credit))
 	_cancel_all_cooperative_actions()
+	# A toy box is sold with the toys in it.
+	if LifeToyFlow.is_container(str(existing.kind)):toy_flow.take_contents_away(str(existing.id))
 	world.remove_item(existing.id)
 	build_transactions.furnishing_rebuilt(protection)
 	household.set_funds(sim.funds+credit)
@@ -5845,8 +5873,13 @@ func _queue_target_kind(action:Dictionary) -> String:
 
 func _refresh_sim_targets(replan:bool=true,reconcile_food:bool=true) -> void:
 	if not is_instance_valid(household) or household.members.is_empty():return
+	# Toys that a load, an undo or an edit left half in and half out of their boxes are
+	# mended before the world is described to the household. A box being moved has
+	# its toys waiting for it, so nothing is mended while a move is in hand.
+	if pending_move.is_empty() and is_instance_valid(toy_flow):toy_flow.reconcile()
 	meal_flow.sync_world(reconcile_food)
 	_store_motion()
+	chore_flow.rebuild_stations()
 	var prior:String=bound_member_id
 	household.register_targets(_simulation_targets_with_pets())
 	for member:Dictionary in household.members:
@@ -5888,9 +5921,11 @@ func _refresh_member_targets(replan:bool=true) -> void:
 	if not is_instance_valid(sim) or not is_instance_valid(world.house):return
 	sim.meal_service=meal_flow
 	sim.water_service=water_flow
+	sim.toy_service=toy_flow
 	sim.stroller_service=stroller_flow
 	sim.tv_service=tv_group
 	sim.sanitation_service=sanitation_flow
+	sim.chore_service=chore_flow
 	sim.household_service=household_flow
 	sim.social_witness=Callable(self,"_members_can_see_each_other")
 	if sim.is_away():
@@ -5913,6 +5948,7 @@ func _refresh_member_targets(replan:bool=true) -> void:
 		if not pending_move.is_empty() and str(action.id)=="eat_meal" and str(household.meals.portion(str(action.get("meal_plate",""))).get("host",""))==str(pending_move.entry.id):continue
 		if not by_id.has(target_id):
 			if index==0 and str(action.id) in LifeSim.SOCIAL_ACTIONS:interrupted_social=true
+			chore_flow.successor_behind(sim,index)
 			sim.cancel_action(index)
 			continue
 		# Pet targets publish the animal's body, not the Lifelet's standing
@@ -5921,7 +5957,7 @@ func _refresh_member_targets(replan:bool=true) -> void:
 		# Queued socials resolve when they start. A current social retains its
 		# admitted endpoint until the shared reconciliation below can replan it.
 		# A passing moment keeps the spot beside the passer it was given.
-		if str(action.id) in LifeSim.SOCIAL_ACTIONS or passing_chat.owns(action) or (water_flow.keeps_own_target(action) or LifeStrollerFlow.owns(action)):continue
+		if str(action.id) in LifeSim.SOCIAL_ACTIONS or passing_chat.owns(action) or (water_flow.keeps_own_target(action) or toy_flow.keeps_own_target(action) or LifeStrollerFlow.owns(action)):continue
 		var destination:Vector3=world.lot_exit_position(_member_index(bound_member_id)) if str(action.id) in ["school_day","career_day","morning_run"] else by_id[target_id].position
 		# Generic furnishing targets do not name an occupied cushion or bed half.
 		# Resolve the existing place without allocating it again, so an unrelated
@@ -6105,11 +6141,15 @@ func _queue_pet_beat(action_id:String,pet_id:String,destination:Vector3,pet_name
 ## household would reach for one: a desk, a computer, the child's own desk, a
 ## bookshelf.
 func queue_homework_desk() -> void:
-	for kind:String in ["desk","computer","child_desk","bookshelf"]:
+	var refusal:String=""
+	for kind:String in ["child_desk","desk","computer","dining","bookshelf"]:
 		if kind=="child_desk" and str(sim.character.age_stage)!="child":continue
 		for item in world.items:
-			if item.kind==kind:queue_interaction(item,"homework");return
-	show_notice("Add a desk in Build & buy first.")
+			if item.kind!=kind:continue
+			var availability:Dictionary=sim.get_action_availability("homework",str(item.id))
+			if bool(availability.available):queue_interaction(item,"homework");return
+			if refusal.is_empty():refusal=str(availability.reason)
+	show_notice(refusal if not refusal.is_empty() else "Add a desk, a child desk or a table with chairs in Build & buy first.")
 
 func queue_nearest(kind:String,id:String) -> void:
 	for item in world.items:
@@ -6160,9 +6200,11 @@ func _bind_member(id:String) -> void:
 	sim.autonomy_activity_available=_activity_available_for_member.bind(id)
 	sim.meal_service=meal_flow
 	sim.water_service=water_flow
+	sim.toy_service=toy_flow
 	sim.stroller_service=stroller_flow
 	sim.tv_service=tv_group
 	sim.sanitation_service=sanitation_flow
+	sim.chore_service=chore_flow
 	sim.household_service=household_flow
 	sim.social_witness=Callable(self,"_members_can_see_each_other")
 	player=world.actors.get(id)
@@ -6347,6 +6389,7 @@ func _member_action_finished(id:String,action:Dictionary) -> void:
 	residents.home_visit.action_finished(id,action)
 	if is_instance_valid(relationship_flow):relationship_flow.finished(id,action)
 	water_flow.finished(id,action)
+	toy_flow.finished(id,action)
 	if LifeStrollerFlow.owns(action):stroller_flow.cleanup(id,action)
 	var prior:String=bound_member_id
 	_store_motion()
@@ -6461,6 +6504,7 @@ func on_action_started(action:Dictionary) -> void:
 		return
 	meal_flow.resolve(sim,action)
 	water_flow.resolve(sim,action)
+	toy_flow.resolve(sim,action)
 	stroller_flow.resolve(sim,action)
 	if not is_same(sim.get_current_action(),action):return
 	pending_action=action
@@ -6513,7 +6557,9 @@ func _cancel_blocked_action(generation:int,action:Dictionary,member_id:String=""
 	var prior:String=bound_member_id
 	_store_motion()
 	_bind_member(member_id)
-	if generation==route_generation and sim.get_current_action()==action:cancel_current_action()
+	if generation==route_generation and sim.get_current_action()==action:
+		chore_flow.successor_behind(sim,0)
+		cancel_current_action()
 	_store_motion()
 	_bind_member(prior)
 
@@ -6552,15 +6598,20 @@ func _answer_proposal(action:Dictionary) -> void:
 
 func on_action_finished(action:Dictionary) -> void:
 	if is_instance_valid(player):
-		player.speech(finish_line(action))
+		if not chore_flow.silent(action):player.speech(finish_line(action))
 		_answer_proposal(action)
 	var action_id:String=str(action.get("id",""))
+	# The tidy and the draw are real flows that finish their own work; an action
+	# that finished without having run one (a queued one that was never started by
+	# the flow) falls back to doing the job in one step.
 	if action_id=="take_pet_toy":
-		_lifelet_take_pet_toy(str(action.get("target_id","")))
+		if str(action.get("toy_stage",""))!="done":_lifelet_take_pet_toy(str(action.get("target_id","")))
 	elif action_id=="put_pet_toy":
-		_lifelet_put_pet_toy(str(action.get("target_id","")))
+		if str(action.get("toy_stage",""))!="done":_lifelet_put_pet_toy(str(action.get("target_id","")))
 	elif action_id=="play_with_pet_toy":
 		_lifelet_play_with_pet_toy(str(action.get("target_id","")))
+	elif action_id in LifeToyFlow.PLAY_ACTIONS and not loading_game:
+		toy_flow.scatter_after_play(bound_member_id,action)
 	# A mirror or dressing-table beat opens its own panel once the Lifelet has
 	# walked there and finished, so the click leads somewhere rather than only
 	# granting a moodlet.
@@ -6575,31 +6626,16 @@ func on_action_finished(action:Dictionary) -> void:
 		show_wardrobe_panel(str(action.target_id),kind)
 	refresh_hud()
 
-## Take one toy out of a toy box onto the floor beside it.
+## Take one toy out of a toy box onto the floor in front of it.
 func _lifelet_take_pet_toy(box_id:String) -> void:
-	var box:Dictionary=_find_item(box_id)
-	if box.is_empty():return
-	for item:Dictionary in world.items:
-		if str(item.get("box_id",""))!=box_id:continue
-		_pet_take_toy_from_box(item)
-		show_notice("A toy is out of the box, ready to play.")
-		return
-	show_notice("Every toy from this box is already out.")
+	if toy_flow.take_out_now(box_id):show_notice("A toy is out of the box, ready to play.")
+	else:show_notice("Every toy from this box is already out.")
 
-## Nest a floor toy back into the matching toy box.
+## Put a floor toy straight into the matching toy box.
 func _lifelet_put_pet_toy(toy_id:String) -> void:
-	var toy:Dictionary=_find_item(toy_id)
-	if toy.is_empty():return
-	var box_kind:String="cat_toy_box" if str(toy.kind)=="pet_toy_cat" else "dog_toy_box"
-	var box:Dictionary=world.closest_item(box_kind,Vector3(float(toy.get("x",0)),.16,float(toy.get("z",0))))
-	if box.is_empty():
-		show_notice("Place a matching toy box first.");return
-	toy["box_id"]=str(box.id)
-	toy["x"]=float(box.x);toy["z"]=float(box.z)
-	if is_instance_valid(toy.get("node")):
-		toy.node.position=Vector3(toy.x,LifeBuildingState.level_y(world.item_level(toy)),toy.z)
-		toy.node.visible=false
-	show_notice("Toy put back in the box.")
+	if _find_item(toy_id).is_empty():return
+	if toy_flow.put_away_now(toy_id):show_notice("Toy put back in the box.")
+	else:show_notice("Place a matching toy box with room first.")
 
 ## Play with the household pet that matches this toy, restoring fun for both.
 func _lifelet_play_with_pet_toy(toy_id:String) -> void:
@@ -6674,19 +6710,47 @@ func show_help() -> void:
 	paragraph("CAMERA   Mouse wheel to zoom · right-drag to orbit\n                  Shift-drag / WASD to pan · Q / E to rotate\nTIME          Space to pause · 1 / 2 / 3 for speed\nHOME       B for Build & buy · R to rotate furniture\nSAVE         F5 to save · F9 to continue your save\nMENU       Esc to close a panel or pause",Vector2(458,473),Vector2(514,164),15,P.MUTED,overlay)
 	button("Let's live",Vector2(458,659),Vector2(522,48),close_overlay,true,overlay)
 
-func _queue_kind(kind: String, action_id: String) -> void:
+## The best bed of this kind for this Lifelet to use for an action: one the sim
+## allows, that its approach reaches, preferring one nobody is using, then the
+## nearest. `reason` explains a refusal (or a missing bed) for a tooltip or notice.
+func _best_item_for(kind: String, action_id: String) -> Dictionary:
+	var best: Dictionary = {}
+	var best_cost: float = INF
+	var reason: String = ""
 	for item: Dictionary in world.items:
 		if str(item.kind) != kind: continue
-		if sim.queue_action(action_id, str(item.id), item.node.position):
-			close_overlay()
-			show_notice("%s." % str(sim.get_current_action().get("label", action_id)))
-			return
-	show_notice("That is not in the home yet.")
+		var availability: Dictionary = sim.get_action_availability(action_id, str(item.id))
+		if not bool(availability.available):
+			if reason.is_empty(): reason = str(availability.reason)
+			continue
+		var at: Vector3 = world.approach(item)
+		if not at.is_finite() or world.path_to(player.position, at).is_empty():
+			if reason.is_empty(): reason = "There is no clear way to the bed. Leave space around it."
+			continue
+		var cost: float = sim._autonomy_target_load(str(item.id)) * 100.0 + player.position.distance_to(item.node.position)
+		if cost < best_cost:
+			best = item; best_cost = cost
+	if best.is_empty() and reason.is_empty(): reason = "Buy a child's own bed in Build & buy first."
+	return {"item": best, "reason": reason}
+
+## Send this Lifelet to a bed of this kind the way a click on it would, so the walk
+## ends at the bed's own approach spot and the action starts from there.
+func _queue_kind(kind: String, action_id: String) -> void:
+	var pick: Dictionary = _best_item_for(kind, action_id)
+	if pick.item.is_empty():
+		show_notice(str(pick.reason)); return
+	var before: int = sim.action_queue.size()
+	queue_interaction(pick.item, action_id)
+	if sim.action_queue.size() > before:
+		close_overlay()
 
 func show_person() -> void:
 	close_overlay();overlay_open=true;dismiss_layer()
 	var toys_offered:bool=not water_flow.toy_options(bound_member_id).is_empty()
-	card(Vector2(492,167),Vector2(456,600 if toys_offered else 560),P.WHITE,24,overlay)
+	# A child's own bed row sits under the description, and the rest of the card
+	# moves down to make room rather than lying over the aspiration line.
+	var bed_shift:float=36.0 if str(sim.character.age_stage)=="child" else 0.0
+	card(Vector2(492,167),Vector2(456,(600 if toys_offered else 560)+bed_shift+40),P.WHITE,24,overlay)
 	small_caps("Your Lifelet",Vector2(525,191),Vector2(390,24),overlay)
 	# A degree earns a professional name: a PHD is addressed as Dr, whatever the
 	# job. The honorific sits in front of the Lifelet's own name, so it is read
@@ -6697,41 +6761,46 @@ func show_person() -> void:
 	personal_name.mouse_filter=Control.MOUSE_FILTER_PASS
 	text_label(LifeLifecycle.description(str(sim.character.age_stage),sim.lifecycle),Vector2(525,297),Vector2(385,22),12,P.MUTED,false,overlay)
 	if str(sim.character.age_stage)=="child":
-		button("Go to Bed",Vector2(525,328),Vector2(120,28),func():_queue_kind("child_bed","sleep"),false,overlay)
-		button("Relax",Vector2(650,328),Vector2(90,28),func():_queue_kind("child_bed","relax"),false,overlay)
-		button("Take a Nap",Vector2(746,328),Vector2(130,28),func():_queue_kind("child_bed","nap"),false,overlay)
-	text_label("Aspiration  ·  "+sim.character.aspiration,Vector2(525,320),Vector2(385,32),19,P.TEAL,false,overlay)
+		for entry:Array in [["Go to Bed","sleep",525.0,120.0],["Relax","relax",650.0,90.0],["Take a Nap","nap",746.0,130.0]]:
+			var bed_button:Button=button(str(entry[0]),Vector2(float(entry[2]),322),Vector2(float(entry[3]),28),_queue_kind.bind("child_bed",str(entry[1])),false,overlay)
+			bed_button.name="ChildBed_"+str(entry[1])
+			var usable:Dictionary=_best_item_for("child_bed",str(entry[1]))
+			bed_button.disabled=usable.item.is_empty()
+			bed_button.tooltip_text=str(usable.reason) if usable.item.is_empty() else "Walk to your own bed."
+	text_label("Aspiration  ·  "+sim.character.aspiration,Vector2(525,320+bed_shift),Vector2(385,32),19,P.TEAL,false,overlay)
 	if household and not household.heirlooms.is_empty():
 		var keepsake:Dictionary=household.inspect_keepsake(household.heirlooms.size()-1)
-		var keepsake_line:Label=text_label(str(keepsake.get("label","A keepsake")),Vector2(525,348),Vector2(385,22),12,P.MUTED,false,overlay)
+		var keepsake_line:Label=text_label(str(keepsake.get("label","A keepsake")),Vector2(525,348+bed_shift),Vector2(385,22),12,P.MUTED,false,overlay)
 		keepsake_line.tooltip_text=str(keepsake.get("note","A family keepsake you can hold and remember."))
 		keepsake_line.mouse_filter=Control.MOUSE_FILTER_PASS
 	var traits_text=""
 	for tr in sim.character.traits:traits_text+="•  "+tr+"\n"
-	paragraph(traits_text,Vector2(525,379),Vector2(384,135),21,P.INK,overlay)
+	paragraph(traits_text,Vector2(525,379+bed_shift),Vector2(384,135),21,P.INK,overlay)
 	if sim.moodlets.is_empty():
-		paragraph(sim.get_mood().description,Vector2(525,536),Vector2(380,65),16,P.MUTED,overlay)
+		paragraph(sim.get_mood().description,Vector2(525,536+bed_shift),Vector2(380,65),16,P.MUTED,overlay)
 	else:
 		for index:int in range(mini(2,sim.moodlets.size())):
 			var feeling:Dictionary=sim.moodlets[sim.moodlets.size()-1-index]
-			var label:Label=text_label("%s · %s" % [feeling.emotion,feeling.label],Vector2(525,534+index*35),Vector2(380,31),13,P.TEAL,false,overlay)
+			var label:Label=text_label("%s · %s" % [feeling.emotion,feeling.label],Vector2(525,534+bed_shift+index*35),Vector2(380,31),13,P.TEAL,false,overlay)
 			label.tooltip_text=str(feeling.description)+" · %d minutes" % int(feeling.remaining)
 	var has_school_history:bool=not sim.education.records.is_empty()
 	if not LifeLifecycle.next_stage(str(sim.character.age_stage)).is_empty():
-		button("Celebrate a birthday",Vector2(525,609),Vector2(184 if has_school_history else 386,29),show_birthday,false,overlay)
+		button("Celebrate a birthday",Vector2(525,609+bed_shift),Vector2(184 if has_school_history else 386,29),show_birthday,false,overlay)
 	if has_school_history:
-		button("School history",Vector2(726,609),Vector2(186,29),show_school_history,false,overlay)
+		button("School history",Vector2(726,609+bed_shift),Vector2(186,29),show_school_history,false,overlay)
 	# A household with pool toys lets this Lifelet be sent to one from here.
 	var toy_entry:Dictionary=_pool_toy_action(bound_member_id)
 	var toy_shift:float=0.0
 	if not toy_entry.is_empty():
 		toy_shift=40.0
-		var toy_button:Button=button("Use pool toy…",Vector2(525,649),Vector2(388,34),func():show_pool_toys(bound_member_id),false,overlay)
+		var toy_button:Button=button("Use pool toy…",Vector2(525,649+bed_shift),Vector2(388,34),func():show_pool_toys(bound_member_id),false,overlay)
 		toy_button.name="UsePoolToy"
 		toy_button.disabled=not bool(toy_entry.available)
 		toy_button.tooltip_text=str(toy_entry.get("unavailable_reason","")) if not bool(toy_entry.available) else str(toy_entry.description)
-	button("Family tree",Vector2(524,649+toy_shift),Vector2(179,48),show_family_tree,false,overlay)
-	button("Back to life",Vector2(717,649+toy_shift),Vector2(196,48),close_overlay,true,overlay)
+	ChoreUI.person_button(self,Vector2(525,649+bed_shift+toy_shift),bound_member_id)
+	toy_shift+=40.0
+	button("Family tree",Vector2(524,649+bed_shift+toy_shift),Vector2(179,48),show_family_tree,false,overlay)
+	button("Back to life",Vector2(717,649+bed_shift+toy_shift),Vector2(196,48),close_overlay,true,overlay)
 
 ## The "Use pool toy…" entry for one Lifelet's card or menu, or nothing while the
 ## household has no pool toy at all. It is present but disabled, with the reason,
@@ -7499,6 +7568,13 @@ func load_game(slot_id:String="") -> void:
 	else:
 		stroller_flow.restore()
 		tv_group.restore()
+		# A tidy or a draw that was saved part-way starts again from the walk to it.
+		for member:Dictionary in household.members:
+			var held:Dictionary=member.sim.get_current_action()
+			if not held.is_empty() and toy_flow.toy_action(held) and str(held.get("phase","")) in ["approach","active"]:
+				_bind_member(str(member.id))
+				toy_flow.restore(member.sim,held)
+		_bind_member(household.selected_id())
 		loading_game=false
 		_refresh_sim_targets(true,false)
 		_restore_resource_waits()
@@ -7511,6 +7587,8 @@ func load_game(slot_id:String="") -> void:
 	meal_flow.sync_world(false)
 	_reconstruct_paused_cooking()
 	_reconstruct_paused_rest()
+	# A chore saved part-done is painted mid-task, tool in hand, even while the game stays paused.
+	chore_flow.reconstruct_actors()
 	_sync_actor_sound()
 	show_notice("Welcome back, %s." % sim.character.name)
 
@@ -7633,9 +7711,11 @@ func _prepare_loaded_world(data:Dictionary) -> Dictionary:
 	candidate.traversal=LifeTraversal.new(candidate)
 	candidate.meal_flow=LifeMealFlow.new();candidate.meal_flow.app=candidate;candidate.add_child(candidate.meal_flow)
 	candidate.water_flow=LifeWaterFlow.new();candidate.water_flow.app=candidate;candidate.add_child(candidate.water_flow)
+	candidate.toy_flow=LifeToyFlow.new();candidate.toy_flow.app=candidate;candidate.add_child(candidate.toy_flow)
 	candidate.stroller_flow=LifeStrollerFlow.new();candidate.stroller_flow.app=candidate;candidate.add_child(candidate.stroller_flow)
 	candidate.tv_group=LifeTVGroup.new();candidate.tv_group.app=candidate;candidate.add_child(candidate.tv_group)
 	candidate.sanitation_flow=LifeSanitationFlow.new();candidate.sanitation_flow.app=candidate;candidate.add_child(candidate.sanitation_flow)
+	candidate.chore_flow=preload("res://scripts/chore_flow.gd").new();candidate.chore_flow.app=candidate;candidate.add_child(candidate.chore_flow)
 	for member:Dictionary in candidate.household.members:
 		var id:String=str(member.id)
 		candidate.spawn_actor(id,member.sim.character,LifeJourneyState.vector(data.journeys.members[id].position))
@@ -7673,6 +7753,7 @@ func _adopt_loaded_world(prepared:Dictionary,slot_id:String,title:String="") -> 
 	var candidate:Node=prepared.candidate
 	var old_world:LifeWorld=world;var old_household:LifeHousehold=household;var old_meal_flow:LifeMealFlow=meal_flow;var old_sanitation_flow:LifeSanitationFlow=sanitation_flow
 	var old_household_flow:LifeHouseholdFlow=household_flow
+	var old_chore_flow:Node=chore_flow
 	# Every fallible layout, route and actual pose operation finished above.
 	# Commit the prepared nodes/services together, then retire the old world.
 	loading_game=true;load_epoch+=1
@@ -7693,8 +7774,10 @@ func _adopt_loaded_world(prepared:Dictionary,slot_id:String,title:String="") -> 
 	_truck_seen_day=int(prepared.get("truck_seen_day",-1))
 	meal_flow=candidate.meal_flow;meal_flow.app=self;meal_flow.reparent(self,false)
 	sanitation_flow=candidate.sanitation_flow;sanitation_flow.app=self;sanitation_flow.reparent(self,false)
+	chore_flow=candidate.chore_flow;chore_flow.app=self;chore_flow.reparent(self,false)
 	household_flow=candidate.household_flow;household_flow.app=self;household_flow.reparent(self,false)
 	water_flow.reset()
+	toy_flow.reset()
 	tv_group.reset();tv_group.queue_free()
 	tv_group=candidate.tv_group;tv_group.app=self;tv_group.reparent(self,false)
 	stroller_flow.queue_free()
@@ -7719,7 +7802,7 @@ func _adopt_loaded_world(prepared:Dictionary,slot_id:String,title:String="") -> 
 	player.set_selected(true)
 	prepared.viewport.free();candidate.free()
 	stage=null;preview=null
-	old_world.visible=false;old_world.queue_free();old_household.queue_free();old_meal_flow.queue_free();old_sanitation_flow.queue_free();old_household_flow.queue_free()
+	old_world.visible=false;old_world.queue_free();old_household.queue_free();old_meal_flow.queue_free();old_sanitation_flow.queue_free();old_household_flow.queue_free();old_chore_flow.queue_free()
 	loading_game=false;_sync_actor_sound();sync_pets();sync_post();_sync_safety();draw_live()
 	for member:Dictionary in household.members:
 		var action:Dictionary=member.sim.get_current_action()
@@ -7737,6 +7820,7 @@ func _restore_journeys() -> Dictionary:
 	# an action. All body positions and stair owners are already installed.
 	meal_flow.sync_world(false)
 	sanitation_flow.sync_world(false)
+	chore_flow.rebuild_stations(true)
 	household.register_targets(world.simulation_targets(),false)
 	for member:Dictionary in household.members:
 		var id:String=str(member.id);var motion:Dictionary=motion_states[id]
@@ -7758,9 +7842,11 @@ func _restore_journeys() -> Dictionary:
 		motion.resume_active=bool(saved.get("resource_action_active",false)) and str(current.get("phase",""))=="approach"
 		member.sim.meal_service=meal_flow
 		member.sim.water_service=water_flow
+		member.sim.toy_service=toy_flow
 		member.sim.stroller_service=stroller_flow
 		member.sim.tv_service=tv_group
 		member.sim.sanitation_service=sanitation_flow
+		member.sim.chore_service=chore_flow
 		member.sim.household_service=household_flow
 		if str(current.get("phase","")) in ["approach","active"] and str(current.get("id","")) in ["plant_wee","mop_puddle"]:
 			var target_error:String=sanitation_flow.restore_action_error(id,current)
@@ -7770,6 +7856,11 @@ func _restore_journeys() -> Dictionary:
 		if not current.is_empty() and water_flow.toy_action(current) and str(current.get("phase","")) in ["approach","active"]:
 			current["phase"]="approach";current["toy_stage"]="fetch"
 			water_flow.resolve(member.sim,current)
+		# A tidy or a draw from the toy box likewise starts over from the walk to it.
+		if not current.is_empty() and toy_flow.toy_action(current) and str(current.get("phase","")) in ["approach","active"]:
+			if not toy_flow.restore(member.sim,current):current=member.sim.get_current_action()
+			# The route saved with it led to wherever the old stage was going; walk to the toy afresh.
+			elif traversal.active(id):traversal.cancel(id)
 		if not current.is_empty() and str(current.phase)=="approach" and not work_commute.owns(current) and not traversal.active(id) and not motion.waiting and not member.sim.is_away():
 			var built:Dictionary=traversal.request(id,current.target_position)
 			if not bool(built.ok):
@@ -7794,6 +7885,7 @@ func _restore_journeys() -> Dictionary:
 	meal_flow.sync_world(false)
 	sanitation_flow.sync_world(false)
 	sanitation_flow.reconstruct_actors()
+	chore_flow.reconstruct_actors()
 	return {"ok":true}
 
 func _reconstruct_paused_cooking() -> void:
@@ -8031,6 +8123,7 @@ func _process(delta:float) -> void:
 		# refilled once per day rather than checked every frame.
 		if household.day!=day_before:sync_post()
 		sanitation_flow.sync_world()
+		chore_flow.sync_world(delta)
 		for member:Dictionary in household.members:member.sim.autonomy=autonomy_values[member.id]
 		idle_space.update(delta)
 		world.daylight(household.minutes)
@@ -8055,6 +8148,7 @@ func _process(delta:float) -> void:
 				var shared:Dictionary=household.cooperative_presentation(bound_member_id)
 				if bool(shared.get("ready",false)) and str(shared.get("role",""))=="learner":action_id="homework_wait"
 			water_flow.advance(bound_member_id,delta)
+			toy_flow.advance(bound_member_id,delta)
 			stroller_flow.advance(bound_member_id,delta)
 			meal_flow.present_actor(bound_member_id)
 			_update_activity_facing(delta,action,action_id)
@@ -8634,6 +8728,11 @@ func _update_activity_facing(delta:float,action:Dictionary,action_id:String) -> 
 			var toward:Vector3=tray.node.position-player.position
 			player.set_activity_anchor(player.position,atan2(toward.x,toward.z),"standing",action_id,{"care_target":tray.node.position+Vector3(0,.12,0)})
 		return
+	if action_id.begins_with("chore_"):
+		var chore_anchor:Dictionary=chore_flow.anchor(bound_member_id,action)
+		if not chore_anchor.is_empty():
+			player.set_activity_anchor(chore_anchor.position,chore_anchor.yaw,"standing",action_id,chore_anchor)
+			return
 	var care:Dictionary=care_motion().anchor(bound_member_id,action,action_id,delta)
 	if not care.is_empty():
 		player.set_activity_anchor(care.position,care.yaw,"standing",action_id,care)
@@ -8668,6 +8767,7 @@ func _update_activity_facing(delta:float,action:Dictionary,action_id:String) -> 
 		if action_id=="cook":landmarks.merge({"recipe":str(action.get("recipe","")),"cooking_position":action.target_position})
 		if action_id=="mop_puddle" or str(item.get("kind",""))=="child_desk":landmarks["standing_position"]=action.target_position
 		if action.has("seat_slot"):landmarks["seat_slot"]=str(action.seat_slot)
+		if action.has("study_seat"):landmarks["study_seat"]=str(action.study_seat)
 		if action.has("swim_lane"):landmarks["swim_lane"]=int(action.swim_lane)
 		var anchor:Dictionary=world.activity_anchor(item,action_id,landmarks)
 		if attention is Vector3:anchor["attention_target"]=attention
@@ -8827,6 +8927,10 @@ func _resolve_activity_target(action:Dictionary,keep_committed_endpoint:bool=fal
 		action.target_position=world.actors[str(action.target_id)].position+Vector3(0,0,.9)
 		return
 	var item:Dictionary=_find_item(str(action.target_id))
+	# Homework, drawing and the like at a child desk or dining table are done
+	# sitting down: give the pupil a chair nobody else has, and walk to behind it.
+	if not item.is_empty() and str(action.id) in LifeWorld.STUDY_ACTIONS and str(item.kind) in LifeWorld.STUDY_KINDS and not action.has("cooperation_id"):
+		_assign_study_seat(action,item);return
 	# The route is cleared just before this runs. A caller that already matched
 	# this approach to that route asks us to keep the endpoint: naming a bed
 	# half would move a saved Sleep the moment Build drops its courtesy hold.
@@ -8857,6 +8961,24 @@ func _resolve_activity_target(action:Dictionary,keep_committed_endpoint:bool=fal
 		action.target_id=best.id
 		action.target_position=world.approach(best)
 		if world.seat_capacity(best)>1:_assign_seat_slot(action,best)
+
+## Give this pupil the chair at a child desk or table that nobody else has, and
+## send them to a free spot behind it. With no chair that faces it, they stand at
+## the furnishing as before (`study_seat` is then absent).
+func _assign_study_seat(action:Dictionary,item:Dictionary) -> void:
+	action.erase("study_seat")
+	var taken:Array=[]
+	for member:Dictionary in household.members:
+		if str(member.id)==bound_member_id:continue
+		for other:Dictionary in member.sim.action_queue:
+			for key:String in ["study_seat","meal_seat"]:
+				if not str(other.get(key,"")).is_empty():taken.append(str(other[key]))
+	var chair:Dictionary=world.study_chair(item,taken)
+	if chair.is_empty():return
+	var stand:Vector3=world.study_stand_point(chair)
+	if not stand.is_finite():return
+	action["study_seat"]=str(chair.id)
+	action.target_position=stand
 
 ## Give this Lifelet one of a furnishing's own places. How many places it has is
 ## the catalogue's own seat count for the size that was bought, so a large garden
@@ -9002,8 +9124,15 @@ func _activity_resources(action:Dictionary) -> Array[String]:
 	elif str(item.kind) in LifeTVGroup.WATER and str(action.get("id",""))=="enjoy_outdoors":
 		resources.append(target_id+":water:"+str(int(action.get("swim_lane",0))))
 	else:
-		for resource_id:String in world.activity_resource_ids(item,str(action.get("seat_slot",""))):
-			resources.append(resource_id)
+		var study_seat:String=str(action.get("study_seat",""))
+		if not study_seat.is_empty() and str(item.kind)=="dining":
+			# Pupils share a table on their own chairs; it is the chair that is taken.
+			resources.append(study_seat)
+		else:
+			for resource_id:String in world.activity_resource_ids(item,str(action.get("seat_slot",""))):
+				resources.append(resource_id)
+			if not study_seat.is_empty():resources.append(study_seat)
+	resources.append_array(chore_flow.extra_resources(action))
 	if action.has("target_position"):
 		var at:Vector3=action.target_position
 		var cell:Vector2i=Vector2i(roundi(at.x*2),roundi(at.z*2))

@@ -427,18 +427,14 @@ func _car() -> void:
 	if app.mode != "build": app.set_build_mode(true)
 	await frames(2)
 	var parked_at := Vector3.INF
-	for radius: int in range(0, 40):
-		for x: int in range(-radius, radius + 1):
-			for z: int in range(-radius, radius + 1):
-				if maxi(abs(x), abs(z)) != radius: continue
-				var at := Vector3(float(x) * .5, .16, float(z) * .5)
-				if app.world.can_place("car", at, 90.0, "estate", "medium"):
-					parked_at = at; break
-			if parked_at.is_finite(): break
-		if parked_at.is_finite(): break
+	# A car parked in a room has no way to the road and refuses the trip, so the
+	# estate stands in the yard, facing the street, where a driveway can reach it.
+	for yard: Vector3 in [Vector3(-12, .16, 3), Vector3(12, .16, 3), Vector3(-12, .16, -3), Vector3(12, .16, -3)]:
+		if app.world.can_place("car", yard, 0.0, "estate", "medium"):
+			parked_at = yard; break
 	check(parked_at.is_finite(), "There is room on the lot for an estate car.")
 	if not parked_at.is_finite(): return
-	app.on_placement("car", parked_at, 90.0, "estate", "medium")
+	app.on_placement("car", parked_at, 0.0, "estate", "medium")
 	await frames(3)
 	app.set_build_mode(false)
 	await frames(2)

@@ -2,6 +2,7 @@ extends Node
 class_name LifeSim
 ## Deterministic single-household simulation. The world owns movement and calls tick.
 
+const ChoreDefs = preload("res://scripts/chore_defs.gd")
 signal changed()
 signal action_started(action: Dictionary)
 signal action_finished(action: Dictionary)
@@ -10,7 +11,11 @@ var meal_service: Node
 var stroller_service: Node
 var tv_service: Node
 var water_service: Node
+## The tidying and taking out of toys (`LifeToyFlow`), when the world provides one.
+var toy_service: Node
 var sanitation_service: Node
+## The household cleaning service (chore_flow.gd): dirt, stations and the chain of chores.
+var chore_service: Node
 var household_service: Node
 ## Optional live kitchen: answers whether the household has food, and takes a
 ## meal out of the fridge when a recipe or a snack is cooked. A standalone
@@ -517,8 +522,8 @@ func _build_actions() -> void:
 	_define("feed_baby_food", "Get Baby Food", 30.0, {"social": 10.0, "fun": 8.0, "energy": -4.0}, 0, "parenting", 24.0, "Take a jar from the fridge and spoon-feed the baby. A proper meal, and a messy face afterwards.")
 	_define("pet_feed", "Feed Dog", 15.0, {"social": 6.0}, 0, "parenting", 8.0, "Pick up the food and pour kibble into the bowl. Fills the dog's hunger.")
 	_define("pet_play", "Play with Dog", 30.0, {"fun": 18.0, "social": 14.0, "energy": -6.0}, 0, "fitness", 10.0, "Play until you are both out of breath.")
-	_define("take_pet_toy", "Take a toy", 8.0, {"fun": 4.0}, 0, "", 0.0, "Lift a toy out of the toy box onto the floor, ready to play.")
-	_define("put_pet_toy", "Put toy away", 8.0, {"fun": 2.0}, 0, "", 0.0, "Pick this toy up and nest it back in its toy box.")
+	_define("take_pet_toy", "Take a toy", 1.0, {"fun": 4.0}, 0, "", 0.0, "Lift a toy out of the toy box onto the floor, ready to play.")
+	_define("put_pet_toy", "Put toy away", 1.0, {"fun": 2.0}, 0, "", 0.0, "Pick this toy up, carry it to its toy box and set it in.")
 	_define("play_with_pet_toy", "Play with a pet", 30.0, {"fun": 18.0, "social": 14.0, "energy": -6.0}, 0, "fitness", 10.0, "Take this toy and play with the household pet that matches it.")
 	_define("pet_tug", "Tug-of-war", 22.0, {"fun": 24.0, "social": 14.0, "energy": -8.0}, 0, "fitness", 14.0, "Grab the rope toy and pull. Dog and Lifelet both love it.")
 	_define("pet_teach_trick", "Play Tricks", 35.0, {"fun": 20.0, "social": 12.0, "energy": -4.0}, 0, "logic", 26.0, "Hand signals and cues for the next trick. Builds the pet's trick skill.")
@@ -554,6 +559,9 @@ func _build_actions() -> void:
 	# bookshelf is the cheap route and the computer the final one.
 	for skill_name: String in SKILL_NAMES:
 		_define("computer_"+skill_name, "Master %s on the computer" % skill_name.capitalize(), 120.0, {"fun": 4.0, "energy": -14.0}, 0, skill_name, 70.0, "Concentrated study of %s at the computer. This is the only way to reach level 10." % skill_name.capitalize())
+	# Household cleaning: one action per kind of chore; the service binds length and effects.
+	for chore_id: String in ChoreDefs.IDS:
+		_define(chore_id, ChoreDefs.label(chore_id), 8.0, {}, 0, "", 0.0, str(ChoreDefs.definition(chore_id).get("description", "")))
 
 
 func _define(id: String, label: String, duration: float, changes: Dictionary, cost: int, skill: String, xp: float, description: String) -> void:
@@ -630,6 +638,7 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		"pet": ids = ["pet_feed", "pet_pet", "pet_tummy_rub", "pet_play", "pet_tug", "pet_teach_trick", "pet_walk", "pet_train", "pet_train_social", "pet_train_logic", "bathe_pet"]
 		"cat_toy_box", "dog_toy_box": ids = ["take_pet_toy"]
 		"pet_toy_cat", "pet_toy_dog": ids = ["put_pet_toy", "play_with_pet_toy"]
+		"kids_toy": ids = ["put_pet_toy"]
 		# Baby care. The changing table is where a nappy is changed, the toys are
 		# what play happens on, and the cot is where a cuddle happens without a
 		# toy in hand. Each is offered only when a baby is in the household.
@@ -673,7 +682,9 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 		ids.append("drive_to_work")
 	if str(character.age_stage) == "child" and kind in ["desk", "dining", "table", "coffee_table"]:
 		var study: Array = ["child_desk_study", "read"]
-		if minutes >= 900.0 or int(education.get("last_attendance_day", 0)) == day:
+		# Homework is done sitting down: at the study desk or a dining table. A
+		# low table or coffee table has nowhere to sit, so it offers none.
+		if kind in ["desk", "dining"] and (minutes >= 900.0 or int(education.get("last_attendance_day", 0)) == day):
 			study.push_front("homework")
 		# A child at the study desk keeps its online classes and skill study and
 		# gains the children's choices; elsewhere the table offers only those.
@@ -682,8 +693,12 @@ func get_actions_for(kind: String, target_id: String = "") -> Array:
 				if not ids.has(extra): ids.append(extra)
 		else:
 			ids = study
+	elif str(character.age_stage) == "teen" and kind == "dining" and (minutes >= 900.0 or int(education.get("last_attendance_day", 0)) == day) and not ids.has("homework"):
+		ids.append("homework")
 	if LifeWetness.is_soft_seat(kind) and (wetness > 0.0 or not towel.is_empty()) and not ids.has(LifeWetness.DRY_SIT_ID):
 		ids.append(LifeWetness.DRY_SIT_ID)
+	for chore_id: String in ChoreDefs.menu_for(kind):
+		if not ids.has(chore_id): ids.append(chore_id)
 	var result: Array = []
 	for id: String in ids:
 		var data: Dictionary = _actions[id].duplicate(true)
@@ -919,6 +934,19 @@ func _begin_school_departure(action: Dictionary) -> void:
 	_emit_notice("%s has left for school and will be home after 15:00." % str(character.name))
 
 
+## The active school_day action an away record describes. Saves written while a
+## pupil was away after taking the bus carry the absence but not its action.
+func _school_departure_from_away(away: Dictionary) -> Dictionary:
+	var departure: Dictionary = _actions["school_day"].duplicate(true)
+	var duration: float = 900.0 - float(away.departure_minutes)
+	departure["target_kind"] = "lot_exit"
+	departure.merge({"target_id": str(away.exit_id), "target_position": away.exit_position, "phase": "active", "paid": true,
+		"started_day": int(away.departure_day), "started_minutes": float(away.departure_minutes), "elapsed": 0.0, "progress": 0.0,
+		"duration": duration, "autonomous": false}, true)
+	for need: String in departure.changes: departure.changes[need] = float(departure.changes[need]) * duration / 420.0
+	return departure
+
+
 func _away_meal() -> void:
 	# School and a work shift include a meal, and so does the walk home. Hunger
 	# decay across those hours otherwise leaves a pupil or worker on empty, and
@@ -953,9 +981,10 @@ func _tick_away(_game_minutes: float) -> void:
 		request_return_home()
 		return
 	if action_queue.is_empty():
-		# An absence with no action to progress cannot advance; the household
-		# owns the return, so nothing is silently stranded here.
-		return
+		# A school day whose action went missing is rebuilt from the away record,
+		# so the pupil still comes home at 15:00 with the day's attendance.
+		if str(away_state.activity) != "school": return
+		action_queue.push_front(_school_departure_from_away(away_state))
 	var action: Dictionary = action_queue[0]
 	var elapsed: float = clampf(minutes-float(away_state.departure_minutes),0.0,float(action.duration))
 	var gained: float = maxf(0.0,elapsed-float(action.elapsed))
@@ -1140,6 +1169,7 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 	if id == "drive_to_work":
 		var reason: String = str(get_action_availability(id, target_id).reason)
 		if not reason.is_empty(): _emit_notice(reason); return false
+	if ChoreDefs.is_chore(id) and is_instance_valid(chore_service):return chore_service.request(self,id,target_id,target_position)
 	if id=="arrive_home":return false # Only the validated household transaction creates arrival.
 	if id=="career_day":
 		var problem:String=_career_departure_error(target_id)
@@ -1268,6 +1298,23 @@ func queue_action(id: String, target_id: String = "", target_position: Vector3 =
 	return true
 
 
+## Queue an action a service has already bound (a chore with its own length and effects).
+func enqueue_prepared(action: Dictionary) -> bool:
+	if action_queue.size() >= MAX_QUEUE:
+		_emit_notice("Your action queue is full. Finish or cancel an activity first.")
+		return false
+	if not action_queue.is_empty() and str(action_queue[0].id) in ["school_day","career_day"] and bool(action_queue[0].get("autonomous",false)) and not is_away():cancel_action()
+	action_queue.append(action)
+	_idle_minutes = 0.0
+	if action_queue.size() == 1:_start_front()
+	_emit_changed()
+	return true
+
+## The next task of a round goes to the front as the finished one clears, so the queue is
+## never empty between them and nobody walks off.
+func push_chain_action(action: Dictionary) -> void:
+	action_queue.push_front(action)
+
 func get_current_action() -> Dictionary:
 	return {} if action_queue.is_empty() else action_queue[0]
 
@@ -1278,6 +1325,7 @@ func begin_current_action() -> void:
 		return
 	var action: Dictionary = action_queue[0]
 	if str(action.id) in ["arrive_home", "drive_to_work"]:return # Physical arrival is confirmed by the controller.
+	if action.has("chore") and is_instance_valid(chore_service) and not chore_service.before_begin(self,action):return
 	if str(action.id)=="career_day":
 		_begin_career_departure(action)
 		return
@@ -1303,6 +1351,7 @@ func begin_current_action() -> void:
 			_emit_notice(sanitation_reason);cancel_action();return
 	if is_instance_valid(meal_service) and not meal_service.before_begin(self,action):return
 	if is_instance_valid(water_service) and not water_service.before_begin(self,action):return
+	if is_instance_valid(toy_service) and not toy_service.before_begin(self,action):return
 	if is_instance_valid(stroller_service) and not stroller_service.before_begin(self,action):return
 	if is_instance_valid(tv_service) and not tv_service.before_begin(self,action):return
 	var cost: int = int(action["cost"])
@@ -1561,11 +1610,20 @@ func cancel_action(index: int = 0) -> void:
 	if action_queue[index].has("cooperation_id") and is_instance_valid(cooperation_owner):
 		cooperation_owner.cancel_cooperative_action(cooperation_member_id)
 		return
-	if is_instance_valid(meal_service):meal_service.canceled(self,action_queue[index])
-	var left_water: bool = index == 0 and str(action_queue[index].get("phase", "")) == "active" and str(action_queue[index].get("id", "")) == LifeOutdoorActs.ACTION_ID and LifeWetness.is_water_kind(_target_kind_of(str(action_queue[index].get("target_id", ""))))
-	if is_instance_valid(water_service):water_service.canceled(self,action_queue[index])
-	if is_instance_valid(stroller_service):stroller_service.canceled(self,action_queue[index])
-	action_queue.remove_at(index)
+	var cancelled: Dictionary = action_queue[index]
+	if is_instance_valid(meal_service):meal_service.canceled(self,cancelled)
+	var left_water: bool = index == 0 and str(cancelled.get("phase", "")) == "active" and str(cancelled.get("id", "")) == LifeOutdoorActs.ACTION_ID and LifeWetness.is_water_kind(_target_kind_of(str(cancelled.get("target_id", ""))))
+	if is_instance_valid(water_service):water_service.canceled(self,cancelled)
+	if is_instance_valid(toy_service):toy_service.canceled(self,cancelled)
+	if is_instance_valid(stroller_service):stroller_service.canceled(self,cancelled)
+	if is_instance_valid(chore_service):chore_service.canceled(self,cancelled)
+	# A service may have refreshed the world's targets under this call, which cancels an
+	# action whose target is gone: take out only the very action asked for, and only if it
+	# is still there.
+	for position: int in range(action_queue.size()):
+		if is_same(action_queue[position], cancelled):
+			action_queue.remove_at(position)
+			break
 	if left_water:
 		_leave_water()
 	if index == 0:
@@ -1598,7 +1656,8 @@ func set_speed(value: int) -> void:
 func register_targets(targets: Array, reconcile:bool=true) -> void:
 	_targets.clear()
 	for entry: Variant in targets:
-		if entry is Dictionary and entry.has("id") and entry.has("kind") and entry.get("position") is Vector3:
+		# Cleaning stations are the controller's to resolve, not a thing to choose from: they are not copied in.
+		if entry is Dictionary and entry.has("id") and entry.has("kind") and entry.get("position") is Vector3 and entry.kind != "chore_station":
 			_targets.append(entry.duplicate(true))
 	if reconcile:_prune_school_actions()
 
@@ -1899,7 +1958,14 @@ func _finish_front() -> void:
 				exit_position = target.position
 				break
 		if not exit_id.is_empty() and _school_departure_error(exit_id).is_empty() and float(needs.hunger) >= 12.0 and float(needs.energy) >= 12.0 and float(needs.bladder) >= 12.0:
-			_begin_school_departure({"id": "school_day", "target_id": exit_id, "target_position": exit_position, "changes": {}, "autonomous": bool(action.get("autonomous", false))})
+			# The school day is a real action at the front of the queue, exactly as
+			# on the walk to the neighbourhood exit: it is what ends the day at
+			# 15:00, brings the pupil home and lets a save of the day load.
+			var departure: Dictionary = _actions["school_day"].duplicate(true)
+			departure["target_kind"] = "lot_exit"
+			departure.merge({"target_id": exit_id, "target_position": exit_position, "phase": "approach", "elapsed": 0.0, "progress": 0.0, "paid": false, "autonomous": bool(action.get("autonomous", false))}, true)
+			action_queue.push_front(departure)
+			_begin_school_departure(departure)
 		else:
 			_emit_notice("%s boards the school bus." % str(character.name).split(" ")[0])
 	elif id == "birthday":
@@ -2061,6 +2127,7 @@ func _finish_front() -> void:
 	action["phase"] = "finished"
 	if is_instance_valid(meal_service):meal_service.finished(self,action)
 	if is_instance_valid(sanitation_service):sanitation_service.finished(self,action)
+	if is_instance_valid(chore_service):chore_service.finished(self,action)
 	if not whims.is_empty():
 		var w_res: Dictionary = LifeWantsManager.evaluate_action(whims, id)
 		if bool(w_res.get("fulfilled", false)):
@@ -2199,7 +2266,7 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 	if is_instance_valid(stroller_service) and stroller_service.passenger(self):return {"available":false,"reason":"This child is out for a stroller walk."}
 	var reason: String = ""
 	if id == "clean_litter_tray":
-		if str(character.age_stage) not in ["teen", "young_adult", "adult"]: return {"available": false, "reason": "Only teens, young adults and adults can clean litter trays."}
+		if str(character.age_stage) not in ["teen", "young_adult", "adult", "elder"]: return {"available": false, "reason": "Only teens, adults and elders can clean litter trays."}
 		if not is_instance_valid(household_service): return {"available": false, "reason": "Choose a litter tray at home."}
 		reason = household_service.action_availability(self, id, target_id)
 		if not reason.is_empty(): return {"available": false, "reason": reason}
@@ -2243,7 +2310,8 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 	var stage_reason: String = LifeStagePolicy.action_error(str(character.age_stage), str(character.life_stage), id)
 	if not stage_reason.is_empty():
 		return {"available":false, "reason":stage_reason}
-	if id in ["sleep", "nap"]:
+	# A child's bed is for a child to relax on too, and no one else.
+	if id in ["sleep", "nap"] or (id == "relax" and _target_kind_of(target_id) == "child_bed" and str(character.age_stage) != "child"):
 		var bed_reason: String = _rest_bed_reason(target_id)
 		if not bed_reason.is_empty():
 			return {"available":false, "reason":bed_reason}
@@ -2268,7 +2336,7 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 		var wet_reason: String = _drying_reason(id, target_id)
 		if not wet_reason.is_empty():
 			return {"available":false, "reason":wet_reason}
-	if is_spirit() and (id in SPIRIT_BLOCKED or id == LifeBabyPlan.ACTION_ID):
+	if is_spirit() and (id in SPIRIT_BLOCKED or id == LifeBabyPlan.ACTION_ID or ChoreDefs.is_chore(id)):
 		return {"available":false, "reason":"A spirit has finished that chapter of life."}
 	# A bicycle's own entry names the ages that fit it, and a helmet must really
 	# stand in the home. The rule is stated plainly: you must wear one to ride.
@@ -2297,6 +2365,8 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 			reason = "%s is already at level 10. This Lifelet has mastered it." % mastery_skill.capitalize()
 	elif is_instance_valid(household_service) and id in LifeHouseholdFlow.SERVICE_ACTIONS:
 		reason=household_service.action_availability(self,id,target_id)
+	elif ChoreDefs.is_chore(id) and is_instance_valid(chore_service):
+		reason = chore_service.action_availability(self, id, target_id)
 	elif id == "cook" and str(character.age_stage) == "child":
 		reason = "Children can grab a snack. An older Lifelet can use the stove."
 	elif id == "jog" and str(character.age_stage) == "child":
@@ -3421,12 +3491,15 @@ func _autonomy_target_for(id:String,excluded_target_ids:Array=[]) -> Dictionary:
 		# A bookshelf hosts homework first so desks stay open for classes and
 		# home shifts, but a busy shelf must still yield to an idle desk:
 		# one queued assignment is a longer wait than the protection is worth.
-		if id=="homework" and str(target.kind) in ["desk","computer"]:cost+=15.0
+		if id=="homework":cost+=_homework_bias(target)
 		# A free slide, swing or climbing frame beats a pool when a child is choosing play.
 		if id == LifeOutdoorActs.ACTION_ID and str(character.age_stage) == "child" and str(target.kind) not in CHILD_SOLO_OUTDOOR:
 			cost += 30.0
-		if cost<lowest:
-			lowest=cost;selected={"id":id,"target_id":str(target.id),"position":target.position,"load":cost}
+		# A free child's bed beats an equally free sofa when a child is tired, so a
+		# weekday nap is taken in their own bed rather than wherever is listed first.
+		var rank:float=cost-(.5 if id in ["nap","sleep"] and str(target.kind)=="child_bed" and str(character.age_stage)=="child" else 0.0)
+		if rank<lowest:
+			lowest=rank;selected={"id":id,"target_id":str(target.id),"position":target.position,"load":cost}
 	return selected
 
 func _record_autonomy_contact(target:String,id:String) -> void:
@@ -3709,10 +3782,20 @@ func _autonomous_choice(excluded_target_ids:Array=[]) -> Dictionary:
 		if float(needs[need])>=52.0:break
 		var choice:Dictionary=_autonomy_need_choice(need,excluded_target_ids)
 		if not choice.is_empty():return choice
+	# Due homework with nowhere to do it (no desk, child desk, table with a chair or
+	# shelf) must not leave the pupil standing idle for the evening: they play, once what
+	# they need first has been seen to.
+	if duty=="homework" and _autonomy_target_for("homework",excluded_target_ids).is_empty():
+		var play:Dictionary=_autonomy_need_choice("fun",excluded_target_ids)
+		if not play.is_empty():return play
 	# Housekeeping is an idle choice only, after ordinary needs, school/work
 	# preparation and current responsibilities. Explicit queues remain untouched.
-	if duty.is_empty() and preparing.is_empty() and is_instance_valid(meal_service):
-		return meal_service.autonomous_cleanup_choice(self,excluded_target_ids)
+	if duty.is_empty() and preparing.is_empty():
+		var tidying:Dictionary={}
+		if is_instance_valid(meal_service):tidying=meal_service.autonomous_cleanup_choice(self,excluded_target_ids)
+		if tidying.is_empty() and is_instance_valid(toy_service):tidying=toy_service.autonomous_tidy_choice(self,excluded_target_ids)
+		if tidying.is_empty() and is_instance_valid(chore_service):tidying=chore_service.autonomous_choice(self,excluded_target_ids)
+		return tidying
 	return {}
 
 func _commute_choice(duty: String, excluded_target_ids: Array) -> Dictionary:
@@ -4420,6 +4503,16 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 		if state.get("away_state") is Dictionary and str(state.away_state.get("activity",""))=="career":
 			state.away_state.shift="day"
 			state.away_state.salary=state.career.salary
+	# A save written while a pupil was away after taking the bus has the absence
+	# but not the school day it belongs to: restore the day so it can end.
+	if state.get("away_state") is Dictionary and str(state.away_state.get("activity", "")) == "school" and str(state.away_state.get("phase", "")) == "away" \
+			and state.action_queue.filter(func(entry: Variant) -> bool: return entry is Dictionary and str(entry.get("id", "")) == "school_day").is_empty():
+		var away: Dictionary = state.away_state
+		if away.has("departure_minutes") and away.has("exit_id") and away.has("exit_position") and away.has("departure_day"):
+			var rebuilt: Dictionary = _school_departure_from_away(away)
+			rebuilt["elapsed"] = clampf((float(state.day) - float(away.departure_day)) * 1440.0 + float(state.get("minutes", 0.0)) - float(away.departure_minutes), 0.0, float(rebuilt.duration))
+			rebuilt["progress"] = float(rebuilt.elapsed) / float(rebuilt.duration)
+			state.action_queue.push_front(rebuilt)
 	# Validate everything before touching the live household.
 	var error: String = _validate_state(state)
 	if not error.is_empty():
@@ -4575,13 +4668,14 @@ func restore_state(state: Dictionary, allow_cooperation: bool = false) -> Dictio
 		if str(action.id) == LifeOutdoorActs.ACTION_ID and LifeOutdoorActs.is_outdoor_act(str(stored.get("target_kind", ""))):
 			var kept: Dictionary = _outdoor_definition(action, str(stored.target_kind))
 			for key: String in ["label", "changes", "skill", "xp", "description"]: action[key] = kept[key]
-		for key: String in ["cooperation_id","cooperation_role","meal_source","meal_stage","meal_plate","meal_seat","seat_slot"]:
+		for key: String in ["cooperation_id","cooperation_role","meal_source","meal_stage","meal_plate","meal_seat","seat_slot","study_seat"]:
 			if stored.has(key): action[key] = str(stored[key])
 		if stored.has("stroller"): action["stroller"] = stored.stroller.duplicate(true)
 		if stored.has("tv"): action["tv"] = stored.tv.duplicate(true)
 		if stored.has("commute"): action["commute"] = stored.commute.duplicate(true)
+		if stored.has("chore"): ChoreDefs.restore_action(action, stored)
 		if stored.has("swim_lane"): action["swim_lane"] = int(stored.swim_lane)
-		if stored.has("toy_stage") and str(stored.toy_stage) in ["fetch", "pickup", "carry", "enter", "swim"]: action["toy_stage"] = str(stored.toy_stage)
+		if stored.has("toy_stage") and str(stored.toy_stage) in ["fetch", "pickup", "carry", "enter", "swim", "draw", "place", "done"]: action["toy_stage"] = str(stored.toy_stage)
 		if stored.has("cooperation_primary"): action["cooperation_primary"] = bool(stored.cooperation_primary)
 		if stored.has("partner_id"): action["partner_id"] = str(stored.partner_id)
 		if stored.has("meal_standing"): action["meal_standing"] = stored.meal_standing
@@ -4937,6 +5031,8 @@ func _validate_state(state: Dictionary) -> String:
 		if action.has("stroller"):
 			var stroller_error:String=LifeStrollerFlow.save_error(action)
 			if not stroller_error.is_empty():return stroller_error
+		var chore_error:String=ChoreDefs.save_error(action)
+		if not chore_error.is_empty():return chore_error
 		if action_id in ["plant_wee","mop_puddle"]:
 			var expected:Dictionary=_actions[action_id]
 			if not action.get("target_id") is String or str(action.target_id).is_empty() or action.get("cost")!=0 or not action.get("paid") is bool or not action.get("autonomous") is bool or not _number_in_range(action.get("duration"),float(expected.duration),float(expected.duration)) or not _number_in_range(action.get("elapsed"),0.0,float(expected.duration)) or str(action.get("phase","")) not in ["queued","approach","active"]:
@@ -5026,7 +5122,7 @@ func _validate_state(state: Dictionary) -> String:
 		# Recipes and off-lot schedules validate their derived duration separately.
 		# Ordinary activities keep their authored duration, including the explicit
 		# shorter Active nap. The ordinary 75-minute nap remains a valid old state.
-		if action_id not in ["cook","school_day","career_day"]:
+		if action_id not in ["cook","school_day","career_day"] and not ChoreDefs.is_chore(action_id):
 			var expected_duration:float=float(_actions[action_id].duration)
 			# A swim, a soak or a float is as long as the furnishing it was queued at
 			# says, and a sit to dry off is as long as the drying takes.
@@ -5034,7 +5130,10 @@ func _validate_state(state: Dictionary) -> String:
 				expected_duration=float(LifeOutdoorActs.acts(str(action.target_kind)).get("duration",expected_duration))
 			var drying_sit:bool=action_id==LifeWetness.DRY_SIT_ID and _number_in_range(saved_duration,2.0,20.0)
 			var active_nap:bool=action_id=="nap" and "Active" in profile.traits and float(saved_duration)==60.0
-			if float(saved_duration)!=expected_duration and not active_nap and not drying_sit:return "Save contains an invalid activity duration."
+			# A toy put away or taken out was an eight-minute standing action before it became a walk,
+			# a stoop and a carry: a save made with one queued is still a valid save.
+			var older_toy:bool=action_id in ["put_pet_toy","take_pet_toy"] and float(saved_duration)==8.0
+			if float(saved_duration)!=expected_duration and not active_nap and not drying_sit and not older_toy:return "Save contains an invalid activity duration."
 		var position: Variant = action.get("target_position", [0, 0, 0])
 		if not position is Vector3:
 			if not position is Array or position.size() != 3:
@@ -5215,7 +5314,9 @@ func _school_availability(id: String, target_id: String, ignore_queue: bool = fa
 		return "Online classes and homework are for children and teens."
 	var kind: String = _education_target_kind(target_id)
 	if not target_id.is_empty() and not _school_target_allowed(id,kind):
-		return "Choose a desk or computer for online classes." if id == "school" else "Choose a desk, child desk, computer, or bookshelf for homework."
+		return "Choose a desk or computer for online classes." if id == "school" else "Choose a desk, child desk, computer, dining table, or bookshelf for homework."
+	var station: String = _study_station_reason(id, target_id, kind)
+	if not station.is_empty(): return station
 	if not ignore_queue:
 		for queued: Dictionary in action_queue:
 			if id == "school" and str(queued.id) == "school_day" and bool(queued.get("autonomous",false)) and not is_away(): continue
@@ -5224,6 +5325,31 @@ func _school_availability(id: String, target_id: String, ignore_queue: bool = fa
 		if str(action.id) == id:
 			return str(action.unavailable_reason)
 	return "School records are unavailable."
+
+
+## Why a furnishing is no place to study right now, or "". The world publishes
+## which chair a table or child desk has (`study_seat`); a target that does not say
+## (a fixture, an older caller) is taken as it is.
+func _study_station_reason(id: String, target_id: String, kind: String) -> String:
+	if id != "homework" or kind != "dining": return ""
+	for target: Dictionary in _targets:
+		if str(target.id) != target_id: continue
+		if target.has("study_seat") and str(target.study_seat).is_empty(): return "That table has no free chair to sit on."
+		break
+	return ""
+
+
+## How much a station costs in the autonomy ranking for homework: lower is
+## chosen first. Somewhere to sit beats standing at a shelf, and the pupil's own
+## child desk and chair beat everything.
+func _homework_bias(target: Dictionary) -> float:
+	var seated: bool = not str(target.get("study_seat", "")).is_empty()
+	match str(target.kind):
+		"child_desk": return 0.0 if seated else 25.0
+		"dining": return 20.0 if str(character.age_stage) == "teen" else 10.0
+		"desk", "computer": return 15.0
+		"bookshelf": return 25.0
+	return 0.0
 
 
 func _school_action_error(action: Dictionary) -> String:
@@ -5238,8 +5364,11 @@ func _school_action_error(action: Dictionary) -> String:
 	return _school_availability(id,str(action.target_id),true)
 
 
-func _school_target_allowed(id: String, kind: String) -> bool:
-	return kind in ["desk","computer"] or (id == "homework" and (kind == "bookshelf" or (kind == "child_desk" and str(character.age_stage) == "child")))
+## Whether this school activity may be done at a furnishing of this kind. `stage` is the
+## pupil's: this Lifelet's own unless a saved one is being checked.
+func _school_target_allowed(id: String, kind: String, stage: String = "") -> bool:
+	var pupil: String = stage if not stage.is_empty() else str(character.age_stage)
+	return kind in ["desk","computer"] or (id == "homework" and (kind in ["bookshelf","dining"] or (kind == "child_desk" and pupil == "child")))
 
 
 func _apply_education_result(result: Dictionary) -> void:
@@ -5347,7 +5476,7 @@ func _validate_school_state(state: Dictionary) -> String:
 		if not state.has("education") or stage not in LifeEducation.SCHOOL_STAGES or id in ids:
 			return "Save contains an impossible or duplicate school activity."
 		ids.append(id)
-		if not entry.get("target_id") is String or str(entry.target_id).is_empty() or not _school_target_allowed(id,str(entry.get("target_kind",""))):
+		if not entry.get("target_id") is String or str(entry.target_id).is_empty() or not _school_target_allowed(id,str(entry.get("target_kind","")),str(state.get("character",{}).get("age_stage",""))):
 			return "Save contains a school activity without suitable furniture."
 		if not _number_in_range(entry.get("duration"),float(_actions[id].duration),float(_actions[id].duration)) or not _number_in_range(entry.get("elapsed",0),0.0,float(_actions[id].duration)-.000001) or not entry.get("paid",false) is bool:
 			return "Save contains invalid school activity progress."
