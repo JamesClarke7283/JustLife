@@ -11,6 +11,9 @@ signal member_passing_due(member_id: String, cause: String)
 ## `data` are the Lifelet's own `milestone` signal, relayed with who it was. It is
 ## never sent while a save is being restored, so a load shows no old celebrations.
 signal member_milestone(member_id: String, kind: String, data: Dictionary)
+## The family has sung and the candles are out. The view sets the cake out for
+## everyone to share; `record` names the table and the spot the cake stood on.
+signal birthday_ritual_finished(celebrant_id: String, record: Dictionary)
 signal baby_born(mother_id: String)
 ## Raised the moment a couple conceives, so the view can tell the player the
 ## news with a sound and a notice before the birth arrives days later.
@@ -77,6 +80,8 @@ var business: Dictionary = {}
 var sanitation: LifeSanitation = LifeSanitation.new()
 var cooperations: Array = []
 var cooperation_serial: int = 0
+## Birthdays that came round and have not been celebrated round the cake yet.
+var celebrations: Dictionary = LifeBirthdayRitual.fresh()
 var birth_serial: int = 1
 var memorials: Array = []
 var heirlooms: Array = []
@@ -90,6 +95,9 @@ const DANCE_KIND: String = "dance"
 const DANCE_TOKEN_PREFIX: String = "dance_"
 const DANCE_DURATION: float = 35.0
 const MAX_DANCERS: int = 5
+## Gathering round a birthday cake is the same idea for the whole family: one
+## clock, owned by the birthday person, and a spot round the cake for each.
+const BIRTHDAY_KIND: String = LifeBirthdayRitual.SESSION_KIND
 
 ## The purse a new household starts with. One Lifelet begins on ℒ2500; each
 ## extra person adds ℒ1250, so a household of three starts on ℒ5000.
@@ -110,6 +118,7 @@ func new_household(profiles: Array) -> void:
 	sanitation.clear()
 	cooperations.clear()
 	cooperation_serial = 0
+	celebrations = LifeBirthdayRitual.fresh()
 	birth_serial = 1
 	memorials.clear()
 	heirlooms.clear()
@@ -186,7 +195,69 @@ func _relay_milestone(id: String, kind: String, data: Dictionary) -> void:
 		var sim: LifeSim = member_sim(id)
 		var full: String = str(data.get("name", sim.character.name if sim != null else ""))
 		if not full.is_empty(): post_birthday_letter(full.split(" ")[0])
+		if str(data.get("source", "")) == "auto": _owe_birthday_cake(id, data)
 	member_milestone.emit(id, kind, data)
+
+## Every automatic birthday leaves a cake owed to the birthday person. The paid
+## birthday at the fridge is its own solo celebration and owes nothing.
+func _owe_birthday_cake(id: String, data: Dictionary) -> void:
+	var sim: LifeSim = member_sim(id)
+	if sim == null or sim.is_spirit(): return
+	var from: String = str(data.get("previous", ""))
+	var to: String = str(data.get("current", ""))
+	if from.is_empty() or LifeLifecycle.next_stage(from) != to: return
+	var pending: Array = celebrations.pending
+	for index: int in range(pending.size() - 1, -1, -1):
+		if str(pending[index].member_id) == id: pending.remove_at(index)
+	var serial: int = int(celebrations.next_serial)
+	celebrations.next_serial = serial + 1
+	pending.append({"serial": serial, "member_id": id, "from": from, "to": to, "day": int(data.get("day", sim.day)), "minutes": float(sim.minutes), "party_serial": 0})
+	while pending.size() > LifeBirthdayRitual.MAX_PENDING: pending.pop_front()
+
+## The saved record of waiting birthdays, already checked, with its numbers made
+## whole again (a save read back from JSON holds every number as a float). A save
+## from before the ritual has none, and starts with a fresh record.
+func _adopt_celebrations(saved: Variant) -> Dictionary:
+	var record: Dictionary = LifeBirthdayRitual.fresh()
+	if not saved is Dictionary: return record
+	record.next_serial = int(saved.get("next_serial", 1))
+	for entry: Dictionary in saved.get("pending", []):
+		var kept: Dictionary = {"serial": int(entry.serial), "member_id": str(entry.member_id), "from": str(entry.from), "to": str(entry.to), "day": int(entry.day), "minutes": float(entry.minutes), "party_serial": int(entry.get("party_serial", 0))}
+		if entry.has("hold_until"): kept["hold_until"] = float(entry.hold_until)
+		record.pending.append(kept)
+	return record
+
+## The birthdays still waiting for their cake, oldest first.
+func pending_birthdays() -> Array:
+	return celebrations.pending
+
+## The waiting birthday of this member, or {}.
+func birthday_entry(member_id: String) -> Dictionary:
+	for entry: Dictionary in celebrations.pending:
+		if str(entry.member_id) == member_id: return entry
+	return {}
+
+## Forget a waiting birthday (it was celebrated, or it can no longer be).
+func clear_birthday(member_id: String) -> void:
+	var pending: Array = celebrations.pending
+	for index: int in range(pending.size() - 1, -1, -1):
+		if str(pending[index].member_id) == member_id: pending.remove_at(index)
+
+## Drop birthdays that are too old, belong to someone who has since changed age or
+## passed on, or whose ritual is no longer possible. Also the copy that is saved.
+func _live_birthdays() -> Array:
+	var kept: Array = []
+	for entry: Dictionary in celebrations.pending:
+		var sim: LifeSim = member_sim(str(entry.member_id))
+		if sim == null or sim.is_spirit() or str(sim.character.age_stage) != str(entry.to): continue
+		if LifeBirthdayRitual.expired(entry, day): continue
+		kept.append(entry)
+	return kept
+
+func _prune_birthdays() -> void:
+	if celebrations.pending.is_empty(): return
+	var kept: Array = _live_birthdays()
+	if kept.size() != celebrations.pending.size(): celebrations.pending = kept
 
 ## Share one garden activity with whoever else is standing at the same
 ## furnishing: they gain the fun, and the two of them gain friendship with each
@@ -328,6 +399,7 @@ func tick(delta: float) -> void:
 	minutes=members[0].sim.minutes
 	if day!=start_day:
 		_sync_bill_mirror()
+		_prune_birthdays()
 		burglary_due.emit(day)
 		# Every Lifelet on the criminal line of work takes their own chance of
 		# being caught once a day, on the shared clock, so a practised thief's
@@ -489,6 +561,10 @@ func get_state(world_data: Array = []) -> Dictionary:
 	result.bed_assignments=bed_assignments.duplicate(true)
 	result.resident_members=resident_members.duplicate(true)
 	result.date_invitation=date_invitation.duplicate(true)
+	# Optional: a household with no birthday waiting saves exactly what it always did.
+	var live_birthdays:Array=_live_birthdays()
+	if not live_birthdays.is_empty() or int(celebrations.next_serial)>1:
+		result.celebrations={"version":1,"next_serial":int(celebrations.next_serial),"pending":live_birthdays.duplicate(true)}
 	if not journeys.is_empty():result.journeys=journeys.duplicate(true)
 	if physical_snapshot_provider.is_valid():
 		var physical:Dictionary=physical_snapshot_provider.call()
@@ -885,6 +961,10 @@ func restore_state(data: Dictionary) -> Dictionary:
 	if not heirloom_error.is_empty():
 		for c in candidates:c.sim.free()
 		return {"ok":false,"error":heirloom_error}
+	var celebration_error:String=LifeBirthdayRitual.validate(data.get("celebrations",null),data)
+	if not celebration_error.is_empty():
+		for c in candidates:c.sim.free()
+		return {"ok":false,"error":celebration_error}
 	restoring=true
 	bed_assignments=data.get("bed_assignments",{}).duplicate(true)
 	resident_members=data.get("resident_members",{}).duplicate(true)
@@ -929,6 +1009,7 @@ func restore_state(data: Dictionary) -> Dictionary:
 	for session: Dictionary in cooperations:
 		session.phase="assembling"
 		session.ready=[]
+	celebrations=_adopt_celebrations(data.get("celebrations",null))
 	family_graph=family_result.graph.duplicate(true)
 	memorials=_clean_memorials(data.get("memorials",[]))
 	heirlooms=_clean_heirlooms(data.get("heirlooms",[]))
@@ -1766,7 +1847,7 @@ func _cooperation_member_ids(session: Dictionary) -> Array[String]:
 	var kind: String = LifeBabyPlan.session_kind(session)
 	if kind == LifeBabyPlan.SESSION_KIND:
 		return [str(session.get("a_id","")),str(session.get("b_id",""))]
-	if kind == DANCE_KIND:
+	if kind == DANCE_KIND or kind == BIRTHDAY_KIND:
 		var dancers: Array[String] = []
 		for id: Variant in session.get("members",[]):
 			dancers.append(str(id))
@@ -1797,6 +1878,8 @@ func cooperative_presentation(member_id: String) -> Dictionary:
 		return _baby_presentation(session,member_id)
 	if kind == DANCE_KIND:
 		return _dance_presentation(session,member_id)
+	if kind == BIRTHDAY_KIND:
+		return _birthday_presentation(session,member_id)
 	var learner: LifeSim = member_sim(str(session.learner_id))
 	var action: Dictionary = learner.get_current_action()
 	var role: String = "learner" if member_id == str(session.learner_id) else "helper"
@@ -1856,6 +1939,14 @@ func cancel_cooperative_action(member_id: String) -> bool:
 		_leave_dance(session,member_id)
 		_end_cooperation_change()
 		return true
+	if kind == BIRTHDAY_KIND:
+		# A singer stepping out never stops the cake; the birthday person
+		# stepping out calls the whole gathering off and it waits for later.
+		_begin_cooperation_change()
+		if member_id == str(session.celebrant_id): _cancel_cooperation(session,"The birthday gathering is called off for now.")
+		else: _leave_birthday(session,member_id)
+		_end_cooperation_change()
+		return true
 	var reason:String = "Homework together was cancelled. The assignment is still available today."
 	if kind == LifeBabyPlan.SESSION_KIND:
 		reason = "The moment passed. The bed is free again whenever you both want to try."
@@ -1893,6 +1984,8 @@ func _leave_dance(session: Dictionary, member_id: String, reason: String = "") -
 
 func _cancel_cooperation(session: Dictionary, reason: String) -> void:
 	cooperations.erase(session)
+	# A cake that could not be gathered round stays owed, but not straight away.
+	if LifeBabyPlan.session_kind(session) == BIRTHDAY_KIND: _hold_birthday(str(session.get("celebrant_id","")))
 	for id: String in _cooperation_member_ids(session):
 		var actor: LifeSim = member_sim(id)
 		if actor == null: continue
@@ -1901,7 +1994,7 @@ func _cancel_cooperation(session: Dictionary, reason: String) -> void:
 			if str(actor.action_queue[index].get("cooperation_id","")) == str(session.id): actor.action_queue.remove_at(index)
 		if front_removed: actor._start_front()
 		actor._emit_changed()
-	var lead: LifeSim = member_sim(str(session.get("learner_id",session.get("a_id",""))))
+	var lead: LifeSim = member_sim(str(session.get("learner_id",session.get("a_id",session.get("celebrant_id","")))))
 	if lead != null and not reason.is_empty(): lead._emit_notice(reason)
 
 func _cooperation_error(session: Dictionary) -> String:
@@ -1910,6 +2003,8 @@ func _cooperation_error(session: Dictionary) -> String:
 		return _baby_session_error(session)
 	if kind == DANCE_KIND:
 		return _dance_session_error(session)
+	if kind == BIRTHDAY_KIND:
+		return _birthday_session_error(session)
 	var reason: String = _homework_pair_error(str(session.learner_id),str(session.helper_id),str(session.furniture_id),false)
 	if not reason.is_empty(): return reason
 	var learner: LifeSim = member_sim(str(session.learner_id))
@@ -1976,6 +2071,9 @@ func _reconcile_cooperations() -> void:
 		if LifeBabyPlan.session_kind(session) == DANCE_KIND:
 			_reconcile_dance(session)
 			continue
+		if LifeBabyPlan.session_kind(session) == BIRTHDAY_KIND:
+			_reconcile_birthday(session)
+			continue
 		var reason: String = _cooperation_error(session)
 		if not reason.is_empty():
 			_cancel_cooperation(session,reason)
@@ -2009,6 +2107,322 @@ func _reconcile_dance(session: Dictionary) -> void:
 		mirror.elapsed=float(source.elapsed)
 		mirror.progress=float(source.progress)
 
+## ---- Gathering round the birthday cake (scripts/birthday_ritual.gd has the rules)
+
+## A plain description of how free this Lifelet is for the ritual, in the words the
+## rules read.
+func _birthday_facts(id: String) -> Dictionary:
+	var sim: LifeSim = member_sim(id)
+	if sim == null: return {"living": false}
+	var front: Dictionary = sim.get_current_action()
+	# A front action that has really begun, or holds a plate, a chore or a ride, is
+	# not put aside for a song.
+	var begun: bool = str(front.get("phase", "")) == "active" or front.has("meal_plate") or front.has("chore") or front.has("stroller") or front.has("commute") or front.has("tv")
+	return {"living": not sim.is_spirit(), "baby": str(sim.character.get("age_stage", "")) == "baby", "home": not sim.is_away(), "in_session": not _member_cooperation(id).is_empty(), "front_id": str(front.get("id", "")), "front_active": begun, "front_by_player": not front.is_empty() and not bool(front.get("autonomous", false)), "until_duty": sim.minutes_until_departure()}
+
+## Who would gather for this birthday right now: the birthday person first, then
+## every other member who is free. A member who is busy with something the player
+## chose is named in `skipped`, so the player can be told they will miss the song.
+func birthday_plan(celebrant_id: String) -> Dictionary:
+	var celebrant: LifeSim = member_sim(celebrant_id)
+	if celebrant == null or birthday_entry(celebrant_id).is_empty(): return {"ok":false,"error":"There is no birthday waiting for that Lifelet."}
+	if not LifeBirthdayRitual.window_open(minutes): return {"ok":false,"error":"It is not the time of day for a birthday gathering."}
+	var why: String = LifeBirthdayRitual.member_error(_birthday_facts(celebrant_id))
+	if not why.is_empty(): return {"ok":false,"error":"%s %s." % [str(celebrant.character.name).split(" ")[0], why]}
+	var ids: Array = [celebrant_id]
+	var skipped: Array = []
+	for member: Dictionary in members:
+		var id: String = str(member.id)
+		if id == celebrant_id: continue
+		var reason: String = LifeBirthdayRitual.member_error(_birthday_facts(id))
+		if reason.is_empty(): ids.append(id)
+		elif reason == "is busy": skipped.append({"id": id, "name": str(member.sim.character.name), "reason": reason})
+	return {"ok": true, "members": ids, "skipped": skipped}
+
+## Start the gathering: the birthday person's action owns the clock, each singer
+## takes a spot round the cake, and whatever the player had lined up for them waits
+## behind it and begins again afterwards. `table_id` is the furnishing the cake
+## stands on, or "" for a cake held in two hands; `positions` gives each member a
+## standing spot and `cake_position` is where the cake is.
+func queue_birthday_gathering(celebrant_id: String, member_ids: Array, positions: Dictionary, table_id: String = "", cake_position: Vector3 = Vector3.INF) -> Dictionary:
+	var entry: Dictionary = birthday_entry(celebrant_id)
+	if entry.is_empty(): return {"ok":false,"error":"There is no birthday waiting for that Lifelet."}
+	var known: Array = []
+	for member: Dictionary in members: known.append(str(member.id))
+	var group_reason: String = LifeBirthdayRitual.group_error(member_ids, known)
+	if not group_reason.is_empty(): return {"ok":false,"error":group_reason}
+	if str(member_ids[0]) != celebrant_id: return {"ok":false,"error":"The birthday person comes first."}
+	for id: Variant in member_ids:
+		var reason: String = LifeBirthdayRitual.member_error(_birthday_facts(str(id)))
+		if not reason.is_empty(): return {"ok":false,"error":"%s %s." % [str(member_sim(str(id)).character.name).split(" ")[0], reason]}
+	if not cake_position.is_finite(): return {"ok":false,"error":"The cake needs a place."}
+	var spots: Array[Vector3] = []
+	for id: Variant in member_ids:
+		var spot: Variant = positions.get(str(id), null)
+		if not _cooperation_position(spot): return {"ok":false,"error":"The birthday standing spots are invalid."}
+		var at: Vector3 = _cooperation_vector(spot)
+		for existing: Vector3 in spots:
+			if existing.distance_to(at) < LifeBirthdayRitual.MIN_SPACING: return {"ok":false,"error":"Two people would stand in the same spot. Move something out of the way and try again."}
+		spots.append(at)
+	_begin_cooperation_change()
+	cooperation_serial += 1
+	var token: String = LifeBirthdayRitual.TOKEN_PREFIX + str(cooperation_serial)
+	var session: Dictionary = {"id":token,"kind":BIRTHDAY_KIND,"celebrant_id":celebrant_id,"serial":int(entry.serial),"table_id":table_id,"held":table_id.is_empty(),"cake_position":[cake_position.x,cake_position.y,cake_position.z],"day":day,"created_minutes":minutes,"phase":"assembling","ready":[],"waited":0.0,"members":member_ids.duplicate(),"positions":{}}
+	for index: int in range(member_ids.size()):
+		session.positions[str(member_ids[index])] = [spots[index].x,spots[index].y,spots[index].z]
+	cooperations.append(session)
+	for index: int in range(member_ids.size()):
+		var actor: LifeSim = member_sim(str(member_ids[index]))
+		# Anything the Lifelet was choosing for themselves is dropped; anything the
+		# player lined up waits behind the gathering.
+		if not actor.action_queue.is_empty() and bool(actor.action_queue[0].get("autonomous", false)): actor.cancel_action(0)
+		for queued: Dictionary in actor.action_queue:
+			if str(queued.get("phase", "")) == "approach": queued.phase = "queued"
+		var celebrant: bool = index == 0
+		var action: Dictionary = actor._actions[LifeBirthdayRitual.CELEBRANT_ACTION if celebrant else LifeBirthdayRitual.SINGER_ACTION].duplicate(true)
+		action.merge({"target_id":table_id,"target_kind":LifeBirthdayRitual.TARGET_KIND,"target_position":spots[index],"phase":"queued","elapsed":0.0,"progress":0.0,"paid":false,"autonomous":false,"cooperation_id":token,"cooperation_role":LifeBirthdayRitual.ROLE_CELEBRANT if celebrant else LifeBirthdayRitual.ROLE_SINGER,"cooperation_primary":celebrant})
+		actor.action_queue.push_front(action)
+		actor._idle_minutes=0.0
+		actor._start_front()
+		actor._emit_changed()
+	_end_cooperation_change()
+	return {"ok":true,"session_id":token}
+
+## Every birthday gathering that is going on.
+func birthday_sessions() -> Array:
+	return _sessions_of_kind(BIRTHDAY_KIND)
+
+## The gathering for one birthday, or {}.
+func birthday_session_for(celebrant_id: String) -> Dictionary:
+	for session: Dictionary in _sessions_of_kind(BIRTHDAY_KIND):
+		if str(session.get("celebrant_id", "")) == celebrant_id: return session
+	return {}
+
+func _birthday_presentation(session: Dictionary, member_id: String) -> Dictionary:
+	# One shared clock: the birthday person's action. Everyone else mirrors it.
+	var ids: Array[String] = _cooperation_member_ids(session)
+	var owner: LifeSim = member_sim(str(session.celebrant_id))
+	var action: Dictionary = owner.get_current_action() if owner != null else {}
+	var own: bool = str(action.get("cooperation_id", "")) == str(session.id)
+	var elapsed: float = float(action.get("elapsed", 0.0)) if own else 0.0
+	var others: Array[String] = []
+	for id: String in ids:
+		if id != member_id: others.append(id)
+	var cake: Array = session.cake_position
+	return {"kind":BIRTHDAY_KIND,"session_id":str(session.id),"role":LifeBirthdayRitual.ROLE_CELEBRANT if member_id == str(session.celebrant_id) else LifeBirthdayRitual.ROLE_SINGER,"phase":str(session.phase),"ritual_phase":LifeBirthdayRitual.phase_at(elapsed),"ready":session.ready.has(member_id),"celebrant_id":str(session.celebrant_id),"singer_ids":ids.slice(1),"other_ids":others,"partner_id":"","furniture_id":str(session.table_id),"table_id":str(session.table_id),"held_cake":bool(session.held),"cake_point":Vector3(float(cake[0]),float(cake[1]),float(cake[2])),"elapsed":elapsed,"duration":LifeBirthdayRitual.DURATION,"progress":float(action.get("progress",0.0)) if own else 0.0}
+
+func _birthday_session_error(session: Dictionary) -> String:
+	# Whole-session problems call the gathering off for everybody. One singer's own
+	# trouble is handled per member, so it never stops the cake for the others.
+	var celebrant: LifeSim = member_sim(str(session.celebrant_id))
+	if celebrant == null or celebrant.is_spirit(): return "The birthday person is gone. The gathering is over."
+	for member_id: String in _cooperation_member_ids(session):
+		var actor: LifeSim = member_sim(member_id)
+		if actor == null: return "Someone is no longer part of this household."
+		if actor.day != int(session.day): return "A new day begins. The cake will have to wait."
+	if str(session.phase) == "assembling" and float(session.waited) >= LifeBirthdayRitual.WAIT_LIMIT and not session.ready.has(str(session.celebrant_id)):
+		return "The family could not gather round the cake in time."
+	return ""
+
+func _birthday_member_error(session: Dictionary, member_id: String) -> String:
+	var actor: LifeSim = member_sim(member_id)
+	if actor == null: return "is no longer part of this household"
+	if actor.is_spirit(): return "has passed on"
+	if actor.is_away(): return "is away from home"
+	# Leaving for school or work comes before the song: a slow gathering never makes anyone late.
+	if actor.minutes_until_departure() <= 0.0: return "has to leave for school or work"
+	var celebrant: bool = member_id == str(session.celebrant_id)
+	var action: Dictionary = actor.get_current_action()
+	if str(action.get("cooperation_id", "")) != str(session.id) or str(action.get("cooperation_role", "")) != (LifeBirthdayRitual.ROLE_CELEBRANT if celebrant else LifeBirthdayRitual.ROLE_SINGER) or str(action.get("id", "")) != (LifeBirthdayRitual.CELEBRANT_ACTION if celebrant else LifeBirthdayRitual.SINGER_ACTION) or str(action.get("target_id", "")) != str(session.table_id):
+		return "had other plans"
+	return ""
+
+func _reconcile_birthday(session: Dictionary) -> void:
+	# The whole-session check first, then each person's own plans. A singer's
+	# defect removes only that singer; the birthday person's calls it all off.
+	var reason: String = _birthday_session_error(session)
+	if not reason.is_empty():
+		_cancel_cooperation(session, reason)
+		return
+	for member_id: String in _cooperation_member_ids(session).duplicate():
+		var member_reason: String = _birthday_member_error(session, member_id)
+		if member_reason.is_empty(): continue
+		var actor: LifeSim = member_sim(member_id)
+		var first: String = str(actor.character.name).split(" ")[0] if actor != null else "Someone"
+		if member_id == str(session.celebrant_id):
+			_cancel_cooperation(session, "%s %s. The cake will wait for another time." % [first, member_reason])
+			return
+		_leave_birthday(session, member_id, "%s %s and misses the song." % [first, member_reason])
+		if not cooperations.has(session): return
+	# Late arrivals do not hold up the birthday person for ever.
+	if str(session.phase) == "assembling" and float(session.waited) >= LifeBirthdayRitual.WAIT_LIMIT and session.ready.has(str(session.celebrant_id)):
+		for member_id: String in _cooperation_member_ids(session).duplicate():
+			if member_id == str(session.celebrant_id) or session.ready.has(member_id): continue
+			var late: LifeSim = member_sim(member_id)
+			_leave_birthday(session, member_id, "%s was too late for the song." % (str(late.character.name).split(" ")[0] if late != null else "Someone"))
+		if cooperations.has(session) and session.ready.size() == _cooperation_member_ids(session).size(): _activate_cooperation(session)
+	var ids: Array[String] = _cooperation_member_ids(session)
+	if ids.is_empty(): return
+	# Everyone holds their own spot, so only the shared clock mirrors.
+	var source: Dictionary = member_sim(ids[0]).get_current_action()
+	for id: String in ids.slice(1):
+		var mirror: Dictionary = member_sim(id).get_current_action()
+		mirror.elapsed = float(source.elapsed)
+		mirror.progress = float(source.progress)
+
+## Everyone has arrived: the song can begin. (The same step `mark_cooperative_ready`
+## takes when the last person arrives.)
+func _activate_cooperation(session: Dictionary) -> void:
+	session.phase = "active"
+	for id: String in _cooperation_member_ids(session):
+		var actor: LifeSim = member_sim(id)
+		var action: Dictionary = actor.get_current_action()
+		action.phase = "active"
+		action.paid = true
+		if not action.has("started_minutes"):
+			action.started_day = day
+			action.started_minutes = minutes
+		actor._emit_changed()
+
+## One singer leaves the gathering: their own action goes and the rest carry on.
+## The birthday person cannot leave this way (that calls the gathering off).
+func _leave_birthday(session: Dictionary, member_id: String, reason: String = "") -> void:
+	var ids: Array[String] = _cooperation_member_ids(session)
+	if not ids.has(member_id) or member_id == str(session.celebrant_id): return
+	var actor: LifeSim = member_sim(member_id)
+	if actor != null:
+		var front_removed: bool = not actor.action_queue.is_empty() and str(actor.action_queue[0].get("cooperation_id", "")) == str(session.id)
+		for index: int in range(actor.action_queue.size() - 1, -1, -1):
+			if str(actor.action_queue[index].get("cooperation_id", "")) == str(session.id): actor.action_queue.remove_at(index)
+		if front_removed: actor._start_front()
+		actor._emit_changed()
+	session.members.erase(member_id)
+	session.ready.erase(member_id)
+	if session.positions is Dictionary: session.positions.erase(member_id)
+	var lead: LifeSim = member_sim(str(session.celebrant_id))
+	var text: String = reason if not reason.is_empty() else "%s steps out of the song." % (str(actor.character.name).split(" ")[0] if actor != null else "Someone")
+	if lead != null: lead._emit_notice(text)
+	# The last person the birthday person was waiting for may have just left.
+	if str(session.phase) == "assembling" and session.ready.has(str(session.celebrant_id)) and session.ready.size() == _cooperation_member_ids(session).size(): _activate_cooperation(session)
+
+## A cake that could not be gathered round is owed a little later, not at once.
+func _hold_birthday(member_id: String) -> void:
+	var entry: Dictionary = birthday_entry(member_id)
+	if not entry.is_empty(): entry["hold_until"] = float(day - 1) * 1440.0 + minutes + LifeBirthdayRitual.RETRY_AFTER
+
+## The candles are out: each person is paid their own mood, the singers and the
+## birthday person grow closer, and the table is told to set the cake out.
+func finish_birthday(session: Dictionary) -> void:
+	_begin_cooperation_change()
+	var reason: String = _birthday_session_error(session)
+	var ids: Array[String] = _cooperation_member_ids(session)
+	var owner: LifeSim = member_sim(str(session.celebrant_id))
+	# The clocks are mirrored a moment behind, so the first to finish may be a hair ahead.
+	if reason.is_empty() and (str(session.phase) != "active" or owner == null or float(owner.get_current_action().elapsed) < LifeBirthdayRitual.DURATION - .5):
+		reason = "Everyone must stay until the candles are out."
+	if not reason.is_empty():
+		_cancel_cooperation(session, reason)
+		_end_cooperation_change()
+		return
+	# Release the reservation before any result can be observed.
+	cooperations.erase(session)
+	var celebrant_id: String = str(session.celebrant_id)
+	var singers: int = ids.size() - 1
+	var first: String = str(owner.character.name).split(" ")[0]
+	for id: String in ids:
+		var actor: LifeSim = member_sim(id)
+		if actor == null or actor.action_queue.is_empty(): continue
+		var action: Dictionary = actor.action_queue.pop_front()
+		action.phase = "finished"
+		action.elapsed = LifeBirthdayRitual.DURATION
+		action.progress = 1.0
+		actor._apply_birthday_result(LifeBirthdayRitual.ROLE_CELEBRANT if id == celebrant_id else LifeBirthdayRitual.ROLE_SINGER, singers, first)
+		actor._emit_action_finished(action)
+		actor._idle_minutes = 0.0
+		actor._update_wants()
+		actor._start_front()
+		actor._emit_changed()
+	for id: String in ids.slice(1):
+		_grow_closer(celebrant_id, id, LifeBirthdayRitual.FRIENDSHIP_GAIN)
+	clear_birthday(celebrant_id)
+	if owner != null: owner._emit_notice("%s blew out the candles. Happy birthday!" % first)
+	_sync_social_context()
+	_end_cooperation_change()
+	if not restoring: birthday_ritual_finished.emit(celebrant_id, session.duplicate(true))
+
+## Friendship rises by `amount` in both directions between two members.
+func _grow_closer(first_id: String, second_id: String, amount: float) -> void:
+	for pair: Array in [[first_id, second_id], [second_id, first_id]]:
+		var from_sim: LifeSim = member_sim(str(pair[0]))
+		if from_sim == null or not from_sim.relationships.has(str(pair[1])): continue
+		var link: Dictionary = from_sim.relationships[str(pair[1])]
+		link["friendship"] = clampf(float(link.get("friendship", 0.0)) + amount, -100.0, 100.0)
+		from_sim.relationships[str(pair[1])] = link
+
+func _validate_saved_birthday_session(session: Dictionary, data: Dictionary, by_id: Dictionary, used_members: Array[String], used_tokens: Array[String]) -> String:
+	for key: String in ["id","kind","celebrant_id","table_id","phase"]:
+		if not session.get(key) is String: return "Save contains an invalid birthday gathering identity."
+	if not session.get("members") is Array or not session.get("positions") is Dictionary or not session.get("held") is bool or not session.get("ready") is Array: return "Save contains an invalid birthday gathering roster."
+	var token: String = str(session.id)
+	var suffix: String = token.trim_prefix(LifeBirthdayRitual.TOKEN_PREFIX)
+	if not token.begins_with(LifeBirthdayRitual.TOKEN_PREFIX) or not suffix.is_valid_int() or str(int(suffix)) != suffix or int(suffix) < 1 or int(suffix) > int(data.get("cooperation_serial",0)) or used_tokens.has(token): return "Save contains a duplicate or invalid birthday gathering token."
+	used_tokens.append(token)
+	var positions: Array[Vector3] = []
+	var celebrant_id: String = str(session.celebrant_id)
+	var roster: Array[String] = []
+	for id: Variant in session.members:
+		if not id is String or not by_id.has(str(id)) or roster.has(str(id)) or used_members.has(str(id)): return "Save assigns a Lifelet to an impossible or overlapping birthday gathering."
+		roster.append(str(id))
+	if roster.is_empty() or roster.size() > MAX_MEMBERS or roster[0] != celebrant_id: return "Save contains a birthday gathering without its birthday person first."
+	for member_id: String in roster:
+		if not session.positions.has(member_id) or not _cooperation_position(session.positions[member_id]): return "Save contains invalid birthday standing spots."
+		var at: Vector3 = _cooperation_vector(session.positions[member_id])
+		for existing: Vector3 in positions:
+			if existing.distance_to(at) < LifeBirthdayRitual.MIN_SPACING: return "Save stacks two people on one birthday standing spot."
+		positions.append(at)
+	if session.positions.size() != roster.size(): return "Save contains birthday spots for people who are not there."
+	used_members.append_array(roster)
+	if not _cooperation_position(session.get("cake_position")): return "Save contains an invalid cake position."
+	if bool(session.held) != str(session.table_id).is_empty() or by_id.has(str(session.table_id)): return "Save contains a cake with an impossible table."
+	var entry_found: bool = false
+	var celebrations_data: Variant = data.get("celebrations", null)
+	if celebrations_data is Dictionary:
+		for entry: Variant in celebrations_data.get("pending", []):
+			if entry is Dictionary and str(entry.get("member_id", "")) == celebrant_id and int(entry.get("serial", -1)) == int(session.get("serial", -2)): entry_found = true
+	if not entry_found: return "Save contains a birthday gathering for a birthday that is not waiting."
+	if str(session.phase) not in ["assembling","active"] or session.ready.size() > roster.size(): return "Save contains an invalid birthday gathering phase."
+	var ready: Array = []
+	for id: Variant in session.ready:
+		if not id is String or not roster.has(str(id)) or ready.has(str(id)): return "Save contains invalid birthday arrival flags."
+		ready.append(str(id))
+	if str(session.phase) == "active" and ready.size() != roster.size(): return "Save starts the song before everyone has arrived."
+	if not _cooperation_number(session.get("day"),float(data.get("day",1)),float(data.get("day",1)),true) or not _cooperation_number(session.get("created_minutes"),0,float(data.get("minutes",0))): return "Save contains an expired or invalid birthday gathering."
+	if not _cooperation_number(session.get("waited"),0,COOPERATION_WAIT_LIMIT*2.0): return "Save contains impossible birthday waiting time."
+	var actions: Array = []
+	for member_id: String in roster:
+		var state: Dictionary = by_id[member_id]
+		var stage: String = str(state.character.get("age_stage",""))
+		if stage == "baby" or str(state.character.get("life_status","living")) != "living": return "Save has a baby or a passed Lifelet singing at a birthday."
+		if not state.get("action_queue") is Array or state.action_queue.is_empty() or not state.action_queue[0] is Dictionary: return "Save is missing a birthday action."
+		var action: Dictionary = state.action_queue[0]
+		var celebrant: bool = member_id == celebrant_id
+		var wanted_id: String = LifeBirthdayRitual.CELEBRANT_ACTION if celebrant else LifeBirthdayRitual.SINGER_ACTION
+		var wanted_role: String = LifeBirthdayRitual.ROLE_CELEBRANT if celebrant else LifeBirthdayRitual.ROLE_SINGER
+		if str(action.get("id","")) != wanted_id or str(action.get("cooperation_id","")) != token or str(action.get("cooperation_role","")) != wanted_role or str(action.get("target_id","")) != str(session.table_id) or str(action.get("target_kind","")) != LifeBirthdayRitual.TARGET_KIND: return "Save links a birthday gathering to the wrong action or table."
+		if action.get("cooperation_primary") != celebrant or action.get("autonomous") != false: return "Save gives the birthday clock to the wrong person."
+		if not _cooperation_position(action.get("target_position")) or not _cooperation_vector(action.target_position).is_equal_approx(_cooperation_vector(session.positions[member_id])): return "Save contains mismatched birthday standing spots."
+		if not _cooperation_number(action.get("duration"),LifeBirthdayRitual.DURATION,LifeBirthdayRitual.DURATION) or not _cooperation_number(action.get("elapsed"),0,LifeBirthdayRitual.DURATION-.000001) or not action.get("paid") is bool: return "Save contains invalid birthday progress."
+		if str(action.get("phase","")) != ("active" if str(session.phase) == "active" else "approach"): return "Save contains inconsistent birthday action phases."
+		actions.append(action)
+	if str(session.phase) == "active" and not bool(actions[0].paid): return "Save contains a song that never began."
+	for action: Dictionary in actions:
+		if bool(action.paid) != bool(actions[0].paid) or absf(float(action.elapsed)-float(actions[0].elapsed)) > .00001: return "Save contains two different birthday clocks."
+		if bool(action.paid) and (action.get("started_day") != actions[0].get("started_day") or action.get("started_minutes") != actions[0].get("started_minutes")): return "Save contains different birthday start times."
+	if not bool(actions[0].paid):
+		for action: Dictionary in actions:
+			if float(action.elapsed) != 0: return "Save contains birthday progress before arrival."
+	return ""
+
 func before_member_notification() -> void:
 	if _cooperation_depth > 0 or restoring or cooperations.is_empty(): return
 	_begin_cooperation_change()
@@ -2035,6 +2449,9 @@ func finish_cooperative_action(token: String) -> void:
 		return
 	if LifeBabyPlan.session_kind(session) == DANCE_KIND:
 		finish_dance(session)
+		return
+	if LifeBabyPlan.session_kind(session) == BIRTHDAY_KIND:
+		finish_birthday(session)
 		return
 	finish_cooperative_homework(token)
 
@@ -2208,6 +2625,11 @@ func _validate_saved_cooperations(data: Dictionary) -> String:
 		if LifeBabyPlan.session_kind(session) == DANCE_KIND:
 			var dance_error:String = _validate_saved_dance_session(session,data,by_id,used_members,used_tokens)
 			if not dance_error.is_empty(): return dance_error
+			bound_actions += _cooperation_member_ids(session).size()
+			continue
+		if LifeBabyPlan.session_kind(session) == BIRTHDAY_KIND:
+			var birthday_error:String = _validate_saved_birthday_session(session,data,by_id,used_members,used_tokens)
+			if not birthday_error.is_empty(): return birthday_error
 			bound_actions += _cooperation_member_ids(session).size()
 			continue
 		for key: String in ["id","learner_id","helper_id","furniture_id","learner_stage","phase"]:

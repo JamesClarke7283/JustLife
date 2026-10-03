@@ -142,6 +142,8 @@ var music_enabled: bool = true
 ## owner of party and birthday music.
 var announcements: LifeAnnouncements
 var party_music: LifePartyMusic
+## The family gathering round the cake when a birthday comes round.
+var birthday_flow: LifeBirthdayFlow
 ## Automatic saving. The player chooses the interval; the default is five
 ## minutes. `autosave_wait` counts real seconds of play since the last write, and
 ## only advances while the household is actually living, so a paused menu or a
@@ -316,6 +318,7 @@ func setup_services() -> void:
 	build_transactions=LifeBuildTransactions.new(self)
 	announcements=LifeAnnouncements.new(self);add_child(announcements)
 	party_music=LifePartyMusic.new(self);add_child(party_music)
+	birthday_flow=LifeBirthdayFlow.new(self);add_child(birthday_flow)
 
 
 func _ready() -> void:
@@ -3482,13 +3485,16 @@ func refresh_hud() -> void:
 	# WITH line names the count, and the label says who is still dancing.
 	var dancing:bool=str(together.get("kind",""))==LifeDancePlan.SESSION_KIND
 	var dancer_count:int=int(together.get("dancer_count",0))
+	var gathering:bool=str(together.get("kind",""))==LifeBirthdayRitual.SESSION_KIND
 	if action_context:
 		action_context.text=("DANCING WITH %d OTHERS" % maxi(0,dancer_count-1)) if dancing else ("WITH "+str(partner.character.name).to_upper() if partner else "TODAY IS YOURS")
+		if gathering:action_context.text="BIRTHDAY GATHERING"
 		var meal_company:String=meal_flow.company_label(bound_member_id)
 		if not meal_company.is_empty():action_context.text=meal_company
 		var chore_context:String=chore_flow.status_text(action)
 		if not chore_context.is_empty():action_context.text=chore_context
 		action_context.tooltip_text=("Dancing with %d Lifelets at the record player" % dancer_count) if dancing else ("Learning with "+str(partner.character.name) if partner else "")
+		if gathering:action_context.tooltip_text="The family is round the cake for %s" % str(household.member_sim(str(together.get("celebrant_id",""))).character.name).split(" ")[0]
 	if action_label:
 		action_label.text="Enjoying a moment" if action.is_empty() else ((("Waiting for " if waiting_for_target else "Walking to ") if action.phase=="approach" else "")+str(action.label))
 		if str(action.get("id","")) in ["school_day","career_day"] and str(action.get("phase",""))=="approach":action_label.text="Walking to work" if str(action.id)=="career_day" else "Walking to school"
@@ -3506,6 +3512,12 @@ func refresh_hud() -> void:
 			if str(together.get("phase",""))=="active":action_label.text="Dancing together"
 			elif bool(together.get("ready",false)):action_label.text="Waiting for the others to reach the record player"
 			else:action_label.text="Meeting at the record player"
+		if gathering:
+			if str(together.get("phase",""))!="active":action_label.text="Gathering round the cake" if bool(together.get("ready",false)) else "Walking to the cake"
+			else:
+				var ritual_phase:String=str(together.get("ritual_phase",""))
+				if str(together.get("role",""))==LifeBirthdayRitual.ROLE_CELEBRANT:action_label.text={"sing":"Listening to the song","hush":"Making a wish","blow":"Blowing out the candles"}.get(ritual_phase,"Enjoying the cheer")
+				else:action_label.text={"sing":"Singing happy birthday","hush":"Watching the candles","blow":"Watching the candles"}.get(ritual_phase,"Cheering")
 		var meal_title:String=meal_flow.action_title(action)
 		if not meal_title.is_empty():action_label.text=meal_title
 		if traversal.active(bound_member_id):
@@ -3542,7 +3554,7 @@ func refresh_hud() -> void:
 				b.size=Vector2(150,42)
 				compact_button(b)
 				b.custom_minimum_size=Vector2(150,42)
-				var shared:bool=not str(a.get("cooperation_id","")).is_empty()
+				var shared:bool=not str(a.get("cooperation_id","")).is_empty() and not LifeBirthdayRitual.owns(a)
 				var chip_dance:bool=str(a.id)==LifeDancePlan.ACTION_ID
 				var chip_view:Dictionary=household.cooperative_presentation(bound_member_id) if chip_dance else {}
 				var queue_title:String=(("Dance together · %d Lifelets" % int(chip_view.get("dancer_count",1))) if chip_dance else ("Learn together" if str(a.id)=="homework" else "Help with homework")) if shared else str(a.label)
@@ -3560,6 +3572,7 @@ func refresh_hud() -> void:
 				if not returning:text_label("×",Vector2(130,5),Vector2(16,31),16,P.MUTED,false,b)
 				b.tooltip_text=queue_title+(" · With "+str(partner.character.name) if shared and partner else "")+(" · Click to cancel for both Lifelets" if shared else " · Click to cancel this activity")
 				if chip_dance:b.tooltip_text=queue_title+" · Canceling one dancer leaves the others dancing"
+				if LifeBirthdayRitual.owns(a):b.tooltip_text=queue_title+(" · Canceling calls off the gathering for everyone" if str(a.id)==LifeBirthdayRitual.CELEBRANT_ACTION else " · Canceling leaves the song to the others")
 				if returning:b.tooltip_text="Coming home · Available after entering through the back door" if a.has("commute") else ("Coming home · Available once indoors" if str(a.id)=="school_day" else "Coming home · Available after reaching the front garden")
 				b.pressed.connect(func():cancel_current_action(i))
 		if is_instance_valid(queue_caption):
@@ -6044,6 +6057,16 @@ func _refresh_member_targets(replan:bool=true) -> void:
 		var action:Dictionary=sim.action_queue[index]
 		if str(action.id)=="arrive_home":continue
 		var target_id:String=str(action.target_id)
+		if LifeBirthdayRitual.owns(action):
+			# A spot round the cake was issued with the gathering and is kept. A cake in
+			# two hands has no table. A table that is gone, or a spot that is now blocked
+			# or too far from the cake, drops just this person (the birthday person
+			# calls the whole gathering off).
+			var cake_table:Dictionary=_find_item(target_id) if not target_id.is_empty() else {}
+			var cake_spot:Vector3=action.target_position
+			if (not target_id.is_empty() and cake_table.is_empty()) or not world._clear_coaching_space(cake_spot) or (not cake_table.is_empty() and cake_spot.distance_to(cake_table.node.position)>LifeBirthdayRitual.MAX_SPOT_DISTANCE+.3):
+				household.cancel_cooperative_action(bound_member_id)
+			continue
 		if not pending_move.is_empty() and target_id==str(pending_move.entry.id):continue
 		if not pending_move.is_empty() and str(action.id)=="eat_meal" and str(household.meals.portion(str(action.get("meal_plate",""))).get("host",""))==str(pending_move.entry.id):continue
 		if not by_id.has(target_id):
@@ -6680,7 +6703,7 @@ func _cancel_blocked_action(generation:int,action:Dictionary,member_id:String=""
 func finish_line(action:Dictionary) -> String:
 	if str(action.get("id","")) in ["ask_partner","commit"] and bool(action.get("social_accepted",false)):
 		return proposal_question(str(action.id),str(action.get("target_id","")))
-	var lines:Dictionary={"arrive_home":"This feels like a new beginning.","school_day":"Learned something new today.","career_day":"Home after a busy day.","cook":"Ready to serve.","serve_meal":"Come and get it!","eat_meal":"That was lovely.","store_meal":"Something for later.","clean_plate":"All clean.","read":"One more chapter…","paint":"Made something lovely.","friendly":"Good to talk with you!","joke":"Ha!","deep_talk":"I understand.","hug":"That hug was just right.","wave_to_passer":"Nice to see a friendly face.","greet_passer":"Lovely to meet you.","passing_chat":"That was a nice chat.","compliment_passer_dog":"Such a sweet dog.","greet_passing_pet":"Good dog!","pet_passing_pet":"What a good dog.","share_interests":"We have so much in common!","water":"Looking greener.","work":"All done!","homework":"Ready for tomorrow.","help_homework":"We worked it out.","talk_to_myself":"Yes — I can do this.","take_pet_toy":"Ready to play.","put_pet_toy":"Tucked away.","play_with_pet_toy":"That was fun!"}
+	var lines:Dictionary={"arrive_home":"This feels like a new beginning.","school_day":"Learned something new today.","career_day":"Home after a busy day.","cook":"Ready to serve.","serve_meal":"Come and get it!","eat_meal":"That was lovely.","store_meal":"Something for later.","clean_plate":"All clean.","read":"One more chapter…","paint":"Made something lovely.","friendly":"Good to talk with you!","joke":"Ha!","deep_talk":"I understand.","hug":"That hug was just right.","wave_to_passer":"Nice to see a friendly face.","greet_passer":"Lovely to meet you.","passing_chat":"That was a nice chat.","compliment_passer_dog":"Such a sweet dog.","greet_passing_pet":"Good dog!","pet_passing_pet":"What a good dog.","share_interests":"We have so much in common!","water":"Looking greener.","work":"All done!","homework":"Ready for tomorrow.","help_homework":"We worked it out.","sing_birthday":"What a lovely song!","blow_candles":"Thank you, everyone!","talk_to_myself":"Yes — I can do this.","take_pet_toy":"Ready to play.","put_pet_toy":"Tucked away.","play_with_pet_toy":"That was fun!"}
 	return str(lines.get(action.id,"That feels better."))
 
 ## The gender a Lifelet or neighbour presents, for the words a proposal uses.
@@ -8229,6 +8252,7 @@ func _process(delta:float) -> void:
 		_sync_delivery_van()
 		_store_motion()
 		if is_instance_valid(relationship_flow):relationship_flow.tick()
+		if is_instance_valid(birthday_flow):birthday_flow.tick(delta)
 		if household.speed>0:_reconcile_social_routes()
 		var selected_id:String=household.selected_id()
 		var autonomy_values:Dictionary={}
@@ -8861,6 +8885,16 @@ func _update_activity_facing(delta:float,action:Dictionary,action_id:String) -> 
 		var meal_anchor:Dictionary=meal_flow.eating_anchor(bound_member_id,action)
 		player.set_activity_anchor(meal_anchor.position,meal_anchor.yaw,meal_anchor.kind,action_id,meal_anchor)
 		return
+	if LifeBirthdayRitual.owns(action):
+		# Everyone holds the spot they were given round the cake and faces it; the
+		# birthday person with a cake in their hands keeps the way they were facing.
+		var spot:Vector3=action.target_position
+		var cake:Vector3=Vector3(household.cooperative_presentation(bound_member_id).get("cake_point",spot))
+		var toward:Vector3=cake-spot
+		toward.y=0.0
+		var yaw:float=player.rotation.y if toward.length()<.3 else atan2(toward.x,toward.z)
+		player.set_activity_anchor(spot,yaw,"standing",action_id,{"position":spot,"yaw":yaw,"kind":"standing"})
+		return
 	var item:Dictionary=_find_item(str(action.target_id))
 	if not item.is_empty():
 		var attention:Variant=null
@@ -9037,6 +9071,8 @@ func _reconcile_social_routes()->void:
 
 
 func _resolve_activity_target(action:Dictionary,keep_committed_endpoint:bool=false) -> void:
+	# Everyone's spot round the birthday cake was issued with the gathering.
+	if LifeBirthdayRitual.owns(action):return
 	if is_instance_valid(tv_group) and tv_group.resolve(action):return
 	if str(action.id) in ["school_day","career_day","morning_run"]:
 		action.target_position=world.lot_exit_position(_member_index(bound_member_id));return
@@ -9240,7 +9276,8 @@ func _activity_resources(action:Dictionary) -> Array[String]:
 	var target_id:String=str(action.get("target_id",""))
 	var item:Dictionary=_find_item(target_id)
 	var resources:Array[String]=[]
-	if item.is_empty():resources.append(target_id)
+	if LifeBirthdayRitual.owns(action):pass # only a place to stand is taken: the table stays free
+	elif item.is_empty():resources.append(target_id)
 	elif LifeTVGroup.edge(action):
 		# A place on the pool's coping is its own resource, apart from the water.
 		resources.append(target_id+":edge:"+str(int(action.get("edge_side",0)))+":"+str(int(action.get("swim_lane",0))))
