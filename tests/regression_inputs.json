@@ -909,6 +909,8 @@
     "scripts/resident_catalogue.gd.uid",
     "scripts/residents.gd",
     "scripts/residents.gd.uid",
+    "scripts/retirement.gd",
+    "scripts/retirement.gd.uid",
     "scripts/road.gd",
     "scripts/road.gd.uid",
     "scripts/roof_edits.gd",

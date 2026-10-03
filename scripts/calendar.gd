@@ -59,7 +59,7 @@ static func entries(household:LifeHousehold,first_day:int,count:int=7) -> Array:
 		for date:int in range(maxi(first_day,person.day),last_day+1):
 			var school:bool=stage in LifeEducation.SCHOOL_STAGES
 			if not (LifeEducation.weekday(date) if school else LifeCareerSchedule.workday(date,person.career)):continue
-			if not school and str(person.character.life_stage)!="adult":continue
+			if not school and (str(person.character.life_stage)!="adult" or person.is_retired()):continue
 			var first:int=int(person.education.first_class_day) if school else int(person.career.get("schedule",LifeCareerSchedule.fresh(person.day)).first_day)
 			if date<first:continue
 			var start:float=480.0 if school else float(pattern.open)

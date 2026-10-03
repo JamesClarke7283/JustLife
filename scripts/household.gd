@@ -1496,6 +1496,14 @@ func _business_tick() -> void:
 	owner._emit_changed()
 
 
+## An elder stops working for good. The Lifelet checks the rules itself; this
+## only finds them, and a pension later arrives on their own midnight.
+func retire_member(id: String) -> Dictionary:
+	var sim: LifeSim = member_sim(id)
+	if sim == null: return {"ok": false, "error": "Choose a Lifelet who lives here."}
+	return sim.retire()
+
+
 ## Every member on the criminal line of work takes one chance of being caught a
 ## day, on the shared clock. It is rolled by the household rather than by the
 ## Lifelet alone so that the odds apply while the player simply plays, exactly as
@@ -1508,7 +1516,7 @@ func _criminal_tick() -> void:
 		return
 	for member: Dictionary in members:
 		var sim: LifeSim = member.sim
-		if not LifeCareers.is_criminal(str(sim.career.get("track", ""))):
+		if not LifeCareers.is_criminal(str(sim.career.get("track", ""))) or sim.is_retired():
 			continue
 		if sim.is_imprisoned():
 			continue

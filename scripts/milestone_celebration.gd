@@ -112,9 +112,14 @@ func _build_banner(viewport: Vector2) -> void:
 	var room: float = maxf(320.0, viewport.x - 80.0)
 	if wanted + 120.0 > room: size_px = 48
 	wanted = title_font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px).x if title_font != null else 600.0
-	var width: float = clampf(wanted + 140.0, 560.0, room)
+	# The card is as wide as its longer line wants (the title, or the line under it),
+	# and a line under it that still does not fit gets a second row.
+	var body_font: Font = P.body_font()
+	var sub_wanted: float = body_font.get_string_size(subtitle, HORIZONTAL_ALIGNMENT_LEFT, -1, 22).x if body_font != null and not subtitle.is_empty() else 0.0
+	var width: float = clampf(maxf(wanted + 140.0, sub_wanted + 110.0), 560.0, room)
 	var wraps: bool = wanted + 140.0 > room
-	var height: float = 190.0 + (60.0 if wraps else 0.0)
+	var sub_wraps: bool = sub_wanted + 110.0 > width
+	var height: float = 190.0 + (60.0 if wraps else 0.0) + (30.0 if sub_wraps else 0.0)
 	banner = Panel.new()
 	banner.name = "MilestoneBanner"
 	banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -151,7 +156,7 @@ func _build_banner(viewport: Vector2) -> void:
 	subtitle_label.add_theme_font_size_override("font_size", 22)
 	subtitle_label.add_theme_color_override("font_color", P.MUTED)
 	subtitle_label.position = Vector2(40.0, 126.0 + (60.0 if wraps else 0.0))
-	subtitle_label.size = Vector2(width - 80.0, 44.0)
+	subtitle_label.size = Vector2(width - 80.0, 44.0 + (30.0 if sub_wraps else 0.0))
 	banner.add_child(subtitle_label)
 
 func _build_streamers(viewport: Vector2) -> void:
