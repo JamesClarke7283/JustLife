@@ -246,6 +246,29 @@ func _run() -> void:
 		await measure("dressing_table_makeup")
 		app.close_overlay()
 
+	# Hosting a party: the People panel's third bottom button, the planner card with a
+	# friend ticked, and the status card of a party that is on.
+	for member: Dictionary in app.household.members:
+		for neighbor: String in ["maya", "leo"]:
+			if member.sim.relationships.has(neighbor): member.sim.relationships[neighbor].friendship = 45
+	app.show_relationships()
+	await measure("people_with_host_button")
+	app.close_overlay()
+	app.party_flow.show_planner()
+	var invite: Node = app.overlay.find_child("PartyInvite_maya", true, false)
+	if invite is BaseButton: (invite as BaseButton).button_pressed = true
+	var dish: Node = app.overlay.find_child("PartyPotluck_maya", true, false)
+	if dish is BaseButton: (dish as BaseButton).button_pressed = true
+	await measure("party_planner")
+	app.close_overlay()
+	app.household.party_serial = 1
+	app.household.party = LifePartyPlan.build(1, app.household.selected_id(), "", float(app.household.day - 1) * 1440.0 + app.household.minutes, 3, true, [{"id": "maya", "potluck": true}, {"id": "leo", "potluck": false}])
+	app.party_flow.refresh_status()
+	await measure("party_status")
+	app.household.party = {}
+	app.household.party_serial = 0
+	app.party_flow.refresh_status()
+
 	var dining: Dictionary = app.world.closest_item("dining", Vector3.ZERO)
 	if not dining.is_empty():
 		var food: LifeMeals = app.household.meals

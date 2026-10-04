@@ -40,6 +40,8 @@ var _bell_denied:Dictionary={}
 var _welcome_action:Dictionary={}
 var _departure_action:Dictionary={}
 var _notice_in:float=0.0
+## Real seconds before a party guest held at the door asks to come in again.
+var _party_door_in:float=0.0
 var meal:LifeGuestMeal
 var activity:LifeGuestActivity
 
@@ -85,7 +87,7 @@ func welcome_start_allowed(action:Dictionary)->bool:
 
 func requirement(id:String)->String:
 	if active():return "One neighbor is already visiting. Say goodbye and let them leave first."
-	if _residents().party_active():return "Your party guests are still visiting. Let them leave before inviting someone else."
+	if _residents().party_active() or app.party_on():return "Your party is still on. Let it finish before inviting someone else."
 	if ringing():return "Somebody is already at the door. Let them in or turn them away first."
 	if app.current_venue!="home" or app.mode!="live":return "Invite a neighbor while you are at home in Live mode."
 	if not LifeResidents.PEOPLE.has(id) or not app.residents.can_visit(id):return "Reach 20 friendship with this neighbor before inviting them over."
@@ -129,7 +131,7 @@ func consider_ring(force:bool=false)->bool:
 	if app.current_venue!="home" or app.mode!="live" or app.household==null:return false
 	if ringing() or active() or not app.residents.trip.is_empty():return false
 	# Nobody rings while a party is on: the guests are already arriving.
-	if app.residents.party_active():return false
+	if app.residents.party_active() or app.party_on():return false
 	if force:return _start_ring()
 	if not app.residents.present("maya"):pass
 	for id:String in LifeResidents.PEOPLE:
@@ -554,20 +556,28 @@ func action_finished(member_id:String,action:Dictionary)->void:
 	else:_admit(str(state.guest),event_time)
 
 ## A welcomed guest walks inside. Shared by the ordinary "Welcome in" greeting
-## and by a caller the household already let in at the doorbell.
-func _admit(guest:String,event_time:float)->void:
-	if not active() or guest!=str(state.guest):return
+## and by a caller the household already let in at the doorbell. A `patient` guest (a
+## party guest, who has nobody to open the door) does not go home when the way in is
+## blocked: it reports false and the guest waits on the doorstep to try again. Returns
+## whether the guest is on their way in.
+func _admit(guest:String,event_time:float,patient:bool=false)->bool:
+	if not active() or guest!=str(state.guest):return false
 	var actor:LifeActor=_body(guest)
-	if not is_instance_valid(actor):return
+	if not is_instance_valid(actor):return false
 	var inside:Vector3=state.inside
 	if not _clear(guest,inside):inside=_inside_point(guest,actor.position)
-	if not inside.is_finite():goodbye("There is no clear gathering space. Your guest is heading home.",event_time);return
+	if not inside.is_finite():
+		if patient:state.blocked=true;return false
+		goodbye("There is no clear gathering space. Your guest is heading home.",event_time);return false
 	var route:PackedVector3Array=_route(actor.position,inside,guest)
-	if route.is_empty():goodbye("The route inside is blocked. Your guest is heading home.",event_time);return
+	if route.is_empty():
+		if patient:state.blocked=true;return false
+		goodbye("The route inside is blocked. Your guest is heading home.",event_time);return false
 	state.inside=inside;state.phase="entering";state.phase_at=event_time;state.admitted_at=event_time;state.route={"points":route,"point":0}
 	if not state.get("entrance",{}).is_empty():state.entrance.stage="guest_enter"
 	else:state.greeting={};_welcome_action={}
 	app.show_notice(str(LifeResidents.PEOPLE[guest].name)+" is coming inside.")
+	return true
 
 ## Absolute game-minute when an inside guest should leave. Stay Over lengthens
 ## this without rewriting phase_at, so meal and save clocks stay consistent.
@@ -697,7 +707,16 @@ func tick(delta:float)->void:
 				if phase=="arriving":
 					state.phase="waiting";state.arrived_at=now;state.phase_at=now
 					# A party guest walks straight in: no host greets each one at the door.
-					if state.has("party"):_admit(id,now);return
+					if state.has("party"):
+						# Somebody standing in the hall can hold the guest at the door: they ask again every second.
+						_party_door_in=maxf(0.0,_party_door_in-delta)
+						if _party_door_in<=0.0:
+							_party_door_in=1.0
+							if _admit(id,now,true):return
+							_notice_in-=1.0
+							if _notice_in<=0:_notice_in=5.0;app.show_notice("Your guest's path is blocked. Move a nearby Lifelet in Live mode so they can pass.")
+						state.phase="arriving";state.arrived_at=-1.0;state.phase_at=float(state.created_at)
+						actor.animate(delta,speed,false,"");_sync_guest();return
 					if bool(state.get("auto_welcome",false)):
 						# The household already answered the doorbell: this caller
 						# was let in, so they come straight inside instead of being

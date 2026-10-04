@@ -35,6 +35,16 @@ Voices load the local WAV sources with `AudioStreamWAV.load_from_file`, so their
 
 **Switches.** The music has its own switch, separate from sound: `Music: on|off` sits in the main menu beside `Sound: on|off` and in the pause menu below it. `main.set_music(enabled)` pauses or resumes the player immediately and rides the save; `main.set_sound(enabled)` still gates everything, music included, so turning all sound off silences the theme too. The setting is stored as `music` next to the existing `sound` key in the saved world state (`main.gd` save/restore and `LifePhysicalSnapshot.capture`), so a loaded life resumes with the same music choice.
 
+## Celebration and party sound
+
+Three sounds are made in code (`scripts/celebration_audio.gd`, mono 16-bit at 22,050 Hz, built once and kept, warmed on a worker thread so a big celebration never hitches a frame): a **fanfare** (about 2.8 s) for the centre-screen life-stage and retirement banners, the 1893 public-domain **birthday tune** (a music-box melody; there are no lyrics anywhere, only notes and ♪ bubbles) and an eight-second, 124 BPM **party loop**.
+
+`scripts/party_music.gd` is the one owner of the sounds that go on for a while, and it decides who is heard: the birthday tune first, then the party loop, then the theme. While the tune or the loop is on, the theme is turned **down by volume** (from -8 to -24 dB) and brought back up afterwards; it is never paused, because `main.set_music` and `main.set_sound` restart it themselves. The tune follows the Sound switch, the loop follows Sound and Music, and both hold still, and carry on from the same place, when the household is paused.
+
+The party loop has two voices. With no stereo in the home it plays on a flat `AudioStreamPlayer` (`PartyLoop`, -8 dB). When the party's controller gives it a stereo's place (`set_party_loop(true, at)`), it plays from a 3D speaker named `PartyMusic` (`AudioStreamPlayer3D`, `unit_size = 12`, -4 dB) a meter above the stereo, so it is loudest by the stereo and fades with distance from the camera; moving between the two hands the loop over. A 3D player begins on the next physics frame, so a pause or a switch lands on it a few frames after the loop is asked for; the controller asks every frame, so this is never heard. See [hosting a party](PARTY.md) for when the loop is on.
+
+`tests/test_celebration_sound.gd` covers the three streams and the owner's order; `tests/test_party_music.gd` covers the speaker and the party controller's use of it.
+
 ## Interface and ambience integration
 
 The main UI owns its non-positional click and ambience players. `soft_click.wav` is a one-shot `AudioStreamPlayer` sound. `chime_pregnancy.wav` plays once from `chime_player` when a couple conceives, alongside the notice that names the expecting mother; it obeys the same sound toggle. Load `ambience_garden.wav` as an `AudioStreamWAV`, set `loop_mode = AudioStreamWAV.LOOP_FORWARD`, `loop_begin = 0`, and `loop_end = int(stream.get_length() * stream.mix_rate)`, then assign it to an `AudioStreamPlayer` and play it. The generated loop has quiet crossfaded air with short click-free endpoints and distant calls away from the loop boundary. Start at 0 dB on the player: the file itself is already very quiet. Connect both players to the same sound toggle as Lifelet voices.

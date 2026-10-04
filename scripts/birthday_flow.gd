@@ -90,6 +90,8 @@ func try_start() -> bool:
 	for entry: Dictionary in household.pending_birthdays():
 		var id: String = str(entry.member_id)
 		if float(entry.get("hold_until", 0.0)) > now or not household.birthday_session_for(id).is_empty(): continue
+		# At a birthday party the cake waits for the guests, up to an hour.
+		if app.party_flow != null and app.party_flow.ritual_waits(id): continue
 		if float(_backoff.get(id, 0.0)) > Time.get_ticks_msec() / 1000.0: continue
 		var plan: Dictionary = household.birthday_plan(id)
 		if bool(plan.ok) and _start(id, plan): return true

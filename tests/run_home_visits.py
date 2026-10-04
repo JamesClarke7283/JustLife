@@ -14,7 +14,8 @@ import time
 TESTS = ('test_home_visit.gd', 'test_home_visit_fresh.gd', 'test_home_visit_controls.gd',
          'test_home_visit_departure_fresh.gd', 'test_home_visit_custody.gd', 'test_home_visit_render.gd',
          'test_visitor_entrance.gd', 'test_guest_autonomy.gd', 'test_visitor_wheel.gd',
-         'test_guest_activity.gd', 'test_guest_activity_company.gd', 'test_multi_guest_visits.gd')
+         'test_guest_activity.gd', 'test_guest_activity_company.gd', 'test_multi_guest_visits.gd',
+         'test_party_hosting.gd')
 
 
 def main():
@@ -64,6 +65,7 @@ def main():
         ('autonomy', 'test_guest_autonomy.gd', []),
         ('wheel', 'test_visitor_wheel.gd', []),
         ('party', 'test_multi_guest_visits.gd', []),
+        ('hosting', 'test_party_hosting.gd', []),
         ('canonical', 'test_home_visit.gd', ['--', '--canonical-fixture']),
         ('canonical_fresh', 'test_home_visit_fresh.gd', ['--', '--greeting-only']),
     ]:

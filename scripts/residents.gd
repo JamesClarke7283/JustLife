@@ -699,6 +699,7 @@ func driver_error(ids:Array) -> String:
 
 func begin_trip(destination:String, party: Array = []) -> bool:
  if any_visit_active():app.show_notice("Say goodbye and wait for your guest to leave before traveling.");return false
+ if app.party_on():app.show_notice("Your party is on. Wait until it is over before traveling.");return false
  if app.driving_lesson.running():app.show_notice("Wait for the driving lesson to finish before traveling.");return false
  if not trip.is_empty():return false
  # The trip replaces the lot traversal and hides members staying behind too.

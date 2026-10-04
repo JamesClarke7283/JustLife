@@ -12,6 +12,8 @@ const CareMotion = preload("res://scripts/care_motion.gd")
 const ChoreUI = preload("res://scripts/chore_ui.gd")
 const PartyDecor = preload("res://scripts/party_decor.gd")
 const PartyFood = preload("res://scripts/party_food.gd")
+## Where an ordinary visitor's card sits (its left edge) while a party's card takes the usual place.
+const STATUS_BESIDE_PARTY: float = 652.0
 const DrivingSchool = preload("res://scripts/driving_school.gd")
 const DrivingPanel = preload("res://scripts/driving_panel.gd")
 const RoomPack = preload("res://scripts/room_pack.gd")
@@ -148,6 +150,8 @@ var announcements: LifeAnnouncements
 var party_music: LifePartyMusic
 ## The family gathering round the cake when a birthday comes round.
 var birthday_flow: LifeBirthdayFlow
+## Hosting a party: the planner card, the friends' arrival, dishes, music and the status card.
+var party_flow: LifePartyFlow
 ## Automatic saving. The player chooses the interval; the default is five
 ## minutes. `autosave_wait` counts real seconds of play since the last write, and
 ## only advances while the household is actually living, so a paused menu or a
@@ -323,6 +327,7 @@ func setup_services() -> void:
 	announcements=LifeAnnouncements.new(self);add_child(announcements)
 	party_music=LifePartyMusic.new(self);add_child(party_music)
 	birthday_flow=LifeBirthdayFlow.new(self);add_child(birthday_flow)
+	party_flow=LifePartyFlow.new(self);add_child(party_flow)
 
 
 func _ready() -> void:
@@ -3714,6 +3719,7 @@ func freeze_viewport(viewport_id:int) -> void:
 func set_build_mode(value:bool) -> void:
 	if value and is_instance_valid(safety) and is_instance_valid(safety.crime) and safety.unresolved():show_notice("Resolve the burglary report with the police before changing the home.");return
 	if value and residents.any_visit_active():show_notice("Say goodbye and wait for your guest to leave before building.");return
+	if value and party_on():show_notice("Your party is on. Wait until it is over before building.");return
 	if value and current_venue!="home":show_notice("Travel home to change your own house.");return
 	if mode not in ["live","build"] or value==(mode=="build"):return
 	close_overlay()
@@ -7663,7 +7669,11 @@ func _restore_properties(value:Variant,home_land:Variant=null) -> void:
 
 ## Open the property panel from the house menu.
 func _property_panel_available() -> bool:
-	return mode=="live" and current_venue=="home" and not residents.any_visit_active()
+	return mode=="live" and current_venue=="home" and not residents.any_visit_active() and not party_on()
+
+## Whether a party has been sent and is not over yet. Building, travel and driving lessons wait for it.
+func party_on() -> bool:
+	return is_instance_valid(party_flow) and party_flow.active()
 
 
 func _saved_number(value:Variant,fallback:float,minimum:float,maximum:float) -> float:
@@ -8284,6 +8294,7 @@ func _process(delta:float) -> void:
 		_store_motion()
 		if is_instance_valid(relationship_flow):relationship_flow.tick()
 		if is_instance_valid(birthday_flow):birthday_flow.tick(delta)
+		if is_instance_valid(party_flow):party_flow.tick(delta)
 		if household.speed>0:_reconcile_social_routes()
 		var selected_id:String=household.selected_id()
 		var autonomy_values:Dictionary={}
@@ -9314,7 +9325,7 @@ func _activity_resources(action:Dictionary) -> Array[String]:
 	var target_id:String=str(action.get("target_id",""))
 	var item:Dictionary=_find_item(target_id)
 	var resources:Array[String]=[]
-	if LifeBirthdayRitual.owns(action):pass # only a place to stand is taken: the table stays free
+	if LifeBirthdayRitual.owns(action) or LifePartyPlan.owns(action):pass # only a place to stand is taken: the table and the stereo stay free
 	elif item.is_empty():resources.append(target_id)
 	elif LifeTVGroup.edge(action):
 		# A place on the pool's coping is its own resource, apart from the water.
@@ -9363,8 +9374,14 @@ func show_relationships() -> void:
 				var date:Button=button("Invite for a home date",Vector2(8,125),Vector2(428,34),func():relationship_flow.invite_date(id),false,row)
 				date.name="InviteDate_"+id;date.disabled=invite.disabled
 			visit.tooltip_text="Reach 20 friendship to arrange a visit." if visit.disabled else str(str(LifeNeighborhood.info(LifeResidents.PEOPLE[id].home).get("tag","")))
-	button("Family tree",Vector2(486,699),Vector2(222,43),show_family_tree,false,overlay)
-	button("Back to life",Vector2(724,699),Vector2(230,43),close_overlay,true,overlay)
+	var tree:Button=button("Family tree",Vector2(486,699),Vector2(148,43),show_family_tree,false,overlay)
+	tree.name="FamilyTree"
+	var host_party:Button=button("Host a party…",Vector2(646,699),Vector2(148,43),func():party_flow.show_planner(),false,overlay)
+	host_party.name="HostParty"
+	var party_blocked:String=party_flow.host_reason()
+	host_party.disabled=not party_blocked.is_empty()
+	host_party.tooltip_text=party_blocked if not party_blocked.is_empty() else "Invite up to four friends over for a party of up to five hours."
+	button("Back to life",Vector2(806,699),Vector2(148,43),close_overlay,true,overlay)
 
 func compact_button(b:Button) -> void:
 	b.add_theme_font_size_override("font_size",12)
@@ -10574,6 +10591,11 @@ func invite_neighbor(id:String)->void:
 
 func _refresh_guest_status()->void:
 	if not is_instance_valid(ui) or not residents:return
+	# A party has its own card; an ordinary visitor's card then sits beside it.
+	var party_card:bool=is_instance_valid(party_flow) and party_flow.refresh_status()
+	if party_card and not residents.home_visit.active() and not residents.home_visit.ringing():
+		if is_instance_valid(guest_status_card):guest_status_card.queue_free()
+		guest_status_card=null;return
 	if not residents.home_visit.ringing():
 		if is_instance_valid(bell_status_card):bell_status_card.queue_free()
 		bell_status_card=null
@@ -10592,6 +10614,7 @@ func _refresh_guest_status()->void:
 		guest_welcome_button.name="WelcomeGuest"
 		var goodbye=button("Say goodbye",Vector2(192,76),Vector2(168,36),func():residents.home_visit.goodbye(),false,guest_status_card)
 		goodbye.name="GoodbyeGuest"
+	guest_status_card.position=Vector2(STATUS_BESIDE_PARTY if party_card else 1038.0,206.0)
 	var visit:Dictionary=residents.home_visit.state
 	var phase:String=str(visit.phase)
 	var label:String={"arriving":"Walking over","waiting":"At your door","entering":"Coming inside","inside":"Visiting your home","leaving":"Heading home"}.get(phase,"")

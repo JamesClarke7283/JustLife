@@ -82,6 +82,10 @@ var cooperations: Array = []
 var cooperation_serial: int = 0
 ## Birthdays that came round and have not been celebrated round the cake yet.
 var celebrations: Dictionary = LifeBirthdayRitual.fresh()
+## The party being hosted, or {} (scripts/party_plan.gd describes the record), and how
+## many parties have been held. Both are saved only once a party has been sent.
+var party: Dictionary = {}
+var party_serial: int = 0
 var birth_serial: int = 1
 var memorials: Array = []
 var heirlooms: Array = []
@@ -119,6 +123,8 @@ func new_household(profiles: Array) -> void:
 	cooperations.clear()
 	cooperation_serial = 0
 	celebrations = LifeBirthdayRitual.fresh()
+	party = {}
+	party_serial = 0
 	birth_serial = 1
 	memorials.clear()
 	heirlooms.clear()
@@ -565,6 +571,9 @@ func get_state(world_data: Array = []) -> Dictionary:
 	var live_birthdays:Array=_live_birthdays()
 	if not live_birthdays.is_empty() or int(celebrations.next_serial)>1:
 		result.celebrations={"version":1,"next_serial":int(celebrations.next_serial),"pending":live_birthdays.duplicate(true)}
+	# Optional too: a household that has never hosted a party saves no party keys.
+	if party_serial>0:result.party_serial=party_serial
+	if not party.is_empty():result.party=party.duplicate(true)
 	if not journeys.is_empty():result.journeys=journeys.duplicate(true)
 	if physical_snapshot_provider.is_valid():
 		var physical:Dictionary=physical_snapshot_provider.call()
@@ -964,6 +973,7 @@ func restore_state(data: Dictionary) -> Dictionary:
 		for c in candidates:c.sim.free()
 		return {"ok":false,"error":heirloom_error}
 	var celebration_error:String=LifeBirthdayRitual.validate(data.get("celebrations",null),data)
+	if celebration_error.is_empty():celebration_error=LifePartyPlan.validate(data.get("party",null),data)
 	if not celebration_error.is_empty():
 		for c in candidates:c.sim.free()
 		return {"ok":false,"error":celebration_error}
@@ -1012,6 +1022,8 @@ func restore_state(data: Dictionary) -> Dictionary:
 		session.phase="assembling"
 		session.ready=[]
 	celebrations=_adopt_celebrations(data.get("celebrations",null))
+	party=LifePartyPlan.adopt(data.get("party",null))
+	party_serial=int(data.get("party_serial",0))
 	family_graph=family_result.graph.duplicate(true)
 	memorials=_clean_memorials(data.get("memorials",[]))
 	heirlooms=_clean_heirlooms(data.get("heirlooms",[]))

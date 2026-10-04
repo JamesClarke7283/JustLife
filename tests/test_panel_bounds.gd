@@ -73,6 +73,10 @@ func _bounds(screen: String) -> void:
 		# meant to cover the screen; it is not a control a player has to reach.
 		if control is ColorRect and rect.size.x >= 1439.0 and rect.size.y >= 899.0:
 			continue
+		# The same goes for the invisible flat button that closes a card when the player
+		# clicks outside it (`dismiss_layer`): it covers the whole interface on purpose.
+		if control is Button and (control as Button).flat and (control as Button).text.is_empty() and rect.size.x >= 1439.0 and rect.size.y >= 899.0:
+			continue
 		if rect.position.x < -2.0 or rect.position.y < -2.0 or rect.end.x > 1442.0 or rect.end.y > 902.0:
 			escaped += 1
 			if escaped <= 3:
@@ -192,6 +196,60 @@ func _run() -> void:
 		check(rows == LifeMeals.RECIPES.size(), "Every authored recipe gets a row (%d of %d)." % [rows, LifeMeals.RECIPES.size()])
 		app.close_overlay()
 		await frames(2)
+
+	# The People panel gained a third bottom button, Host a party, which opens the
+	# planner card; a party that is on shows its own status card.
+	for member: Dictionary in app.household.members:
+		for neighbor: String in ["maya", "leo"]:
+			if member.sim.relationships.has(neighbor): member.sim.relationships[neighbor].friendship = 45
+	app.show_relationships()
+	await frames(3)
+	_bounds("people")
+	var host_button: Button = app.overlay.find_child("HostParty", true, false)
+	var tree_button: Button = app.overlay.find_child("FamilyTree", true, false)
+	check(host_button != null and tree_button != null and not host_button.disabled, "The People panel offers Host a party beside Family tree.")
+	if host_button != null and tree_button != null:
+		var back: Button = null
+		for node: Node in app.overlay.find_children("*", "Button", true, false):
+			if (node as Button).text == "Back to life": back = node as Button
+		check(back != null and tree_button.position.x + tree_button.size.x <= host_button.position.x and host_button.position.x + host_button.size.x <= back.position.x and back.position.x + back.size.x <= 984.0, "The three bottom buttons sit side by side inside the People card.")
+	app.close_overlay()
+	await frames(2)
+	app.party_flow.show_planner()
+	await frames(3)
+	_bounds("party_planner")
+	var planner: Control = app.overlay.find_child("PartyPlanner", true, false)
+	check(planner != null, "The party planner card opens.")
+	if planner != null:
+		var inside_card: int = 0
+		var total: int = 0
+		for node: Node in app.overlay.find_children("Party*", "Control", true, false):
+			if node == planner: continue
+			total += 1
+			var rect: Rect2 = Rect2((node as Control).position, (node as Control).size)
+			if rect.position.x >= planner.position.x - 1.0 and rect.end.x <= planner.position.x + planner.size.x + 1.0 and rect.position.y >= planner.position.y - 1.0 and rect.end.y <= planner.position.y + planner.size.y + 1.0: inside_card += 1
+		check(total >= 14 and inside_card == total, "Every control of the planner sits inside its card (%d of %d)." % [inside_card, total])
+	app.close_overlay()
+	await frames(2)
+	app.household.party_serial = 1
+	app.household.party = LifePartyPlan.build(1, app.household.selected_id(), "", float(app.household.day - 1) * 1440.0 + app.household.minutes, 3, true, [{"id": "maya", "potluck": true}, {"id": "leo", "potluck": false}])
+	app.party_flow.refresh_status()
+	await frames(2)
+	var status: Control = app.ui.find_child("PartyStatus", true, false)
+	check(status != null and Rect2(status.position, status.size).end.x <= 1442.0 and Rect2(status.position, status.size).end.y <= 902.0, "A party's status card sits inside the design space.")
+	if status != null:
+		var kids_inside: int = 0
+		var kids: int = 0
+		for node: Node in status.get_children():
+			if node is Control:
+				kids += 1
+				var kid_rect: Rect2 = Rect2((node as Control).position, (node as Control).size)
+				if kid_rect.position.x >= -1.0 and kid_rect.position.y >= -1.0 and kid_rect.end.x <= status.size.x + 1.0 and kid_rect.end.y <= status.size.y + 1.0: kids_inside += 1
+		check(kids >= 4 and kids_inside == kids, "The status card's text and buttons sit inside the card (%d of %d)." % [kids_inside, kids])
+	app.household.party = {}
+	app.household.party_serial = 0
+	app.party_flow.refresh_status()
+	await frames(2)
 
 	# The creator's four tabs share the right-hand card, whose last 38 px sit
 	# against the canvas edge; a wider pitch clipped the Style tab off-screen.
