@@ -181,7 +181,11 @@ func _rules() -> void:
 	dish_ok.guests[0].brought = true
 	var with_dish: Dictionary = stub.duplicate(true)
 	with_dish.meals.batches = [{"id": "meal_4", "brought_by": "maya"}]
-	check(LifePartyPlan.validate(dish_ok, with_dish).is_empty() and not LifePartyPlan.validate(dish_ok, stub).is_empty(), "A dish the friend set out must be in the meal ledger as theirs")
+	check(LifePartyPlan.validate(dish_ok, with_dish).is_empty(), "A dish the friend set out may be in the meal ledger as theirs")
+	check(LifePartyPlan.validate(dish_ok, stub).is_empty(), "...or gone from it once it was eaten and cleared away, which must not block a save")
+	var unbrought: Dictionary = dish_ok.duplicate(true)
+	unbrought.guests[0].brought = false
+	check(not LifePartyPlan.validate(unbrought, with_dish).is_empty(), "A dish nobody set down is refused")
 	with_dish.meals.batches = [{"id": "meal_4", "brought_by": "leo"}]
 	check(not LifePartyPlan.validate(dish_ok, with_dish).is_empty(), "...and not as another friend's")
 	var late_birthday: Dictionary = stub.duplicate(true)
@@ -361,6 +365,14 @@ func _planner_and_party() -> void:
 	check(not app.party_music.wants_loop, "The party music stops")
 	check(not is_instance_valid(app.ui.find_child("PartyStatus", true, false)), "The party card goes")
 	check(not app.household.meals.batch(str(batch.id)).is_empty(), "Maya's salad stays for the household")
+	# A host who is also the celebrant is thanked once, and a dish that is gone from the
+	# ledger by the end was eaten up and cleared away.
+	var thanked_before: float = float(host_sim.relationships.maya.friendship)
+	app.household.party = {"host_id": host_id, "celebrant_id": host_id, "guests": [{"id": "maya", "came": true, "batch": "meal_cleared_away"}]}
+	flow._finish()
+	var thanked: float = float(host_sim.relationships.maya.friendship) - thanked_before
+	check(is_equal_approx(thanked, minf(100.0 - thanked_before, LifePartyPlan.friendship_gain(true))), "The host who is the celebrant too gains the friendship once, at the eaten-dish rate (%.1f)" % thanked)
+	check(_party().is_empty(), "...and that finishes the party record")
 	app.set_build_mode(true)
 	check(app.mode == "build", "Building works again")
 	app.set_build_mode(false)

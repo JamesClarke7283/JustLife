@@ -236,8 +236,10 @@ static func validate(value: Variant, data: Dictionary) -> String:
 		if (status == "inside" and not bool(entry.came)) or (status in ["preparing", "walking"] and bool(entry.came)): return "Save has a party guest whose arrival does not add up."
 		if status in ["preparing", "left"] and visits.has(id): return "Save has a party guest who is not meant to be visiting."
 		if not str(entry.batch).is_empty():
+			# A dish that has been eaten and cleared away is gone from the ledger by now;
+			# one still there must be this guest's.
 			var batch: Variant = batches.get(str(entry.batch))
-			if not batch is Dictionary or str(batch.get("brought_by", "")) != id or not bool(entry.brought): return "Save names a party dish that nobody brought."
+			if not bool(entry.brought) or (batch is Dictionary and str(batch.get("brought_by", "")) != id): return "Save names a party dish that nobody brought."
 		if str(entry.potluck).is_empty() and not str(entry.batch).is_empty(): return "Save names a party dish for a guest with none."
 	if str(party.phase) == "inviting" and inside: return "Save has a party guest inside before the party began."
 	# Every party guest in the save belongs to this party.

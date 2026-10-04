@@ -93,6 +93,7 @@ func requirement(id:String)->String:
 	if not LifeResidents.PEOPLE.has(id) or not app.residents.can_visit(id):return "Reach 20 friendship with this neighbor before inviting them over."
 	if _building().is_empty():return "This home needs a supported ground-floor layout before inviting a guest."
 	if not app.residents.trip.is_empty():return "Finish the current trip before inviting a neighbor."
+	if app.driving_lesson.running():return "Wait for the driving lesson to finish before inviting a neighbor."
 	if not app.residents._speaker(id).is_empty():return "Finish the current conversation with this neighbor before inviting them over."
 	return ""
 
@@ -108,6 +109,7 @@ func party_requirement(id:String)->String:
 	if not LifeResidents.PEOPLE.has(id) or not residents.can_visit(id):return "Reach 20 friendship with this neighbor before inviting them over."
 	if _building().is_empty():return "This home needs a supported ground-floor layout before inviting a guest."
 	if not residents.trip.is_empty():return "Finish the current trip before inviting a neighbor."
+	if app.driving_lesson.running():return "Wait for the driving lesson to finish before inviting a neighbor."
 	if not residents._speaker(id).is_empty():return "Finish the current conversation with this neighbor before inviting them over."
 	return ""
 

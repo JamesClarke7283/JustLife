@@ -187,6 +187,7 @@ func _sound_on() -> bool: return is_instance_valid(app) and bool(app.sound_enabl
 
 func _music_on() -> bool: return is_instance_valid(app) and bool(app.music_enabled)
 
-## Whether the household's clock is running.
+## Whether the household's clock is running. Build mode and the main menu stop the
+## game without touching the household's own speed, and the music holds with it.
 func _moving() -> bool:
-	return is_instance_valid(app) and is_instance_valid(app.household) and int(app.household.speed) > 0
+	return is_instance_valid(app) and is_instance_valid(app.household) and int(app.household.speed) > 0 and str(app.mode) not in ["build", "menu"]

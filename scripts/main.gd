@@ -6082,6 +6082,9 @@ func _refresh_member_targets(replan:bool=true) -> void:
 	for index:int in range(sim.action_queue.size()-1,-1,-1):
 		var action:Dictionary=sim.action_queue[index]
 		if str(action.id)=="arrive_home":continue
+		# The bus door is a spot at the curb, not a piece of furniture, so it is never in
+		# the registered targets; a sibling boarding first must not cancel this walk.
+		if str(action.id)=="board_school_bus":continue
 		var target_id:String=str(action.target_id)
 		if LifeBirthdayRitual.owns(action):
 			# A spot round the cake was issued with the gathering and is kept. A cake in
@@ -10601,6 +10604,7 @@ func _refresh_guest_status()->void:
 		bell_status_card=null
 	if residents.home_visit.ringing():
 		_refresh_bell_status()
+		if is_instance_valid(bell_status_card):bell_status_card.position=Vector2(STATUS_BESIDE_PARTY if party_card else 1038.0,206.0)
 		return
 	if mode!="live" or not residents.home_visit.active():
 		if is_instance_valid(guest_status_card):guest_status_card.queue_free()

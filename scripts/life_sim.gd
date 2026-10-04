@@ -6176,6 +6176,10 @@ func _advance_driving() -> void:
 				var course: String = (" · course ends day %d" % DrivingSchool.course_end_day(driving)) if taken > 0 else ""
 				_emit_notice("%s could have a driving lesson after school, or on Saturday or Sunday (%d of %d lessons%s)." % [first, taken, DrivingSchool.LESSONS_REQUIRED, course])
 			"missed":
+				# A lesson already on its way (the car is at the kerb, the learner walking
+				# out) is not missed, however long the walk took; it uses the booking up
+				# when the car leaves.
+				if not action_queue.is_empty() and str(action_queue[0].id) == DrivingSchool.LESSON_ACTION: continue
 				driving = DrivingSchool.unbook(driving)
 				_emit_notice("%s missed the booked driving lesson. Book another from a bookcase or a desk." % first)
 			"lapse":

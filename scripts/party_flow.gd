@@ -273,9 +273,11 @@ func _finish() -> void:
 		var eaten: bool = false
 		if not str(entry.batch).is_empty():
 			var batch: Dictionary = household.meals.batch(str(entry.batch))
-			eaten = not batch.is_empty() and int(batch.remaining) < int(batch.initial)
+			# A dish that is no longer in the ledger was eaten up and cleared away.
+			eaten = batch.is_empty() or int(batch.remaining) < int(batch.initial)
 		var gain: float = LifePartyPlan.friendship_gain(eaten)
-		for sim: LifeSim in [host, celebrant]:
+		# The host is often the celebrant too, and is only thanked once.
+		for sim: LifeSim in [host] if celebrant == host else [host, celebrant]:
 			if sim != null: _befriend(sim, str(entry.id), gain)
 	if host != null and not came.is_empty(): host.remember("Hosted a party", "%d %s came to the party." % [came.size(), "friend" if came.size() == 1 else "friends"])
 	if came.size() >= 2:
@@ -659,6 +661,7 @@ func guest_reason(id: String) -> String:
 func host_reason() -> String:
 	if active(): return "A party is already on."
 	if str(app.mode) != "live" or str(app.current_venue) != "home": return "Host a party while you are at home in Live mode."
+	if app.driving_lesson.running(): return "Wait for the driving lesson to finish before hosting a party."
 	if not LifePartyPlan.window_open(float(app.household.minutes)): return "It is too late for a party tonight." if float(app.household.minutes) > LifePartyPlan.WINDOW_CLOSE else "It is too early for a party."
 	var any: bool = false
 	for id: String in neighbors():
@@ -799,7 +802,7 @@ func _refresh_card() -> void:
 	(_ui.less as Button).disabled = hours <= LifePartyPlan.MIN_HOURS
 	(_ui.more as Button).disabled = hours >= LifePartyPlan.MAX_HOURS
 	var score: int = app.world.festive_count(0)
-	(_ui.decor as Label).text = "Your home has %d festive %s. Guests arrive in better spirits, and so does the household." % [score, "touch" if score == 1 else "touches"] if score > 0 else "No decorations yet. Balloons, streamers and a tablecloth from the Party tab of Build & buy make a party feel like one."
+	(_ui.decor as Label).text = "Your home has %d festive %s. Guests arrive in better spirits, and so does the household." % [score, "touch" if score == 1 else "touches"] if score > 0 else "No decorations yet. Balloons and streamers from the Party tab of Build & buy, and a festive cloth on a dining table, make a party feel like one."
 	var chosen: Array = invited_ids()
 	var why: String = _send_reason(chosen)
 	if chosen.is_empty(): why = "Tick the friends you would like to ask."

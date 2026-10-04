@@ -269,6 +269,9 @@ func run() -> void:
 	check(body("Kit").celebration_presentation.get("role") == "celebrant" and body("Ada").celebration_presentation.get("role") == "singer" and body("Ada").celebration_presentation.get("ritual_phase") == "sing", "Each person's body knows their part")
 	# Pausing holds the song and the tune where they are.
 	app.household.set_speed(0)
+	# One frame lets the pause reach the player; the mixer keeps running in real time
+	# until it does, so measuring before it can read a stale position on a busy machine.
+	app._process(DT)
 	var held_at: float = elapsed_of(kit_session())
 	var tune_at: float = app.party_music.tune_position()
 	for index: int in 20: app._process(DT)

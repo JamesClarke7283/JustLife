@@ -59,7 +59,7 @@ func boot(stages: Array, day: int = 1, lot: int = 0, adults: int = 1) -> Array:
 func new_record(pupils: Array) -> Dictionary:
 	var rec: Dictionary = {"events": [], "last_phase": str(app.school_bus.phase), "pupils": {}, "samples": {}, "marks": [600.0, 720.0, 840.0, 960.0, 1200.0]}
 	for id: String in pupils:
-		rec.pupils[id] = {"state": "home", "left": -1.0, "flip": -1.0, "off": -1.0, "off_pos": Vector3.INF, "exit": Vector3.INF, "bus_at_off": "", "home": -1.0, "home_pos": Vector3.INF, "home_indoors": false}
+		rec.pupils[id] = {"state": "home", "left": -1.0, "flip": -1.0, "off": -1.0, "off_pos": Vector3.INF, "exit": Vector3.INF, "bus_at_off": "", "home": -1.0, "home_pos": Vector3.INF, "home_indoors": false, "boarding": false, "dropped": 0}
 	return rec
 
 func step(rec: Dictionary) -> void:
@@ -85,6 +85,11 @@ func step(rec: Dictionary) -> void:
 		var sim: LifeSim = app.household.member_sim(id)
 		var actor: Node3D = app.world.actors[id]
 		var away: String = str(sim.get_away_state().get("phase", "")) if sim.is_away() else ""
+		# Walking out to the bus is never cancelled behind the pupil's back, for instance
+		# when a brother or sister boarding first changes who is home.
+		var front: String = str(sim.get_current_action().get("id", ""))
+		if bool(p.boarding) and front not in ["board_school_bus", "school_day"] and away == "": p.dropped = int(p.dropped) + 1
+		p.boarding = front == "board_school_bus"
 		if d == 1 and away == "away" and float(p.left) < 0.0:
 			p.left = now
 			print("  [d%d %s] %s is away at school" % [d, clock(now), id])
@@ -133,6 +138,7 @@ func school_week(label: String, stages: Array, lot: int = 0) -> void:
 	var departing: Array = events_to(rec, "departing", 1)
 	check(departing.size() == 1 and float(departing[0].at) >= last_left - 0.5 and float(departing[0].at) < 540.0, label + ": the bus leaves once, after the last pupil has boarded (last boarded %s, left %s)" % [clock(last_left), clock(float(departing[0].at)) if departing.size() > 0 else "never"])
 	for id: String in pupils: check(float(rec.pupils[id].left) > 450.0 and float(rec.pupils[id].left) < 540.0, label + ": " + id + " boards the bus on Monday morning (" + clock(float(rec.pupils[id].left)) + ")")
+	for id: String in pupils: check(int(rec.pupils[id].dropped) == 0, label + ": " + id + "'s walk out to the bus is never cancelled (" + str(rec.pupils[id].dropped) + " times)")
 	# ---- away all school day
 	for mark: float in [600.0, 720.0, 840.0]:
 		var seen: Dictionary = rec.samples.get(mark, {})

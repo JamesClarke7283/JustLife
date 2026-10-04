@@ -295,7 +295,7 @@ func live_checks(_live: Dictionary) -> void:
 	app.world.add_item({"id": "hw_shelf", "kind": "bookshelf", "x": -0.05, "z": -2.8, "rotation": 0.0})
 	app.world.rebuild_navigation(); app._refresh_sim_targets()
 	var shelf_day: Dictionary = await run_day(1080.0)
-	check(bool(shelf_day.bookcase) or shelf_day.seen.is_empty(), "With no desk or seat a bookcase is the fallback (%s)" % str(shelf_day.seen))
+	check(bool(shelf_day.bookcase) and str(shelf_day.seen.get("child", "")) == "bookshelf" and str(shelf_day.seen.get("teen", "")) == "bookshelf", "With no desk or seat a bookcase is the fallback (%s)" % str(shelf_day.seen))
 	members2.clear()
 
 	# School record and the work-from-home button find a study or office desk

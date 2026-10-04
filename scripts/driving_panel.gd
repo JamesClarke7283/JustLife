@@ -69,7 +69,11 @@ static func _day_text(day: int, today: int) -> String:
 
 static func _now(app: Node, member_id: String) -> void:
 	app.close_overlay()
-	var problem: String = app.driving_lesson.request(member_id)
+	# A learner who is only pottering about on their own gives that up for the lesson,
+	# the way a booked one does; plans the player lined up are still asked about first.
+	var sim: LifeSim = app.household.member_sim(member_id)
+	var only_own: bool = sim != null and sim.action_queue.all(func(action: Dictionary) -> bool: return bool(action.get("autonomous", false)))
+	var problem: String = app.driving_lesson.request(member_id, only_own)
 	if not problem.is_empty(): app.show_notice(problem)
 	else: app.refresh_hud()
 

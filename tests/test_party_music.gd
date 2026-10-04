@@ -95,6 +95,14 @@ func run() -> void:
 	app.household.set_speed(1)
 	await settle()
 	check(not party.stereo_player.stream_paused and party.stereo_player.playing, "...and it carries on after the pause")
+	# Build mode and the main menu stop the game without touching the household's speed.
+	for held_mode: String in ["build", "menu"]:
+		app.mode = held_mode
+		await settle()
+		check(party.stereo_player.stream_paused, "The speaker holds while the game is in %s mode" % held_mode)
+	app.mode = "live"
+	await settle()
+	check(not party.stereo_player.stream_paused and party.stereo_player.playing, "...and carries on back in Live mode")
 	# the birthday tune outranks it
 	party.play_birthday_tune()
 	await settle()
