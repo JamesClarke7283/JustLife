@@ -18,16 +18,28 @@ class_name LifePartyMusic
 ##
 ## A feature asks for music with `play_birthday_tune` and `set_party_loop` and
 ## ends it with `stop_birthday_tune`, `set_party_loop(false)` or `stop_all`.
+##
+## The party loop can come from a stereo: given the stereo's place, it plays from a
+## speaker there (a 3D player that fades with distance from the camera), and
+## without one it plays flat, as before. Either way it is the same loop under the
+## same rules.
 
 const DUCK_DB: float = -24.0
 ## How fast the theme's volume moves, in decibels a second.
 const DUCK_RATE: float = 30.0
 const TUNE_DB: float = -3.0
 const LOOP_DB: float = -8.0
+## A speaker is a little quieter at its own spot, because it also fades with distance.
+const STEREO_DB: float = -4.0
+const STEREO_UNIT: float = 12.0
 
 var app: Node
 var tune_player: AudioStreamPlayer
 var loop_player: AudioStreamPlayer
+## The speaker the loop plays from when it has a stereo to come from.
+var stereo_player: AudioStreamPlayer3D
+## Where that speaker stands, or INF when the loop plays flat.
+var loop_at: Vector3 = Vector3.INF
 var wants_tune: bool = false
 var wants_loop: bool = false
 var epoch: int = 0
@@ -50,6 +62,11 @@ func _ready() -> void:
 	loop_player.name = "PartyLoop"
 	loop_player.volume_db = LOOP_DB
 	add_child(loop_player)
+	stereo_player = AudioStreamPlayer3D.new()
+	stereo_player.name = "PartyMusic"
+	stereo_player.volume_db = STEREO_DB
+	stereo_player.unit_size = STEREO_UNIT
+	add_child(stereo_player)
 
 
 ## Start the birthday tune, from `from_seconds` into it (a load puts it back where
@@ -66,19 +83,33 @@ func stop_birthday_tune() -> void:
 	tune_player.stop()
 	refresh()
 
-## Turn the party groove on or off.
-func set_party_loop(enabled: bool) -> void:
+## Turn the party groove on or off. `at` is where a stereo stands (a world point):
+## given one, the groove plays from there; without one it plays flat.
+func set_party_loop(enabled: bool, at: Vector3 = Vector3.INF) -> void:
 	_sync_epoch()
 	var was_on: bool = wants_loop
+	var was_at: Vector3 = loop_at
 	wants_loop = enabled
+	loop_at = at if enabled and at.is_finite() else Vector3.INF
 	if enabled:
-		if loop_player.stream == null: loop_player.stream = CelebrationAudio.party_loop()
+		var heard: Variant = _loop_voice()
+		if heard.stream == null: heard.stream = CelebrationAudio.party_loop()
+		if is_instance_valid(stereo_player) and loop_at.is_finite(): stereo_player.global_position = loop_at
+		# Moving between the flat player and the speaker hands the loop over.
+		var moved: bool = was_on and loop_at.is_finite() != was_at.is_finite()
+		if moved:
+			(loop_player if heard == stereo_player else stereo_player).stop()
 		# A paused stream reports that it is not playing, so only a loop that is
 		# newly asked for starts from the top.
-		if not was_on or (not loop_player.playing and not loop_player.stream_paused): loop_player.play()
+		if not was_on or moved or (not heard.playing and not heard.stream_paused): heard.play()
 	else:
 		loop_player.stop()
+		stereo_player.stop()
 	refresh()
+
+## The player the loop is heard from right now.
+func _loop_voice() -> Node:
+	return stereo_player if loop_at.is_finite() and is_instance_valid(stereo_player) else loop_player
 
 ## End all party and birthday music at once and bring the theme back.
 func stop_all() -> void:
@@ -86,6 +117,8 @@ func stop_all() -> void:
 	wants_loop = false
 	if is_instance_valid(tune_player): tune_player.stop()
 	if is_instance_valid(loop_player): loop_player.stop()
+	if is_instance_valid(stereo_player): stereo_player.stop()
+	loop_at = Vector3.INF
 	if ducked and is_instance_valid(app) and is_instance_valid(app.music_player): app.music_player.volume_db = theme_db
 	ducked = false
 
@@ -113,7 +146,9 @@ func refresh() -> void:
 	if not is_instance_valid(tune_player): return
 	var moving: bool = _moving()
 	tune_player.stream_paused = not (tune_audible() and moving)
-	loop_player.stream_paused = not (loop_audible() and moving)
+	var loud: bool = loop_audible() and moving
+	loop_player.stream_paused = not (loud and not loop_at.is_finite())
+	stereo_player.stream_paused = not (loud and loop_at.is_finite())
 
 ## Called every frame by the controller: a new load or leaving for the main menu
 ## ends the music, the players follow the switches and the pause, and the theme

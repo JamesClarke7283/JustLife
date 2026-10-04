@@ -4,7 +4,9 @@ class_name LifeGuestActivity
 ## playable household member. The visit owns the route and the food ledger owns
 ## meals; no effect is earned until the visitor reaches the actual use point.
 const NEEDS = ["hunger", "energy", "hygiene", "bladder", "fun", "social"]
-const ALLOWED = ["roam", "toilet", "wash_hands", "shower", "bath", "snack", "relax", "read", "sleep", "watch_together", "enjoy_outdoors", "play_garden_game", "friendly", "joke", "hug", "talk_to_baby", "play_with_baby", "pet_pet", "pet_play"]
+const ALLOWED = ["roam", "toilet", "wash_hands", "shower", "bath", "snack", "relax", "read", "sleep", "watch_together", "enjoy_outdoors", "play_garden_game", "friendly", "joke", "hug", "talk_to_baby", "play_with_baby", "pet_pet", "pet_play",
+	# What a guest at a party does (scripts/party_flow.gd): eat from the platter, dance, set down a dish, sing.
+	"eat_party_food", "dance", "bring_dish", "sing_birthday"]
 var _owner: WeakRef
 var visit:
 	get: return _owner.get_ref()
@@ -360,6 +362,8 @@ func _choose() -> void:
 	# garden and the lawn games up, company brings the household up. A choice
 	# that cannot be carried out simply hands over to the next, never to a bare walk.
 	data.pick=int(data.get("pick",0))+1
+	# At a party the guest first looks for party things: a bite to eat, a dance.
+	if visit.state.has("party") and app.get("party_flow")!=null and app.party_flow.guest_choose(self):return
 	for category: String in _autonomy_order():
 		if _try_category(category): return
 	_roam()
@@ -498,6 +502,11 @@ func present(reconstruct: bool = false) -> void:
 	var anchor: Dictionary={}
 	if current.has("tv") and app.get("tv_group")!=null:
 		anchor=app.tv_group.anchor(current,body())
+	elif current.get("face") is Array and str(current.id) in ["dance","bring_dish","sing_birthday"]:
+		# A party guest stands where they are and turns to what the party is about: the stereo, the table, the cake.
+		var face: Array=current.face
+		var toward:=Vector3(face[0],face[1],face[2])-body().position
+		anchor={"position":body().position,"yaw":atan2(toward.x,toward.z),"kind":"standing"}
 	else:
 		var item: Dictionary=app._find_item(str(current.target_id))
 		if not item.is_empty():
@@ -558,6 +567,8 @@ func _finish() -> void:
 				peer.relationships[person()].friendship=minf(100.0,float(peer.relationships[person()].friendship)+6.0)
 				peer._update_relationship_status(peer.relationships[person()])
 			peer._emit_changed()
+	elif str(current.id)=="eat_party_food":app.party_flow.platter_taken(current)
+	elif str(current.id)=="bring_dish":app.party_flow.dish_set_down(person(),current)
 	data.completed=int(data.completed)+1
 	data.last_completed=str(current.id)
 	cancel("")
