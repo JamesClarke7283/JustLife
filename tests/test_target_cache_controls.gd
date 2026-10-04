@@ -7,9 +7,11 @@ func _uncached()->Array:
 		if at.is_finite():
 			var target:Dictionary={"id":item.id,"kind":item.kind,"position":at,"level":app.world.item_level(item)}
 			if str(item.kind)=="towel_rack":target["towels"]=int(item.get("towels",0))
+			if str(item.kind)=="party_food":target["servings"]=int(item.get("servings",0))
 			if bool(item.get("carried",false)):target["carried"]=true
 			# Which chair a desk or table offers a pupil rides along with it.
 			if str(item.kind) in LifeWorld.STUDY_KINDS:target["study_seat"]=str(app.world.study_chair(item).get("id",""))
+			elif str(item.kind) in LifeCatalog.WORK_DESKS:target["study_seat"]=str(app.world.desk_chair(item).get("id",""))
 			expected.append(target)
 	for id:String in app.world.actors:
 		if bool(app.world.actors[id].get_meta("away",false)):continue
