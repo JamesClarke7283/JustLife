@@ -31,7 +31,10 @@ const ITEMS = {
 	"corner_counter": {"label":"Kitchen corner cabinet", "category":"Kitchen", "price":15, "size":Vector2(.8,.8), "height":1.0, "color":"417a71",
 		"styles":Kitchen.STYLES, "style_labels":Kitchen.STYLE_LABELS, "colors":Kitchen.COLORS, "description":"A continuous corner worktop for L-shaped and U-shaped kitchens. Joins cabinets on either side."},
 	"sink": {"label":"Brass & stone sink", "category":"Kitchen", "price":230, "size":Vector2(1.05,.8), "height":1.3, "color":"417a71",
-		"styles":Kitchen.STYLES, "style_labels":Kitchen.STYLE_LABELS, "colors":Kitchen.COLORS},
+		"styles":Kitchen.STYLES, "style_labels":Kitchen.STYLE_LABELS, "colors":Kitchen.COLORS,
+		"sizes":["standard","bathroom_single","bathroom_double"], "size_labels":{"standard":"Kitchen sink","bathroom_single":"Bathroom sink","bathroom_double":"Double bathroom sink"},
+		"size_footprints":{"standard":Vector2(1.05,.8),"bathroom_single":Vector2(.7,.45),"bathroom_double":Vector2(1.4,.55)},
+		"size_heights":{"standard":1.3,"bathroom_single":1.15,"bathroom_double":1.15}, "size_prices":{"standard":230,"bathroom_single":180,"bathroom_double":320}},
 	"dining": {"label":"Gathering table", "category":"Kitchen", "price":280, "size":Vector2(1.6,1.12), "height":1.0, "color":"d7ae7e"},
 	"chair": {"label":"Everyday chair", "category":"Comfort", "price":85, "size":Vector2(.6,.6), "height":1.0, "color":"d7ae7e"},
 	"toilet": {"label":"Porcelain toilet", "category":"Bathroom", "price":240, "size":Vector2(.7,.9), "height":1.1, "color":"eee8d9"},
@@ -132,7 +135,7 @@ const ITEMS = {
 	"rubbish_bin": {"label":"Pedal rubbish bin", "category":"Kitchen", "price":45, "size":Vector2(.45,.45), "height":.72, "color":"4a4f55"},
 	# Freestanding or supported: the same appliance may stand on the floor,
 	# a cabinet worktop or a table. Placement records its chosen support height.
-	"coffee_machine": {"label":"Counter-top espresso machine", "category":"Kitchen", "price":280, "size":Vector2(.42,.55), "height":.86, "color":"4a4f55", "surface_placeable":true, "description":"Place on the floor, a kitchen worktop or a table."},
+	"coffee_machine": {"label":"Counter-top espresso machine", "category":"Kitchen", "price":280, "size":Vector2(.34,.38), "height":.48, "color":"4a4f55", "surface_placeable":true, "description":"A compact espresso machine that fits neatly on kitchen worktops and tables."},
 	"memorial": {"label":"Garden remembrance stone", "category":"Decor", "price":80, "size":Vector2(.72,.72), "height":.48, "color":"8c8a84"},
 	# Party items are built from code (party_props.gd), so they need no authored model.
 	# The festive tablecloth is not sold here: it is a setting on the gathering table.
@@ -620,7 +623,7 @@ static func starter_layout(lot: int = 0) -> Array:
 		["fridge",-5.28,-4.3,0],["counter",-4.18,-4.4,0],["stove",-3.1,-4.4,0],["sink",-2.02,-4.4,0],["counter",-0.94,-4.4,0],
 		["dining",-3.5,-1.85,0],["chair",-3.5,-2.8,0],["chair",-3.5,-.92,180],
 		["rug",-2.9,2.43,0],["sofa",-3.4,3.75,180],["table",-3.1,2.17,0],["tv",-4.95,.65,90],["lamp",-5.1,3.9,0],
-		["plant",-.05,4.15,0],["bookshelf",-.05,-2.8,0],["easel",-.05,.0,-35],
+		["plant",-.05,4.15,0],["bookshelf",-.05,-2.8,0],["easel",-.05,.8,-35],
 		["bed",3.5,1.5,0],["nightstand",2.03,.65,0],["nightstand",4.98,.65,0],
 		["desk",3.4,4.3,180],["chair",3.4,3.48,0],["plant",5.2,4.2,180],
 		["shower",4.9,-4.13,0],["toilet",2.35,-4.1,0],["sink",5.15,-2.13,-90],
@@ -634,7 +637,7 @@ static func starter_layout(lot: int = 0) -> Array:
 			["fridge",-5.28,-4.3,0],["sink",-4.18,-4.4,0],["counter",-3.10,-4.4,0],["stove",-2.02,-4.4,0],
 			["rug",-3.65,2.0,90],["sofa",-4.85,2.0,90],["table",-2.85,2.0,90],["tv",0,2.0,-90],["lamp",-5.15,4.1,0],
 			["dining",-3.7,-1.4,90],["chair",-4.85,-1.4,90],["chair",-2.6,-1.4,-90],
-			["easel",-.1,-.05,-35],["bookshelf",-.05,-2.8,0],["plant",-1.6,4.3,180],
+			["easel",-1.,.8,-35],["bookshelf",-.05,-2.8,0],["plant",-1.6,4.3,180],
 			["bed",4.65,1.6,-90],["nightstand",5.3,-.1,0],["plant",2,3.7,0],
 			["desk",3.6,4.3,180],["chair",3.6,3.48,0],
 			["shower",4.9,-4.13,0],["toilet",2.35,-4.1,0],["sink",5.15,-2.13,-90],

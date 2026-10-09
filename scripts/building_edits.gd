@@ -157,7 +157,7 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 		else:
 			# Prefer relocating an existing doorway when the click lands in a gap
 			# between collinear wall stubs; otherwise cut a new opening.
-			var moved:Dictionary=_relocate_doorway(after,operation.get("center"),int(level))
+			var moved:Dictionary=_relocate_doorway(after,operation.get("center"),int(level),wall)
 			if bool(moved.get("ok",false)):
 				cost=40
 			else:
@@ -474,15 +474,20 @@ static func _opening_rank(after:Dictionary,area:Rect2,side:String,level:int) -> 
 
 ## When a click lands in the gap of an existing doorway, merge the two stubs and
 ## cut again at the new centre so the opening slides along the wall.
-static func _relocate_doorway(after:Dictionary,center_value:Variant,level:int) -> Dictionary:
+static func _relocate_doorway(after:Dictionary,center_value:Variant,level:int,selected:Dictionary) -> Dictionary:
 	if not Building.number(center_value,-Building.Land.MAX_SPAN,Building.Land.MAX_SPAN):return {"ok":false}
 	var want:float=float(center_value)
+	var selected_horizontal:bool=float(selected.w)>float(selected.d)
+	var selected_line:float=float(selected.z) if selected_horizontal else float(selected.x)
 	var best:Dictionary={}
 	var best_score:float=1.2
 	for first:Dictionary in after.walls:
 		if int(first.level)!=level:continue
 		var first_h:bool=float(first.w)>float(first.d)
 		var first_line:float=float(first.z) if first_h else float(first.x)
+		# A scalar centre is shared by parallel walls and perpendicular runs.
+		# Only a gap in the wall the player selected can be relocated.
+		if first_h!=selected_horizontal or absf(first_line-selected_line)>.08:continue
 		var first_mid:float=float(first.x) if first_h else float(first.z)
 		var first_half:float=maxf(float(first.w),float(first.d))*.5
 		for second:Dictionary in after.walls:

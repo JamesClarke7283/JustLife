@@ -151,11 +151,13 @@ static func _tug(actor, pose: Dictionary, ct: float, anchor: Dictionary) -> Dict
 	return {"lean": Vector3(-.10 - .09 * pull, 0, .02 * sin(ct * 1.7)), "props": props}
 
 ## Lift the kibble bag from the hip, tip it over the bowl until the food runs
-## out, then set it upright again, on a six-second loop.
+## out, then stand back up. One action has one pour, even when its remaining
+## time is spent watching the pet eat.
 static func _pour_kibble(actor, pose: Dictionary, ct: float, anchor: Dictionary) -> Dictionary:
-	var c: float = fmod(ct, 6.0)
+	var c: float = maxf(0.0, ct)
 	var lift: float = smoothstep(0.0, .9, c) * (1.0 - smoothstep(5.0, 5.8, c))
 	var pour: float = smoothstep(1.0, 1.6, c) * (1.0 - smoothstep(4.2, 4.8, c))
+	var drop: float = _kneel(actor, pose, lift)
 	var proportion: float = actor._proportion
 	var start := Vector3(.18, actor._hip_height + .05 * proportion, .22 * proportion)
 	var bowl: Variant = _world(anchor, "care_target")
@@ -170,7 +172,7 @@ static func _pour_kibble(actor, pose: Dictionary, ct: float, anchor: Dictionary)
 	var tip: float = pour * 1.9
 	var basis: Basis = actor._model.global_basis.orthonormalized() * Basis(Vector3.RIGHT, tip)
 	var bag := Transform3D(basis.scaled(Vector3.ONE * proportion), actor._model.to_global(hand + Vector3(-.05, .06, .02) * proportion))
-	var props: Dictionary = {"bag": bag}
+	var props: Dictionary = {"bag": bag} if c < 5.8 else {}
 	if pour > .55 and bowl != null:
 		var mouth: Vector3 = bag * Vector3(0, .14, 0)
 		var bits: Array = []
@@ -180,7 +182,7 @@ static func _pour_kibble(actor, pose: Dictionary, ct: float, anchor: Dictionary)
 			fall.y -= .08 * sin(s * PI)
 			bits.append(fall)
 		props["kibble"] = bits
-	return {"lean": Vector3(.30 * lift, 0, 0), "props": props}
+	return {"lean": Vector3(.30 * lift, 0, 0), "drop": drop, "props": props}
 
 static func _walk_dog(actor, pose: Dictionary, ct: float, t: float, anchor: Dictionary) -> Dictionary:
 	var phase: String = str(anchor.get("care_phase", "clip"))

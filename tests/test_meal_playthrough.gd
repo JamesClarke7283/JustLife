@@ -31,9 +31,15 @@ func _make_family() -> void:
 	await _link(1,0,4)
 	await press_member(FAMILY_NAMES[1]);await press("Find my home",true);await press("Start living",true)
 	await press("Ⅱ")
-	for member:Dictionary in app.household.members:member.sim.autonomy=false
+	for member:Dictionary in app.household.members:
+		member.sim.autonomy=false
+		while not member.sim.action_queue.is_empty():member.sim.cancel_action()
+		member.sim.needs.hunger=55.0 # Both invitees willingly accept the fixture's shared meal.
 	await press_member(FAMILY_NAMES[1])
-	expected={"funds":app.household.funds,"hunger":app.sim.needs.hunger}
+	# Stock this meal fixture through the household's order and collection
+	# transactions; current cooking consumes groceries bought at delivery.
+	check(bool(app.household.order_groceries("weekly").ok) and bool(app.household.collect_groceries().ok),"The meal fixture orders and collects its own groceries.")
+	expected={"funds":app.household.funds,"stock":LifeGroceries.stock(app.household.groceries),"hunger":app.sim.needs.hunger}
 
 func _cook_and_serve() -> void:
 	var stove:Dictionary=first_item("stove")
@@ -41,11 +47,11 @@ func _cook_and_serve() -> void:
 	await frames(3);await press("Cook a fresh meal",true);await press("Cook garden skillet");await press("▶")
 	if not await wait_until(func()->bool:return active_is("cook",.1),"the cook reaches the stove",40):return
 	await press("Ⅱ")
-	check(app.household.funds==int(expected.funds)-12,"Cooking spends its ingredient cost once after physical arrival.")
+	check(app.household.funds==int(expected.funds) and LifeGroceries.stock(app.household.groceries)==int(expected.stock)-1,"Cooking consumes one prepaid grocery unit after physical arrival.")
 	check(app.sim.needs.hunger<float(expected.hunger),"Preparing food does not feed the cook.")
 	await screenshot("01_preparing",false,false)
 	await press("▶")
-	if not await wait_until(func()->bool:return app.sim.get_current_action().get("id")=="serve_meal","finished cooking creates a dish to carry",30):return
+	if not await wait_until(func()->bool:return app.sim.get_current_action().get("id")=="serve_meal","finished cooking creates a dish to carry",float(LifeMeals.RECIPES.garden_skillet.duration)+20.0):return
 	await press("Ⅱ")
 	check(app.household.meals.batches.size()==1 and app.household.meals.batches[0].remaining==4,"Cooking creates one four-serving batch.")
 	check(app.household.meals.batches[0].owner=="housemate_1","The actual cook carries the serving dish.")
@@ -80,7 +86,7 @@ func _both_eating() -> bool:
 
 func _resume_dinner() -> void:
 	for member:Dictionary in app.household.members:member.sim.autonomy=false
-	check(app.household.funds==int(expected.funds),"Fresh-process load preserves the meal's ingredient charge.")
+	check(app.household.funds==int(expected.funds),"Fresh-process load preserves the meal's prepaid ingredient charge.")
 	check(_same_json(app.household.meals.get_state(),expected.food),"The served food and partial plates survive named restart exactly.")
 	await press("▶")
 	await wait_until(func()->bool:return app.household.members.all(func(m:Dictionary)->bool:return m.sim.action_queue.is_empty()),"both diners independently finish after reload",45)

@@ -3,6 +3,139 @@ class_name LifeSanitationFlow
 ## Floor-level accident presentation and cleanup are independent of food custody.
 var app:Node
 var views:Dictionary={}
+const PRIVACY_ACTIONS:Array[String]=["toilet","shower","bath","wash_hands","brush_teeth","use_potty"]
+## The HUD colours bladder red at 22 or below.
+const CRITICAL_BLADDER:float=22.0
+var _privacy_generation:int=-1
+var _bathrooms:Dictionary={}
+var _fixture_rooms:Dictionary={}
+
+func _privacy_cell(point:Vector3)->Vector2i:
+	return Vector2i(floori(point.x/LifeBuildingState.CELL),floori(point.z/LifeBuildingState.CELL))
+
+func _refresh_bathrooms()->void:
+	if not is_instance_valid(app.world) or not is_instance_valid(app.world.construction):return
+	var navigation=app.world.lot_navigation
+	if _privacy_generation==navigation.generation:return
+	_privacy_generation=navigation.generation;_bathrooms.clear();_fixture_rooms.clear()
+	var state:Dictionary=navigation.state_snapshot()
+	if state.is_empty():return
+	# Close every physical door gap for room recognition, including wide double
+	# doors. This is only the room map; the walking graph keeps the gaps open.
+	for door:Dictionary in app.world.construction.doors.doors.values():
+		var at:Vector3=door.root.position
+		var horizontal:bool=absf(cos(float(door.root.rotation.y)))>.5
+		state.walls.append({"x":at.x,"z":at.z,"w":float(door.width)+.1 if horizontal else .16,"d":.16 if horizontal else float(door.width)+.1,"level":int(door.level)})
+	for item:Dictionary in app.world.items:
+		if str(item.kind) not in ["toilet","shower","bath","bathtub","potty"]:continue
+		var point:Vector3=app.world.approach(item)
+		var level:int=app.world.item_level(item)
+		var enclosed:Dictionary=LifeBuildingEdits._enclosed_cells(state,level,Vector2(point.x,point.z))
+		if enclosed.is_empty() or bool(enclosed.escaped) or enclosed.cells.is_empty():continue
+		var key:String=""
+		for existing:String in _bathrooms:
+			if int(_bathrooms[existing].level)==level and _bathrooms[existing].cells.has(_privacy_cell(point)):key=existing;break
+		if key.is_empty():
+			key="bathroom_"+str(item.id);_bathrooms[key]={"id":key,"level":level,"cells":enclosed.cells}
+		_fixture_rooms[str(item.id)]=key
+	for item:Dictionary in app.world.items:
+		if str(item.kind)!="sink":continue
+		var room:Dictionary=_room_at(app.world.approach(item))
+		if not room.is_empty():_fixture_rooms[str(item.id)]=str(room.id)
+	for door:Dictionary in app.world.construction.doors.doors.values():
+		door.privacy_rooms=[]
+		for direction:float in [-1.0,1.0]:
+			for distance:float in [.5,.75,1.0]:
+				var room:Dictionary=_room_at(door.root.to_global(Vector3(0,0,direction*distance)))
+				if room.is_empty():continue
+				door.privacy_rooms.append({"room":str(room.id),"inside":direction});break
+
+func _room_at(point:Vector3)->Dictionary:
+	var level:int=app.world.point_level(point)
+	var cell:Vector2i=_privacy_cell(point)
+	for room:Dictionary in _bathrooms.values():
+		if int(room.level)==level and room.cells.has(cell):return room
+	return {}
+
+func room_for_action(action:Dictionary)->String:
+	_refresh_bathrooms()
+	if str(action.get("id","")) not in PRIVACY_ACTIONS:return ""
+	return str(_fixture_rooms.get(str(action.get("target_id","")),""))
+
+func privacy_owner(room_id:String)->String:
+	if room_id.is_empty():return ""
+	# Active users win first. A user walking between their toilet and sink
+	# keeps privacy while still physically inside the same bathroom.
+	for member:Dictionary in app.household.members:
+		var action:Dictionary=member.sim.get_current_action()
+		if str(action.get("phase",""))!="active":continue
+		if room_for_action(action)==room_id:return str(member.id)
+	for visit:LifeHomeVisit in app.residents.visits():
+		var action:Dictionary=visit.activity.current_action()
+		if visit.active() and str(action.get("phase",""))=="active" and room_for_action(action)==room_id:return visit.activity.person()
+	for member:Dictionary in app.household.members:
+		var action:Dictionary=member.sim.get_current_action();var actor:LifeActor=app.world.actors.get(str(member.id))
+		if not is_instance_valid(actor) or not actor.visible or str(action.get("phase",""))!="approach" or room_for_action(action)!=room_id:continue
+		if str(_room_at(actor.global_position).get("id",""))==room_id:return str(member.id)
+	for visit:LifeHomeVisit in app.residents.visits():
+		var action:Dictionary=visit.activity.current_action();var actor:LifeActor=visit.activity.body()
+		if not visit.active() or not is_instance_valid(actor) or str(action.get("phase",""))!="approach" or room_for_action(action)!=room_id:continue
+		if str(_room_at(actor.global_position).get("id",""))==room_id:return visit.activity.person()
+	return ""
+
+func urgent_child(id:String)->bool:
+	var sim:LifeSim=app.household.member_sim(id)
+	return sim!=null and str(sim.character.get("age_stage","")) in ["child","toddler"] and float(sim.needs.get("bladder",100.0))<=CRITICAL_BLADDER
+
+## An urgent child hurries towards a bathroom; the walking controller keeps
+## its ordinary bounded substeps, wall sweeps, body clearance and latch waits.
+func bathroom_hurry(id:String,destination:Vector3)->float:
+	if not urgent_child(id) or not destination.is_finite():return 1.0
+	_refresh_bathrooms()
+	return 1.35 if not _room_at(destination).is_empty() else 1.0
+
+func privacy_blocks(action:Dictionary,id:String)->bool:
+	var room_id:String=room_for_action(action)
+	var owner:String=privacy_owner(room_id)
+	# Urgency permits entry to the room, while the occupied fixture retains its
+	# ordinary single-user resource reservation.
+	return not owner.is_empty() and owner!=id and not urgent_child(id)
+
+func privacy_step_allowed(actor:Node3D,id:String,to:Vector3)->bool:
+	_refresh_bathrooms()
+	if id.is_empty():
+		for key:String in app.world.actors:
+			if app.world.actors[key]==actor:id=key;break
+	if urgent_child(id):return true
+	var from_room:Dictionary=_room_at(actor.global_position)
+	var next_room:Dictionary=_room_at(to)
+	if not next_room.is_empty() and str(from_room.get("id",""))!=str(next_room.id):
+		var owner:String=privacy_owner(str(next_room.id))
+		if not owner.is_empty() and owner!=id:return false
+	# Wait before the closed leaf, with the walker's whole body outside. Room
+	# cells intentionally omit the door threshold, so check that approach too.
+	for door:Dictionary in app.world.construction.doors.doors.values():
+		var from:Vector3=door.root.to_local(actor.global_position);var next:Vector3=door.root.to_local(to)
+		if absf(from.y)>.25 or absf(next.x)>float(door.width)*.5+.15:continue
+		for side:Dictionary in door.get("privacy_rooms",[]):
+			var owner:String=privacy_owner(str(side.room))
+			if owner.is_empty() or owner==id or str(from_room.get("id",""))==str(side.room):continue
+			var sign_value:float=float(side.inside)
+			if next.z*sign_value>=-.42 and from.z*sign_value<=.42 and (next.z-from.z)*sign_value>.000001:return false
+	return true
+
+func sync_privacy()->void:
+	_refresh_bathrooms()
+	if not is_instance_valid(app.world) or not is_instance_valid(app.world.construction):return
+	var flow:LifeDoorFlow=app.world.construction.doors
+	flow.privacy_step=Callable(self,"privacy_step_allowed")
+	for door:Dictionary in flow.doors.values():
+		var owner:String=""
+		for side:Dictionary in door.get("privacy_rooms",[]):
+			owner=privacy_owner(str(side.room))
+			if not owner.is_empty():break
+		door.privacy_owner=owner;door.privacy_locked=not owner.is_empty()
+		door.root.set_meta("privacy_owner",owner);door.root.set_meta("privacy_locked",not owner.is_empty())
 
 ## The bathroom visit carries its room with it. Cabinet sinks in the kitchen
 ## must not win merely because they occur earlier in the furnishing list.
@@ -107,6 +240,7 @@ func restore_action_error(member:String,action:Dictionary)->String:
 func finished(_sim:LifeSim,action:Dictionary)->void:
 	if str(action.id)=="mop_puddle" and target_error("mop_puddle",str(action.target_id)).is_empty():app.household.sanitation.remove(str(action.target_id))
 func sync_world(reconcile:bool=true)->void:
+	sync_privacy()
 	if not is_instance_valid(app.world.house):return
 	var present:Dictionary={}
 	var changed:bool=false

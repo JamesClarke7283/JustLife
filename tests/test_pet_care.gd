@@ -38,6 +38,7 @@ func _run() -> void:
 	root.add_child(app)
 	await frames(6)
 	app.selected_lot = 0
+	app.household_profiles = [{"name": "Alex", "age_stage": "adult", "traits": [], "hair": 0}]
 	app.start_household()
 	await frames(6)
 	app.household.set_speed(0)
@@ -64,9 +65,13 @@ func _pet_condition() -> void:
 	await frames(4)
 	app.pet_shop.show_species()
 	await frames(4)
+	# Stand .75m from the first home seed: it is outside the runtime body gap
+	# but inside route admission's clearance, so the shop must try another spot.
+	app.player.position = Vector3(-.75, .16, 1.5)
 	app.pet_shop.confirm_pet()
 	await frames(6)
 	var pets: Array = app.household.pets.get("pets", [])
+	if pets.is_empty(): print("PET_SHOP_DIAGNOSTIC ", app.notice_text)
 	check(pets.size() == 1, "The household owns one pet after the shop confirms (%d)." % pets.size())
 	if pets.is_empty():
 		return
@@ -91,6 +96,36 @@ func _pet_condition() -> void:
 	check(LifePetCare.mood_label(app.household.pet_care(id)) is String,
 		"A pet reports a mood of its own (%s)." % LifePetCare.mood_label(app.household.pet_care(id)))
 	app.household.set_speed(0)
+	await _physical_arrival(id)
+
+## The phone purchase must admit more than a safe resting point: the bought
+## animal really enters the furnished home along its own body-clear route.
+func _physical_arrival(id: String) -> void:
+	var pet: LifePetActor = app.pet_actors.get(id)
+	var arrival: Dictionary = app.pet_arrivals.get(id, {})
+	check(is_instance_valid(pet) and not arrival.is_empty() and not arrival.get("segments", []).is_empty(), "The public purchase starts a physical arrival route")
+	if not is_instance_valid(pet) or arrival.is_empty(): return
+	var destination: Vector3 = arrival.destination
+	check(destination.distance_to(app.player.position) >= LifeTraversal.ROUTE_CLEARANCE, "Arrival admission chooses a home spot clear of the present Lifelet before charging")
+	var continuous: bool = true
+	var longest: float = 0.0
+	var clear: bool = true
+	app.set_process(false)
+	app.sim.autonomy = false
+	app.household.set_speed(3)
+	for frame: int in 900:
+		var before: Vector3 = pet.position
+		app._process(.05)
+		longest = maxf(longest, before.distance_to(pet.position))
+		continuous = continuous and before.distance_to(pet.position) <= .331
+		clear = clear and app.world.lot_navigation.pet_wall_pose_clear(pet.position, pet.rotation.y, pet.wall_hull())
+		if not app.pet_arrivals.has(id): break
+		if frame % 12 == 0: await process_frame
+	if not continuous or not clear: print("PET_ARRIVAL_DIAGNOSTIC longest=", longest, " clear=", clear)
+	check(continuous and clear, "The bought pet walks continuously with its full head-to-tail body clear of walls")
+	check(not app.pet_arrivals.has(id) and pet.position.distance_to(destination) < .06 and app.world.construction.floor_contains(Vector2(pet.position.x, pet.position.z), 0), "The bought pet actually reaches its resting spot indoors")
+	app.household.set_speed(0)
+	app.set_process(true)
 
 
 ## What a Lifelet may do with the pet, and what those actions actually change.
@@ -103,9 +138,9 @@ func _interactions() -> void:
 	var who: String = app.household.selected_id()
 	var actions: Array = app.household.pet_actions(id, who)
 	# This fixture buys a cat, whose menu omits dog-only games and bathing.
-	var expected: int = 6 if str(pets[0].species) == "cat" else 11
-	check(actions.size() == expected,
-		"The grown Lifelet sees all interactions suitable for this species (%d of %d)." % [actions.size(), expected])
+	var expected: Array = ["pet_feed", "pet_pet", "pet_play", "pet_teach_trick", "pet_train"] if str(pets[0].species) == "cat" else ["pet_feed", "pet_pet", "pet_tummy_rub", "pet_play", "pet_tug", "pet_teach_trick", "pet_walk", "pet_train", "pet_train_social", "pet_train_logic", "bathe_pet"]
+	check(actions.map(func(action: Dictionary) -> String: return str(action.id)) == expected,
+		"The grown Lifelet sees every exact interaction suitable for this species (%d)." % actions.size())
 	check(actions.all(func(a: Dictionary) -> bool: return str(a.id) in ["pet_pet", "pet_tummy_rub", "pet_feed", "pet_play", "pet_tug", "pet_teach_trick", "pet_walk", "pet_train", "pet_train_social", "pet_train_logic", "bathe_pet"]),
 		"The card offers petting, a tummy rub, feeding, playing, tug-of-war, trick teaching, walking, training and a bath.")
 

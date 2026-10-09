@@ -15,6 +15,7 @@ static func model_scale(kind: String) -> Vector3:
 	# Match their joining edge while retaining the oven's animated child nodes.
 	if kind == "fridge":return Vector3(.9/.87,1,1)
 	if kind == "stove":return Vector3(1.05/1.02,1,1)
+	if kind == "coffee_machine":return Vector3(.55,.55,.55)
 	return Vector3.ONE
 
 static func _box(parent: Node3D, label: String, at: Vector3, size: Vector3, color: String) -> MeshInstance3D:
@@ -28,6 +29,7 @@ static func _box(parent: Node3D, label: String, at: Vector3, size: Vector3, colo
 
 static func build(kind: String, variant: Dictionary) -> Node3D:
 	if kind == "fridge":return _fridge(variant)
+	if kind == "sink" and str(variant.get("size","")) in ["bathroom_single","bathroom_double"]:return _bathroom_sink(variant)
 	var root := Node3D.new();root.name = "KitchenCabinet"
 	var corner: bool = kind == "corner_counter"
 	var width: float = .8 if corner else 1.05
@@ -52,6 +54,25 @@ static func build(kind: String, variant: Dictionary) -> Node3D:
 				# a partially deleted scene would restore its old cabinet in previews.
 				mesh.owner=null;mesh.get_parent().remove_child(mesh);root.add_child(mesh)
 		fittings.free()
+	return root
+
+static func _bathroom_sink(variant:Dictionary)->Node3D:
+	var root:=Node3D.new();root.name="BathroomVanity"
+	var double:bool=str(variant.get("size",""))=="bathroom_double"
+	var width:float=1.4 if double else .7
+	var depth:float=.55 if double else .45
+	var color:String=str(variant.get("color","417a71"))
+	_box(root,"TintVanity",Vector3(0,.46,0),Vector3(width-.04,.78,depth-.04),color)
+	_box(root,"StoneWorktop",Vector3(0,.90,0),Vector3(width,.10,depth),"eee8d9")
+	for x:float in ([-.35,.35] if double else [0.]):
+		# Separate bowl rims, dark basin bottoms and brass taps make the two
+		# wash places readable instead of stretching a single sink across them.
+		_box(root,"BasinBottom",Vector3(x,.955,0),Vector3(.40,.015,.24),"c8d7d3")
+		for side:float in [-1.,1.]:
+			_box(root,"BasinRim",Vector3(x+side*.215,.975,0),Vector3(.025,.04,.29),"faf6ea")
+			_box(root,"BasinRim",Vector3(x,.975,side*.14),Vector3(.455,.04,.025),"faf6ea")
+		_box(root,"TapStem",Vector3(x,1.03,-depth*.38),Vector3(.025,.16,.025),"c8a562")
+		_box(root,"TapSpout",Vector3(x,1.105,-depth*.23),Vector3(.025,.025,depth*.34),"c8a562")
 	return root
 
 static func _fridge(variant:Dictionary) -> Node3D:

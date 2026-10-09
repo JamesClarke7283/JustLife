@@ -268,6 +268,7 @@ static func validate(data: Variant, member_ids: Array, now: float,guest:Dictiona
 		ids[value.id]=true;batch_ids[value.id]=value;claimed[value.id]=0
 		if not RECIPES.has(str(value.get("recipe",""))) or str(value.get("chef","")) not in member_ids or not _number(value.get("quality"),1,3,true):return "The saved meal recipe or cook is invalid."
 		if not _number(value.get("guest_extra",0),0,1,true):return "The guest's extra serving count is invalid."
+		if value.has("spoilage_notified") and not value.spoilage_notified is bool:return "The saved food spoilage notice is invalid."
 		# A dish a friend brought names that friend; the cook above stays a household member.
 		if value.has("brought_by") and (not value.brought_by is String or not LifeResidentCatalogue.PEOPLE.has(str(value.brought_by))):return "The saved dish names an unknown friend."
 		var total: int=int(RECIPES[str(value.recipe)].servings)+int(value.get("guest_extra",0))
@@ -399,7 +400,7 @@ static func validate_layout(data:Dictionary,household:Dictionary) -> String:
 			var chair:Dictionary={}
 			for entry:Variant in layout:
 				if entry is Dictionary and entry.get("id")==value.seat:chair=entry;break
-			if chair.is_empty() or chair.get("kind")!="chair" or not _number(chair.get("level",0),level,level,true):return "A saved diner’s chair is not on the table’s floor."
+			if chair.is_empty() or str(chair.get("kind","")) not in ["chair","stool"] or not _number(chair.get("level",0),level,level,true):return "A saved diner’s seat is not on the dining surface’s floor."
 	return ""
 
 static func _validate_guest_food(data:Dictionary,guest:Dictionary,owners:Dictionary)->String:

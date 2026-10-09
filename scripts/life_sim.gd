@@ -31,6 +31,9 @@ var autonomy_activity_available: Callable
 ## simulation without a world leaves it invalid and keeps the old everyone-nearby
 ## policy.
 var social_witness: Callable
+## A live conversation holds the listener's current queue and movement until
+## the speaker finishes. Needs and the shared clock continue to advance.
+var conversation_service: Node
 const DAY_ENERGY_MINIMUM: float = 80.0
 const BLADDER_DESPERATE: float = 12.0
 const BLADDER_GRACE_MINUTES: float = 10.0
@@ -410,10 +413,10 @@ func _build_actions() -> void:
 	_define("homework", "Do homework", 45.0, {}, 0, "", 0.0, "Complete a weekday assignment and prepare for the next attended class.")
 	_define("birthday", "Celebrate a birthday", 45.0, {"fun":30.0,"social":20.0}, 30, "", 0.0, "Celebrate the next chapter of your life. Advances this Lifelet to the next age stage.")
 	_define("serve_meal","Serve the meal",2.0,{},0,"",0.0,"Carry the serving dish to a table or counter.")
-	_define("eat_meal","Take a serving",32.0,{},0,"",0.0,"Collect a plate and eat at an available dining chair.")
+	_define("eat_meal","Take a serving",32.0,{},0,"",0.0,"Collect a plate and eat at an available dining chair or breakfast-bar stool.")
 	_define("store_meal","Put away leftovers",5.0,{},0,"",0.0,"Carry the remaining servings to the fridge to keep them fresh longer.")
 	_define("put_in_fridge","Put food in the fridge",5.0,{},0,"",0.0,"Gather the servings left out and put them back in the fridge while they are still fresh.")
-	_define("discard_meal","Clear this meal",5.0,{},0,"",0.0,"Carry the serving dish to the sink and discard its remaining food.")
+	_define("discard_meal","Clear this meal",5.0,{},0,"",0.0,"Remove the serving dish and carry its remaining food to the kitchen bin. Empty a full bin first.")
 	_define("bin_meal","Throw it in the bin",5.0,{},0,"",0.0,"Carry spoiled food to the rubbish bin and tip it out. The bin takes it; nothing is eaten.")
 	_define("clean_plate","Wash this plate",10.0,{"hygiene":-1.0},0,"",0.0,"Carry the used plate to a sink and wash it.")
 	# The espresso machine's own action. A cup costs a few ℒ of beans and leaves
@@ -434,7 +437,7 @@ func _build_actions() -> void:
 	_define("wash_hands", "Wash your hands", 5.0, {"hygiene": 16.0}, 0, "", 0.0, "Soap and warm water at the sink. A quick freshen up after the bathroom, cooking or time outdoors.")
 	_define("brush_teeth", "Brush your teeth", 8.0, {"hygiene": 22.0, "fun": 2.0}, 0, "", 0.0, "Two minutes at the sink for a minty, clean feeling.")
 	_define("clear_table", "Clear the table", 10.0, {"hygiene": -1.0}, 0, "", 0.0, "Gather the used plates and finished dishes from this surface and take them to the sink.")
-	_define("clean_litter_tray", "Clean Litter Tray", 12.0, {"hygiene": -3.0}, 0, "", 0.0, "Scoop out the used litter and leave a clean tray for the cat.")
+	_define("clean_litter_tray", "Clean Litter Tray", 12.0, {"hygiene": -3.0}, 0, "", 0.0, "Scoop used litter into the kitchen bin. Grown-ups wash their hands immediately afterwards; pregnancy prevents cleaning.")
 	_define("empty_bin", "Empty the bin", 8.0, {"hygiene": -2.0}, 0, "", 0.0, "Take the full rubbish bag out to the street. A tidy home smells fresher.")
 	_define("practice_instrument", "Practise an instrument", 60.0, {"fun": 38.0, "energy": -5.0}, 0, "music", 36.0, "Play through a few pieces. Music skill grows with every session.")
 	_define("study_book", "Study from a book", 60.0, {"fun": 12.0, "energy": -4.0}, 0, "", 0.0, "Work through a book from the shelf. Skill books teach every skill up to level 9; the computer takes a Lifelet the rest of the way to 10.")
@@ -1406,6 +1409,7 @@ func get_current_action() -> Dictionary:
 
 func begin_current_action() -> void:
 	if is_away(): return
+	if is_instance_valid(conversation_service) and conversation_service.listener_held(cooperation_member_id):return
 	if action_queue.is_empty() or str(action_queue[0]["phase"]) != "approach":
 		return
 	var action: Dictionary = action_queue[0]
@@ -1832,6 +1836,11 @@ func _step(game_minutes: float) -> void:
 		_update_wants()
 		return
 	if is_instance_valid(stroller_service) and stroller_service.passenger(self):return
+	if is_instance_valid(conversation_service) and conversation_service.listener_held(cooperation_member_id):
+		_tick_bladder(game_minutes,bladder_before)
+		_check_need_notices()
+		_update_wants()
+		return
 	_enforce_mandatory_homework()
 	_reconsider_active_autonomy()
 	if not action_queue.is_empty() and str(action_queue[0]["phase"]) == "active" and str(action_queue[0].id) != "help_homework" and not (str(action_queue[0].id) == LifeBabyPlan.ACTION_ID and not bool(action_queue[0].get("cooperation_primary",false))):
@@ -1840,6 +1849,8 @@ func _step(game_minutes: float) -> void:
 		var actual_step: float = minf(game_minutes, float(action["duration"]) - float(action["elapsed"]))
 		# A leash walk earns completion only after the pair has physically returned.
 		if str(action.id) == "pet_walk" and is_instance_valid(household_service) and not household_service.pet_walk_ready(self):
+			actual_step = minf(actual_step, maxf(0.0, float(action.duration) - .01 - float(action.elapsed)))
+		if str(action.id) == "pet_feed" and is_instance_valid(household_service) and not household_service.pet_feed_ready(self):
 			actual_step = minf(actual_step, maxf(0.0, float(action.duration) - .01 - float(action.elapsed)))
 		action["elapsed"] = float(action["elapsed"]) + actual_step
 		# Accumulating the timer minute by minute leaves it a hair short of the
@@ -2167,7 +2178,10 @@ func _finish_front() -> void:
 		_queue_follow_up("wash_hands", str(action.get("target_id", "")))
 	elif id == "clean_litter_tray":
 		if is_instance_valid(household_service) and household_service.clean_litter(self, str(action.target_id)):
-			_emit_notice("The litter tray is clean again.")
+			if str(character.age_stage) in ["young_adult", "adult", "elder"]:
+				_queue_follow_up("wash_hands", str(action.target_id), true)
+			var bin:Dictionary=household_service.kitchen_bin()
+			_emit_notice("The litter tray is clean again." + (" The kitchen bin is full (4/4). Empty Bin First before adding more rubbish." if not bin.is_empty() and household_service.bin_is_full(str(bin.id)) else ""))
 	elif id == "empty_bin":
 		if is_instance_valid(household_service):household_service.empty_bin(str(action.get("target_id","")))
 		_emit_notice("The rubbish is out. The kitchen smells fresher already.")
@@ -2403,6 +2417,7 @@ func get_action_availability(id: String, target_id: String = "") -> Dictionary:
 	var reason: String = ""
 	if id == "clean_litter_tray":
 		if str(character.age_stage) not in ["teen", "young_adult", "adult", "elder"]: return {"available": false, "reason": "Only teens, adults and elders can clean litter trays."}
+		if _actor_is_pregnant(): return {"available": false, "reason": "Pregnant Lifelets cannot clean cat litter. Ask another adult."}
 		if not is_instance_valid(household_service): return {"available": false, "reason": "Choose a litter tray at home."}
 		reason = household_service.action_availability(self, id, target_id)
 		if not reason.is_empty(): return {"available": false, "reason": reason}
@@ -3252,12 +3267,14 @@ func remember(label:String,detail:String) -> void:
 	memories.push_front({"day":day,"minutes":int(minutes),"label":label,"detail":detail})
 	while memories.size()>40:memories.pop_back()
 
-func _queue_follow_up(id:String, previous_target:String="") -> bool:
+func _queue_follow_up(id:String, previous_target:String="", required:bool=false) -> bool:
 	# A short automatic continuation of the action that just finished (washing
 	# hands after the bathroom). It rides the same queue as a player instruction,
 	# so it survives a save and yields to any later plan the player already made.
-	if id not in _actions or is_away() or action_queue.size() >= MAX_QUEUE:return false
-	var chosen:Dictionary=sanitation_service.bathroom_sink(self,previous_target) if id=="wash_hands" and not previous_target.is_empty() and is_instance_valid(sanitation_service) else _autonomy_target_for(id)
+	if id not in _actions or is_away() or (not required and action_queue.size() >= MAX_QUEUE):return false
+	var chosen:Dictionary
+	if required and id=="wash_hands" and is_instance_valid(household_service):chosen=household_service.litter_handwashing_target(self,previous_target)
+	else:chosen=sanitation_service.bathroom_sink(self,previous_target) if id=="wash_hands" and not previous_target.is_empty() and is_instance_valid(sanitation_service) else _autonomy_target_for(id)
 	if chosen.is_empty():return false
 	var follow:Dictionary=_actions[id].duplicate(true)
 	follow.merge({"target_id":str(chosen.target_id),"target_position":chosen.position,"phase":"queued",

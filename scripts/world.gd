@@ -708,6 +708,7 @@ func furnishing_volume(entry:Dictionary)->AABB:
 		var path:String=Variants.model_path(kind,style)
 		if ResourceLoader.exists(path):
 			var scene:Node3D=load(path).instantiate();var vertices:Array[Vector3]=[]
+			if kind=="coffee_machine":scene.scale*=Kitchen.model_scale(kind)
 			_normalize_wall_model(scene,kind)
 			_gather_visual_bounds(scene,Transform3D.IDENTITY,vertices);scene.free()
 			if hanging and not vertices.is_empty():box=AABB(vertices[0],Vector3.ZERO)
@@ -1579,13 +1580,11 @@ func nearest_free(p:Vector3) -> Vector2i:
 	return cell
 
 func path_to(from:Vector3,to:Vector3) -> PackedVector3Array:
-	# The floor graph is the authority a walker is held to: every cell carries
-	# the full body radius. The ground compatibility grid is a coarser model
-	# that can still admit a tile the walker is refused, so plan on the graph
-	# first and only fall back to the grid when the graph has no route at all.
+	# The floor graph carries the full body hull. Once built, a refused route
+	# stays refused; the old centre-only grid cannot authorize wall clipping.
 	var planned:Dictionary=route_to(from,to)
 	if bool(planned.ok):return planned.points
-	if not construction.building_state.is_empty():return PackedVector3Array()
+	if lot_navigation.generation>0:return PackedVector3Array()
 	var points:PackedVector3Array=[]
 	var cells=navigation.get_id_path(nearest_free(from),nearest_free(to))
 	for c in cells:points.append(Vector3(c.x*.25,.16,c.y*.25))
@@ -1654,7 +1653,7 @@ func nearest_clear_point(point:Vector3,level:int,radius:int=13) -> Vector3:
 func front_extent(kind:String,size_choice:String,style:String) -> float:
 	var data:Dictionary=LifeCatalog.get_item(kind)
 	if data.is_empty():return .5
-	var reach:float=float((data.get("size",Vector2.ONE) as Vector2).y)*Variants.size_scale(size_choice)*.5
+	var reach:float=Variants.footprint(data,size_choice).y*.5
 	for panel:Dictionary in LifeCatalog.local_panels(kind,size_choice,style):
 		reach=maxf(reach,float(panel.z)+float(panel.d)*.5)
 	return reach
@@ -1674,13 +1673,21 @@ func layout_approach(entry:Dictionary) -> Vector3:
 
 func approach(item:Dictionary) -> Vector3:
 	var n:Node3D=item.node
+	if str(item.kind)=="stool":
+		for host:Dictionary in items:
+			if item_level(host)!=item_level(item) or str(host.kind) not in ["counter","corner_counter"]:continue
+			var toward:Vector3=host.node.global_position-n.global_position
+			if toward.length()<1.4 and n.global_basis.z.dot(toward.normalized())>.65:
+				# Approach from behind the seat; its facing edge touches a solid
+				# worktop and cannot be used as a standing destination.
+				return study_stand_point(item)
 	if bool(item.get("transient_puddle",false)):
 		# The wet footprint may shrink at an edge; the cleaner still needs a
 		# full-size supported standing place within the mop's physical reach.
 		var level:int=item_level(item)
 		for offset:Vector3 in [Vector3(0,0,.8),Vector3(.8,0,0),Vector3(-.8,0,0),Vector3(0,0,-.8)]:
 			var wanted:Vector3=n.global_position+offset
-			var at:Vector3=nearest_clear_point(wanted,level) if not construction.building_state.is_empty() else Vector3(nearest_free(wanted).x*.25,Building.level_y(level),nearest_free(wanted).y*.25)
+			var at:Vector3=nearest_clear_point(wanted,level) if lot_navigation.generation>0 else Vector3(nearest_free(wanted).x*.25,Building.level_y(level),nearest_free(wanted).y*.25)
 			if at.is_finite() and Vector2(at.x-wanted.x,at.z-wanted.z).length()<.24:return at
 		return Vector3.INF
 	var variant:Dictionary=item.get("variant",{}) if item.get("variant",{}) is Dictionary else {}
@@ -1690,7 +1697,7 @@ func approach(item:Dictionary) -> Vector3:
 	if ToyFlow.is_toy(str(item.kind)):standoff=.32
 	elif ToyFlow.is_container(str(item.kind)):standoff=.44
 	var p:Vector3=n.to_global(Vector3(0,0,reach+standoff))
-	if not construction.building_state.is_empty():
+	if lot_navigation.generation>0:
 		var at:Vector3=nearest_clear_point(p,item_level(item))
 		if standoff<.5:at=_stand_beside_small(item,at,reach+standoff)
 		# A child's bed is often pushed up against a wall: its foot may then only
@@ -1922,7 +1929,13 @@ func simulation_targets() -> Array:
 
 func set_build(enabled:bool) -> void:
 	build_enabled=enabled
-	if enabled:rebuild_build_grid()
+	if enabled:
+		# Entering from the full-house view used to leave the upstairs roof
+		# visible and send furnishing clicks into the roof editing path.
+		clear_placement()
+		set_cutaway(true)
+		construction.set_roof_visibility(false)
+		rebuild_build_grid()
 	if grid:grid.visible=enabled
 	if not enabled:clear_placement()
 
@@ -2151,6 +2164,7 @@ func can_place(kind:String,p:Vector3,angle:float,style:String="",size_choice:Str
 ## Join the side edges of modular units without the ordinary quarter-tile gap.
 ## A corner cabinet also exposes perpendicular edges for the return run.
 func kitchen_snap(kind:String,p:Vector3,angle:float,reach:float=.6) -> Vector3:
+	if kind=="stool":return stool_snap(p,angle,reach).position
 	if kind not in Kitchen.UNITS:return p
 	var level:int=point_level(p)
 	var incoming:Rect2=furnishing_rect({"kind":kind,"x":0.0,"z":0.0,"rotation":angle})
@@ -2160,7 +2174,20 @@ func kitchen_snap(kind:String,p:Vector3,angle:float,reach:float=.6) -> Vector3:
 		if item_level(item)!=level or str(item.kind) not in Kitchen.UNITS:continue
 		var other_angle:float=item.node.rotation_degrees.y
 		var parallel:bool=absf(sin(deg_to_rad(angle-other_angle)))<.01
-		if not parallel and kind!="corner_counter" and str(item.kind)!="corner_counter":continue
+		if not parallel and kind!="corner_counter" and str(item.kind)!="corner_counter":
+			if kind!="counter" or str(item.kind)!="counter":continue
+			# A perpendicular cabinet joins the end of a straight run. Align
+			# either outside edge, including a tiny worktop seam overlap, so
+			# an L can be assembled without requiring a separate corner unit.
+			var other:Rect2=item_panels(item,false)[0]
+			for along_x:bool in [true,false]:
+				for side:float in [-1.,1.]:
+					for edge:float in [-1.,1.]:
+						var offset:Vector2=Vector2(side*((incoming.size.x+other.size.x)*.5-.006),edge*(incoming.size.y-other.size.y)*.5) if along_x else Vector2(edge*(incoming.size.x-other.size.x)*.5,side*((incoming.size.y+other.size.y)*.5-.006))
+						var candidate:=Vector3(other.get_center().x+offset.x,p.y,other.get_center().y+offset.y)
+						var delta:float=Vector2(candidate.x-p.x,candidate.z-p.z).length()
+						if delta<distance:distance=delta;best=candidate
+			continue
 		var other:Rect2=item_panels(item,false)[0]
 		var half:Vector2=(incoming.size+other.size)*.5
 		var center:Vector2=other.get_center()
@@ -2174,6 +2201,30 @@ func kitchen_snap(kind:String,p:Vector3,angle:float,reach:float=.6) -> Vector3:
 				if delta<distance:
 					distance=delta;best=candidate
 	return _kitchen_wall_snap(kind,best,angle,reach)
+
+## One setting on each working face of the corner cabinet gives two separate
+## seats. Straight worktops also accept a stool on their open front edge.
+func stool_snap(p:Vector3,angle:float,reach:float=.6)->Dictionary:
+	var result:Dictionary={"position":p,"angle":angle}
+	var nearest:float=reach
+	var level:int=point_level(p)
+	for host:Dictionary in items:
+		if item_level(host)!=level or str(host.kind) not in ["counter","corner_counter"]:continue
+		var places:Array=[{"local":Vector3(0,0,float(host.size.y)*.5+.40),"turn":180.}]
+		if str(host.kind)=="corner_counter":
+			places[0].local.x=-.20
+			places.append({"local":Vector3(float(host.size.x)*.5+.40,0,-.20),"turn":270.})
+		for place:Dictionary in places:
+			var at:Vector3=host.node.to_global(place.local);at.y=Building.level_y(level)
+			var occupied:bool=false
+			for other:Dictionary in items:
+				if str(other.id)==placement_moving_id or item_level(other)!=level or str(other.kind)!="stool":continue
+				if Vector2(other.node.position.x-at.x,other.node.position.z-at.z).length()<.55:occupied=true;break
+			if occupied:continue
+			var distance:float=Vector2(at.x-p.x,at.z-p.z).length()
+			if distance>=nearest:continue
+			nearest=distance;result={"position":at,"angle":fposmod(host.node.rotation_degrees.y+float(place.turn),360.)}
+	return result
 
 ## A fridge's back may meet a solid wall, but never rotate through the wall or
 ## span a doorway. Keep the chosen orientation and slide only toward its back.
@@ -2617,6 +2668,9 @@ func update_ghost(pointed:Vector3) -> void:
 	var p:=pointed
 	p.x=snappedf(p.x,.25);p.z=snappedf(p.z,.25)
 	p=kitchen_snap(placement_kind,p,placement_angle)
+	if placement_kind=="stool":
+		var seat_snap:Dictionary=stool_snap(p,placement_angle)
+		p=seat_snap.position;placement_angle=float(seat_snap.angle)
 	if bool(LifeCatalog.get_item(placement_kind).get("room_pack",false)):
 		var area:Rect2=room_pack_area(placement_kind,p,placement_angle)
 		ghost.position=Vector3(area.get_center().x,Building.level_y(0),area.get_center().y)

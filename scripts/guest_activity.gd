@@ -157,6 +157,8 @@ func blocks(action: Dictionary, member_id: String = "") -> bool:
 	return false
 
 func _available(plan: Dictionary) -> bool:
+	if is_instance_valid(app.get("sanitation_flow")) and app.sanitation_flow.privacy_blocks(plan,person()):return false
+	if is_instance_valid(app.get("relationship_flow")) and app.relationship_flow.blocks(plan,person()):return false
 	var wanted: Array[String] = app._activity_resources(plan)
 	for member: Dictionary in app.household.members:
 		var other: Dictionary = member.sim.get_current_action()
@@ -439,6 +441,10 @@ func _roam() -> bool:
 
 func tick(delta: float) -> bool:
 	ensure();tick_needs()
+	if is_instance_valid(app.get("relationship_flow")) and app.relationship_flow.listener_held(person()):
+		app.relationship_flow.present_conversation(person())
+		body().animate(delta,float(app.household.speed),false,"friendly")
+		return true
 	if bool(data.get("cancel_pending",false)):
 		_move(delta)
 		if not app.traversal.active(person()):cancel("")

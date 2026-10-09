@@ -45,6 +45,10 @@ func _run()->void:
 		if is_equal_approx(float(wall.x),-2.5) and is_equal_approx(float(wall.z),0.5):east=wall
 	var door:Dictionary=tx.commit(tx.prepare({"op":"structure","tool":"door","level":0,"id":str(east.get("id","")),"center":0.5}))
 	check(bool(door.ok),"Its east wall gets a single doorway: "+str(door.get("error","")))
+	var east_gap:bool=false
+	for opening:Dictionary in LifeDoorFlow.openings(app.world.construction.building_state.walls):
+		if absf(float(opening.position.x)+2.5)<.08 and absf(float(opening.position.z)-.5)<.08:east_gap=true
+	check(east_gap,"The selected east wall contains the doorway even when another wall has the same centre")
 	app.household.set_funds(app.sim.funds+3000)
 	var spawn:float=0.0
 	for member:Dictionary in app.household.members:app.world.actors[str(member.id)].position=Vector3(spawn,.16,-2.5);spawn+=1.0

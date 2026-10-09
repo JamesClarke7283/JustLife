@@ -271,7 +271,7 @@ func confirm_pet() -> void:
 	if reason.is_empty() and not bool(prepared.get("ok", false)):
 		reason = str(prepared.get("error", ""))
 	var spawn: Vector3 = app.world.lot_exit_position(app.household.members.size())
-	var destination: Vector3 = app.pet_arrival_destination(spawn)
+	var destination: Vector3 = app.pet_arrival_destination(spawn, draft)
 	var result: Dictionary = {"ok": false, "error": reason}
 	if reason.is_empty() and not destination.is_finite():
 		reason = "The arrival path is blocked. Clear the front garden, then try again."

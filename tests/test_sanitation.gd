@@ -28,7 +28,7 @@ func until(done:Callable,limit:float=100.0)->bool:
 		step(.3)
 	return bool(done.call())
 func finish_car_trip()->void:
-	# Visual travel is paused; its controller owns the single arrival time charge.
+	# The travel controller owns driving time while the normal Live clock is paused.
 	for frame:int in 1500:
 		if app.mode!="travel":return
 		app._process(.05)

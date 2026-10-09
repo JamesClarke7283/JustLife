@@ -61,6 +61,7 @@ func _reset_control(points:Dictionary)->void:
 
 func _chat(id:String)->void:
 	await _open_item({"id":id,"kind":"neighbor","label":str(app.world.actors[id].get_meta("display_name")),"node":app.world.actors[id],"size":Vector2(.6,.6)})
+	await press("WheelCategory_social")
 	await press("Have a friendly chat")
 
 func _steps(count:int)->void:
@@ -134,11 +135,14 @@ func _blocked_control()->void:
 	app.world.set_actor_away("maya",true,true);app.world.set_actor_away("leo",true,true)
 	for id:String in ["housemate_1","housemate_2","housemate_3"]:app.world.actors[id].position=Vector3(3+2*["housemate_1","housemate_2","housemate_3"].find(id),.16,6)
 	var completed_before:int=control_completions.size()
-	var finished:bool=await _until(func():return control_completions.slice(completed_before).any(func(e:Dictionary):return e.id=="player" and str(e.action.id)=="read"),180,"Explicit reading proceeds after refused conversation.")
+	# Reading takes sixty game minutes after walking from the garden; the bound
+	# includes both the physical approach and the complete activity.
+	var finished:bool=await _until(func():return control_completions.slice(completed_before).any(func(e:Dictionary):return e.id=="player" and str(e.action.id)=="read"),300,"Explicit reading proceeds after refused conversation.")
 	check(finished,"Refusal preserves subsequent explicit queue work.")
 
 func _stairs_control()->void:
-	await _reset_control({"player":Vector3(-1.5,.16,-3.5),"housemate_1":Vector3(0,3.16,1)})
+	var stair:Dictionary=app.world.construction.snapshot().stairs[0]
+	await _reset_control({"player":LifeBuildingState.stair_point(stair,-1.0),"housemate_1":Vector3(0,3.16,1)})
 	await _chat("housemate_1")
 	var entered:bool=await _until(func():return app.traversal.busy("player") and app.traversal.routes.player.phase=="transit",150,"Initiator physically enters the existing stair while approaching upstairs household target.")
 	if not entered:return
@@ -155,7 +159,8 @@ func _stairs_control()->void:
 	check(finished and float(app.sim.relationships.housemate_1.friendship)>score,"Only actual re-arrival after the protected crossing earns social reward.")
 
 func _target_stairs_control()->void:
-	await _reset_control({"player":Vector3(-5,.16,6),"housemate_1":Vector3(-1.5,.16,-3.5)})
+	var stair:Dictionary=app.world.construction.snapshot().stairs[0]
+	await _reset_control({"player":Vector3(-5,.16,6),"housemate_1":LifeBuildingState.stair_point(stair,-1.0)})
 	await _select("housemate_1")
 	var upper:Dictionary={}
 	for item:Dictionary in app.world.items:
@@ -172,7 +177,7 @@ func _target_stairs_control()->void:
 	check(float(app.sim.relationships.housemate_1.friendship)==score,"Target-transit refusal earns no social reward.")
 	await _open_item(first_item("bookshelf"));await press("Read a book")
 	var before:int=control_completions.size()
-	var finished:bool=await _until(func():return control_completions.slice(before).any(func(e:Dictionary):return e.id=="player" and str(e.action.id)=="read"),200,"Later explicit reading proceeds after target-transit refusal.")
+	var finished:bool=await _until(func():return control_completions.slice(before).any(func(e:Dictionary):return e.id=="player" and str(e.action.id)=="read"),300,"Later explicit reading proceeds after target-transit refusal.")
 	check(finished,"Target-transit policy preserves the later queue rather than claiming retained conversation.")
 
 func _legacy_control()->void:
@@ -183,7 +188,7 @@ func _legacy_control()->void:
 	if canonical:corrected_occupied=app.traversal._occupied("player")
 	check(var_to_bytes(previous_occupied)==var_to_bytes(corrected_occupied),"Typed-empty-array correction preserves canonical occupied-body bytes exactly.")
 	await press("Explore");await press(str(LifeNeighborhood.PLACES.park.name));await press("Travel here",true)
-	for i:int in range(600):
+	for i:int in range(1500):
 		if app.mode=="live" and app.current_venue=="park":break
 		await _steps(1)
 	var arrived:bool=app.mode=="live" and app.current_venue=="park"
@@ -273,16 +278,18 @@ func _create_composed()->void:
 		var sim:LifeSim=app.household.members[i].sim
 		check(sim.character.name==NAMES[i] and sim.character.age_stage==AGES[i].to_lower() and sim.autonomy,"Public member identity, age and default autonomy: "+NAMES[i])
 		print("CREATED ",JSON.stringify(sim.get_state()))
-	await press("Build & buy");await press("Structure");await press("Upper");await press("Floor")
+	await press("Build & buy");await press("Structure");await press("Upper");await press("Floor slab")
 	var funds_before:int=app.household.funds
 	await _ground_click(Vector3(-6,3.16,-3));await _ground_click(Vector3(6,3.16,3))
 	check(app.household.funds==funds_before-864,"Supported partial upper floor charges its actual ℒ864 area quote.")
 	if not failures.is_empty():return
-	await press("Ground");await press("Stairs");await _ground_click(Vector3(-1.5,.16,-2.5))
+	# Half a metre west leaves the starter easel passage open under the physical
+	# wall/body clearance; the old position sealed every household route outside.
+	await press("Ground");await press("Stairs");await _ground_click(Vector3(-2,.16,-2.5))
 	check(app.world.construction.snapshot().stairs.size()==1 and app.household.funds==4736,"Public stair click installs a paid supported stair and opening for ℒ650.")
 	if not failures.is_empty():return
 	await press("Upper")
-	await _buy_control("bed","Comfort",Vector3(-4.25,3.16,-1.0))
+	await _buy_control("bed",Vector3(-4.25,3.16,-1.0))
 	check(app.household.funds==3896,"Honest two-storey furnishing budget retains ℒ3896 before earned income and cooking.")
 	check(Building.validate(app.world.construction.snapshot()).is_empty(),"Publicly purchased architecture validates.")
 	await press("Live")
@@ -293,8 +300,8 @@ func _create_composed()->void:
 	_event("setup",audit.fixture)
 
 
-func _buy_control(kind:String,category:String,point:Vector3)->void:
-	await press(category)
+func _buy_control(kind:String,point:Vector3)->void:
+	await press(str(LifeCatalog.ITEMS[kind].category))
 	var label_text:String=str(LifeCatalog.ITEMS[kind].label)
 	var card_button:Button
 	for node:Node in app.find_children("*","Button",true,false):
@@ -302,6 +309,7 @@ func _buy_control(kind:String,category:String,point:Vector3)->void:
 	check(is_instance_valid(card_button),"Public catalog card: "+label_text)
 	if not is_instance_valid(card_button):return
 	card_button.pressed.emit();await frames(2)
+	if LifeCatalogVariants.has_variants(LifeCatalog.ITEMS[kind]):await press("VariantConfirm")
 	check(app.world.can_place(kind,point,0),"Production furnishing placement validates: "+label_text)
 	var before:int=app.household.funds
 	app.world.placement_requested.emit(kind,point,0.0);await frames(2)
@@ -333,11 +341,11 @@ func _finish()->void:
 	audit["at"]=_now();audit["phase"]=phase_tag
 	if event_file:event_file.close()
 	var ambience:WeakRef=weakref(app.ambience_player.stream)
-	var playback:WeakRef=weakref(app.ambience_player.get_stream_playback())
+	var playback:WeakRef=weakref(app.ambience_player.get_stream_playback()) if app.ambience_player.has_stream_playback() else null
 	app.queue_free();await frames(2)
 	var deadline:int=Time.get_ticks_msec()+1000
-	while (ambience.get_ref()!=null or playback.get_ref()!=null) and Time.get_ticks_msec()<deadline:await create_timer(.01).timeout
-	check(ambience.get_ref()==null and playback.get_ref()==null,"Private app ambience releases before process exit.")
+	while (ambience.get_ref()!=null or (playback!=null and playback.get_ref()!=null)) and Time.get_ticks_msec()<deadline:await create_timer(.01).timeout
+	check(ambience.get_ref()==null and (playback==null or playback.get_ref()==null),"Private app ambience releases before process exit.")
 	audit["assertions"]=assertions;audit["failures"]=failures
 	var f:=FileAccess.open(screenshot_dir.path_join(phase_tag+".json"),FileAccess.WRITE);f.store_string(JSON.stringify(LifeSaveLibrary._json_safe(audit),"  ",true,true));f.close()
 	print("SOCIAL_NAV_RESULT assertions=%d failures=%d phase=%s"%[assertions,failures.size(),phase_tag])

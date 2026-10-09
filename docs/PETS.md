@@ -85,7 +85,7 @@ The body is presentation. The household owns the saved record, its condition, th
 
 A pet is not a Lifelet and does not share its simulation, but it still has needs the household can watch. `scripts/pet_care.gd` (`LifePetCare`) owns them as pure static policy:
 
-* **Needs** — the same six keys a Lifelet's own panel draws (hunger, energy, hygiene, bladder, fun, social), so one set of rows renders either. They fall on the household's own clock, so a paused household freezes them with its Lifelets.
+* **Needs** — hunger, thirst, energy, hygiene, bladder, fun and social. They fall on the household's own clock, so a paused household freezes them with its Lifelets.
 * **Training skills** — **Clever Tricks**, **Social Skills** and **Logic Skills**, each progressing from level 1 to 10 through timed Lifelet lessons. Existing Agility and Obedience progress is retained.
 * **Clever Tricks** — sit (1), lie down (2), shake hands (3), roll over (4), fetch a specific toy (5), speak and high-five (6), backflip (7), dance on hind legs (8), weave through obstacles and play dead (9), and a complete routine (10). Learned tricks have performance commands: fetch carries the chosen toy back; weaving follows a visible five-pole slalom with alternating safe waypoints and cleans up temporary poles when completed or interrupted; the other tricks animate the dog's body.
 * **Social Skills** — higher levels reduce Fun and Social decay, make nearby pets and guests lift these needs, shorten the autonomous hesitation around unfamiliar objects and company, and increase walking response speed. Explicit player commands remain immediate at every level.
@@ -120,7 +120,9 @@ A cat keeps its own coat up by grooming (`LifePets.CAT_GROOM_PER_HOUR` outpaces 
 
 A pet with nothing to walk to simply waits: the need stays low until the household places a bowl or a bed, and its card says so. The card also offers teaching a trick; a trick is learned across several sessions (`LifePets.TRICK_SESSIONS`), and progress toward the next one is kept on the record.
 
-Cats can use a litter tray autonomously or through its **Use** option; the pet card also offers an outdoor toilet trip. Dogs always go outdoors and lift a hind leg. A tray needs cleaning after four uses, and only Teen, Young Adult, Adult and Elder Lifelets can clean it. Tray cleanliness survives saving and loading.
+Cats can use a litter tray autonomously or through its **Use** option; the pet card also offers an outdoor toilet trip. Dogs always go outdoors and lift a hind leg. A tray needs cleaning after four uses, and only Teen, Young Adult, Adult and Elder Lifelets can clean it. Pregnancy prevents litter cleaning. Cleaning adds one unit to the four-unit kitchen bin; Young Adults, Adults and Elders immediately wash their hands at a reachable sink. A full bin offers **Empty Bin First** and leaves the litter dirty until there is room. Tray cleanliness survives saving and loading.
+
+Feeding walks the Lifelet to a reachable bowl and uses one bend and pour. Pets route to the food or water cup; thirst is a separate need, defaulting to 80 in older saves. Cushioned beds use a curled pose with tucked head and tail, and the usual standing proportions return when the pet gets up.
 
 **Free Will** releases a selected pet to its own routines, finishing a stair crossing first if needed. A dog walk begins with the Lifelet attaching the lead, then both walk through the front door, along the street and home. Loading a walk resumes from the current positions and ends inside the front door; it does not restore the exact transient lead route.
 

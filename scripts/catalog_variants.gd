@@ -145,6 +145,11 @@ static func dims(data: Dictionary, size: String) -> Vector2:
 ## well as its height for a free-length run, the uniform scale otherwise. This is
 ## what an envelope check measures, where `model_scale` is what a mesh is given.
 static func volume_scale(data: Dictionary, size: String) -> Vector3:
+	var footprints:Dictionary=data.get("size_footprints",{})
+	if footprints.has(size):
+		var base:Vector2=data.get("size",Vector2.ONE)
+		var selected:Vector2=footprints[size]
+		return Vector3(selected.x/base.x,height(data,size)/float(data.get("height",1)),selected.y/base.y)
 	var custom: Vector2 = custom_dims(data, size)
 	if custom == Vector2.ZERO: return Vector3.ONE * size_scale(size)
 	var authored: Vector2 = data.get("size", Vector2.ONE) as Vector2
@@ -310,6 +315,8 @@ static func resolve(data: Dictionary, value: Dictionary) -> Dictionary:
 ## Callers that place, support, draw or thumbnail the object read this, so a
 ## size choice is one fact rather than a scale applied in each caller.
 static func footprint(data: Dictionary, size: String) -> Vector2:
+	var stated:Dictionary=data.get("size_footprints",{})
+	if stated.has(size):return stated[size]
 	var custom: Vector2 = custom_dims(data, size)
 	var authored: Vector2 = data.get("size", Vector2.ONE) as Vector2
 	if custom != Vector2.ZERO: return Vector2(custom.x, authored.y)
@@ -317,6 +324,8 @@ static func footprint(data: Dictionary, size: String) -> Vector2:
 
 
 static func height(data: Dictionary, size: String) -> float:
+	var stated:Dictionary=data.get("size_heights",{})
+	if stated.has(size):return float(stated[size])
 	var custom: Vector2 = custom_dims(data, size)
 	if custom != Vector2.ZERO: return custom.y
 	return float(data.get("height", 1.0)) * size_scale(size)

@@ -9,7 +9,7 @@ func _run()->void:
 	var later:Dictionary=sim.action_queue[1];var origin:Vector3=app.world.actors.player.position
 	for x:int in range(-6,7):
 		for z:int in range(-6,7):
-			var proxy:=Node3D.new();app.world.add_child(proxy);proxy.position=origin+Vector3(x*.5,0,z*.5)
+			var proxy:=LifeActor.new();app.world.add_child(proxy);proxy.position=origin+Vector3(x*.5,0,z*.5)
 			app.world.actors["crowd_proxy_%d_%d"%[x,z]]=proxy
 	check(not app.meal_flow._standing_slot("player").is_finite(),"Visible crowd proxies reject every body-clear destination in the bounded search.")
 	app._bind_member("player");app.on_action_started(prior)

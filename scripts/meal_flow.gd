@@ -131,7 +131,7 @@ func action_availability(sim:LifeSim,id:String,target:String) -> String:
 	if id=="discard_meal":
 		var batch:Dictionary=food().batch(target)
 		if batch.is_empty() or int(batch.remaining)<=0 or not str(batch.owner).is_empty():return "That serving dish is empty or being carried."
-		if app.world.closest_item("sink",Vector3.ZERO).is_empty():return "Place a sink to clear the dish."
+		if app.household_flow.kitchen_bin().is_empty():return "Place a kitchen bin to throw spoiled food away."
 	if id=="bin_meal":
 		# Anything left out can be tipped in the bin. Spoiled food is refused by
 		# nothing else, and a fresh plate or dish may still be thrown away on
@@ -211,25 +211,78 @@ func resolve(sim:LifeSim,action:Dictionary) -> void:
 	elif action.get("meal_stage")=="store":
 		var fridge:Dictionary=app.world.closest_item("fridge",actor(person).position)
 		if not fridge.is_empty():action.target_id=fridge.id
-	elif action.get("meal_stage") in ["wash","discard"]:
+	elif action.get("meal_stage")=="wash":
 		var sink:Dictionary=app.world.closest_item("sink",actor(person).position)
 		if not sink.is_empty():action.target_id=sink.id
-	elif action.get("meal_stage")=="bin":
-		var bin:Dictionary=app.world.closest_item("rubbish_bin",actor(person).position)
+	elif action.get("meal_stage") in ["bin","discard"]:
+		var bin:Dictionary=app.household_flow.kitchen_bin()
 		if not bin.is_empty():action.target_id=bin.id
 	elif action.get("table_stage")=="clear":
 		var sink:Dictionary=app.world.closest_item("sink",actor(person).position)
 		if not sink.is_empty():action.target_id=sink.id
 	var target:Dictionary=item(str(action.target_id))
+	if action.get("meal_stage")=="pickup" and action.id in ["eat_meal","discard_meal"]:
+		var stored:Dictionary=food().batch(str(action.meal_source))
+		if not stored.is_empty() and str(stored.storage)=="fridge":target=item(str(stored.host))
+		elif action.id=="eat_meal" and not stored.is_empty() and str(stored.storage)=="surface" and not target.is_empty():
+			# The first diner may sit beside the platter's ordinary use point.
+			# Reserve another reachable side so the next diner can collect food
+			# without waiting for that entire meal to finish.
+			var pickup:Vector3=_meal_pickup_destination(person,target,action.get("target_position",Vector3.INF))
+			if pickup.is_finite():action.target_position=pickup;return
 	if not target.is_empty():action.target_position=app.world.approach(target)
 
+func _meal_pickup_destination(person:String,target:Dictionary,previous:Vector3)->Vector3:
+	var preferred:Vector3=app.world.approach(target)
+	var platter:Vector3=target.node.position
+	platter.y=Building.level_y(app.world.item_level(target))
+	var candidates:Array[Vector3]=[previous,preferred]
+	var nearby:Array[Vector3]=[]
+	var center:=Vector2i(roundi(platter.x*4),roundi(platter.z*4))
+	for x:int in range(-5,6):
+		for z:int in range(-5,6):
+			var at:=Vector3((center.x+x)*.25,platter.y,(center.y+z)*.25)
+			if at.distance_to(platter)<=1.25:nearby.append(at)
+	nearby.sort_custom(func(a:Vector3,b:Vector3)->bool:
+		return a.distance_squared_to(preferred)<b.distance_squared_to(preferred))
+	candidates.append_array(nearby)
+	for at:Vector3 in candidates:
+		if not at.is_finite() or at.distance_to(platter)>1.25 or not _standing_clear(person,at):continue
+		if not app.world.sight_line_clear(at,platter):continue
+		var path:PackedVector3Array=_dining_route(person,at)
+		if not path.is_empty() and path[-1].is_equal_approx(at):return at
+	return Vector3.INF
+
 func before_begin(sim:LifeSim,action:Dictionary) -> bool:
+	if str(action.id)=="clean_litter_tray":
+		var bin:Dictionary=app.household_flow.kitchen_bin()
+		if not bin.is_empty() and app.household_flow.bin_is_full(str(bin.id)):
+			var source:String=str(action.target_id);var destination:Vector3=action.target_position
+			sim.cancel_action()
+			app.household_flow.offer_empty_bin_first(sim,"clean_litter_tray",source,destination,str(bin.id))
+			return false
 	if str(action.id)=="cook":
 		var problem:String=action_availability(sim,"cook",str(action.target_id))
 		if not problem.is_empty():_stop(sim,problem);return false
 	if str(action.id) not in ACTIONS:return true
 	var person:String=member_id(sim)
+	if str(action.id) in ["discard_meal","bin_meal"]:
+		var bin:Dictionary=app.household_flow.kitchen_bin()
+		if not bin.is_empty() and app.household_flow.bin_is_full(str(bin.id)):
+			var source:String=str(action.get("meal_source",action.target_id));var request:String=str(action.id)
+			sim.cancel_action()
+			var source_item:Dictionary=item(source)
+			var destination:Vector3=app.world.approach(source_item) if not source_item.is_empty() else actor(person).position
+			app.household_flow.offer_empty_bin_first(sim,request,source,destination,str(bin.id))
+			return false
 	if action.id=="clear_table":
+		var bin:Dictionary=app.household_flow.kitchen_bin()
+		if not bin.is_empty() and app.household_flow.bin_is_full(str(bin.id)):
+			var source:String=str(action.get("table_id",action.target_id))
+			sim.cancel_action()
+			var table:Dictionary=item(source)
+			app.household_flow.offer_empty_bin_first(sim,"clear_table",source,app.world.approach(table),str(bin.id))
+			return false
 		if not action.has("table_stage"):action.table_stage="pickup"
 		if action.get("table_stage")=="pickup":
 			action.table_id=str(action.target_id)
@@ -369,8 +422,11 @@ func _footprint(value:Dictionary) -> Vector2:
 	return LifeMeals.PLATE_HALF_SIZE if value.has("batch") else LifeMeals.PLATTER_HALF_SIZE
 func _plate_offset(chair:Dictionary,table:Dictionary) -> Vector3:
 	var toward:Vector3=(table.node.position-chair.node.position).normalized()
+	if str(chair.kind)=="stool":toward=chair.node.global_basis.z
 	var at:Vector3=table.node.to_local(chair.node.position+toward*.48)
-	return Vector3(clampf(at.x,-.62,.62),SURFACE_HEIGHTS.dining,clampf(at.z,-.39,.39))
+	if str(table.kind)=="dining":return Vector3(clampf(at.x,-.62,.62),SURFACE_HEIGHTS.dining,clampf(at.z,-.39,.39))
+	var extent:Vector2=LifeMeals.SURFACE_HALF_SIZE[str(table.kind)]-LifeMeals.PLATE_HALF_SIZE-Vector2.ONE*LifeMeals.SURFACE_INSET
+	return Vector3(clampf(at.x,-extent.x,extent.x),float(SURFACE_HEIGHTS[str(table.kind)]),clampf(at.z,-extent.y,extent.y))
 
 func _surface_clear(host:Dictionary,at:Vector3,half:Vector2,except_id:String="") -> bool:
 	if not at.is_finite() or absf(at.y-float(SURFACE_HEIGHTS[str(host.kind)]))>.003:return false
@@ -641,8 +697,11 @@ func autonomous_cleanup_choice(sim:LifeSim,excluded:Array=[]) -> Dictionary:
 func _chair_table(chair:Dictionary) -> Dictionary:
 	var table:Dictionary={};var nearest:float=1.6
 	for candidate:Dictionary in app.world.items:
-		if str(candidate.kind)!="dining" or _host_level(candidate)!=_host_level(chair):continue
+		var hosts:Array=["counter","corner_counter"] if str(chair.kind)=="stool" else ["dining"]
+		if str(candidate.kind) not in hosts or _host_level(candidate)!=_host_level(chair):continue
 		var distance:float=candidate.node.position.distance_to(chair.node.position)
+		var direction:Vector3=(candidate.node.position-chair.node.position).normalized()
+		if chair.node.global_basis.z.dot(direction)<.65:continue
 		if distance<nearest:table=candidate;nearest=distance
 	if table.is_empty():return {}
 	var direction:Vector3=(table.node.position-chair.node.position).normalized()
@@ -735,7 +794,7 @@ func _choose_seat(person:String,action:Dictionary) -> bool:
 	action.erase("meal_standing")
 	var chairs:Array=[]
 	for candidate:Dictionary in app.world.items:
-		if str(candidate.kind)!="chair" or _chair_table(candidate).is_empty():continue
+		if str(candidate.kind) not in ["chair","stool"] or _chair_table(candidate).is_empty():continue
 		if app.household.member_sim(person)==null and _host_level(candidate)!=0:continue
 		var occupied:bool=false
 		for member:Dictionary in activity_records():
@@ -829,13 +888,18 @@ func finished(sim:LifeSim,action:Dictionary) -> void:
 			food().set_batch_location(str(action.meal_source),"fridge",str(fridge.id),fridge.node.position,now())
 			food().batch(str(action.meal_source)).offset=[0.0,0.0,0.0]
 	elif action.id=="discard_meal":
+		if not app.household_flow.add_rubbish(1,str(action.target_id)):
+			_retry_full_disposal(sim,action);return
 		food().set_batch_location(str(action.meal_source),"surface","",actor(person).position,now())
 		food().discard_batch(str(action.meal_source))
+		sim._emit_notice("Spoiled food carried from the fridge goes in the kitchen bin." + (" The kitchen bin is full (4/4). Empty Bin First before adding more rubbish." if app.household_flow.bin_is_full(str(action.target_id)) else ""))
 	elif action.id=="bin_meal":
 		# Food left out tips into the bin: a carried plate is washed away, a
 		# carried dish is discarded, and the bin takes one more unit of rubbish.
 		# Whether it had spoiled or was thrown out fresh is reported to the player.
 		var binned_plate:Dictionary=food().portion(str(action.meal_source))
+		if not app.household_flow.add_rubbish(1,str(action.target_id)):
+			_retry_full_disposal(sim,action);return
 		var was_fresh:bool=not binned_plate.is_empty() and now()<float(binned_plate.expires)
 		if not binned_plate.is_empty():
 			food().clean_portion(str(binned_plate.id),person)
@@ -843,8 +907,7 @@ func finished(sim:LifeSim,action:Dictionary) -> void:
 			was_fresh=now()<float(food().batch(str(action.meal_source)).expires)
 			food().set_batch_location(str(action.meal_source),"surface","",actor(person).position,now())
 			food().discard_batch(str(action.meal_source))
-		if is_instance_valid(app.get("household_flow")):app.household_flow.add_rubbish(1)
-		sim._emit_notice("The food goes in the bin." if was_fresh else "Spoiled food goes in the bin. Best not to leave it out next time.")
+		sim._emit_notice(("The food goes in the bin." if was_fresh else "Spoiled food goes in the bin. Best not to leave it out next time.") + (" The kitchen bin is full (4/4). Empty Bin First before adding more rubbish." if app.household_flow.bin_is_full(str(action.target_id)) else ""))
 	elif action.id=="clean_plate":food().clean_portion(str(action.meal_source),person)
 	elif action.id=="put_in_fridge":
 		var fridge:Dictionary=item(str(action.target_id))
@@ -854,11 +917,24 @@ func finished(sim:LifeSim,action:Dictionary) -> void:
 				sim._emit_notice("The serving is back in the fridge, still fresh.")
 			else:_settle_food(serving,actor(person).position)
 	elif action.id=="clear_table":
-		var cleared:int=clear_surface(str(action.get("table_id",str(action.target_id))))
+		var source:String=str(action.get("table_id",str(action.target_id)))
+		if not _dirty_on(source).is_empty() and not app.household_flow.add_rubbish(1):
+			var table:Dictionary=item(source)
+			app.household_flow.offer_empty_bin_first(sim,"clear_table",source,app.world.approach(table))
+			return
+		var cleared:int=clear_surface(source)
 		if cleared>0:
-			sim._emit_notice("%d %s cleared from the table." % [cleared,"item" if cleared==1 else "items"])
-			if is_instance_valid(app.get("household_flow")):app.household_flow.add_rubbish(1)
+			sim._emit_notice("%d %s cleared from the table." % [cleared,"item" if cleared==1 else "items"] + (" The kitchen bin is full (4/4). Empty Bin First before adding more rubbish." if app.household_flow.bin_is_full(str(app.household_flow.kitchen_bin().get("id",""))) else ""))
 	sync_due=true
+
+func _retry_full_disposal(sim:LifeSim,action:Dictionary) -> void:
+	var person:String=member_id(sim)
+	var held:Dictionary=food().carried_by(person)
+	food().release_member(person,actor(person).position)
+	if not held.is_empty():_settle_food(held,actor(person).position)
+	sync_due=true
+	app.household_flow.offer_empty_bin_first(sim,str(action.id),str(action.meal_source),actor(person).position,str(action.target_id))
+
 
 func _prepend(sim:LifeSim,id:String,target:String,metadata:Dictionary) -> void:
 	var action:Dictionary=sim.get_action_definition(id)
@@ -1006,8 +1082,32 @@ func _spoilage_mist(on_platter:bool) -> Node3D:
 	mist.position=Vector3(0,.14,0)
 	return mist
 
+func _notify_fridge_spoilage() -> void:
+	for batch:Dictionary in food().batches:
+		if str(batch.storage)!="fridge" or int(batch.remaining)<=0 or now()<float(batch.expires):continue
+		if bool(batch.get("spoilage_notified",false)):continue
+		batch["spoilage_notified"]=true
+		app.show_notice("Food in the fridge has spoiled: %s. Clean out the spoiled food." % str(LifeMeals.RECIPES[str(batch.recipe)].label))
+
+
+func spoiled_in_fridge(fridge_id:String) -> Array[String]:
+	var result:Array[String]=[]
+	for batch:Dictionary in food().batches:
+		if str(batch.storage)=="fridge" and str(batch.host)==fridge_id and str(batch.venue)==app.current_venue and int(batch.remaining)>0 and now()>=float(batch.expires) and str(batch.owner).is_empty():result.append(str(batch.id))
+	return result
+
+
+func queue_fridge_clean(fridge_id:String) -> void:
+	var spoiled:Array[String]=spoiled_in_fridge(fridge_id)
+	app.close_overlay()
+	for id:String in spoiled:
+		_queue_fridge_leftover(fridge_id,id,false)
+		if app.overlay_open:break
+
+
 func sync_world(reconcile:bool=true) -> void:
 	if not is_instance_valid(app.world.house):return
+	if reconcile:_notify_fridge_spoilage()
 	sync_oven_presentations()
 	if reconcile:
 		_reconcile_guest_offer()

@@ -28,6 +28,7 @@ func _action(t,id:String)->Dictionary:
 
 func _eligible(t,id:String)->bool:
 	if not t.routes.has(id) or not t.app.world.actors.has(id):return false
+	if is_instance_valid(t.app.get("relationship_flow")) and t.app.relationship_flow.holds(id):return false
 	var person:LifeSim=t.app.household.member_sim(id)
 	if not is_instance_valid(person) or person.is_away():return false
 	var actor:LifeActor=t.app.world.actors[id];var route:Dictionary=t.routes[id]
@@ -64,6 +65,7 @@ func _walk_intent(t,id:String)->Dictionary:
 
 func _walk_eligible(t,id:String)->bool:
 	if not t.routes.has(id) or not t.app.world.actors.has(id):return false
+	if is_instance_valid(t.app.get("relationship_flow")) and t.app.relationship_flow.holds(id):return false
 	var person:LifeSim=t.app.household.member_sim(id)
 	if not is_instance_valid(person) or person.is_away() or not person.action_queue.is_empty():return false
 	var route:Dictionary=t.routes[id];var actor:LifeActor=t.app.world.actors[id]

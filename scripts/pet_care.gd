@@ -16,13 +16,13 @@ const VERSION: int = 1
 
 ## The needs a pet has, in the order the HUD shows them. These are a Lifelet's
 ## own need keys, so one panel renders either.
-const NEED_NAMES: Array[String] = ["hunger", "energy", "hygiene", "bladder", "fun", "social"]
+const NEED_NAMES: Array[String] = ["hunger", "thirst", "energy", "hygiene", "bladder", "fun", "social"]
 
 ## How fast each need falls, per game minute. A pet's day is a little slower than
 ## a Lifelet's, so a pet left alone through a working day is hungry by evening
 ## rather than starving at noon.
 const NEED_DECAY: Dictionary = {
-	"hunger": 4.0 / 60.0, "energy": 3.0 / 60.0, "hygiene": 2.2 / 60.0,
+	"hunger": 4.0 / 60.0, "thirst": 6.5 / 60.0, "energy": 3.0 / 60.0, "hygiene": 2.2 / 60.0,
 	"bladder": 5.0 / 60.0, "fun": 3.4 / 60.0, "social": 1.8 / 60.0,
 }
 
@@ -80,7 +80,7 @@ const INTERACTIONS: Array[Dictionary] = [
 const HANDLING_FROM: String = "child"
 
 ## Starting needs for a pet that has just come home: content, fed and rested.
-const FRESH_NEEDS: Dictionary = {"hunger": 82.0, "energy": 76.0, "hygiene": 80.0, "bladder": 74.0, "fun": 64.0, "social": 58.0}
+const FRESH_NEEDS: Dictionary = {"hunger": 82.0, "thirst": 80.0, "energy": 76.0, "hygiene": 80.0, "bladder": 74.0, "fun": 64.0, "social": 58.0}
 
 ## How much friendship one interaction adds to the bond with its actor, before
 ## the pet's own mood scales it.
@@ -298,7 +298,7 @@ static func tick(care: Dictionary, minutes: float) -> void:
 	for key: String in NEED_NAMES:
 		var decay: float = float(NEED_DECAY.get(key, 0.0)) * minutes
 		if key in ["social", "fun"]: decay *= 1.0 - float(level(care, "social") - 1) * .05
-		needs[key] = clampf(float(needs.get(key, 0.0)) - decay, 0.0, 100.0)
+		needs[key] = clampf(float(needs.get(key, FRESH_NEEDS.get(key, 80.0))) - decay, 0.0, 100.0)
 	care["needs"] = needs
 
 
@@ -316,6 +316,7 @@ static func mood_label(care: Dictionary) -> String:
 	if lowest >= 70.0: return "Content"
 	if lowest >= 45.0: return "Settled"
 	if key == "hunger": return "Hungry"
+	if key == "thirst": return "Thirsty"
 	if key == "energy": return "Sleepy"
 	if key == "fun": return "Bored"
 	if key == "bladder": return "Needs the garden"
@@ -337,6 +338,9 @@ static func validate(value: Variant, member_ids: Array) -> String:
 	var needs: Variant = care.get("needs", null)
 	if not needs is Dictionary: return "Save contains invalid pet needs."
 	for name: String in NEED_NAMES:
+		# Thirst was added to the live condition after food/water bowl routing.
+		# Existing saves gain it on their first running tick.
+		if name == "thirst" and not (needs as Dictionary).has(name): continue
 		var amount: Variant = (needs as Dictionary).get(name, null)
 		if not (amount is float or amount is int) or not is_finite(float(amount)):
 			return "Save contains an invalid pet need."

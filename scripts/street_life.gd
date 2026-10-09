@@ -57,6 +57,12 @@ const ROSTER: Array = [
 
 var passers: Array = []
 var _seeded: bool = false
+## Live lots provide the same swept wall checks used by household actors.
+## Standalone street simulations retain their simple, unobstructed lanes.
+var step_allowed:Callable
+var route_provider:Callable
+var structure_generation:int=-1
+var _detours:Dictionary={}
 
 ## Static identities/looks come from ROSTER. Save only the moving street state;
 ## conversation holds are rebuilt from the household's actual action queues.
@@ -129,6 +135,7 @@ func snapshot() -> Dictionary:
 ## back to the normal street instead of creating invalid actors or coordinates.
 func restore(value: Variant, minutes: float) -> bool:
 	_seed(minutes)
+	_detours.clear()
 	if not value is Dictionary or value.get("version") != 1 or not value.get("passers") is Dictionary: return false
 	var rows: Dictionary = value.passers
 	for passer: Dictionary in passers:
@@ -145,6 +152,7 @@ func restore(value: Variant, minutes: float) -> bool:
 	for id: String in rows:
 		var passer: Dictionary = find(id)
 		for key: String in SAVE_FIELDS: passer[key] = rows[id][key]
+		passer.erase("heading")
 	_follow()
 	return true
 
@@ -261,8 +269,57 @@ func tick(delta: float, game_speed: float = 1.0, minutes: float = -1.0, obstacle
 			passer["dodge"] = 1.0 if str(passer.id).hash() % 2 == 0 else -1.0
 		else:
 			passer["waited"] = 0.0
-		_walk(passer, float(passer.speed) * delta * scale, duty)
+		var before:Vector3=position_of(passer)
+		_walk_checked(passer, float(passer.speed) * delta * scale, duty)
+		_record_heading(passer,before,position_of(passer))
 	_follow()
+
+func _safe_party_step(passer:Dictionary,from:Vector3,to:Vector3,next_direction:int)->bool:
+	if not step_allowed.is_valid():return true
+	if not bool(step_allowed.call(passer,from,to)):return false
+	for follower:Dictionary in _party(passer):
+		if str(follower.id)==str(passer.id):continue
+		var before:Vector3=from+Vector3(float(passer.dir)*LEAD_LENGTH,0,-.18*float(passer.dir))
+		var after:Vector3=to+Vector3(float(next_direction)*LEAD_LENGTH,0,-.18*float(next_direction))
+		if not bool(step_allowed.call(follower,before,after)):return false
+	return true
+
+func _walk_checked(passer:Dictionary,span:float,duty:bool)->void:
+	if not step_allowed.is_valid():_walk(passer,span,duty);return
+	var id:String=str(passer.id)
+	var detour:Dictionary=_detours.get(id,{})
+	if not detour.is_empty() and int(detour.generation)!=structure_generation:_detours.erase(id);detour={}
+	if detour.is_empty():
+		var candidate:Dictionary=passer.duplicate(true)
+		_walk(candidate,span,duty)
+		if _safe_party_step(passer,position_of(passer),position_of(candidate),int(candidate.dir)):
+			passer.merge(candidate,true);return
+		detour={"points":PackedVector3Array(),"index":0,"retry":0.0,"generation":structure_generation};_detours[id]=detour
+	if detour.points.is_empty():
+		detour.retry=maxf(0.0,float(detour.retry)-span)
+		if float(detour.retry)>0.0:passer.waiting=true;return
+		var destination:=Vector3(EAST if int(passer.dir)>0 else WEST,HEIGHT,lane_for(passer))
+		if route_provider.is_valid():detour.points=route_provider.call(passer,position_of(passer),destination)
+		detour.index=0;detour.retry=.8
+		if detour.points.is_empty():passer.waiting=true;return
+	var remaining:float=span
+	while int(detour.index)<detour.points.size() and remaining>.000001:
+		var from:Vector3=position_of(passer);var goal:Vector3=detour.points[int(detour.index)]
+		var distance:float=from.distance_to(goal)
+		if distance<.000001:detour.index+=1;continue
+		var amount:float=minf(minf(distance,remaining),.10)
+		var next:Vector3=from.move_toward(goal,amount)
+		if not _safe_party_step(passer,from,next,int(passer.dir)):
+			detour.points=PackedVector3Array();detour.retry=.8;passer.waiting=true;return
+		if (from.x<0.0 and next.x>=0.0) or (from.x>0.0 and next.x<=0.0):passer.passed_home=int(passer.passed_home)+1
+		passer.x=next.x;passer.lane=next.z;remaining-=amount
+		if amount>=distance-.000001:detour.index+=1
+	if int(detour.index)>=detour.points.size():
+		_detours.erase(id)
+		# Run the normal end-of-street turn only after the entire party can
+		# make that turn without its leashed dog crossing a wall.
+		var candidate:Dictionary=passer.duplicate(true);_walk(candidate,0.0,duty)
+		if _safe_party_step(passer,position_of(passer),position_of(candidate),int(candidate.dir)):passer.merge(candidate,true)
 
 
 func _party_held(passer: Dictionary) -> bool:
@@ -284,6 +341,7 @@ func _seed(minutes: float) -> void:
 
 
 func _park(passer: Dictionary) -> void:
+	passer.erase("heading")
 	passer["active"] = false
 	passer["x"] = EAST if float(passer.x) >= 0.0 else WEST
 	passer["dir"] = -1 if float(passer.x) > 0.0 else 1
@@ -291,6 +349,7 @@ func _park(passer: Dictionary) -> void:
 
 
 func _enter(passer: Dictionary) -> void:
+	passer.erase("heading")
 	passer["active"] = true
 	passer["x"] = EAST if float(passer.x) >= 0.0 else WEST
 	passer["dir"] = -1 if float(passer.x) > 0.0 else 1
@@ -356,6 +415,7 @@ func _follow() -> void:
 		passer["x"] = float(leader.x) + float(leader.dir) * LEAD_LENGTH
 		passer["lane"] = float(leader.lane) - 0.18 * float(leader.dir)
 		passer["waiting"] = bool(leader.get("waiting", false))
+		passer["heading"] = float(leader.get("heading",atan2(float(leader.dir),0.0)))
 		passer["trips"] = int(leader.trips)
 		passer["passed_home"] = int(leader.passed_home)
 
@@ -366,7 +426,12 @@ func position_of(passer: Dictionary) -> Vector3:
 
 ## Where a body should face while walking: along the lane, bending slightly
 ## with the sideways drift when a lane change is under way.
+func _record_heading(passer:Dictionary,from:Vector3,to:Vector3)->void:
+	var direction:Vector3=to-from
+	if direction.length_squared()>.00000001:passer["heading"]=atan2(direction.x,direction.z)
+
 func heading_of(passer: Dictionary) -> float:
+	if passer.has("heading"):return float(passer.heading)
 	var target: float = lane_for(passer) if str(passer.get("follows", "")).is_empty() else float(passer.lane)
 	var side: float = clampf(target - float(passer.lane), -0.4, 0.4)
 	return atan2(float(passer.dir), side * 0.6)

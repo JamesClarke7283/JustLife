@@ -13,7 +13,7 @@ func pet(species: String, at: Vector3, pose: String, yaw: float = 0.0) -> void:
 	scene.add_child(actor)
 	actor.position = at
 	actor.rotation.y = yaw
-	actor.set_behavior(pose, 16.5)
+	actor.set_behavior(pose, 16.5, pose == "rest" and at.y > .12)
 	for n: int in 60: actor.animate(1.0 / 60.0, false, 1.0)
 func run() -> void:
 	scene = Node3D.new()
@@ -43,12 +43,12 @@ func run() -> void:
 	var closeup: bool = "--rest-closeup" in OS.get_cmdline_user_args()
 	if closeup:
 		furnishing("pet_bed_dog", Vector3(-.65, 0, 0))
-		pet("dog", Vector3(-.65, .13, 0), "rest")
+		pet("dog", Vector3(-.65, .178, -.05), "rest")
 		furnishing("pet_bed_cat", Vector3(.65, 0, 0))
-		pet("cat", Vector3(.65, .10, 0), "rest")
+		pet("cat", Vector3(.65, .15, -.025), "rest")
 	else:
 		furnishing("pet_bed_dog", Vector3(-2.2, 0, -.7))
-		pet("dog", Vector3(-2.2, .13, -.7), "rest")
+		pet("dog", Vector3(-2.2, .178, -.75), "rest")
 		furnishing("kennel", Vector3(-.4, 0, -.7))
 		pet("dog", Vector3(-.4, .10, -.68), "rest")
 		furnishing("cat_tree", Vector3(1.5, 0, -.7))

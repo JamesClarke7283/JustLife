@@ -5,6 +5,53 @@ class_name LifeRelationshipFlow
 var app:Node
 var _topics:Dictionary={}
 
+## Locks are inferred from current active actions, so cancellation, completion
+## and loading release them without an independent saved ownership record.
+func conversation(id:String)->Dictionary:
+	for member:Dictionary in app.household.members:
+		var host:String=str(member.id)
+		var action:Dictionary=member.sim.get_current_action()
+		if str(action.get("phase",""))!="active" or str(action.get("id","")) not in LifeSim.SOCIAL_ACTIONS or str(action.id)=="hug":continue
+		var target:String=str(action.get("target_id",""))
+		if id not in [host,target] or not _pair_present(host,target):continue
+		return {"host":host,"target":target,"action":action}
+	for visit:LifeHomeVisit in app.residents.visits():
+		if not visit.active():continue
+		var action:Dictionary=visit.activity.current_action()
+		if str(action.get("phase",""))!="active" or str(action.get("id","")) not in ["friendly","joke"]:continue
+		var host:String=visit.activity.person();var target:String=str(action.get("target_id",""))
+		if id in [host,target] and _pair_present(host,target):return {"host":host,"target":target,"action":action}
+	return {}
+
+func _pair_present(first:String,second:String)->bool:
+	var actor:LifeActor=app.world.actors.get(first);var other:LifeActor=app.world.actors.get(second)
+	if not is_instance_valid(actor) or not is_instance_valid(other) or not actor.visible or not other.visible:return false
+	if bool(actor.get_meta("away",false)) or bool(other.get_meta("away",false)):return false
+	return actor.position.distance_to(other.position)<=1.8 and app.world.sight_line_clear(actor.position,other.position)
+
+func holds(id:String)->bool:return not conversation(id).is_empty()
+func listener_held(id:String)->bool:
+	var pair:Dictionary=conversation(id)
+	return not pair.is_empty() and str(pair.host)!=id
+
+func blocks(action:Dictionary,id:String)->bool:
+	if listener_held(id):return true
+	if str(action.get("id","")) not in LifeSim.SOCIAL_ACTIONS:return false
+	var target:String=str(action.get("target_id",""))
+	var pair:Dictionary=conversation(target)
+	return not pair.is_empty() and str(pair.host)!=id
+
+func present_conversation(id:String)->bool:
+	var pair:Dictionary=conversation(id)
+	if pair.is_empty():return false
+	var other_id:String=str(pair.target) if str(pair.host)==id else str(pair.host)
+	var actor:LifeActor=app.world.actors[id];var other:LifeActor=app.world.actors[other_id]
+	var toward:Vector3=other.position-actor.position
+	var action_id:String=str(pair.action.id) if str(pair.host)==id else "friendly"
+	actor.rotation.y=atan2(toward.x,toward.z)
+	actor.set_activity_anchor(actor.position,actor.rotation.y,"standing",action_id,{"attention_target":other.to_global(other.get_portrait_center())})
+	return true
+
 func invite_date(target:String)->bool:
 	var host:LifeSim=app.household.selected()
 	var reason:String=host.get_action_availability(LifeRelationshipProgress.DATE,target).reason
@@ -39,6 +86,7 @@ func start_date(host_id:String,target:String)->bool:
 
 func tick()->void:
 	if app.mode!="live":return
+	for member:Dictionary in app.household.members:member.sim.conversation_service=self
 	var invitation:Dictionary=app.household.date_invitation
 	if not invitation.is_empty():
 		var visit=app.residents.home_visit

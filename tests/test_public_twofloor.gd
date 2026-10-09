@@ -34,7 +34,7 @@ func _run()->void:
 	check(app.mode=="live" and app.household.members.size()==2 and app.household.funds==4500,"Public move-in starts the essentials home with its advertised household funds.")
 	await press("Build & buy");await press("Structure");await press("Upper")
 	var before:Dictionary=app.world.construction.snapshot()
-	await press("Floor")
+	await press("Floor slab")
 	await _ground_click(Vector3(-6,3.16,-5))
 	await _ground_click(Vector3(6,3.16,5))
 	var state:Dictionary=app.world.construction.snapshot()

@@ -136,10 +136,12 @@ func run()->void:
 		check(rooms.filter(func(entry:Dictionary)->bool:return entry.kind=="ensuite").size()==index,"Preset has the promised en-suite count")
 		check(rooms.filter(func(entry:Dictionary)->bool:return entry.kind=="bathroom").size()==1,"Preset has a main bathroom")
 		for room_entry:Dictionary in rooms:
-			var start:Vector3=Vector3(room_entry.x,Building.level_y(1),room_entry.z)
+			# Bathrooms now contain their bundled fixtures; their old geometric
+			# centres may be inside a shower or vanity. Query real free floor.
+			var start:Vector3=app.world.nearest_clear_point(Vector3(room_entry.x,Building.level_y(1),room_entry.z),1,8)
 			var destination:Vector3=Building.stair_point(state.stairs[0],-.5)
 			var route:Dictionary=app.world.lot_navigation.route(LifeLotNavigation.floor_location(1,start),LifeLotNavigation.floor_location(0,destination))
-			check(bool(route.ok),str(room_entry.name)+" has a usable route through its door and stairs")
+			check(start.is_finite() and Building.rect(room_entry).has_point(Vector2(start.x,start.z)) and bool(route.ok),str(room_entry.name)+" has a usable route through its door and stairs")
 		app.world.set_cutaway(false)
 		check(app.world.items.filter(func(item:Dictionary)->bool:return item.kind=="house_window" and item.node.visible).size()==8,"All four exterior sides have supported visible windows")
 		check(app.world.items.filter(func(item:Dictionary)->bool:return item.kind=="house_door").size()==4+index+(1 if index==2 else 0),"Every room and en-suite has a door")

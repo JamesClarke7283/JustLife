@@ -6,6 +6,7 @@ const DETOUR_LEAD: float = 2.4
 const CLIP_SECONDS: float = 1.8
 var app: Node
 var walks: Dictionary = {}
+var route_failure: String = ""
 
 func _init(owner: Node) -> void:
 	app = owner
@@ -48,10 +49,19 @@ func advance(id: String, action: Dictionary, delta: float) -> bool:
 	var points: Array = state.points
 	var target: Vector3 = points[int(state.index)]
 	if not bool(state.planned):
+		if float(state.get("plan_retry", 0.0)) > 0.0:
+			state.plan_retry = maxf(0.0, float(state.plan_retry) - seconds)
+			return false
 		var human_route: Dictionary = app.traversal.request(id, target)
 		var pet_route: Dictionary = _route(dog, id, target)
 		if not bool(human_route.get("ok", false)) or not bool(pet_route.get("ok", false)):
+			route_failure = "walker: %s; pet: %s" % [str(human_route.get("error", "clear")), str(pet_route.get("error", "clear"))]
+			if bool(pet_route.get("temporary", false)) and bool(human_route.get("ok", false)):
+				state.blocked = float(state.blocked) + .6
+				state.plan_retry = .6
+				if float(state.blocked) < 15.0: return false
 			return _fail(id, "The way is blocked. Leave a clear route for both you and your dog.")
+		route_failure = ""
 		state.dog_route = {"action":"pet_move", "label":"Walking on the lead", "target":"", "access":"", "at":target, "entry":target, "path":pet_route.points, "segments":pet_route.segments, "index":0, "phase":"walking", "walking":true, "elapsed":0.0, "commanded":true, "inside":false, "blocked":0.0}
 		state.planned = true
 	var before: Vector3 = body.position
@@ -121,12 +131,26 @@ func _route(dog: LifePetActor, owner: String, target: Vector3) -> Dictionary:
 	for id: String in app.pet_actors:
 		var actor: Node3D = app.pet_actors[id]
 		if actor != dog and actor.visible: occupied.append(actor.position)
-	return app.world.lot_navigation.route_avoiding(LifeLotNavigation.floor_location(app.world.point_level(dog.position), dog.position), LifeLotNavigation.floor_location(app.world.point_level(target), target), occupied, LifeTraversal.ROUTE_CLEARANCE)
+	var from: Dictionary = LifeLotNavigation.floor_location(app.world.point_level(dog.position), dog.position)
+	var to: Dictionary = LifeLotNavigation.floor_location(app.world.point_level(target), target)
+	var result: Dictionary = app.world.lot_navigation.pet_route_avoiding(from, to, occupied, LifeTraversal.ROUTE_CLEARANCE, dog.wall_hull(), dog.rotation.y)
+	if not bool(result.get("ok", false)) and not occupied.is_empty():
+		result.temporary = bool(app.world.lot_navigation.pet_route_avoiding(from, to, [], LifeTraversal.ROUTE_CLEARANCE, dog.wall_hull(), dog.rotation.y).get("ok", false))
+	return result
 
 func _step_dog(dog: LifePetActor, owner: LifeActor, route: Dictionary, seconds: float) -> void:
 	var path: PackedVector3Array = route.path
 	var budget: float = seconds * LifePetBehavior.WALK_SPEED
 	while int(route.index) < path.size() and budget > 0.0:
+		var segments: Array = route.segments
+		var segment: Dictionary = segments[int(route.index)-1] if int(route.index)>0 and int(route.index)<=segments.size() else {}
+		if bool(segment.get("turn", false)):
+			var turn: Dictionary = app.pet_behavior().turn_step(dog, segment, budget / LifePetBehavior.WALK_SPEED)
+			if not bool(turn.ok): return
+			budget -= float(turn.seconds) * LifePetBehavior.WALK_SPEED
+			if bool(turn.finished): route.index = int(route.index) + 1
+			else: return
+			continue
 		var target: Vector3 = path[int(route.index)]
 		var gap: float = dog.position.distance_to(target)
 		if gap < .00001: route.index = int(route.index) + 1; continue
@@ -134,15 +158,14 @@ func _step_dog(dog: LifePetActor, owner: LifeActor, route: Dictionary, seconds: 
 		var next: Vector3 = dog.position.move_toward(target, step)
 		var distance: float = next.distance_to(owner.position)
 		if distance < .78 or (distance > DETOUR_LEAD and distance > dog.position.distance_to(owner.position)): return
-		var segments: Array = route.segments
-		var segment: Dictionary = segments[int(route.index)-1] if int(route.index)>0 and int(route.index)<=segments.size() else {}
 		var stair: bool = str(segment.get("kind","floor")) == "stair"
+		var yaw: float = float(segment.get("yaw_to", atan2(target.x - dog.position.x, target.z - dog.position.z)))
 		if stair:
-			if not app.pet_behavior()._stair_clear(dog, next, segment): return
-		elif app._pet_step_blocked(dog, next): return
+			if not app.pet_behavior()._stair_clear(dog, next, segment, yaw): return
+		elif app._pet_step_blocked(dog, next, yaw): return
 		if app.world.construction.doors.before_pet_step(dog, next, seconds): return
 		dog.traversing_stairs = stair
-		dog.rotation.y = atan2(target.x-dog.position.x, target.z-dog.position.z)
+		dog.rotation.y = yaw
 		dog.position = next
 		var level: int = app.world.point_level(next)
 		if level >= 0: dog.floor_level = level; dog.traversing_stairs = false

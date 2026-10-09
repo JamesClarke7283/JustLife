@@ -30,6 +30,7 @@ func update(delta:float) -> void:
 	app._bind_member(previous)
 
 func _idle(id:String) -> bool:
+	if is_instance_valid(app.get("relationship_flow")) and app.relationship_flow.holds(id):return false
 	var sim:LifeSim=app.household.member_sim(id)
 	var person:LifeActor=app.world.actors.get(id)
 	if not is_instance_valid(sim) or not is_instance_valid(person) or not person.visible:return false

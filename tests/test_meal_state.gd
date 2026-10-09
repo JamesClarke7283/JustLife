@@ -47,6 +47,8 @@ class TestWorld:
 		return entry.node.position
 	func path_to(from: Vector3, to: Vector3) -> PackedVector3Array:
 		return PackedVector3Array([from, to])
+	func surface_furnishing_clear(_host: Dictionary, _at: Vector3, _half: Vector2) -> bool:
+		return true # This component fixture has no counter-top appliances.
 	func activity_anchor(entry: Dictionary, _action: String, _landmarks: Dictionary) -> Dictionary:
 		return {"position": entry.node.to_global(Vector3(0, .52, .02)), "yaw": entry.node.rotation.y, "kind": "seat"}
 
@@ -54,8 +56,12 @@ class TestApp:
 	extends Node
 	var household: LifeHousehold
 	var world: TestWorld
+	var household_flow: LifeHouseholdFlow
+	var notice_text: String = ""
 	var current_venue: String = "home"
 	var pending_move: Dictionary = {}
+	func show_notice(message: String) -> void:
+		notice_text = message
 	func _find_item(id: String) -> Dictionary:
 		for entry: Dictionary in world.items:
 			if entry.id == id:
@@ -110,6 +116,8 @@ func fixture() -> Dictionary:
 	box.add_child(app)
 	app.household = home
 	app.world = world
+	app.household_flow = LifeHouseholdFlow.new(app)
+	box.add_child(app.household_flow)
 	var flow: LifeMealFlow = LifeMealFlow.new()
 	box.add_child(flow)
 	flow.app = app
@@ -129,6 +137,7 @@ func fixture() -> Dictionary:
 	add_item(f, "chair", "chair", Vector3(0, .16, -.95))
 	add_item(f, "fridge", "fridge", Vector3(-3, .16, 0))
 	add_item(f, "sink", "sink", Vector3(3, .16, 0))
+	add_item(f, "rubbish_bin", "rubbish_bin", Vector3(3, .16, 2))
 	return f
 
 func place(value: Dictionary, host: Node3D, local: Vector3) -> void:
@@ -303,7 +312,7 @@ func transport_and_spoil() -> void:
 			if kind == "store_meal": stage = "store"
 			if kind == "discard_meal": stage = "discard"
 		var action: Dictionary = f.home.selected().get_action_definition(kind)
-		action.merge({"target_id": "sink" if kind in ["clean_plate", "discard_meal"] else "fridge" if kind == "store_meal" else "dining", "target_position": Vector3.ZERO, "phase": "approach", "elapsed": 0.0, "progress": 0.0, "paid": false, "autonomous": false, "meal_source": source, "meal_stage": stage}, true)
+		action.merge({"target_id": "sink" if kind == "clean_plate" else "rubbish_bin" if kind == "discard_meal" else "fridge" if kind == "store_meal" else "dining", "target_position": Vector3.ZERO, "phase": "approach", "elapsed": 0.0, "progress": 0.0, "paid": false, "autonomous": false, "meal_source": source, "meal_stage": stage}, true)
 		f.home.selected().action_queue = [action]
 		var good: Dictionary = snapshot(f)
 		var read: Dictionary = named_roundtrip(good, kind + " owned transport")

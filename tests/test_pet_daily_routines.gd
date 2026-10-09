@@ -73,6 +73,8 @@ func run() -> void:
 	app.world.items.clear()
 	await frames()
 	app.world.add_item({"id":"routine_tray","kind":"litter_tray","x":3.5,"z":-3.0,"rotation":0.0,"level":0},false)
+	app.world.add_item({"id":"routine_sink","kind":"sink","x":3.5,"z":-4.2,"rotation":0.0,"level":0},false)
+	app.world.add_item({"id":"routine_bin","kind":"rubbish_bin","x":-3.0,"z":-3.0,"rotation":0.0,"level":0},false)
 	app.world.rebuild_navigation();app._refresh_sim_targets(false)
 	tray=app._find_item("routine_tray")
 	check(not tray.is_empty(),"Real litter tray exists in enclosed bathroom")
@@ -109,6 +111,9 @@ func run() -> void:
 	if is_instance_valid(clean):clean.pressed.emit()
 	await drive(2200,"clean")
 	check(int(app.household_flow.litter.get(str(tray.id),0))==0,"Lifelet walks to tray and completes cleaning")
+	# The cleaner's washed-hands endpoint is beside the tray. Let the cat's
+	# subsequent routine have space for its own physically checked entry.
+	app.player.position=Vector3(0,.16,1)
 	app.pet_behavior().command(cat_id,"pet_free")
 	app.household.pet_care(cat_id).needs.bladder=10
 	app.household.set_speed(8);app._process(.05);app.household.set_speed(0)
@@ -134,7 +139,7 @@ func run() -> void:
 	check(is_instance_valid(walk) and not walk.disabled,"Dog card exposes a real enabled walk button")
 	if is_instance_valid(walk):walk.pressed.emit()
 	await drive(4000,"walk")
-	print("WALK_DIAGNOSTIC ",app.player.position," dog=",app.pet_actors[dog_id].position," phase=",app.care_motion().walker.walks," notice=",app.notice_text)
+	print("WALK_DIAGNOSTIC ",app.player.position," dog=",app.pet_actors[dog_id].position," phase=",app.care_motion().walker.walks," notice=",app.notice_text," route=",app.care_motion().walker.route_failure)
 	check(walk_clip and knee_bent and leash_visible,"Walk bends an actual knee and renders the attached lead")
 	check(walk_open and walk_street,"Lifelet and dog physically cross front door and reach street together")
 	check(max_lead<2.5 and min_lead>=.70,"Walking pair stays within a short lead (max %.2fm)"%max_lead)

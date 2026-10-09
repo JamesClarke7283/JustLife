@@ -911,6 +911,7 @@
     "scripts/pet_behavior.gd.uid",
     "scripts/pet_care.gd",
     "scripts/pet_care.gd.uid",
+    "scripts/pet_navigation.gd",
     "scripts/pet_shop_flow.gd",
     "scripts/pet_shop_flow.gd.uid",
     "scripts/pet_walk.gd",

@@ -218,12 +218,17 @@ func _observe_replan(id:String,route:Dictionary,remaining:float,moved:bool)->boo
 
 func _walk(id:String,route:Dictionary,time:float,consider_courtesy:bool=true)->Dictionary:
 	var actor:LifeActor=app.world.actors[id]
+	var walk_speed:float=WALK_SPEED
+	if is_instance_valid(app.get("sanitation_flow")):
+		var destination:Vector3=routes.get(id,{}).get("destination",Vector3.INF)
+		if not destination.is_finite() and not route.points.is_empty():destination=route.points[-1]
+		walk_speed*=app.sanitation_flow.bathroom_hurry(id,destination)
 	var remaining:float=maxf(0,time);var moved:bool=false
 	while int(route.point)<route.points.size() and remaining>.0000001:
 		var goal:Vector3=route.points[int(route.point)]
 		var difference:Vector3=goal-actor.position;var distance:float=difference.length()
 		if distance<.00001:route.point+=1;continue
-		var step:float=minf(minf(distance,remaining*WALK_SPEED),MAX_STEP)
+		var step:float=minf(minf(distance,remaining*walk_speed),MAX_STEP)
 		var next:Vector3=actor.position+difference/distance*step
 		if not courtesy.step_allowed(self,id,actor.position,next):return {"time":0.0,"moved":moved,"blocked":true}
 		var can_squeeze:bool=bool(route.get("squeeze",false)) and _step_clear_of_structure(id,actor.position,next) and not _use_point_occupied(id,next)
@@ -257,7 +262,7 @@ func _walk(id:String,route:Dictionary,time:float,consider_courtesy:bool=true)->D
 			return {"time":0.0,"moved":moved,"blocked":true}
 		if app.world.construction.doors.before_step(actor,id,next,remaining):return {"time":0.0,"moved":moved,"blocked":false}
 		actor.rotation.y=lerp_angle(actor.rotation.y,atan2(difference.x,difference.z),minf(1,remaining*12))
-		actor.position=next;remaining-=step/WALK_SPEED;moved=true
+		actor.position=next;remaining-=step/walk_speed;moved=true
 		route.structure_age=0.0
 		route.structure_run=float(route.get("structure_run",0.0))+step
 		# Walking on well past a refusal means the detour worked: the next
@@ -320,7 +325,7 @@ func _step_clear_of_structure(id:String,from:Vector3,to:Vector3)->bool:
 	# The step test without other bodies: walls, floors and stair reservations.
 	if not courtesy.step_allowed(self,id,from,to):return false
 	var level:int=app.world.point_level(to)
-	if level<0 or not app.world.lot_navigation.point_clear(level,to):return false
+	if level<0 or not app.world.lot_navigation.segment_clear(level,from,to):return false
 	for lock:Dictionary in stairs.values():
 		if str(lock.owner).is_empty() or str(lock.owner)==id:continue
 		for reserved:Vector3 in [lock.exit,lock.clear]:
@@ -338,7 +343,7 @@ func _step_clear(id:String,from:Vector3,to:Vector3,boundary_entry:bool=false)->b
 	if not courtesy.step_allowed(self,id,from,to):return false
 	var level:int=app.world.point_level(to)
 	if level<0:return false
-	if not app.world.lot_navigation.point_clear(level,to):
+	if not app.world.lot_navigation.segment_clear(level,from,to):
 		if not boundary_entry or not app.world.lot_navigation.boundary_entry_step(from,to):return false
 	for other_id:String in app.world.actors:
 		if other_id==id:continue
@@ -387,6 +392,7 @@ func _prepare(id:String,route:Dictionary)->bool:
 func advance(id:String,delta:float,speed:int)->Dictionary:
 	var response:Dictionary={"moving":false,"finished":false,"cleared":false,"error":""}
 	if not routes.has(id) or speed<=0 or delta<=0:return response
+	if is_instance_valid(app.get("relationship_flow")) and app.relationship_flow.holds(id):return response
 	courtesy.reconcile(self)
 	var route:Dictionary=routes[id]
 	if route.has("courtesy"):
@@ -817,6 +823,7 @@ func _make_way(other_id:String,walker_id:String,route:Dictionary)->bool:
 	# An idle Lifelet standing on somebody's path or use point steps aside.
 	var person:LifeSim=app.household.member_sim(other_id)
 	if not is_instance_valid(person) or person.is_away() or not person.get_current_action().is_empty():return false
+	if is_instance_valid(app.get("relationship_flow")) and app.relationship_flow.holds(other_id):return false
 	var actor:LifeActor=app.world.actors.get(other_id)
 	if not is_instance_valid(actor) or not actor.visible:return false
 	var anchor:Vector3=_aside_anchor(other_id,actor.position,_corridor_points(route),app.world.actors[walker_id].position)

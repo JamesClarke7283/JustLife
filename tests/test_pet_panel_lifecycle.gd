@@ -51,7 +51,7 @@ func _run() -> void:
 
 	app.show_pet_card(pet_id, true)
 	await frames(2)
-	check(app.pet_panel_bars.size() == 6 and app.pet_panel_values.size() == 6, "Pet card owns six live need rows")
+	check(app.pet_panel_bars.size() == LifePetCare.NEED_NAMES.size() and app.pet_panel_values.size() == LifePetCare.NEED_NAMES.size(), "Pet card owns every live pet need row")
 	var old_bar: Variant = app.pet_panel_bars.get("hunger")
 	check(is_instance_valid(old_bar), "The first card's Hunger bar is live")
 
@@ -69,7 +69,7 @@ func _run() -> void:
 
 	app.show_pet_card(pet_id, true)
 	await frames(2)
-	check(app.pet_panel_bars.size() == 6 and is_instance_valid(app.pet_panel_bars.get("hunger")), "Reopened pet card has fresh bars")
+	check(app.pet_panel_bars.size() == LifePetCare.NEED_NAMES.size() and is_instance_valid(app.pet_panel_bars.get("hunger")), "Reopened pet card has fresh bars")
 	app.household.pet_care(pet_id).needs.hunger = 23.0
 	app._refresh_pet_panel()
 	var fresh_bar: Variant = app.pet_panel_bars.get("hunger")

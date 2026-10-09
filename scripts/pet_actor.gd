@@ -21,6 +21,13 @@ const SPECIES_HEIGHT: Dictionary = {"cat": 0.30, "dog": 0.52}
 ## Authored shoulder-to-tail-base length, used to scale the walk cycle.
 const SPECIES_LENGTH: Dictionary = {"cat": 0.60, "dog": 0.85}
 
+## Standing and walking mesh extents, including the nose, tail, ears and the
+## fullest coat. Wall routing keeps this long body aligned through doorways.
+const WALL_HULLS: Dictionary = {
+	"dog": {"front": .66, "back": .64, "half_width": .20, "height": .66},
+	"cat": {"front": .43, "back": .58, "half_width": .15, "height": .43},
+}
+
 var pet_id: String = ""
 var display_name: String = ""
 var species: String = "cat"
@@ -35,6 +42,7 @@ var selected: bool = false:
 ## A speed factor of zero freezes the pet, matching the household clock.
 var speed: float = 1.0
 var _model: Node3D
+var _body: Node3D
 var _head: Node3D
 var _tail: Node3D
 var _tail_rest_basis: Basis = Basis.IDENTITY
@@ -52,6 +60,9 @@ var _time: float = 0.0
 var _phase: float = 0.0
 var _base_height: float = 0.0
 var _collar: Node3D
+var _leash: Node3D
+var _feature_rest: Dictionary = {}
+var resting_on_cushion: bool = false
 ## The care beat a Lifelet is giving this pet (care_motion.gd), on that beat's
 ## own clock, and where the person is.
 var interaction: String = ""
@@ -63,6 +74,12 @@ var behavior: String = ""
 var behavior_time: float = 0.0
 var squeak_count: int = 0
 var _squeak_player: AudioStreamPlayer3D
+
+func wall_hull() -> Dictionary:
+	var hull: Dictionary = WALL_HULLS.get(species, WALL_HULLS.cat).duplicate()
+	var fullness: float = _model.scale.x / 1.06 if is_instance_valid(_model) else 1.0
+	for dimension: String in hull: hull[dimension] = float(hull[dimension]) * fullness
+	return hull
 
 ## How far forward of the neck joint each species' mouth sits.
 const MOUTH_REACH: Dictionary = {"cat": .14, "dog": .22}
@@ -126,8 +143,10 @@ func configure(id: String, new_species: String, appearance: Dictionary, name: St
 		remove_child(_model)
 		_model.queue_free()
 	_model = null
+	_body = null
 	_head = null
 	_tail = null
+	_feature_rest.clear()
 	_legs.clear()
 	_materials.clear()
 	_ring.visible = selected
@@ -141,10 +160,14 @@ func configure(id: String, new_species: String, appearance: Dictionary, name: St
 		return
 	_model = load(path).instantiate()
 	add_child(_model)
+	_body = _model.find_child("Body", true, false) as Node3D
 	_head = _model.find_child("Head", true, false) as Node3D
 	_tail = _model.find_child("Tail", true, false) as Node3D
 	if is_instance_valid(_tail): _tail_rest_basis = _tail.basis
 	_collar = _model.find_child("Collar", true, false) as Node3D
+	_leash = _model.find_child("Leash", true, false) as Node3D
+	for part: Node3D in [_body, _head, _tail, _collar]:
+		if is_instance_valid(part): _feature_rest[part.name] = {"position": part.position, "scale": part.scale}
 	for leg_name: String in LEG_NAMES:
 		var leg := _model.find_child(leg_name, true, false) as Node3D
 		if leg != null:
@@ -235,6 +258,7 @@ func animate(delta: float, moving: bool, speed_factor: float = 1.0) -> void:
 	if not caring and not moving and not behavior.is_empty():
 		_behavior_pose(delta)
 		return
+	_settle_features(delta, false, caring and interaction == "pet_feed" and interaction_time > 4.8)
 	_settle_body(delta, caring)
 	if caring:
 		_care_pose(delta)
@@ -281,17 +305,21 @@ func clear_interaction() -> void:
 	interaction = ""
 
 
-func set_behavior(id: String, elapsed: float) -> void:
+func set_behavior(id: String, elapsed: float, cushion: bool = false) -> void:
 	behavior = id
 	behavior_time = elapsed
+	resting_on_cushion = cushion
 
 
 func clear_behavior() -> void:
 	behavior = ""
+	resting_on_cushion = false
 
 
 func _behavior_pose(delta: float) -> void:
 	if not is_instance_valid(_model): return
+	var curled: bool = behavior == "rest" and resting_on_cushion
+	_settle_features(delta, curled, behavior in ["eat", "drink"])
 	var blend: float = 1.0 - exp(-delta * 8.0)
 	var h: float = float(SPECIES_HEIGHT.get(species, .30))
 	var body_rotation := Vector3.ZERO
@@ -329,9 +357,10 @@ func _behavior_pose(delta: float) -> void:
 			legs[2].x = -.85; legs[3].x = -.85
 			head.x = -.12
 		"rest":
-			body_position.y = -h * .30 + sin(t * .7) * .003
-			legs = [Vector3(-1.25, 0, .1), Vector3(-1.25, 0, -.1), Vector3(1.2, 0, .1), Vector3(1.2, 0, -.1)]
-			head = Vector3(.32, .08, 0)
+			body_position.y = -h * (.34 if species == "dog" else .22) + sin(t * .7) * .003 if curled else -h * .30 + sin(t * .7) * .003
+			if curled: legs = [Vector3(1.40, 0, .30), Vector3(1.40, 0, -.30), Vector3(-1.40, 0, .25), Vector3(-1.40, 0, -.25)]
+			else: legs = [Vector3(-1.25, 0, .1), Vector3(-1.25, 0, -.1), Vector3(1.2, 0, .1), Vector3(1.2, 0, -.1)]
+			head = Vector3(.36, 1.65, -.12) if curled else Vector3(.32, .08, 0)
 		"scratch":
 			body_rotation.x = -.8
 			body_position.y = h * .13
@@ -347,15 +376,40 @@ func _behavior_pose(delta: float) -> void:
 			legs[0].x = maxf(0.0, sin(t * 5.0)) * -1.0
 			legs[1].x = maxf(0.0, sin(t * 5.0 + PI)) * -1.0
 			head = Vector3(.45, sin(t * 4.0) * .25, 0)
-		"eat", "retrieve", "sniff":
+		"eat", "drink", "retrieve", "sniff":
 			head = Vector3(.60 + sin(t * 7.0) * .08, sin(t * 2.0) * .08, 0)
 	_model.rotation = _model.rotation.lerp(body_rotation, blend)
 	_model.position = _model.position.lerp(body_position, blend)
 	for i: int in range(_legs.size()):
 		if is_instance_valid(_legs[i]): _legs[i].rotation = _legs[i].rotation.lerp(legs[i], blend)
 	if is_instance_valid(_head): _head.rotation = _head.rotation.lerp(head, blend)
-	if is_instance_valid(_tail): _tail.basis = Basis.from_euler(Vector3(-.65 if behavior == "rest" else -.05, sin(t * 3.0) * (.04 if behavior == "rest" else (0.0 if behavior == "trick_play_dead" else .25)), 0)) * _tail_rest_basis
+	if is_instance_valid(_tail): _tail.basis = Basis.from_euler(Vector3((-.60 if species == "cat" else -.10) if curled else (-.65 if behavior == "rest" else -.05), 1.7 if curled else sin(t * 3.0) * (.04 if behavior == "rest" else (0.0 if behavior == "trick_play_dead" else .25)), 0)) * _tail_rest_basis
 
+
+## Fold the head and tail toward the body and tuck the torso into the cushion.
+## The authored parts ease back to their own transforms when the pet gets up,
+## so a bed pose cannot shrink or displace its later walk or care animations.
+func _settle_features(delta: float, curled: bool, eating: bool = false) -> void:
+	var blend: float = 1.0 - exp(-delta * 8.0)
+	var h: float = float(SPECIES_HEIGHT.get(species, .30))
+	var length: float = float(SPECIES_LENGTH.get(species, .60))
+	for part: Node3D in [_body, _head, _tail, _collar]:
+		if not is_instance_valid(part) or not _feature_rest.has(part.name): continue
+		var rest: Dictionary = _feature_rest[part.name]
+		var at: Vector3 = rest.position
+		var size: Vector3 = rest.scale
+		if curled:
+			if part == _body:
+				size *= Vector3(1.25, 1.0, .57 if species == "dog" else .60)
+				at.z += .03
+			elif part == _head: at += Vector3(-length * .21, -h * .10, -length * .32)
+			elif part == _tail: at += Vector3(length * .16, -h * .18, length * .13)
+			elif part == _collar: at += Vector3(-length * .10, -h * .12, -length * .16)
+		elif eating and part == _head:
+			at.y -= .15 if species == "dog" else .035
+		part.position = part.position.lerp(at, blend)
+		part.scale = part.scale.lerp(size, blend)
+	if is_instance_valid(_leash): _leash.visible = not curled
 
 ## A short rubber-toy chirp, synthesised as PCM to keep the asset portable.
 ## A distinct pitch sweep separates it from speech, UI clicks and alarms.

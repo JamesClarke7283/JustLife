@@ -12,6 +12,9 @@ var doors:Dictionary={}
 var passages:Dictionary={}
 var lowered:bool=true
 var animals:Dictionary={}
+## The bathroom controller owns occupancy; every human and animal must ask
+## before entering a locked room, including a door already open for its user.
+var privacy_step:Callable
 
 func initialize(owner_world:Node3D)->void:world=owner_world
 
@@ -162,6 +165,8 @@ func _present(actor:LifeActor,door:Dictionary,weight:float)->void:
 ## The caller consumes the frame's remaining movement time without reporting
 ## a collision, so an intentional latch pause cannot trigger standoff/replans.
 func before_step(actor:LifeActor,id:String,to:Vector3,time:float)->bool:
+	if privacy_step.is_valid() and not bool(privacy_step.call(actor,id,to)):
+		cancel(id);actor.door_presentation={};return true
 	if str(actor.profile.get("age_stage","adult"))=="baby":return before_pet_step(actor,to,time)
 	if passages.has(id) and not doors.has(str(passages[id].door)):cancel(id)
 	if not passages.has(id):
@@ -305,6 +310,7 @@ func tick(time:float)->void:
 
 ## Automatic entry for pets, which cannot reach a human door handle.
 func before_pet_step(actor:Node3D,to:Vector3,time:float)->bool:
+	if privacy_step.is_valid() and not bool(privacy_step.call(actor,"",to)):return true
 	animals[str(actor.get_instance_id())]=actor
 	for door:Dictionary in doors.values():
 		var from:Vector3=door.root.to_local(actor.global_position)

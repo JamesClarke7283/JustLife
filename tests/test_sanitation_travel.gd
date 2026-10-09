@@ -36,9 +36,10 @@ func car_trip(destination:String,allow_pending:bool=true)->void:
 	var origin:String=app.current_venue
 	var initial:Dictionary=app.household.sanitation.get_state()
 	var initial_clock:float=clock_minutes()
-	var trace:Dictionary={"origin":origin,"destination":destination,"clock":initial_clock,"events":[],"frames":0,"charge_events":0,"visible_boarding_motion":false,"car_motion":false}
+	var trace:Dictionary={"origin":origin,"destination":destination,"clock":initial_clock,"events":[],"frames":0,"charge_events":0,"drive_slices":0,"drive_minutes":0.0,"visible_boarding_motion":false,"car_motion":false}
 	var static_clock:bool=true
 	var static_urgency:bool=true
+	var departure_clock:bool=true
 	var no_accidents:bool=true
 	var parked_simulation:bool=true
 	app.travel_to(destination)
@@ -51,6 +52,7 @@ func car_trip(destination:String,allow_pending:bool=true)->void:
 		if app.mode!="travel":break
 		var phase:String=str(app.residents.trip.phase)
 		var before:float=clock_minutes();var before_urgency:Dictionary=urgency()
+		var before_drive:float=float(app.residents.trip.get("travel_sim",0.0))
 		var before_actor:Vector3=app.world.actors.player.position
 		var before_visible:bool=app.world.actors.player.visible
 		var before_car:Node3D=app.residents.car
@@ -61,12 +63,19 @@ func car_trip(destination:String,allow_pending:bool=true)->void:
 		var after_phase:String=str(app.residents.trip.get("phase","complete"))
 		var charge:bool=phase=="departure" and after_phase=="arrival"
 		var delta_clock:float=clock_minutes()-before
-		if charge:
-			trace.charge_events+=1
-			check(absf(delta_clock-15.0)<.00000001,"The "+destination+" trip applies one fifteen-minute simulation charge.")
+		if phase=="departure":
+			# Production deliberately spreads the quarter-hour over the drive,
+			# while boarding and arrival animate with the household paused.
+			var slice:float=float(app.residents.trip.get("travel_sim",0.0))-before_drive
+			departure_clock=departure_clock and slice>=0.0 and delta_clock>=0.0 and absf(delta_clock-slice)<.00000001
+			trace.drive_minutes+=delta_clock
+			if slice>0.0:trace.drive_slices+=1
 		else:
 			static_clock=static_clock and delta_clock==0.0
 			static_urgency=static_urgency and urgency()==before_urgency
+		if charge:
+			trace.charge_events+=1
+			check(departure_clock and trace.drive_slices>1 and absf(float(trace.drive_minutes)-15.0)<.00000001 and float(app.residents.trip.travel_sim)==15.0,"The "+destination+" trip steps exactly fifteen minutes across its physical drive.")
 		if phase=="boarding" and before_visible and app.world.actors.player.position.distance_to(before_actor)>.001:trace.visible_boarding_motion=true
 		if phase in ["departure","arrival"] and is_instance_valid(before_car) and is_instance_valid(app.residents.car) and before_car==app.residents.car and absf(before_car.position.x-before_x)>.001:trace.car_motion=true
 		no_accidents=no_accidents and app.household.sanitation.get_state()==initial
@@ -74,7 +83,7 @@ func car_trip(destination:String,allow_pending:bool=true)->void:
 		if index%20==0:await process_frame
 	check(app.mode=="live" and app.current_venue==destination,"Actual car travel arrives at "+destination+".")
 	check((float(trace.boarding_distance)<=.001 or bool(trace.visible_boarding_motion)) and bool(trace.car_motion),"The "+destination+" journey physically drives, with boarding motion whenever the actual initial position requires it.")
-	check(static_clock and static_urgency and parked_simulation,"Boarding/driving animation for "+destination+" advances neither simulation nor bladder urgency continuously.")
+	check(static_clock and static_urgency and parked_simulation,"Boarding and arrival animation for "+destination+" keep simulation and bladder urgency paused.")
 	check(trace.charge_events==1 and absf(clock_minutes()-initial_clock-15.0)<.00000001,"The complete "+destination+" trip charges exactly fifteen game minutes once.")
 	check(no_accidents,"No trip phase or hidden arrival creates a puddle at stale coordinates for "+destination+".")
 	check(app.household.members.all(func(m:Dictionary)->bool:return app.world.actors[m.id].visible),"All Lifelets are visibly present before pending accidents may resolve at "+destination+".")
@@ -153,7 +162,7 @@ func run()->void:
 	app.sim.needs.bladder=0.0;app.sim.bladder_grace=7.0
 	app.household.member_sim("housemate_1").needs.bladder=0.0;app.household.member_sim("housemate_1").bladder_grace=4.0
 	await car_trip("maya_home")
-	check(app.sim.bladder_grace==10.0 and app.household.member_sim("housemate_1").bladder_grace==10.0,"The single trip charge caps both pending urgency timers without emitting accidents.")
+	check(app.sim.bladder_grace==10.0 and app.household.member_sim("housemate_1").bladder_grace==10.0,"The fifteen-minute drive caps both pending urgency timers without emitting accidents.")
 	var maya:Array=create_arrival_accidents("maya_home",["player","housemate_1"])
 	maya_cleaned=str(maya[0].id);maya_retained=str(maya[1].id)
 	await save_and_reload("Juniper Bay - Maya's floor")

@@ -4,7 +4,7 @@ class_name LifeHouseholdFlow
 ##
 ## This service owns the small stateful extras that need a real world and a real
 ## household to mean anything:
-##   * the rubbish bin's fill, raised by cooking, eating and clearing tables;
+##   * the rubbish bin's fill, raised by litter cleaning and food disposal;
 ##   * the skill books a Lifelet buys and shelves, each teaching one skill;
 ##   * instrument practice (guitar, violin), which builds Music;
 ##   * clearing used plates and finished dishes off a table surface;
@@ -48,7 +48,6 @@ var safety_data: Dictionary = {}
 var safety_restored: bool = false
 var storage: Array = []                     # [{"id":"placed_1","kind":"bed","x":..,"z":..,"rotation":..,"level":..}]
 var serial: int = 0
-var _full_notice_day: int = -1
 ## How dirty each part of the home is (chores.gd); the household's own additive record.
 var chores: RefCounted = preload("res://scripts/chores.gd").new()
 
@@ -294,21 +293,47 @@ func bin_is_full(bin_id: String) -> bool:
 	return int(fill.get(bin_id, 0)) >= BIN_CAPACITY
 
 
-func add_rubbish(units: int = 1) -> void:
-	# Cooking, eating and clearing tables all leave something behind. The bin
-	# nearest the kitchen takes it, so the household's own bin fills first.
+func kitchen_bin() -> Dictionary:
 	var bin: Dictionary = app.world.closest_item("rubbish_bin", Vector3(0, 0, -4.4))
+	return app.world.closest_item("rubbish_bin", Vector3.ZERO) if bin.is_empty() else bin
+
+
+func add_rubbish(units: int = 1, bin_id: String = "") -> bool:
+	# Litter and discarded food leave waste. The bin nearest the kitchen
+	# takes it, so the household's own bin fills first.
+	var bin: Dictionary = kitchen_bin() if bin_id.is_empty() else _item(bin_id)
 	if bin.is_empty():
-		bin = app.world.closest_item("rubbish_bin", Vector3.ZERO)
-	if bin.is_empty():
-		return
+		return false
 	var id: String = str(bin.id)
-	fill[id] = mini(BIN_CAPACITY, int(fill.get(id, 0)) + maxi(0, units))
+	if str(bin.kind) != "rubbish_bin" or int(fill.get(id, 0)) + maxi(0, units) > BIN_CAPACITY:
+		app.show_notice("The kitchen bin is full. Empty Bin First before adding more rubbish.")
+		return false
+	var was_full: bool = bin_is_full(id)
+	fill[id] = int(fill.get(id, 0)) + maxi(0, units)
 	refresh_props()
-	if not bin_is_full(id) or _full_notice_day == app.household.day:
-		return
-	_full_notice_day = app.household.day
-	app.show_notice("The rubbish bin is full. Empty it out on the street.")
+	if not was_full and bin_is_full(id):
+		app.show_notice("The kitchen bin is full (4/4). Empty it out on the street.")
+	return true
+
+
+## Keep the original request reviewable before any waste is removed or lost.
+func offer_empty_bin_first(sim: LifeSim, action_id: String, target_id: String, destination: Vector3, bin_id: String = "") -> bool:
+	var bin: Dictionary = kitchen_bin() if bin_id.is_empty() else _item(bin_id)
+	if bin.is_empty() or not bin_is_full(str(bin.id)): return false
+	app.close_overlay(); app.overlay_open = true; app.dismiss_layer()
+	app.card(Vector2(460, 300), Vector2(520, 260), app.P.WHITE, 24, app.overlay)
+	app.text_label("The kitchen bin is full", Vector2(488, 324), Vector2(465, 40), 26, app.P.INK, true, app.overlay)
+	app.paragraph("Empty the bin first, then carry on with this rubbish. The food or litter stays here until there is room.", Vector2(490, 380), Vector2(455, 66), 17, app.P.MUTED, app.overlay)
+	app.button("Empty Bin First", Vector2(490, 478), Vector2(240, 44), func():
+		app.close_overlay()
+		if not is_instance_valid(sim) or sim.is_away(): return
+		if sim.action_queue.size() > LifeSim.MAX_QUEUE - 2:
+			app.show_notice("Leave two queue spaces for emptying the bin and finishing this rubbish."); return
+		if bin_is_full(str(bin.id)) and not sim.queue_action("empty_bin", str(bin.id), app.world.approach(bin)): return
+		sim.queue_action(action_id, target_id, destination)
+		app.refresh_hud(), true, app.overlay).name = "EmptyBinFirst"
+	app.button("Wait", Vector2(750, 478), Vector2(200, 44), app.close_overlay, false, app.overlay)
+	return true
 
 
 func empty_bin(bin_id: String) -> bool:
@@ -441,7 +466,10 @@ func action_availability(sim: LifeSim, id: String, target_id: String) -> String:
 			return "Every skill book on this shelf is already at level %d. Mastery at level 10 needs the computer." % BOOK_MAX_LEVEL
 		"clean_litter_tray":
 			if str(sim.character.age_stage) not in ["teen", "young_adult", "adult", "elder"]: return "Only teens, adults and elders can clean litter trays."
+			if sim._actor_is_pregnant(): return "Pregnant Lifelets cannot clean cat litter. Ask another adult."
 			if kind != "litter_tray": return "Choose a litter tray."
+			if kitchen_bin().is_empty(): return "Place a kitchen bin for the used litter."
+			if str(sim.character.age_stage) in ["young_adult", "adult", "elder"] and litter_handwashing_target(sim, target_id).is_empty(): return "Place a reachable sink to wash hands after cleaning litter."
 			for errand:Dictionary in app.pet_errands.values():
 				if str(errand.get("target",""))==target_id: return "Wait until the cat has finished using this tray."
 			if int(litter.get(target_id, 0)) == 0: return "This litter tray is already clean."
@@ -581,9 +609,31 @@ func use_litter(id: String) -> void:
 
 func clean_litter(sim: LifeSim, id: String) -> bool:
 	if not action_availability(sim, "clean_litter_tray", id).is_empty(): return false
+	if not add_rubbish(1):
+		var tray: Dictionary = _item(id)
+		offer_empty_bin_first(sim, "clean_litter_tray", id, app.world.approach(tray))
+		return false
 	litter.erase(id)
 	refresh_props()
 	return true
 
+func litter_handwashing_target(sim: LifeSim, tray_id: String) -> Dictionary:
+	var tray: Dictionary = _item(tray_id)
+	if tray.is_empty(): return {}
+	var from: Vector3 = app.world.approach(tray)
+	var best: float = INF
+	var selected: Dictionary = {}
+	for sink: Dictionary in app.world.items:
+		if str(sink.kind) != "sink" or not bool(sim.get_action_availability("wash_hands", str(sink.id)).available): continue
+		var at: Vector3 = app.world.approach(sink)
+		if not at.is_finite() or app.world.path_to(from, at).is_empty(): continue
+		var cost: float = from.distance_to(at) + sim._autonomy_target_load(str(sink.id))
+		if cost < best:
+			best = cost; selected = {"target_id": str(sink.id), "position": at}
+	return selected
+
 func pet_walk_ready(sim: LifeSim) -> bool:
 	return app.care_motion().walk_ready(sim._social_member_id)
+
+func pet_feed_ready(sim: LifeSim) -> bool:
+	return app.care_motion().feeding_ready(sim._social_member_id)

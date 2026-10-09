@@ -26,7 +26,7 @@ var route_failure: Dictionary = {}
 ## Game time of each pet's last "cannot reach" notice.
 var notified: Dictionary = {}
 const BLOCKED_TIMEOUT: float = 12.0   # scaled seconds a walking pet may be held before it gives the errand up
-const STAIR_TIMEOUT: float = 25.0     # the same on a staircase, where it is put back on a landing
+const STAIR_TIMEOUT: float = 25.0     # on stairs, keep waiting for a supported landing
 const ACCESS_TIMEOUT: float = 6.0     # scaled seconds a pet may wait to enter or leave a bed or a kennel
 const RETRY_MINUTES: float = 3.0
 const NOTICE_MINUTES: float = 90.0
@@ -50,6 +50,7 @@ func commands(id: String) -> Array[Dictionary]:
 	var cat: bool = _species(id) == "cat"
 	var result: Array[Dictionary] = [
 		{"id": "pet_eat", "label": "Feed the Cat" if cat else "Feed the Dog"},
+		{"id": "pet_drink", "label": "Drink from Water Bowl"},
 		{"id": "pet_go_bed", "label": "Go to Cat Bed" if cat else "Go to Dog Bed"},
 		{"id": "pet_cat_tree" if cat else "pet_go_dog_house", "label": "Command to Play on Cat Tree" if cat else "Go to Dog House"},
 		{"id": "pet_play_toys", "label": "Play with Toys"},
@@ -100,6 +101,12 @@ func command(id: String, action: String, ground: Vector3 = Vector3.INF) -> Dicti
 	var reason: String = _availability(id, action)
 	if not reason.is_empty(): return _failure(reason)
 	_interrupt_care(id)
+	# A canceled care route on stairs retains its checked landing segment.
+	# Carry the new command to that landing instead of replanning in mid-air.
+	var retained: Dictionary = app.pet_errands.get(id, {})
+	if str(retained.get("phase", "")) == "walking" and app.world.point_level(actor.position) < 0:
+		retained["pending_command"] = {"action": action, "ground": ground}
+		return {"ok": true, "message": "%s will follow that command at the stair landing." % actor.display_name}
 	var old: Dictionary = app.pet_errands.get(id, {})
 	if str(old.get("phase", "")) in ["entering", "using", "exiting"] and bool(old.get("inside", false)):
 		_finish(id, actor, {"action": action, "ground": ground})
@@ -120,7 +127,7 @@ func command(id: String, action: String, ground: Vector3 = Vector3.INF) -> Dicti
 ## beat. Cancel that beat as well as its pose so it cannot reclaim the dog.
 func _interrupt_care(id: String) -> void:
 	app.pending_pet_care.erase(id)
-	for visit: LifeHomeVisit in app.residents.visits():
+	for visit: LifeHomeVisit in (app.residents.visits() if app.residents != null else []):
 		if visit.active() and (visit.activity.holds_pet(id) or str(visit.activity.data.get("pending_pet",{}).get("target",""))==id):visit.activity.cancel("")
 	var care: RefCounted = app.care_motion()
 	for member_id: String in care.sessions.keys():
@@ -176,15 +183,15 @@ func _availability(id: String, action: String) -> String:
 		if trick == "fetch" and _target(id, "pet_play_toys").is_empty(): return "Place a dog toy to fetch first."
 		return ""
 	if action in ["pet_stop_squeaking", "pet_stop_playing", "pet_move", "wander", "relieve"]: return ""
-	if action not in ["pet_eat", "pet_go_bed", "pet_go_dog_house", "pet_cat_tree", "pet_play_toys"]: return "Unknown pet command."
+	if action not in ["pet_eat", "pet_drink", "pet_go_bed", "pet_go_dog_house", "pet_cat_tree", "pet_play_toys"]: return "Unknown pet command."
 	if _target(id, action).is_empty():
-		return {"pet_eat": "Place a food bowl first.", "pet_go_bed": "Place a %s bed first." % _species(id), "pet_go_dog_house": "Place a dog house outdoors first.", "pet_cat_tree": "Place a cat tree first.", "pet_play_toys": "Buy a toy or a toy box for this pet first."}.get(action, "Place the pet furnishing first.")
+		return {"pet_eat": "Place a food bowl first.", "pet_drink": "Place a water bowl first.", "pet_go_bed": "Place a %s bed first." % _species(id), "pet_go_dog_house": "Place a dog house outdoors first.", "pet_cat_tree": "Place a cat tree first.", "pet_play_toys": "Buy a toy or a toy box for this pet first."}.get(action, "Place the pet furnishing first.")
 	return ""
 
 func _target(id: String, action: String) -> Dictionary:
 	var actor: LifePetActor = app.pet_actors.get(id)
 	if not is_instance_valid(actor): return {}
-	var kind: String = {"pet_eat": "pet_bowl", "pet_go_bed": "pet_bed_" + _species(id), "pet_go_dog_house": "kennel", "pet_cat_tree": "cat_tree", "relieve": "litter_tray"}.get(action, "")
+	var kind: String = {"pet_eat": "pet_bowl", "pet_drink": "pet_bowl", "pet_go_bed": "pet_bed_" + _species(id), "pet_go_dog_house": "kennel", "pet_cat_tree": "cat_tree", "relieve": "litter_tray"}.get(action, "")
 	var best: Dictionary = {}
 	var distance: float = INF
 	for item: Dictionary in app.world.items:
@@ -207,6 +214,9 @@ func _target(id: String, action: String) -> Dictionary:
 		var access: Dictionary = _item(str(item.box_id)) if action == "pet_play_toys" and not str(item.get("box_id", "")).is_empty() else item
 		if logic >= 5 and (access.is_empty() or not _approach(id, access, action, actor.position).is_finite()): continue
 		var gap: float = actor.position.distance_squared_to(item.node.position)
+		# A nearby inaccessible bowl must not strand a pet when another bowl
+		# is reachable. Keep the blocked one only to explain a failed route.
+		if action in ["pet_eat", "pet_drink"] and not _approach(id, item, action, actor.position).is_finite(): gap += 1000000.0
 		if logic >= 5 and str(item.id) in care.get("familiar_items", []): gap *= .75
 		if gap < distance: best = item; distance = gap
 	return best
@@ -219,7 +229,7 @@ func tick(delta: float, speed: float) -> bool:
 	for id: String in app.pet_actors.keys():
 		var actor: LifePetActor = app.pet_actors.get(id)
 		if not is_instance_valid(actor) or app.pet_arrivals.has(id): continue
-		if app.care_motion().holds(id) or app.residents.guest_holds_pet(id):
+		if app.care_motion().holds(id) or (app.residents != null and app.residents.guest_holds_pet(id)):
 			actor.clear_behavior()
 			actor.stop_squeak()
 			continue
@@ -246,7 +256,7 @@ func tick(delta: float, speed: float) -> bool:
 ## to move, at most once every ninety game minutes.
 func _could_not_start(id: String, action: String) -> void:
 	cooldown[id] = RETRY_MINUTES
-	if route_failure.is_empty() or action not in ["pet_eat", "pet_go_bed", "pet_go_dog_house", "pet_cat_tree"]: return
+	if route_failure.is_empty() or action not in ["pet_eat", "pet_drink", "pet_go_bed", "pet_go_dog_house", "pet_cat_tree"]: return
 	var now: float = float(app.household.day) * 1440.0 + float(app.household.minutes)
 	if now - float(notified.get(id, -1000000.0)) < NOTICE_MINUTES: return
 	var message: String = _blocked_message("")
@@ -283,19 +293,17 @@ func recover_overlap(id: String, actor: LifePetActor) -> bool:
 	var errand: Dictionary = app.pet_errands.get(id, {})
 	if bool(errand.get("inside", false)) or actor.traversing_stairs or app.care_motion().holds(id): return false
 	var level: int = app.world.point_level(actor.position)
-	if level < 0 or app.world.lot_navigation.point_clear(level, actor.position): return false
+	if level < 0 or (app.world.lot_navigation.point_clear(level, actor.position) and app.world.lot_navigation.pet_wall_pose_clear(actor.position, actor.rotation.y, actor.wall_hull())): return false
 	# One that could not be helped a moment ago is not searched for again every tick.
 	if float(_recover_after.get(id, 0.0)) > float(Time.get_ticks_msec()): return false
 	# A pet may stand deep inside a large pool's hull, well over two metres from any
 	# clear floor: search outward a ring at a time, and only as far as it takes.
-	var clear: Vector3 = Vector3.INF
-	for radius: int in [8, 24, 56]:
-		clear = app.world.nearest_clear_point(actor.position, level, radius)
-		if clear.is_finite(): break
-	if not clear.is_finite():
+	var safe: Dictionary = app._pet_safe_floor_pose(actor, actor.position)
+	if safe.is_empty():
 		_recover_after[id] = float(Time.get_ticks_msec()) + 3000.0
 		return false
-	actor.position = clear
+	actor.position = safe.position
+	actor.rotation.y = float(safe.yaw)
 	actor.floor_level = level
 	if not errand.is_empty(): _finish(id, actor, {})
 	return true
@@ -322,6 +330,7 @@ func _react_to_company(id: String, actor: LifePetActor, care: Dictionary, minute
 
 func _choose(id: String, needs: Dictionary) -> String:
 	if float(needs.hunger) < URGENT and not _target(id, "pet_eat").is_empty(): return "pet_eat"
+	if float(needs.get("thirst", 80.0)) < URGENT and not _target(id, "pet_drink").is_empty(): return "pet_drink"
 	if float(needs.energy) < URGENT:
 		if _species(id) == "dog" and int(turns.get(id, 0)) % 2 == 1 and not _target(id, "pet_go_dog_house").is_empty(): return "pet_go_dog_house"
 		if not _target(id, "pet_go_bed").is_empty(): return "pet_go_bed"
@@ -359,12 +368,16 @@ func _start(id: String, action: String, commanded: bool, ground: Vector3 = Vecto
 		if not at.is_finite() and is_instance_valid(access.get("node")):
 			route_failure = {"from": actor.position, "to": Vector3(access.node.position.x, LifeBuildingState.level_y(app.world.item_level(access)), access.node.position.z), "ignore": [str(access.get("id", ""))]}
 	if not at.is_finite(): return false
-	var route: Dictionary = _route(id, actor.position, at)
+	var target_yaw: float = NAN
+	if action in ["pet_eat", "pet_drink"] and not target.is_empty():
+		var cup: Vector3 = bowl_point(target, action == "pet_drink")
+		target_yaw = atan2(cup.x - at.x, cup.z - at.z)
+	var route: Dictionary = _route(id, actor.position, at, target_yaw)
 	if not bool(route.get("ok", false)):
 		route_failure = {"from": actor.position, "to": at, "ignore": [str(access.get("id", ""))]}
 		return false
 	var path: PackedVector3Array = route.points
-	var labels: Dictionary = {"pet_eat": "Walking to the food bowl", "pet_go_bed": "Going to bed", "pet_go_dog_house": "Going to the dog house", "pet_cat_tree": "Going to the cat tree", "pet_play_toys": "Fetching a toy", "pet_move": "Moving to your chosen spot", "wander": "Exploring the home", "relieve": "Taking a toilet break"}
+	var labels: Dictionary = {"pet_eat": "Walking to the food bowl", "pet_drink": "Walking to the water bowl", "pet_go_bed": "Going to bed", "pet_go_dog_house": "Going to the dog house", "pet_cat_tree": "Going to the cat tree", "pet_play_toys": "Fetching a toy", "pet_move": "Moving to your chosen spot", "wander": "Exploring the home", "relieve": "Taking a toilet break"}
 	app.pet_errands[id] = {"action": action, "label": labels.get(action, action), "travel_label": labels.get(action, action), "kind": str(target.get("kind", "outdoors")), "target": str(target.get("id", "")), "access": str(access.get("id", "")), "at": at, "entry": at, "path": path, "segments": route.segments, "index": 0, "phase": "walking", "walking": true, "elapsed": 0.0, "commanded": commanded, "inside": false, "squeak_at": 0.0, "blocked": 0.0}
 	if not commanded and not target.is_empty():
 		var care: Dictionary = app.household.pet_care(id)
@@ -381,6 +394,7 @@ func _approach(id: String, item: Dictionary, action: String, from: Vector3) -> V
 	var node: Node3D = item.node
 	# A kennel has one doorway, a cat tree's wrapped post is behind its cubby.
 	var offsets: Array[Vector3] = []
+	if action in ["pet_eat", "pet_drink"]: return bowl_approach(id, item, from, action == "pet_drink")
 	if action == "pet_go_dog_house": offsets = [Vector3(0, 0, .92), Vector3(0, 0, 1.17)]
 	elif action == "pet_cat_tree": offsets = [Vector3(0, 0, -.72), Vector3(.55, 0, -.55)]
 	elif action == "pet_play_toys" and str(item.kind).begins_with("pet_toy_"):
@@ -395,6 +409,32 @@ func _approach(id: String, item: Dictionary, action: String, from: Vector3) -> V
 		return at
 	return Vector3.INF
 
+## Authored cup centres on the twin food/water tray.
+func bowl_point(item: Dictionary, water: bool = false) -> Vector3:
+	return (item.node as Node3D).to_global(Vector3(.105 if water else -.095, .108, 0))
+
+## Put the animal's muzzle over the chosen cup from supported clear floor.
+## Prefer the side away from a feeding Lifelet, with a full route around walls.
+func bowl_approach(id: String, item: Dictionary, from: Vector3, water: bool = false, person: Vector3 = Vector3.INF) -> Vector3:
+	var cup: Vector3 = bowl_point(item, water)
+	var node: Node3D = item.node
+	var reaches: Array[float] = [.35, .40]
+	if _species(id) == "dog": reaches = [.48, .55]
+	var candidates: Array[Vector3] = []
+	for reach: float in reaches:
+		for offset: Vector3 in [Vector3(0, 0, reach), Vector3(0, 0, -reach), Vector3(reach, 0, 0), Vector3(-reach, 0, 0)]:
+			var at: Vector3 = cup + node.basis * offset
+			at.y = LifeBuildingState.level_y(app.world.item_level(item))
+			if person.is_finite() and at.distance_to(person) < LifeTraversal.BODY_GAP + .04: continue
+			if not app.world.lot_navigation.point_clear(app.world.item_level(item), at): continue
+			if not app.world.sight_line_clear(at, Vector3(cup.x, at.y, cup.z)): continue
+			candidates.append(at)
+	candidates.sort_custom(func(a: Vector3, b: Vector3) -> bool: return a.distance_squared_to(from) < b.distance_squared_to(from))
+	for at: Vector3 in candidates:
+		var facing: float = atan2(cup.x - at.x, cup.z - at.z)
+		if bool(_route(id, from, at, facing).get("ok", false)): return at
+	return Vector3.INF
+
 func _wander_spot(id: String, from: Vector3) -> Vector3:
 	var cycle: int = int(turns.get(id, 0))
 	var level: int = app.world.point_level(from)
@@ -406,7 +446,7 @@ func _wander_spot(id: String, from: Vector3) -> Vector3:
 		if bool(_route(id, from, at).get("ok", false)): return at
 	return Vector3.INF
 
-func _route(id: String, from: Vector3, to: Vector3) -> Dictionary:
+func _route(id: String, from: Vector3, to: Vector3, target_yaw: float = NAN) -> Dictionary:
 	var occupied: Array[Vector3] = []
 	for other: String in app.world.actors:
 		var body: Node3D = app.world.actors[other]
@@ -416,7 +456,8 @@ func _route(id: String, from: Vector3, to: Vector3) -> Dictionary:
 		if other != id and is_instance_valid(body) and body.visible: occupied.append(body.position)
 	for poles: Array in agility_obstacles.values():
 		for pole: Vector3 in poles: occupied.append(pole)
-	return app.world.lot_navigation.route_avoiding(LifeLotNavigation.floor_location(app.world.point_level(from), from), LifeLotNavigation.floor_location(app.world.point_level(to), to), occupied, LifeTraversal.ROUTE_CLEARANCE)
+	var actor: LifePetActor = app.pet_actors[id]
+	return app.world.lot_navigation.pet_route_avoiding(LifeLotNavigation.floor_location(app.world.point_level(from), from), LifeLotNavigation.floor_location(app.world.point_level(to), to), occupied, LifeTraversal.ROUTE_CLEARANCE, actor.wall_hull(), actor.rotation.y, target_yaw)
 
 func _advance(id: String, actor: LifePetActor, needs: Dictionary, minutes: float, seconds: float) -> bool:
 	var errand: Dictionary = app.pet_errands[id]
@@ -437,14 +478,15 @@ func _advance(id: String, actor: LifePetActor, needs: Dictionary, minutes: float
 	var action: String = str(errand.action)
 	match action:
 		"pet_go_bed", "pet_go_dog_house":
-			actor.set_behavior("rest", elapsed)
+			actor.set_behavior("rest", elapsed, action == "pet_go_bed")
 			errand.label = "Resting in the dog house" if action == "pet_go_dog_house" else "Sleeping in bed"
 			needs.energy = minf(100.0, float(needs.energy) + LifePets.SLEEP_PER_HOUR * minutes / 60.0)
 			if elapsed >= REST_MINUTES or (not bool(errand.commanded) and elapsed >= 25.0 and float(needs.energy) >= 85.0): _finish(id, actor, {})
-		"pet_eat":
-			actor.set_behavior("eat", elapsed)
-			errand.label = "Eating from the bowl"
-			needs.hunger = minf(100.0, float(needs.hunger) + minutes * 5.5)
+		"pet_eat", "pet_drink":
+			actor.set_behavior("drink" if action == "pet_drink" else "eat", elapsed)
+			errand.label = "Drinking from the water bowl" if action == "pet_drink" else "Eating from the bowl"
+			var need: String = "thirst" if action == "pet_drink" else "hunger"
+			needs[need] = minf(100.0, float(needs.get(need, 80.0)) + minutes * 5.5)
 			if elapsed >= 12.0: _finish(id, actor, {})
 		"pet_cat_tree":
 			_tree(id, actor, errand, target, elapsed, minutes, needs)
@@ -476,6 +518,17 @@ func _walk(id: String, actor: LifePetActor, errand: Dictionary, seconds: float) 
 	var budget: float = seconds * WALK_SPEED * (1.0 + float(social - 1) * .025)
 	var moved: bool = false
 	while int(errand.index) < path.size() and budget > 0.0:
+		var segments: Array = errand.get("segments", [])
+		var segment: Dictionary = segments[int(errand.index) - 1] if int(errand.index) > 0 and int(errand.index) <= segments.size() else {}
+		if bool(segment.get("turn", false)):
+			var turn: Dictionary = turn_step(actor, segment, budget / WALK_SPEED)
+			if not bool(turn.ok):
+				errand.blocked = float(errand.blocked) + seconds
+				return moved
+			budget -= float(turn.seconds) * WALK_SPEED
+			if bool(turn.finished): errand.index = int(errand.index) + 1
+			else: return moved
+			continue
 		var point: Vector3 = path[int(errand.index)]
 		var gap: float = actor.position.distance_to(point)
 		if gap <= .00001:
@@ -483,11 +536,10 @@ func _walk(id: String, actor: LifePetActor, errand: Dictionary, seconds: float) 
 			continue
 		var step: float = minf(gap, minf(budget, .10))
 		var next: Vector3 = actor.position.move_toward(point, step)
-		var segments: Array = errand.get("segments", [])
-		var segment: Dictionary = segments[int(errand.index) - 1] if int(errand.index) > 0 and int(errand.index) <= segments.size() else {}
 		var stair: bool = str(segment.get("kind", "floor")) == "stair"
 		actor.traversing_stairs = stair
-		var blocked: bool = not _stair_clear(actor, next, segment) if stair else app._pet_step_blocked(actor, next)
+		var yaw: float = float(segment.get("yaw_to", atan2(point.x - actor.position.x, point.z - actor.position.z)))
+		var blocked: bool = not _stair_clear(actor, next, segment, yaw) if stair else app._pet_step_blocked(actor, next, yaw)
 		if blocked:
 			errand.blocked = float(errand.blocked) + seconds
 			errand.replan = float(errand.get("replan", 0.0)) - seconds
@@ -513,7 +565,7 @@ func _walk(id: String, actor: LifePetActor, errand: Dictionary, seconds: float) 
 			if float(errand.blocked) > (BLOCKED_TIMEOUT if here >= 0 else STAIR_TIMEOUT): _give_up(id, actor, errand, here)
 			return moved
 		if app.world.construction.doors.before_pet_step(actor,next,seconds):return moved
-		if gap > .001: actor.rotation.y = atan2(point.x - actor.position.x, point.z - actor.position.z)
+		if gap > .001: actor.rotation.y = yaw
 		actor.position = next
 		if bool(errand.get("carrying", false)):
 			var toy: Dictionary = _item(str(errand.target))
@@ -540,19 +592,22 @@ func _walk(id: String, actor: LifePetActor, errand: Dictionary, seconds: float) 
 				familiar.append(str(target.id))
 				if familiar.size() > 128: familiar.pop_front()
 			care["familiar_items"] = familiar
-			var toward: Vector3 = target.node.position - actor.position
-			if toward.length() > .01: actor.rotation.y = atan2(toward.x, toward.z)
+			var toward: Vector3 = (bowl_point(target, str(errand.action) == "pet_drink") if str(errand.action) in ["pet_eat", "pet_drink"] else target.node.position) - actor.position
+			if toward.length() > .01:
+				var yaw: float = atan2(toward.x, toward.z)
+				if app.world.lot_navigation.pet_wall_step_clear(actor.position, actor.position, actor.rotation.y, yaw, actor.wall_hull()): actor.rotation.y = yaw
 		if str(errand.action) in ["pet_go_bed", "pet_go_dog_house", "relieve"] and not target.is_empty():
 			errand.phase = "entering"
 			errand.inside = true
 			var node: Node3D = target.node
 			errand.inner = node.position + node.basis * (Vector3(0, .10, .02) if str(errand.action) == "pet_go_dog_house" else Vector3(0, .10, 0))
 			if str(errand.action) == "relieve": errand.inner = node.position + Vector3(0, .04, 0)
-			# A bed's cushion is higher on the dog model.
-			if str(errand.kind) == "pet_bed_dog": errand.inner = Vector3(errand.inner) + Vector3(0, .03, 0)
+			# Cushioned beds support the compact sleeping body above the hollow.
+			if str(errand.kind) == "pet_bed_cat": errand.inner = node.position + node.basis * Vector3(0, .15, -.025)
+			if str(errand.kind) == "pet_bed_dog": errand.inner = node.position + node.basis * Vector3(0, .178, -.05)
 	return moved
 
-func _stair_clear(actor: LifePetActor, next: Vector3, segment: Dictionary) -> bool:
+func _stair_clear(actor: LifePetActor, next: Vector3, segment: Dictionary, proposed_yaw: float = NAN) -> bool:
 	# Only graph-authored stair edges permit intermediate heights. Arbitrary
 	# vertical goals still fail exact-floor endpoint validation in _route().
 	var stair_id: String = str(segment.get("stair_id", ""))
@@ -562,22 +617,34 @@ func _stair_clear(actor: LifePetActor, next: Vector3, segment: Dictionary) -> bo
 	var line: Vector3 = to - from
 	var part: float = clampf((next - from).dot(line) / maxf(line.length_squared(), .000001), 0.0, 1.0)
 	if next.distance_to(from.lerp(to, part)) > .001: return false
-	return app._pet_path_clear(actor, actor.position, next)
+	var yaw: float = actor.rotation.y if not is_finite(proposed_yaw) else proposed_yaw
+	return app._pet_path_clear(actor, actor.position, next) and app.world.lot_navigation.pet_wall_step_clear(actor.position, next, actor.rotation.y, yaw, actor.wall_hull())
+
+func turn_step(actor: LifePetActor, segment: Dictionary, seconds: float) -> Dictionary:
+	var target: float = float(segment.get("yaw_to", actor.rotation.y))
+	var angle: float = absf(wrapf(target - actor.rotation.y, -PI, PI))
+	var step: float = minf(angle, maxf(0.0, seconds) * 3.5)
+	var yaw: float = rotate_toward(actor.rotation.y, target, step)
+	if not app.world.lot_navigation.pet_wall_step_clear(actor.position, actor.position, actor.rotation.y, yaw, actor.wall_hull()): return {"ok": false, "finished": false, "seconds": 0.0}
+	actor.rotation.y = yaw
+	actor.traversing_stairs = false
+	return {"ok": true, "finished": angle <= step + .00001, "seconds": step / 3.5}
 
 func _access_step(id: String, actor: LifePetActor, errand: Dictionary, seconds: float) -> bool:
 	var leaving: bool = str(errand.phase) == "exiting"
 	var destination: Vector3 = errand.entry if leaving else errand.inner
 	var next: Vector3 = actor.position.move_toward(destination, seconds * .65)
 	var target: Dictionary = _item(str(errand.access))
-	if not _access_clear(actor, actor.position, next, target):
+	var direction: Vector3 = destination - actor.position
+	var yaw: float = atan2(direction.x, direction.z) if direction.length() > .01 else actor.rotation.y
+	if not _access_clear(actor, actor.position, next, target, yaw):
 		# Held at the bed's or the kennel's edge by a body or a furnishing set down
 		# in the way: wait a little, then leave the errand rather than for good.
 		errand.blocked = float(errand.get("blocked", 0.0)) + seconds
 		if float(errand.blocked) >= ACCESS_TIMEOUT: _release_access(id, actor, errand, leaving)
 		return false
 	errand.blocked = 0.0
-	var direction: Vector3 = destination - actor.position
-	if direction.length() > .01: actor.rotation.y = atan2(direction.x, direction.z)
+	if direction.length() > .01: actor.rotation.y = yaw
 	actor.position = next
 	actor.clear_behavior()
 	errand.walking = true
@@ -590,47 +657,41 @@ func _access_step(id: String, actor: LifePetActor, errand: Dictionary, seconds: 
 		else:
 			errand.phase = "using"
 			errand.elapsed = 0.0
-			if not target.is_empty(): actor.rotation.y = target.node.rotation.y
+			if not target.is_empty() and app.world.lot_navigation.pet_wall_step_clear(actor.position, actor.position, actor.rotation.y, target.node.rotation.y, actor.wall_hull()): actor.rotation.y = target.node.rotation.y
 	return true
 
-## A pet that has been held too long on its way onto or off a furnishing steps
-## down to clear floor beside it and its errand ends; a queued command still
-## follows. Entering abandons the bed or kennel instead.
+## A blocked entry backs out along its checked access leg. A blocked exit
+## waits for that same way back to clear before a queued command can follow.
 func _release_access(id: String, actor: LifePetActor, errand: Dictionary, leaving: bool) -> void:
-	var level: int = app.world.point_level(actor.position)
-	if level < 0: level = actor.floor_level
 	if leaving:
-		var pending: Dictionary = errand.get("pending", {})
-		var landing: Vector3 = errand.entry
-		if not app.world.lot_navigation.point_clear(level, landing): landing = app.world.nearest_clear_point(landing, level, 8)
-		if landing.is_finite(): actor.position = landing
-		actor.clear_behavior()
-		app.pet_errands.erase(id)
-		if not pending.is_empty(): _start(id, str(pending.action), true, pending.get("ground", Vector3.INF))
+		# A body or a new wall can block the exit too. Retain the checked route
+		# rather than snapping through that obstruction to a different floor tile.
+		errand.blocked = 0.0
+		errand.label = "Waiting for a clear way back to the floor"
 		return
-	errand.inside = false
-	_finish(id, actor, {})
+	# A blocked entry may already have lifted the pet into the furnishing.
+	# Walk back along the same checked access leg before dropping the errand;
+	# erasing it here would strand the pet at an unsupported intermediate height.
+	errand.phase = "exiting"
+	errand.label = "Waiting for space beside the furnishing"
+	errand.walking = true
+	errand.pending = {}
+	errand.blocked = 0.0
 
 ## Leave an errand that cannot go on. A commanded one says which item is in the
-## way. On a staircase the pet is put back on the nearer landing first.
+## way. A pet on stairs retains its supported flight until the way clears.
 func _give_up(id: String, actor: LifePetActor, errand: Dictionary, level: int) -> void:
 	var goal: Vector3 = Vector3(errand.at)
 	var commanded: bool = bool(errand.get("commanded", false))
 	if level < 0:
-		var segments: Array = errand.get("segments", [])
-		var index: int = clampi(int(errand.index) - 1, 0, maxi(0, segments.size() - 1))
-		if not segments.is_empty():
-			var leg: Dictionary = segments[index]
-			var landing: Vector3 = leg.from if actor.position.distance_to(leg.from) <= actor.position.distance_to(leg.to) else leg.to
-			actor.position = landing
-			actor.traversing_stairs = false
-			level = app.world.point_level(landing)
-			if level >= 0: actor.floor_level = level
+		errand.blocked = 0.0
+		errand.label = "Waiting for a clear stair landing"
+		return
 	_finish(id, actor, {})
 	if commanded:
 		app.show_blocked_notice(_named_blocker(actor.position, goal, "There is no clear route to that spot. Leave space around the furnishing.", [str(errand.get("access", ""))], false))
 
-func _access_clear(actor: LifePetActor, from: Vector3, to: Vector3, target: Dictionary) -> bool:
+func _access_clear(actor: LifePetActor, from: Vector3, to: Vector3, target: Dictionary, proposed_yaw: float = NAN) -> bool:
 	# Only the chosen usable furnishing is exempt during its short access
 	# segment. Walls, other furnishings, floors and other bodies still block.
 	var level: int = app.world.item_level(target) if not target.is_empty() else actor.floor_level
@@ -638,36 +699,43 @@ func _access_clear(actor: LifePetActor, from: Vector3, to: Vector3, target: Dict
 	for index: int in range(samples + 1):
 		var at: Vector3 = from.lerp(to, float(index) / float(samples))
 		var flat := Vector2(at.x, at.z)
-		if not app.world.grounds(flat, level) or app.world.construction.point_blocked(flat, level): return false
+		var body_box := Rect2(flat - Vector2.ONE * LifeLotNavigation.RADIUS, Vector2.ONE * LifeLotNavigation.RADIUS * 2.0)
+		if not app.world.grounds(flat, level) or app.world.construction.rect_blocked(body_box, level, LifeLotNavigation.WALL_RADIUS - LifeLotNavigation.RADIUS): return false
 		for item: Dictionary in app.world.items:
 			if str(item.id) == str(target.get("id", "")) or app.world.item_level(item) != level or LifeCatalog.passable(str(item.kind)): continue
 			for panel: Rect2 in app.world.item_panels(item):
-				if panel.has_point(flat): return false
-	return app._pet_path_clear(actor, from, to)
+				if panel.intersects(body_box): return false
+	var yaw: float = actor.rotation.y if not is_finite(proposed_yaw) else proposed_yaw
+	return app._pet_path_clear(actor, from, to) and app.world.lot_navigation.pet_wall_step_clear(from, to, actor.rotation.y, yaw, actor.wall_hull())
 
 func _tree(id: String, actor: LifePetActor, errand: Dictionary, target: Dictionary, elapsed: float, minutes: float, needs: Dictionary) -> void:
 	var node: Node3D = target.node
 	var top: Vector3 = node.position + node.basis * Vector3(0, 1.25, -.11)
 	var entry: Vector3 = errand.entry
+	var destination: Vector3 = entry
+	if elapsed >= 8.0 and elapsed < 12.0: destination = entry.lerp(top, smoothstep(8.0, 12.0, elapsed))
+	elif elapsed >= 12.0 and elapsed < 26.0: destination = top
+	elif elapsed >= 26.0 and elapsed < 30.0: destination = top.lerp(entry, smoothstep(26.0, 30.0, elapsed))
+	if not app.world.lot_navigation.pet_wall_step_clear(actor.position, destination, actor.rotation.y, node.rotation.y, actor.wall_hull()):
+		errand.elapsed = maxf(0.0, elapsed - minutes)
+		errand.label = "Waiting for space around the cat tree"
+		return
 	actor.rotation.y = node.rotation.y
+	actor.position = destination
 	if elapsed < 8.0:
 		actor.set_behavior("scratch", elapsed)
 		errand.label = "Scratching the cat tree"
 	elif elapsed < 12.0:
 		errand.inside = true
-		actor.position = entry.lerp(top, smoothstep(8.0, 12.0, elapsed))
 		actor.set_behavior("climb", elapsed)
 		errand.label = "Climbing the cat tree"
 	elif elapsed < 26.0:
-		actor.position = top
 		actor.set_behavior("tree_play", elapsed)
 		errand.label = "Playing on the cat tree"
 	elif elapsed < 30.0:
-		actor.position = top.lerp(entry, smoothstep(26.0, 30.0, elapsed))
 		actor.set_behavior("climb", elapsed)
 		errand.label = "Climbing down"
 	else:
-		actor.position = entry
 		errand.inside = false
 		_finish(id, actor, {})
 	needs.fun = minf(100.0, float(needs.fun) + minutes * 1.5)

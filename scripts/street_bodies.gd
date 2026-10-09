@@ -37,6 +37,9 @@ func sync(delta: float) -> void:
 	var world: LifeWorld = app.world
 	if street == null or not is_instance_valid(world) or not is_instance_valid(world.house):
 		return
+	street.step_allowed=Callable(self,"_structure_step")
+	street.route_provider=Callable(self,"_structure_route")
+	street.structure_generation=world.lot_navigation.generation
 	var game_speed: float = float(app.household.speed)
 	for passer: Dictionary in street.passers:
 		var id: String = str(passer.id)
@@ -81,6 +84,60 @@ func sync(delta: float) -> void:
 						break
 			dog.animate(delta, walking, dog_factor if walking else game_speed)
 	_sync_leashes(street)
+
+func _structure_step(passer:Dictionary,from:Vector3,to:Vector3)->bool:
+	# The dog's muzzle and tail extend beyond a human's shoulder radius.
+	return app.world.lot_navigation.structure_step_clear(0,from,to,.65 if str(passer.kind)=="pet" else LifeLotNavigation.WALL_RADIUS)
+
+func _party_point_clear(passer:Dictionary,point:Vector3)->bool:
+	var nav:LifeLotNavigation=app.world.lot_navigation
+	if not nav.point_clear(0,point) or not _structure_step(passer,point,point):return false
+	for follower:Dictionary in app.street_life.party_of(str(passer.id)):
+		if str(follower.id)==str(passer.id):continue
+		var dog:Vector3=point+Vector3(float(passer.dir)*LifeStreetLife.LEAD_LENGTH,0,-.18*float(passer.dir))
+		if not nav.point_clear(0,dog) or not _structure_step(follower,dog,dog):return false
+	return true
+
+## A small graph over the frontage offers a physical way round a built wall.
+## Its cells reserve both the walker and their dog, so the lead never pulls the
+## animal through a corner that only the person could fit around.
+func _structure_route(passer:Dictionary,from:Vector3,to:Vector3)->PackedVector3Array:
+	var grid:=AStarGrid2D.new();var cell:float=.25
+	grid.region=Rect2i(Vector2i(floori(LifeStreetLife.WEST/cell),28),Vector2i(ceili((LifeStreetLife.EAST-LifeStreetLife.WEST)/cell)+1,8))
+	grid.cell_size=Vector2(cell,cell);grid.diagonal_mode=AStarGrid2D.DIAGONAL_MODE_NEVER;grid.update()
+	for x:int in range(grid.region.position.x,grid.region.end.x):
+		for z:int in range(grid.region.position.y,grid.region.end.y):
+			var point:=Vector3(x*cell,LifeStreetLife.HEIGHT,z*cell)
+			if not _party_point_clear(passer,point):grid.set_point_solid(Vector2i(x,z),true)
+	var start_anchor:Dictionary=_grid_anchor(passer,grid,from)
+	var goal_anchor:Dictionary=_grid_anchor(passer,grid,to)
+	if start_anchor.is_empty() or goal_anchor.is_empty():return []
+	var start:Vector2i=start_anchor.id;var goal:Vector2i=goal_anchor.id
+	var ids:Array[Vector2i]=grid.get_id_path(start,goal)
+	if ids.is_empty():return []
+	var points:PackedVector3Array=[from]
+	for id:Vector2i in ids:
+		var point:=Vector3(id.x*cell,LifeStreetLife.HEIGHT,id.y*cell)
+		if point==points[-1]:continue
+		if not app.street_life._safe_party_step(passer,points[-1],point,int(passer.dir)):return []
+		points.append(point)
+	if points[-1]!=to:
+		if not app.street_life._safe_party_step(passer,points[-1],to,int(passer.dir)):return []
+		points.append(to)
+	return points
+
+
+func _grid_anchor(passer:Dictionary,grid:AStarGrid2D,point:Vector3)->Dictionary:
+	var cell:=Vector2i(roundi(point.x/.25),roundi(point.z/.25))
+	var best:Dictionary={};var gap:float=INF
+	for x:int in range(-1,2):
+		for z:int in range(-1,2):
+			var id:Vector2i=cell+Vector2i(x,z)
+			if not grid.region.has_point(id) or grid.is_point_solid(id):continue
+			var at:=Vector3(id.x*.25,LifeStreetLife.HEIGHT,id.y*.25)
+			if at.distance_to(point)>=gap or not app.street_life._safe_party_step(passer,point,at,int(passer.dir)):continue
+			gap=at.distance_to(point);best={"id":id}
+	return best
 
 
 ## Bodies a walker waits behind rather than through: every visible ground-floor

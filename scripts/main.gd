@@ -2069,11 +2069,17 @@ func spawn_pet(id:String,pet:Dictionary,spawn:Vector3,destination:Vector3) -> Li
 	actor.configure(id,str(pet.get("species","cat")),LifePets.appearance(pet),str(pet.get("name","")),str(pet.get("sex","female")))
 	world.house.add_child(actor)
 	actor.position=spawn
+	var safe:Dictionary=_pet_safe_floor_pose(actor,spawn)
+	if not safe.is_empty():
+		actor.position=safe.position;actor.rotation.y=float(safe.yaw)
+		if destination.is_equal_approx(spawn):destination=actor.position
 	actor.floor_level=maxi(0,world.point_level(spawn))
 	actor.set_meta("display_name",str(pet.get("name","")))
 	pet_actors[id]=actor
 	_pet_pick_body(actor,id)
-	if destination.distance_to(spawn)>.01:pet_arrivals[id]={"destination":destination,"path":world.path_to(spawn,destination),"index":0}
+	if destination.distance_to(actor.position)>.01:
+		var route:Dictionary=_pet_route_result(id,actor.position,destination)
+		pet_arrivals[id]={"destination":destination,"path":route.get("points",PackedVector3Array()),"segments":route.get("segments",[]),"index":0}
 	if not pet_arrivals.has(id):actor.position=destination
 	return actor
 
@@ -2128,16 +2134,33 @@ func pet_home_spot(index:int=0, taken:Array[Vector3]=[]) -> Vector3:
 ## The walk a pet takes when it first comes home: from the street to its own
 ## clear indoor spot. Returning Vector3.INF means no route exists yet, so the
 ## purchase is refused before any money changes hands.
-func pet_arrival_destination(from:Vector3) -> Vector3:
+func pet_arrival_destination(from:Vector3,pet:Dictionary={}) -> Vector3:
 	var taken:Array[Vector3]=[]
+	var occupied:Array[Vector3]=[]
+	for id:String in world.actors:
+		var body:LifeActor=world.actors[id]
+		if is_instance_valid(body) and body.visible:occupied.append(body.position)
 	for id:String in pet_actors:
 		var body:LifePetActor=pet_actors[id]
-		if is_instance_valid(body):taken.append(body.position)
-	var at:Vector3=pet_home_spot(household.pets.get("pets",[]).size(),taken)
-	if _pet_spot_blocked(at):return Vector3.INF
-	var walk:PackedVector3Array=world.path_to(from,at)
-	if walk.is_empty() or walk[-1].distance_to(at)>=.001:return Vector3.INF
-	return at
+		if is_instance_valid(body):
+			taken.append(body.position)
+			if body.visible:occupied.append(body.position)
+	var probe:=LifePetActor.new();probe.species=str(pet.get("species","dog"))
+	var start:Dictionary=_pet_safe_floor_pose(probe,from)
+	var hull:Dictionary=probe.wall_hull()
+	if start.is_empty():probe.free();return Vector3.INF
+	var tried:Array[Vector3]=taken.duplicate()
+	for attempt:int in 20:
+		var at:Vector3=pet_home_spot(household.pets.get("pets",[]).size(),tried)
+		if tried.any(func(previous:Vector3)->bool:return previous.distance_to(at)<.7):break
+		tried.append(at)
+		if _pet_spot_blocked(at):continue
+		var finish:Dictionary=_pet_safe_floor_pose(probe,at)
+		if finish.is_empty():continue
+		var route:Dictionary=world.lot_navigation.pet_route_avoiding(LifeLotNavigation.floor_location(world.point_level(start.position),start.position),LifeLotNavigation.floor_location(world.point_level(finish.position),finish.position),occupied,LifeTraversal.ROUTE_CLEARANCE,hull,float(start.yaw))
+		if bool(route.get("ok",false)):
+			probe.free();return finish.position
+	probe.free();return Vector3.INF
 
 func _pet_spot_blocked(at:Vector3) -> bool:
 	if not meal_flow.standing_geometry_clear(at):return true
@@ -2165,12 +2188,20 @@ func _advance_pet_arrivals(delta:float) -> bool:
 		var walk:PackedVector3Array=record.path
 		var destination:Vector3=record.destination
 		if walk.is_empty() or int(record.index)>=walk.size():
-			pet_arrivals.erase(id)
-			actor.position=destination
+			_settle_pet_arrival(id,actor)
 			continue
 		var budget:float=delta*speed*2.0
 		var refused:bool=false
 		while int(record.index)<walk.size() and budget>0.000001:
+			var segments:Array=record.get("segments",[])
+			var segment:Dictionary=segments[int(record.index)-1] if int(record.index)>0 and int(record.index)<=segments.size() else {}
+			if bool(segment.get("turn",false)):
+				var turn:Dictionary=pet_behavior().turn_step(actor,segment,budget/2.0)
+				if not bool(turn.ok):refused=true;break
+				budget-=float(turn.seconds)*2.0
+				if bool(turn.finished):record.index=int(record.index)+1
+				else:break
+				continue
 			var point:Vector3=walk[int(record.index)]
 			var distance:float=actor.position.distance_to(point)
 			if distance<0.001:
@@ -2178,22 +2209,27 @@ func _advance_pet_arrivals(delta:float) -> bool:
 				continue
 			var step:float=minf(minf(distance,budget),LifeTraversal.MAX_STEP)
 			var next:Vector3=actor.position.move_toward(point,step)
-			if _pet_step_blocked(actor,next):
+			var direction:Vector3=next-actor.position
+			var yaw:float=float(segment.get("yaw_to",atan2(direction.x,direction.z)))
+			var stair:bool=str(segment.get("kind","floor"))=="stair"
+			var blocked:bool=not pet_behavior()._stair_clear(actor,next,segment,yaw) if stair else _pet_step_blocked(actor,next,yaw)
+			if blocked:
 				refused=true
 				break
 			if world.construction.doors.before_pet_step(actor,next,budget/2.0):break
-			var direction:Vector3=next-actor.position
-			actor.rotation.y=lerp_angle(actor.rotation.y,atan2(direction.x,direction.z),minf(delta*6.0,1.0))
+			actor.rotation.y=yaw
+			actor.traversing_stairs=stair
 			actor.position=next
+			var level:int=world.point_level(next)
+			if level>=0:actor.floor_level=level
 			budget-=step
 			moved=true
 			pet_arrival_moved[id]=true
 			record.blocked=0.0
 			if distance<=step+0.000001:record.index=int(record.index)+1
 		if refused:
-			# A pet held at a doorway for good would also hold its whole autonomy,
-			# which waits on the arrival: after eight scaled seconds it is set
-			# down at its own spot (or the nearest clear floor) instead.
+			# A blocked arrival releases its hold on supported floor after the
+			# timeout. A pet between stair landings keeps its checked flight.
 			record.blocked=float(record.get("blocked",0.0))+delta*speed
 			if float(record.blocked)>=PET_ARRIVAL_TIMEOUT:
 				_settle_pet_arrival(id,actor)
@@ -2201,14 +2237,15 @@ func _advance_pet_arrivals(delta:float) -> bool:
 			# A blocked arrival learns the corridor and takes the detour, so a pet
 			# never stands in the doorway pushing at a body it cannot pass.
 			world.lot_navigation.penalize_segment(world.point_level(actor.position),actor.position,walk[mini(int(record.index),walk.size()-1)])
-			var detour:PackedVector3Array=_pet_route(id,actor.position,destination)
-			if not detour.is_empty():
-				record.path=detour
+			var detour:Dictionary=_pet_route_result(id,actor.position,destination)
+			if bool(detour.get("ok",false)):
+				record.path=detour.points;record.segments=detour.segments
 				record.index=0
 				pet_arrivals[id]=record
 		if actor.position.distance_to(destination)<0.05:
 			pet_arrivals.erase(id)
-			actor.position=destination
+			if not _pet_step_blocked(actor,destination):actor.position=destination
+			actor.traversing_stairs=false
 	return moved
 
 ## End an arrival that cannot finish. The pet stays where it stands, or is set
@@ -2216,18 +2253,46 @@ func _advance_pet_arrivals(delta:float) -> bool:
 ## errands take over from there.
 func _settle_pet_arrival(id:String,actor:LifePetActor) -> void:
 	var level:int=world.point_level(actor.position)
-	if level<0 or not world.lot_navigation.point_clear(level,actor.position):
-		var at:Vector3=world.nearest_clear_point(actor.position,maxi(level,0))
-		if at.is_finite():actor.position=at
+	if actor.traversing_stairs and (level<0 or not world.lot_navigation.point_clear(level,actor.position)):
+		# A crowd can hold the upper landing longer than the arrival timeout.
+		# Keep every remaining tread and retry without moving off the stairs.
+		var record:Dictionary=pet_arrivals.get(id,{})
+		if not record.is_empty():record.blocked=0.0
+		return
+	if level<0 or not world.lot_navigation.point_clear(level,actor.position) or not world.lot_navigation.pet_wall_pose_clear(actor.position,actor.rotation.y,actor.wall_hull()):
+		var safe:Dictionary=_pet_safe_floor_pose(actor,actor.position)
+		if not safe.is_empty():actor.position=safe.position;actor.rotation.y=float(safe.yaw)
+	actor.traversing_stairs=false
 	pet_arrivals.erase(id)
 
-func _pet_step_blocked(actor:LifePetActor,next:Vector3) -> bool:
+## A rebuilt or newly bought pet starts with its complete head-to-tail shape
+## on clear floor. Prefer turning at the same point before choosing another.
+func _pet_safe_floor_pose(actor:LifePetActor,point:Vector3) -> Dictionary:
+	var level:int=maxi(0,world.point_level(point))
+	var candidates:Array[Vector3]=[point]
+	var origin:=Vector2i(roundi(point.x/LifeLotNavigation.CELL),roundi(point.z/LifeLotNavigation.CELL))
+	for radius:int in range(1,14):
+		for x:int in range(-radius,radius+1):
+			for z:int in range(-radius,radius+1):
+				if maxi(absi(x),absi(z))!=radius:continue
+				candidates.append(Vector3((origin.x+x)*LifeLotNavigation.CELL,LifeBuildingState.level_y(level),(origin.y+z)*LifeLotNavigation.CELL))
+	for at:Vector3 in candidates:
+		if not world.lot_navigation.point_clear(level,at) or not _pet_path_clear(actor,at,at):continue
+		for turn:int in 8:
+			var yaw:float=actor.rotation.y+float(turn)*PI/4.0
+			if world.lot_navigation.pet_wall_pose_clear(at,yaw,actor.wall_hull()):return {"position":at,"yaw":yaw}
+	return {}
+
+func _pet_step_blocked(actor:LifePetActor,next:Vector3,proposed_yaw:float=NAN) -> bool:
 	# The step test mirrors a Lifelet's own: the destination tile and the whole
 	# swept path are measured against real geometry, and a body only refuses a
 	# step that comes closer than it already is. A whole-segment bounding box
 	# would fatten a diagonal step into a wall and wedge the animal forever.
 	var from:Vector3=actor.position
-	if world.point_level(next)<0 or not world.lot_navigation.point_clear(world.point_level(next),next):return true
+	if world.point_level(next)<0 or not world.lot_navigation.walking_step_clear(world.point_level(next),from,next):return true
+	var direction:Vector3=next-from
+	var yaw:float=proposed_yaw if not is_nan(proposed_yaw) else (atan2(direction.x,direction.z) if direction.length_squared()>.0000001 else actor.rotation.y)
+	if not world.lot_navigation.pet_wall_step_clear(from,next,actor.rotation.y,yaw,actor.wall_hull()):return true
 	return not _pet_path_clear(actor,from,next)
 
 ## Whether a pet may sweep from one point to another without closing on a person
@@ -2407,6 +2472,9 @@ func _pet_outdoor_spot(want:String) -> Vector3:
 ## person or animal in its way rather than walking into them again. Returns an
 ## empty array when no route avoids them, so the caller keeps its current plan.
 func _pet_route(id:String,from:Vector3,to:Vector3) -> PackedVector3Array:
+	return _pet_route_result(id,from,to).get("points",PackedVector3Array())
+
+func _pet_route_result(id:String,from:Vector3,to:Vector3) -> Dictionary:
 	var occupied:Array[Vector3]=[]
 	for other:String in world.actors:
 		var body:LifeActor=world.actors[other]
@@ -2414,14 +2482,14 @@ func _pet_route(id:String,from:Vector3,to:Vector3) -> PackedVector3Array:
 	for other:String in pet_actors:
 		var pet:LifePetActor=pet_actors[other]
 		if other!=id and is_instance_valid(pet) and pet.visible:occupied.append(pet.position)
-	var result:Dictionary=world.lot_navigation.route_avoiding(
+	var actor:LifePetActor=pet_actors.get(id)
+	if not is_instance_valid(actor):return {"ok":false}
+	var result:Dictionary=world.lot_navigation.pet_route_avoiding(
 		LifeLotNavigation.floor_location(world.point_level(from),from),
 		LifeLotNavigation.floor_location(world.point_level(to),to),
-		occupied,LifeTraversal.ROUTE_CLEARANCE)
-	if not bool(result.ok):return PackedVector3Array()
-	for segment:Dictionary in result.segments:
-		if str(segment.kind)!="floor":return PackedVector3Array()
-	return result.points
+		occupied,LifeTraversal.ROUTE_CLEARANCE,actor.wall_hull(),actor.rotation.y)
+	if not bool(result.ok):return result
+	return result
 
 ## The base of a landscape tree the pet can wee against. A tree is the outdoor
 ## fixture the household already has, so no new furnishing is needed for this.
@@ -2521,14 +2589,14 @@ func _advance_pet_errand(id:String,actor:LifePetActor,record:Dictionary,needs:Di
 		while int(errand.index)<walk.size() and budget>0.0:
 			var point:Vector3=walk[int(errand.index)]
 			var distance:float=actor.position.distance_to(point)
-			if distance>.001:
-				var direction:Vector3=point-actor.position
-				actor.rotation.y=atan2(direction.x,direction.z)
+			var direction:Vector3=point-actor.position
+			var yaw:float=atan2(direction.x,direction.z) if distance>.001 else actor.rotation.y
 			var step:float=minf(distance,budget)
 			var next:Vector3=actor.position.move_toward(point,step)
-			if _pet_step_blocked(actor,next):
+			if _pet_step_blocked(actor,next,yaw):
 				refused=true
 				break
+			actor.rotation.y=yaw
 			actor.position=next;budget-=step;moved=true
 			if distance<=step+.00001:errand.index=int(errand.index)+1
 		if refused:
@@ -2657,16 +2725,16 @@ func show_pet_card(id:String,with_lifelet:bool=false) -> void:
 	pet_thumbnail(p+Vector2(20,108),Vector2(248,170),record,overlay)
 	small_caps("Personal needs",p+Vector2(24,290),Vector2(230,22),overlay)
 	pet_panel_bars.clear();pet_panel_values.clear()
-	var rows:Array=[["hunger","Hunger"],["energy","Energy"],["fun","Play"],["social","Affection"],["bladder","Bladder"],["hygiene","Cleanliness"]]
+	var rows:Array=[["hunger","Hunger"],["thirst","Thirst"],["energy","Energy"],["fun","Play"],["social","Affection"],["bladder","Bladder"],["hygiene","Cleanliness"]]
 	for i:int in rows.size():
 		var key:String=str(rows[i][0])
-		text_label(str(rows[i][1]),p+Vector2(24,322+i*36),Vector2(95,24),14,P.INK,false,overlay)
+		text_label(str(rows[i][1]),p+Vector2(24,322+i*31),Vector2(95,24),14,P.INK,false,overlay)
 		var bar:=ProgressBar.new();bar.show_percentage=false
 		bar.value=float(needs.get(key,LifePetCare.bond(care,bound_member_id) if key=="social" else 80.0))
-		rect(bar,p+Vector2(124,332+i*36),Vector2(102,8),overlay)
+		rect(bar,p+Vector2(124,332+i*31),Vector2(102,8),overlay)
 		bar.name="PetNeed_"+key;bar.add_theme_stylebox_override("fill",P.panel(P.TEAL,5))
 		bar.add_theme_stylebox_override("background",P.panel(P.PALE,5));pet_panel_bars[key]=bar
-		pet_panel_values[key]=text_label(str(int(bar.value)),p+Vector2(232,322+i*36),Vector2(36,24),13,P.MUTED,false,overlay)
+		pet_panel_values[key]=text_label(str(int(bar.value)),p+Vector2(232,322+i*31),Vector2(36,24),13,P.MUTED,false,overlay)
 	var stats:String="Clever Tricks  %d / 10\nSocial Skills  %d / 10\nLogic Skills  %d / 10" % [LifePetCare.level(care,"tricks"),LifePetCare.level(care,"social"),LifePetCare.level(care,"logic")]
 	paragraph(stats,p+Vector2(24,550),Vector2(238,64),15,P.TEAL,overlay)
 	var behavior:Dictionary=pet_behavior().state(id)
@@ -3622,7 +3690,7 @@ func model_thumbnail(kind:String,p:Vector2,s:Vector2,portrait:bool=false,parent:
 	var packed:Resource=null
 	if not portrait:
 		data=LifeCatalog.get_item(kind)
-		packed=_variant_model(kind,style,data)
+		packed=_variant_model(kind,style,data,size)
 		if packed==null:return
 	var sv=SubViewport.new()
 	sv.size=Vector2i(int(s.x*2),int(s.y*2))
@@ -3684,9 +3752,9 @@ func model_thumbnail(kind:String,p:Vector2,s:Vector2,portrait:bool=false,parent:
 ## The packed model for one style of a kind, or null when its art is not on
 ## disk. One place decides that, so every caller of a model — the thumbnail, the
 ## ghost and the placed body — agrees about what exists.
-func _variant_model(kind:String,style:String,data:Dictionary) -> Resource:
+func _variant_model(kind:String,style:String,data:Dictionary,size:String="") -> Resource:
 	if Kitchen.cabinet(kind) or LifeCatalog.procedural(kind):
-		var root:Node3D=Kitchen.build(kind,Variants.resolve(data,{"style":style})) if Kitchen.cabinet(kind) else Node3D.new()
+		var root:Node3D=Kitchen.build(kind,Variants.resolve(data,{"style":style,"size":size})) if Kitchen.cabinet(kind) else Node3D.new()
 		if not Kitchen.cabinet(kind):world.build_procedural(root,kind,Variants.resolve(data,{"style":style}),data)
 		for child:Node in root.find_children("*","",true,false):child.owner=root
 		var generated:=PackedScene.new();generated.pack(root);root.free();return generated
@@ -4024,7 +4092,7 @@ func show_upstairs_presets(working:Dictionary={}) -> void:
 		if side in next.window_sides:next.window_sides.erase(side)
 		else:next.window_sides.append(side)
 		ToolsPanel.action(self,directions,Presets.SIDE_LABELS[side],show_upstairs_presets.bind(next),side in choices.window_sides,188).name="UpstairsSide_"+side
-	text_label("The rooms are ready for your furnishings. Stairs use a clear route on the ground floor; existing objects stay in place.",origin+Vector2(28,635),Vector2(984,40),14,P.MUTED,false,overlay)
+	text_label("Bathroom fixtures are included: toilet, shower and sink in each en-suite; toilet, double sink, shower and bathtub in the main bathroom.",origin+Vector2(28,635),Vector2(984,40),14,P.MUTED,false,overlay)
 	button("Cancel",origin+Vector2(28,690),Vector2(220,40),close_overlay,false,overlay)
 	var buy:Button=button("Build upstairs · ℒ%d" % Presets.PRICES[int(choices.choice)],origin+Vector2(670,690),Vector2(342,40),_buy_upstairs_preset.bind(choices),false,overlay)
 	buy.name="UpstairsConfirm";buy.disabled=sim.funds<Presets.PRICES[int(choices.choice)]
@@ -4225,6 +4293,9 @@ func on_placement(kind:String,p:Vector3,angle:float,style:String="",size:String=
 		return
 	var data:Dictionary=LifeCatalog.get_item(kind)
 	p=world.kitchen_snap(kind,p,angle)
+	if kind=="stool":
+		var seat_snap:Dictionary=world.stool_snap(p,angle)
+		p=seat_snap.position;angle=float(seat_snap.angle)
 	var variant:Dictionary=Variants.resolve(data,{"style":style,"size":size,"color":world.placement_color})
 	if not world.can_place(kind,p,angle,variant.style,variant.size):
 		show_notice("Hang this against a wall." if LifeCatalog.wall_mounted(kind) and not world.wall_behind(kind,p,angle,variant.size) else "That space needs a little more room.");return
@@ -4656,6 +4727,9 @@ func show_interactions(item:Dictionary,screen:Vector2) -> void:
 	# panel every other object uses.
 	var actions:Array=household.pet_actions(str(item.id),bound_member_id) if str(item.kind)=="pet" else sim.get_actions_for(str(item.kind),str(item.id))
 	if is_instance_valid(tv_group):tv_group.menu(item,actions)
+	if str(item.kind)=="fridge":
+		var spoiled:bool=not meal_flow.spoiled_in_fridge(str(item.id)).is_empty()
+		actions.append({"id":"clean_fridge","label":"Clean spoiled food", "cost":0,"duration":5,"available":spoiled,"unavailable_reason":"There is no spoiled food in this fridge.","description":"Remove each spoiled dish and carry it to the kitchen bin."})
 	if str(item.kind)=="neighbor":
 		for entry:Dictionary in actions:
 			if str(entry.id) in ["ask_partner","commit"]:entry["label"]=proposal_question(str(entry.id),str(item.id))
@@ -4858,6 +4932,7 @@ func _run_interaction(item:Dictionary,a:Dictionary) -> void:
 	elif str(a.id)=="cook":meal_flow.show_recipes(str(item.id))
 	elif str(a.id)=="assign_bed_sides":show_bed_assignments(str(item.id))
 	elif str(a.id)=="choose_leftovers":meal_flow.show_leftovers(str(item.id))
+	elif str(a.id)=="clean_fridge":meal_flow.queue_fridge_clean(str(item.id))
 	elif str(a.id)=="switch_light":switch_lamp(item);close_overlay()
 	elif str(a.id) in PartyDecor.IDS:PartyDecor.choose(self,str(a.id),str(item.id))
 	elif str(a.id)=="call_to_meal":
@@ -4899,7 +4974,7 @@ func _run_interaction(item:Dictionary,a:Dictionary) -> void:
 	elif str(a.id)=="stop_try_for_baby":
 		household.cancel_cooperative_action(bound_member_id)
 		_end_cover_beat();close_overlay()
-	else:queue_interaction(item,a.id);close_overlay()
+	else:close_overlay();queue_interaction(item,a.id)
 
 func show_bed_assignments(bed_id:String) -> void:
 	close_overlay();overlay_open=true;dismiss_layer()
@@ -6249,6 +6324,8 @@ func queue_interaction(item:Dictionary,id:String) -> void:
 				show_notice("Your assigned "+side+" bedside is blocked. Clear that side before going to bed.");return
 	var destination:Vector3=world.approach(item)
 	if item.kind=="neighbor":destination=item.node.position+Vector3(0,0,.8)
+	if id in ["clean_litter_tray", "bin_meal", "discard_meal", "clear_table"]:
+		if household_flow.offer_empty_bin_first(sim,id,str(item.id),destination):return
 	sim.queue_action(id,item.id,destination)
 	refresh_hud()
 
@@ -6257,8 +6334,7 @@ func _pet_interaction_destination(pet_id:String,action_id:String) -> Vector3:
 	var pet:LifePetActor=pet_actors.get(pet_id)
 	if not is_instance_valid(pet) or not is_instance_valid(player):return Vector3.INF
 	if action_id=="pet_feed":
-		var bowl:Dictionary=world.closest_item("pet_bowl",pet.position,14.0)
-		if not bowl.is_empty():return world.approach(bowl)
+		return care_motion().feeding_destination(pet_id,player.position)
 	var level:int=world.point_level(pet.position)
 	if level<0:return Vector3.INF
 	var candidates:Array[Vector3]=[]
@@ -8335,6 +8411,7 @@ func _process(delta:float) -> void:
 			var moving:bool=_advance_away_movement(delta) if sim.is_away() else _advance_movement(delta)
 			var action:Dictionary=sim.get_current_action()
 			var action_id:String="" if action.is_empty() or action.phase!="active" else action.id
+			if is_instance_valid(relationship_flow) and relationship_flow.listener_held(bound_member_id):action_id="friendly"
 			if LifeBabyPlan.is_beat(action_id):action_id="sleep"
 			if action_id==PartyFood.EAT:action_id="snack" # a bite from the platter uses the snack pose
 			if action_id=="learn_to_drive":action_id="study" # theory is studied like any other study
@@ -8359,7 +8436,8 @@ func _process(delta:float) -> void:
 				if household.pregnancy_mother_id()==str(member.id):bump=household.pregnancy_progress()
 				player.pregnancy_bump=bump if bump>=0.0 else 0.0
 			if embrace.posed(bound_member_id):action_id="hug"
-			if not stroller_flow.passenger(sim):player.animate(delta,float(sim.speed),moving,action_id)
+			var hurry:float=sanitation_flow.bathroom_hurry(bound_member_id,action.get("target_position",walk_destination)) if moving else 1.0
+			if not stroller_flow.passenger(sim):player.animate(delta,float(sim.speed)*hurry,moving,action_id)
 			stroller_flow.present(bound_member_id)
 			_store_motion()
 		meal_flow.sync_world(household.speed>0)
@@ -8399,6 +8477,7 @@ func _advance_movement(delta:float) -> bool:
 	if not is_instance_valid(player) or sim.speed<=0:return false
 	# A housemate being hugged stays where they are for the embrace.
 	if embrace.holds(bound_member_id):return false
+	if is_instance_valid(relationship_flow) and relationship_flow.holds(bound_member_id):return false
 	if traversal.safety(bound_member_id):
 		var moved:bool=_advance_path(delta)
 		if not traversal.active(bound_member_id):
@@ -8427,6 +8506,8 @@ func _advance_movement(delta:float) -> bool:
 		_clear_motion();return false
 	if waiting_for_target:
 		var action:Dictionary=sim.get_current_action()
+		if str(action.get("id",""))=="eat_meal" and str(action.get("meal_stage",""))=="pickup":
+			meal_flow.resolve(sim,action)
 		# A waiter turned away by a full couch holds no place of its own, and it
 		# claims every place so that it really conflicts and waits. A cushion that
 		# has since freed must be re-claimed here, or the waiter would keep testing
@@ -8593,7 +8674,7 @@ func _near_resource_body(id:String,level:int)->bool:
 
 func _set_route(destination:Vector3) -> bool:
 	path_index=0
-	if not world.construction.building_state.is_empty():
+	if world.lot_navigation.generation>0:
 		var result:Dictionary=traversal.request(bound_member_id,destination)
 		path=result.points if bool(result.ok) else PackedVector3Array()
 		return bool(result.ok)
@@ -8675,9 +8756,9 @@ func _advance_path(delta:float) -> bool:
 ## Whether a step along a plain path stays out of every solid. A body that
 ## already stands inside one may step out of it, and nothing else may step in.
 func _plain_step_clear(from:Vector3,to:Vector3) -> bool:
-	if not world.construction.building_state.is_empty():
+	if world.lot_navigation.generation>0:
 		var level:int=world.point_level(to)
-		return level>=0 and (world.lot_navigation.point_clear(level,to) or not world.lot_navigation.point_clear(level,from))
+		return level>=0 and world.lot_navigation.walking_step_clear(level,from,to)
 	var cell:=Vector2i(roundi(to.x*4),roundi(to.z*4))
 	if not world.navigation.region.has_point(cell):return false
 	return not world.navigation.is_point_solid(cell) or world.navigation.is_point_solid(Vector2i(roundi(from.x*4),roundi(from.z*4)))
@@ -8908,6 +8989,7 @@ func _has_placement_tool() -> bool:
 	return not world.placement_kind.is_empty() or (is_instance_valid(world.construction) and not world.construction.tool.is_empty())
 
 func _update_activity_facing(delta:float,action:Dictionary,action_id:String) -> void:
+	if is_instance_valid(relationship_flow) and relationship_flow.present_conversation(bound_member_id):return
 	if is_instance_valid(relationship_flow) and relationship_flow.present_companion(bound_member_id):return
 	if LifeStrollerFlow.owns(action) or stroller_flow.passenger(sim):
 		player.clear_activity_anchor();return
@@ -9257,6 +9339,8 @@ func _activity_available(action:Dictionary) -> bool:
 
 func _activity_available_for_member(action:Dictionary,member_id:String) -> bool:
 	if action.is_empty():return false
+	if is_instance_valid(relationship_flow) and relationship_flow.blocks(action,member_id):return false
+	if is_instance_valid(sanitation_flow) and sanitation_flow.privacy_blocks(action,member_id):return false
 	if residents.guest_holds_member(member_id):return false
 	if is_instance_valid(tv_group) and tv_group.blocks(action,member_id):return false
 	var requested_bed:String=str(action.get("target_id",""))

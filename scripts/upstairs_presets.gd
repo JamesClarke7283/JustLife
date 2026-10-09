@@ -32,9 +32,9 @@ static func candidates(state:Dictionary,choices:Dictionary)->Array:
 	if floor.is_empty():return []
 	var operations:Array=[]
 	var center:=Vector2(float(floor.x),float(floor.z))
-	for offset:float in [-1.5,0.0,1.5,-.75,.75]:
+	for offset:float in [0.0,-.75,.75,-1.5,1.5]:
 		for rotation:int in [0,180]:
-			for shift:float in [0.,-.5,.5]:
+			for shift:float in ([1.5,1.25,1.,.75,.5,0.,-.5] if int(choices.get("choice",0))==2 and rotation==0 else ([-1.5,-1.25,-1.,-.75,-.5,0.,.5] if int(choices.get("choice",0))==2 else [0.,-.5,.5])):
 				var operation:Dictionary=choices.duplicate(true)
 				operation.merge({"op":"upstairs_preset","hall_x":snappedf(center.x+offset,.25),"stair_z":snappedf(center.y+(-2.0 if rotation==0 else 2.0)+shift,.25),"rotation":rotation},true)
 				operations.append(operation)
@@ -81,24 +81,38 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 	var east:Dictionary=_wall(after,Vector2(area.end.x,area.position.y),Vector2(area.end.x,area.end.y),wall_color)
 	_wall(after,area.position,Vector2(area.end.x,area.position.y),wall_color)
 	_wall(after,Vector2(area.position.x,area.end.y),area.end,wall_color)
-	var door_zs:Array[float]=[middle-2.0,middle+1.8]
+	var door_zs:Array=[middle-.8,middle+.8] if index==2 else [middle-2.0,middle+1.8]
 	_door_wall(after,added,prefix,Vector2(left,area.position.y),Vector2(left,area.end.y),door_zs,90,operation)
 	_door_wall(after,added,prefix,Vector2(right,area.position.y),Vector2(right,area.end.y),door_zs,270,operation)
 	_wall(after,Vector2(area.position.x,middle),Vector2(left,middle),wall_color)
 	_wall(after,Vector2(right,middle),Vector2(area.end.x,middle),wall_color)
 	if index==2:
-		var bath_start:float=area.end.y-2.0
-		_door_wall(after,added,prefix,Vector2(left,bath_start),Vector2(right,bath_start),[cx],180,operation)
-		rooms.append({"name":"Main bathroom","kind":"bathroom","rect":Rect2(left,bath_start,right-left,2.0)})
+		# Four real fixtures need a circulation aisle. Keep the bathroom at
+		# the foot end of the stairs so the upstairs landing remains open.
+		var at_back:bool=int(operation.rotation)==0
+		var bath_start:float=area.position.y if at_back else area.end.y-3.2
+		var divider:float=bath_start+3.2 if at_back else bath_start
+		# Leave a complete floor row between the bathroom doorway and the
+		# upper stair guard so a full body can turn out of the doorway.
+		var stair_clearance:float=(float(operation.stair_z)-divider) if at_back else (divider-float(operation.stair_z))
+		if stair_clearance<1.0:return _error("Leave a clear upstairs passage between the main bathroom and the stair guard.")
+		_door_wall(after,added,prefix,Vector2(left,divider),Vector2(right,divider),[cx+.5],0 if at_back else 180,operation)
+		rooms.append({"name":"Main bathroom","kind":"bathroom","rect":Rect2(left,bath_start,right-left,3.2),"at_back":at_back})
 	for room_index:int in ([1] if index==1 else ([0,3] if index==2 else [])):
 		var bedroom:Dictionary=rooms[room_index];var bounds:Rect2=bedroom.rect
+		if bounds.size.x<3.45:return _error("Leave a clear bedroom passage beside each furnished en-suite.")
 		var on_left:bool=room_index<2
-		var bath:=Rect2(bounds.position.x if on_left else bounds.end.x-1.8,bounds.position.y if room_index%2==0 else bounds.end.y-2.0,1.8,2.0)
+		var bath:=Rect2(bounds.position.x if on_left else bounds.end.x-2.6,bounds.position.y if room_index%2==0 else bounds.end.y-2.8,2.6,2.8)
 		var vertical:float=bath.end.x if on_left else bath.position.x
 		var horizontal:float=bath.end.y if room_index%2==0 else bath.position.y
-		_door_wall(after,added,prefix,Vector2(vertical,bath.position.y),Vector2(vertical,bath.end.y),[bath.get_center().y],90 if on_left else 270,operation)
+		_door_wall(after,added,prefix,Vector2(vertical,bath.position.y),Vector2(vertical,bath.end.y),[bath.position.y+1.70],90 if on_left else 270,operation)
 		_wall(after,Vector2(bath.position.x,horizontal),Vector2(bath.end.x,horizontal),wall_color)
 		rooms.append({"name":str(bedroom.name)+" en-suite","kind":"ensuite","rect":bath})
+	for room:Dictionary in rooms:
+		if room.kind not in ["bathroom","ensuite"]:continue
+		var bounds:Rect2=room.rect
+		if room.kind=="bathroom" and bounds.size.x<3.35:return _error("Leave at least 3.35 metres across the furnished main bathroom.")
+		_furnish_bathroom(added,prefix,room)
 	for room:Dictionary in rooms.slice(0,4):
 		var bounds:Rect2=room.rect
 		for side:String in SIDES:
@@ -138,6 +152,33 @@ static func propose(current:Dictionary,operation:Variant,funds:Variant)->Diction
 	error=Building.validate(after)
 	if not error.is_empty():return _error(error)
 	return {"ok":true,"operation":operation.duplicate(true),"before":Building.fingerprint(current),"after":after,"cost":cost,"funds_before":int(funds),"funds_after":int(funds)-cost,"added_furnishings":added}
+
+static func _fixture(items:Array,prefix:String,bounds:Rect2,kind:String,local:Vector2,rotation:int,size:String="")->void:
+	var at:Vector2=bounds.position+local
+	var item:Dictionary={"id":prefix+kind+"_"+str(items.size()),"kind":kind,"level":1,"x":at.x,"z":at.y,"rotation":rotation}
+	if not size.is_empty():item["size"]=size
+	items.append(item)
+
+static func _furnish_bathroom(items:Array,prefix:String,room:Dictionary)->void:
+	var bounds:Rect2=room.rect
+	if room.kind=="ensuite":
+		_fixture(items,prefix,bounds,"shower",Vector2(.77,.79),90)
+		_fixture(items,prefix,bounds,"toilet",Vector2(.63,2.32),90)
+		_fixture(items,prefix,bounds,"sink",Vector2(2.075,2.455),180,"bathroom_single")
+		return
+	var depth:float=bounds.size.y
+	var width:float=bounds.size.x
+	var first_fixture:int=items.size()
+	_fixture(items,prefix,bounds,"shower",Vector2(.80,.805),0)
+	_fixture(items,prefix,bounds,"sink",Vector2(width-.99,.475),0,"bathroom_double")
+	_fixture(items,prefix,bounds,"bathtub",Vector2(1.125,depth-.625),180)
+	_fixture(items,prefix,bounds,"toilet",Vector2(width-.575,depth-.63),180)
+	if not bool(room.get("at_back",true)):
+		# The mirrored preset enters from the north. Mirror the fixture row
+		# as well, retaining the clear entry aisle between the bath and WC.
+		for fixture:Dictionary in items.slice(first_fixture):
+			fixture.z=bounds.position.y+bounds.end.y-float(fixture.z)
+			fixture.rotation=posmod(180-int(fixture.rotation),360)
 
 static func _wall(state:Dictionary,a:Vector2,b:Vector2,color:String)->Dictionary:
 	var horizontal:bool=is_equal_approx(a.y,b.y)

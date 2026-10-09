@@ -3,7 +3,9 @@ class_name LifeLotNavigation
 ## Explicit supported floor graph plus tagged real stair segments. No movement,
 ## nearest-floor fallback, actor state mutation, rewards or physics shortcuts.
 const Building=preload("res://scripts/building_state.gd")
+const PetNavigation=preload("res://scripts/pet_navigation.gd")
 const RADIUS:float=.16
+const WALL_RADIUS:float=.30
 const CELL:float=.25
 var _state:Dictionary={}
 var _obstacles:Array=[]
@@ -21,6 +23,7 @@ var _blockers:Array=_per_level()
 # own id, however many solid bands it has), a wall, a staircase or an object
 # that is not furniture (the parked food truck). Blocked-route notices read it.
 var _blocker_sources:Array=_per_level()
+var _pet_walls:Array=[]
 const ITEM_COST:float=6.0    # weight of a cell a placed item covers, in `blocker_between`
 const HARD_COST:float=40.0   # weight of a wall or staircase cell: crossed only when nothing else joins the two spots
 
@@ -58,6 +61,7 @@ func rebuild(state:Variant,obstacles:Variant=[]) -> Dictionary:
 	_state=candidate._state;_obstacles=candidate._obstacles;_graph=candidate._graph
 	_floor_ids=candidate._floor_ids;_locations=candidate._locations;_stair_edges=candidate._stair_edges
 	_support_surfaces=candidate._support_surfaces;_support_holes=candidate._support_holes;_blockers=candidate._blockers;_blocker_sources=candidate._blocker_sources
+	_pet_walls=candidate._pet_walls
 	generation+=1
 	return {"ok":true,"generation":generation,"points":_graph.get_point_count(),"stairs":_state.stairs.size()}
 
@@ -124,6 +128,10 @@ func _build_graph() -> Dictionary:
 
 func _prepare_geometry()->void:
 	_support_surfaces=_per_level();_support_holes=_per_level();_blockers=_per_level();_blocker_sources=_per_level()
+	_pet_walls=[]
+	for wall:Dictionary in _state.walls:
+		var base:float=Building.level_y(int(wall.level))
+		_pet_walls.append({"area":Building.rect(wall),"base":base,"top":base+float(wall.get("height",2.6))})
 	for level:int in Building.MAX_LEVEL+1:
 		var surfaces:Array=Building._rects(_state,"floors",level)
 		# Bearings are computed from the original slabs and openings once.
@@ -145,7 +153,9 @@ func _block(level:int,area:Rect2,kind:String,id:String)->void:
 
 func _bounds_clear(level:int,bounds:Rect2)->bool:
 	if not Building.lot().encloses(bounds) or not Building._covered(bounds,_support_surfaces[level],_support_holes[level]):return false
-	for blocker:Rect2 in _blockers[level]:
+	for index:int in _blockers[level].size():
+		var blocker:Rect2=_blockers[level][index]
+		if str(_blocker_sources[level][index].kind)=="wall":blocker=blocker.grow(WALL_RADIUS-RADIUS)
 		if blocker.intersects(bounds):return false
 	return true
 
@@ -161,6 +171,88 @@ func _segment_bounds_clear(level:int,from:Vector3,to:Vector3)->bool:
 func segment_clear(level:int,from:Vector3,to:Vector3) -> bool:
 	if not point_clear(level,from) or not point_clear(level,to):return false
 	return _segment_bounds_clear(level,from,to)
+
+## Every ordinary walking step sweeps the whole body, including on long frames
+## and while squeezing past another body. An old furniture anchor may overlap
+## its own furnishing; it can only leave that overlap, never use it to cross a
+## wall, enter another furnishing, or continue through the original object.
+func walking_step_clear(level:int,from:Vector3,to:Vector3)->bool:
+	if segment_clear(level,from,to):return true
+	if level==0 and boundary_entry_step(from,to):return true
+	if _state.is_empty() or level<0 or level>Building.MAX_LEVEL or not from.is_finite() or not to.is_finite():return false
+	if from.distance_to(to)>.12+.000001 or absf(from.y-Building.level_y(level))>.00001 or absf(to.y-Building.level_y(level))>.00001:return false
+	if point_clear(level,from):return false
+	var start:Rect2=_body_box(from)
+	var finish:Rect2=_body_box(to)
+	var low:=Vector2(minf(from.x,to.x)-RADIUS,minf(from.z,to.z)-RADIUS)
+	var high:=Vector2(maxf(from.x,to.x)+RADIUS,maxf(from.z,to.z)+RADIUS)
+	var swept:=Rect2(low,high-low)
+	if not Building.lot().encloses(swept) or not Building._covered(swept,_support_surfaces[level],_support_holes[level]):return false
+	var leaving:bool=false
+	for index:int in _blockers[level].size():
+		var blocker:Rect2=_blockers[level][index]
+		if str(_blocker_sources[level][index].kind)=="wall":blocker=blocker.grow(WALL_RADIUS-RADIUS)
+		if not blocker.intersects(swept):continue
+		if not is_item_source(_blocker_sources[level][index]) or not blocker.intersects(start):return false
+		var expanded:Rect2=blocker.grow(RADIUS)
+		var a:=Vector2(from.x,from.z);var b:=Vector2(to.x,to.z)
+		var before:float=minf(minf(a.x-expanded.position.x,expanded.end.x-a.x),minf(a.y-expanded.position.y,expanded.end.y-a.y))
+		var after:float=minf(minf(b.x-expanded.position.x,expanded.end.x-b.x),minf(b.y-expanded.position.y,expanded.end.y-b.y))
+		if blocker.intersects(finish) and after>=before-.000001:return false
+		leaving=true
+	return leaving
+
+## A sidewalk animal or passer can stand beyond the lot's floor graph, but its
+## complete body still cannot pass through any built wall or solid furnishing.
+func structure_step_clear(level:int,from:Vector3,to:Vector3,wall_radius:float=WALL_RADIUS)->bool:
+	if _state.is_empty() or level<0 or level>Building.MAX_LEVEL or not from.is_finite() or not to.is_finite():return false
+	var low:=Vector2(minf(from.x,to.x)-RADIUS,minf(from.z,to.z)-RADIUS)
+	var high:=Vector2(maxf(from.x,to.x)+RADIUS,maxf(from.z,to.z)+RADIUS)
+	var swept:=Rect2(low,high-low)
+	for index:int in _blockers[level].size():
+		var blocker:Rect2=_blockers[level][index]
+		if str(_blocker_sources[level][index].kind)=="wall":blocker=blocker.grow(maxf(WALL_RADIUS,wall_radius)-RADIUS)
+		if blocker.intersects(swept):return false
+	return true
+
+## The animal's long body is oriented along its travel direction. A door can
+## admit a dog walking straight through while refusing a sideways turn there.
+func pet_wall_pose_clear(point:Vector3,yaw:float,hull:Dictionary)->bool:
+	if _state.is_empty() or not point.is_finite() or not is_finite(yaw):return false
+	var front:float=float(hull.get("front",.66));var back:float=float(hull.get("back",.64))
+	var width:float=float(hull.get("half_width",.20));var height:float=float(hull.get("height",.66))
+	if not is_finite(front) or not is_finite(back) or not is_finite(width) or not is_finite(height):return false
+	if minf(minf(front,back),minf(width,height))<=0.0 or maxf(maxf(front,back),maxf(width,height))>2.0:return false
+	var forward:=Vector2(sin(yaw),cos(yaw));var side:=Vector2(cos(yaw),-sin(yaw))
+	var centre:=Vector2(point.x,point.z)+forward*(front-back)*.5
+	var half_length:float=(front+back)*.5
+	# This skin also covers the bounded interpolation gaps in the sweep below.
+	var skin:float=.015+Vector2(maxf(front,back),width).length()*.02
+	var bounds_half:=Vector2(absf(forward.x)*half_length+absf(side.x)*width,absf(forward.y)*half_length+absf(side.y)*width)
+	var bounds:=Rect2(centre-bounds_half,bounds_half*2)
+	for wall:Dictionary in _pet_walls:
+		if point.y+height<float(wall.base) or point.y-.06>float(wall.top):continue
+		var area:Rect2=Rect2(wall.area).grow(skin)
+		if not bounds.intersects(area,true):continue
+		var wall_centre:Vector2=area.get_center();var wall_half:Vector2=area.size*.5
+		var separated:bool=false
+		for axis:Vector2 in [Vector2.RIGHT,Vector2.DOWN,forward,side]:
+			var animal_radius:float=absf(axis.dot(forward))*half_length+absf(axis.dot(side))*width
+			var wall_radius:float=absf(axis.x)*wall_half.x+absf(axis.y)*wall_half.y
+			if absf((centre-wall_centre).dot(axis))>animal_radius+wall_radius:separated=true;break
+		if not separated:return false
+	return true
+
+func pet_wall_step_clear(from:Vector3,to:Vector3,from_yaw:float,to_yaw:float,hull:Dictionary)->bool:
+	if not from.is_finite() or not to.is_finite() or not is_finite(from_yaw) or not is_finite(to_yaw):return false
+	var count:int=maxi(1,maxi(ceili(from.distance_to(to)/.025),ceili(absf(angle_difference(from_yaw,to_yaw))/.035)))
+	for sample:int in count+1:
+		var weight:float=float(sample)/float(count)
+		if not pet_wall_pose_clear(from.lerp(to,weight),lerp_angle(from_yaw,to_yaw,weight),hull):return false
+	return true
+
+func pet_route_avoiding(from:Dictionary,to:Dictionary,occupied:Array=[],body_gap:float=.65,hull:Dictionary={"front":.66,"back":.64,"half_width":.20,"height":.66},start_yaw:float=0.0,target_yaw:float=NAN)->Dictionary:
+	return PetNavigation.new(self).route(from,to,occupied,body_gap,hull,start_yaw,target_yaw)
 
 ## Older ground-grid saves can put a body's centre on the lot boundary. Admit
 ## only a short physical step inward from that margin, never through a solid
@@ -182,7 +274,9 @@ func boundary_entry_step(from:Vector3,to:Vector3) -> bool:
 	var high:=Vector2(maxf(from.x,to.x)+RADIUS,maxf(from.z,to.z)+RADIUS)
 	var swept:=Rect2(low,high-low)
 	if not Building._covered(swept.intersection(lot),_support_surfaces[0],_support_holes[0]):return false
-	for blocker:Rect2 in _blockers[0]:
+	for index:int in _blockers[0].size():
+		var blocker:Rect2=_blockers[0][index]
+		if str(_blocker_sources[0][index].kind)=="wall":blocker=blocker.grow(WALL_RADIUS-RADIUS)
 		if blocker.intersects(swept):return false
 	return true
 
@@ -409,7 +503,8 @@ func blockers_touching(level:int,area:Rect2)->Array:
 	var centre:=area.get_center()
 	for index:int in range(_blockers[level].size()):
 		var footprint:Rect2=_blockers[level][index]
-		if not footprint.intersects(area):continue
+		var collision:Rect2=footprint.grow(WALL_RADIUS-RADIUS) if str(_blocker_sources[level][index].kind)=="wall" else footprint
+		if not collision.intersects(area):continue
 		var source:Dictionary=_blocker_sources[level][index].duplicate()
 		source.rect=footprint;source.level=level;source.gap=_rect_gap(footprint,centre)
 		found.append(source)
@@ -486,7 +581,7 @@ func _cheapest_crossing(level:int,start:Vector2i,goal:Vector2i,destination:Vecto
 	var cost:Dictionary={};var owners:Dictionary={};var freed:Dictionary={}
 	for index:int in range(_blockers[level].size()):
 		var source:Dictionary=_blocker_sources[level][index]
-		var area:Rect2=Rect2(_blockers[level][index]).grow(RADIUS)
+		var area:Rect2=Rect2(_blockers[level][index]).grow(WALL_RADIUS if str(source.kind)=="wall" else RADIUS)
 		var gone:bool=ignore.has(str(source.id))
 		var weight:float=ITEM_COST if is_item_source(source) else HARD_COST
 		for x:int in range(maxi(floori(area.position.x/CELL),window.position.x),mini(ceili(area.end.x/CELL)+1,window.end.x)):
